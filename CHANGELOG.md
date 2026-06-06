@@ -10,6 +10,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Landing demo video wired up** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx), [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)). The about-video slot now plays a self-hosted `.mp4` (served from CloudFront) in a native `<video>` (a small client island) that muted-autoplays on load with player controls hidden until hover/focus — keeping the public storefront clean while pause / seek / unmute stay one hover away. It detects a direct video file by extension and keeps the `<iframe>` path for YouTube/Vimeo embeds. `NEXT_PUBLIC_DEMO_VIDEO_URL` is passed into the Vercel build explicitly from a repo variable (same belt-and-braces as `NEXT_PUBLIC_API_URL`, since `vercel pull` is unreliable for `NEXT_PUBLIC_*`), so the closed-beta promo shows on the public landing instead of the placeholder.
+- **Public roadmap collapsed from 4 to 3 milestones** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx)). The reader-facing `ROADMAP` array folds *Visibility* and *Open source* into a single *Open source launch* (now), reflecting the operational reality that the GitHub flip, the pinned X tweet, and the cold-reach DMs widening the closed beta all fire in the same window. *Open beta* and *Public v1* follow as the remaining stages. Mirrors the M1+M2 collapse in [`docs/next.md`](docs/next.md). Also drops the "First analyst invites going out" line — the closed beta already has analysts; the launch widens the pool rather than starting it.
 
 ---
 
