@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+- **Landing demo video wired up** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx), [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)). The about-video slot now plays a self-hosted `.mp4` (served from CloudFront) in a native `<video controls>` element — detecting a direct video file by extension and keeping the `<iframe>` path for YouTube/Vimeo embeds. `NEXT_PUBLIC_DEMO_VIDEO_URL` is passed into the Vercel build explicitly from a repo variable (same belt-and-braces as `NEXT_PUBLIC_API_URL`, since `vercel pull` is unreliable for `NEXT_PUBLIC_*`), so the closed-beta promo shows on the public landing instead of the placeholder.
 
 ---
 
