@@ -158,6 +158,10 @@ jobs:
           # set at build time`). Passing it explicitly from a repo variable
           # is belt-and-braces and keeps the value out of the YAML.
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          # Landing demo video — a self-hosted CloudFront .mp4 URL. Same
+          # belt-and-braces as NEXT_PUBLIC_API_URL: passed from a repo
+          # variable so the value reliably reaches `next build`.
+          NEXT_PUBLIC_DEMO_VIDEO_URL: ${{ vars.NEXT_PUBLIC_DEMO_VIDEO_URL }}
           # Sentry — same `vercel pull` belt-and-braces story as
           # NEXT_PUBLIC_API_URL. All four are optional: when unset (bootstrap
           # phase before the Sentry project exists), `withSentryConfig` skips

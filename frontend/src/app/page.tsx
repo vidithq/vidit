@@ -23,6 +23,11 @@ export const metadata: Metadata = {
 // direct .mp4) to light up the demo player; until then the slot renders a
 // placeholder. Lets the about video ship without a code change.
 const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL;
+// A self-hosted file (our CloudFront .mp4) plays in a native <video>; a
+// YouTube/Vimeo *embed* URL needs an <iframe>. Pick the element by file
+// extension so both keep working.
+const DEMO_VIDEO_IS_FILE =
+  !!DEMO_VIDEO_URL && /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(DEMO_VIDEO_URL);
 
 // The six features worth pushing, on a uniform 2×3 grid. Icons reuse the
 // product's own vocabulary: `Globe`/`Target`/`Filter` echo Map, Bounties,
@@ -120,13 +125,25 @@ export default function LandingPage() {
       <section className="mx-auto max-w-4xl px-5 pb-20">
         <div className="aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
           {DEMO_VIDEO_URL ? (
-            <iframe
-              src={DEMO_VIDEO_URL}
-              title="Vidit product demo"
-              className="h-full w-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            DEMO_VIDEO_IS_FILE ? (
+              <video
+                src={DEMO_VIDEO_URL}
+                controls
+                playsInline
+                preload="metadata"
+                className="h-full w-full"
+              >
+                Your browser doesn&rsquo;t support embedded video.
+              </video>
+            ) : (
+              <iframe
+                src={DEMO_VIDEO_URL}
+                title="Vidit product demo"
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            )
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center">
               <span className="size-12 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-400">
