@@ -16,7 +16,7 @@
     "@tiptap/starter-kit": "^3.21.0",
     "lucide-react": "^1.14.0",
     "maplibre-gl": "^5.21.1",
-    "next": "^14.2",
+    "next": "^16.2",
     "react": "^18.3",
     "react-dom": "^18.3",
     "react-map-gl": "^8.1.0"
