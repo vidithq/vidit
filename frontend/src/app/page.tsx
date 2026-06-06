@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
 import { BETA_PILL, FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
 import HeroCtas from "@/components/landing/HeroCtas";
+import DemoVideo from "@/components/landing/DemoVideo";
 
 // Public landing page — the storefront at `vidit.app`. Reachable without
 // an account (see `PUBLIC_EXACT` in `middleware.ts`): pitch + about video +
@@ -126,15 +127,7 @@ export default function LandingPage() {
         <div className="aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
           {DEMO_VIDEO_URL ? (
             DEMO_VIDEO_IS_FILE ? (
-              <video
-                src={DEMO_VIDEO_URL}
-                controls
-                playsInline
-                preload="metadata"
-                className="h-full w-full"
-              >
-                Your browser doesn&rsquo;t support embedded video.
-              </video>
+              <DemoVideo src={DEMO_VIDEO_URL} />
             ) : (
               <iframe
                 src={DEMO_VIDEO_URL}
