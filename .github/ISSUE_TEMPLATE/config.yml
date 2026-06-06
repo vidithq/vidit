@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/vidithq/vidit/security/advisories/new
+    about: Security reports go through GitHub's private vulnerability reporting. Do NOT open a public issue for a vulnerability. See SECURITY.md for the policy.
+  - name: Ask a question / start a discussion
+    url: https://github.com/vidithq/vidit/discussions
+    about: Open-ended questions, design discussions, and "is this a bug?" go in Discussions, not Issues.

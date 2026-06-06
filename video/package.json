@@ -1,0 +1,23 @@
+{
+  "name": "vidit-promo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "render": "remotion render src/index.ts Demo out/promo-final.mp4 --codec h264 --crf 16",
+    "render-4k": "remotion render src/index.ts Demo out/promo-final-4k.mp4 --codec h264 --crf 16 --scale 2",
+    "studio": "remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.472",
+    "@remotion/transitions": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "playwright": "^1.60.0",
+    "typescript": "^5.5.0"
+  }
+}

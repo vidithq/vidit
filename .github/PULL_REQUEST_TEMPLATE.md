@@ -1,0 +1,38 @@
+<!--
+Title: Conventional Commit format — `type(scope): subject`, subject starts lowercase.
+Enforced by .github/workflows/pr-title.yml. Examples in CONTRIBUTING.md.
+-->
+
+## Summary
+
+What this change does, in one to three sentences. Link the issue it closes (`Closes #N`) if there is one.
+
+## Why
+
+Why this is the right change — the user problem, the constraint, the trade-off. Skip if the summary already covers it.
+
+## Doc-sync checklist
+
+The mechanical pairings from [`CLAUDE.md`](../CLAUDE.md) → *Before merging — doc sync rule*. Check the box if the rule applies to your diff:
+
+- [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
+- [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
+- [ ] Touched `.github/workflows/**`, `backend/Dockerfile`, `backend/railway.json`, or `docker-compose.yml` → updated [`docs/architecture.md`](../docs/architecture.md)
+- [ ] Touched production code (`backend/app/**`, `frontend/src/**`, or a migration) → added a one-line entry under `## Unreleased` in [`CHANGELOG.md`](../CHANGELOG.md)
+- [ ] Tech-choice swap (not a routine version bump) → updated [`docs/stack.md`](../docs/stack.md)
+- [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`CLAUDE.md`](../CLAUDE.md) **and** [`README.md`](../README.md)
+- [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Orange palette recipe*)
+
+The `doc-sync` workflow will hard-fail the PR if a required pairing is missing. If a rule is wrong for your case, say so in the description below.
+
+## Test plan
+
+How you verified this. Include the commands you ran (`make test`, `npm run lint`, etc.) and, for UI changes, the flow you walked through in the browser.
+
+- [ ] `make test` passes locally
+- [ ] Frontend `npm run lint` + `npx tsc --noEmit` + `npm run build` pass
+- [ ] Manual check of the affected user flow (describe below)
+
+## Notes for the reviewer
+
+Anything reviewer-only: known unknowns, follow-ups intentionally left out of this PR, edge cases you weighed but did not cover. Optional.

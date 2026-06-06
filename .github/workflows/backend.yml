@@ -1,0 +1,92 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+# Least-privilege: this workflow only reads source + runs tests. It doesn't
+# comment on PRs, push commits, or publish artefacts. ``contents: read`` is
+# the minimum needed for ``actions/checkout`` and nothing else is granted.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy app
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: vision
+          POSTGRES_USER: vision
+          POSTGRES_PASSWORD: vision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vision:vision@localhost:5432/vision
+      JWT_SECRET: test-secret-not-for-production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: pytest
+        run: uv run pytest -v

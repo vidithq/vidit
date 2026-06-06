@@ -1,0 +1,93 @@
+name: doc-sync
+
+# Mechanical guardrail against doc drift: certain code-path changes
+# must come with a paired doc update in the same PR. The rules
+# mirror the "Before merging — doc sync rule" section of CLAUDE.md;
+# this workflow is what enforces it instead of relying on author
+# memory + reviewer discipline.
+#
+# Rule of thumb when adding a new rule: only enforce pairings that
+# went STALE in practice (i.e. drift you've actually fixed after the
+# fact). Don't speculate. A rule that fires on too many PRs without
+# real drift just teaches the author to ignore the check.
+
+on:
+  pull_request:
+    branches: [main]
+
+# Least-privilege: read the PR diff, fail/pass via the job conclusion. No
+# PR comments, no commit status pushes beyond the default check run.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Touched-code-needs-touched-docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Need the full PR diff, not just HEAD.
+          fetch-depth: 0
+
+      - name: Enumerate changed files
+        id: changes
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          # Use the merge-base so a base-branch force-push doesn't
+          # corrupt the diff.
+          MERGE_BASE=$(git merge-base "$BASE" "$HEAD")
+          git diff --name-only "$MERGE_BASE..$HEAD" > /tmp/changed.txt
+          echo "Changed files in this PR:"
+          cat /tmp/changed.txt
+
+      - name: Apply doc-sync rules
+        run: |
+          set -e
+          FILES=$(cat /tmp/changed.txt)
+          FAIL=0
+
+          touched() {
+            # $1 is a grep -E pattern matched against the changed-file list.
+            echo "$FILES" | grep -qE "$1"
+          }
+
+          fail_rule() {
+            # $1 is the human-readable rule description.
+            echo "::error::$1"
+            FAIL=1
+          }
+
+          # ── Rule 1: routers ↔ api.md ───────────────────────────────────
+          if touched '^backend/app/routers/' && ! touched '^docs/api\.md$'; then
+            fail_rule "Touched backend/app/routers/** but docs/api.md was not updated. Endpoint contract changes must update the API doc in the same PR."
+          fi
+
+          # ── Rule 2: models / migrations ↔ data-model.md ────────────────
+          if { touched '^backend/app/models/' || touched '^backend/alembic/versions/'; } && ! touched '^docs/data-model\.md$'; then
+            fail_rule "Touched backend models or Alembic migrations but docs/data-model.md was not updated. Schema changes must update the data-model doc (table block AND ER diagram) in the same PR."
+          fi
+
+          # ── Rule 3: deploy / infra ↔ architecture.md ───────────────────
+          if { touched '^\.github/workflows/' || touched '^backend/Dockerfile$' || touched '^backend/railway.json$' || touched '^docker-compose.yml$'; } && ! touched '^docs/architecture\.md$'; then
+            fail_rule "Touched deploy/infra config but docs/architecture.md was not updated. Workflow / Dockerfile / Railway-config / docker-compose changes must update the architecture doc (Operating-the-platform or Particularities) in the same PR."
+          fi
+
+          # ── Rule 4: production code ↔ CHANGELOG.md ─────────────────────
+          # Tests are excluded — green refactors don't need a user-facing
+          # entry. Migrations DO require an entry (they ship a schema
+          # change to prod).
+          if { touched '^backend/app/' || touched '^backend/alembic/versions/' || touched '^frontend/src/'; } && ! touched '^CHANGELOG\.md$'; then
+            fail_rule "Touched production code (backend/app/, frontend/src/, or a migration) but CHANGELOG.md was not updated. Add a one-line entry under '## Unreleased' in the same PR."
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::doc-sync check failed."
+            echo "If a rule is wrong for your case (e.g. you really did just rename a private symbol with no API/doc impact), say so in the PR description; the rules in .github/workflows/doc-sync.yml are tuned to past drift, not theory."
+            exit 1
+          fi
+
+          echo "✓ doc-sync checks passed."

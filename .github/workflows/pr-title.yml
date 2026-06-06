@@ -1,0 +1,40 @@
+name: pr-title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+# amannn/action-semantic-pull-request needs ``pull-requests: read`` to fetch
+# the PR title via the GitHub API. ``statuses: write`` is intentionally NOT
+# granted — the action surfaces its result via the workflow's check-run
+# conclusion, which is already published by ``GITHUB_TOKEN`` with default
+# read-only scope.
+permissions:
+  pull-requests: read
+
+jobs:
+  check:
+    name: Conventional commit title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5.5.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lowercase letter.
+            Example: "feat: add map clustering" not "feat: Add map clustering".

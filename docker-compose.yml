@@ -1,0 +1,20 @@
+services:
+  db:
+    build:
+      context: ./docker
+    container_name: vidit-db
+    environment:
+      POSTGRES_DB: vision
+      POSTGRES_USER: vision
+      POSTGRES_PASSWORD: vision
+      # ``shared_preload_libraries = 'age, pg_cron'`` is baked into the
+      # image at build time (see ``docker/Dockerfile``) — the stock
+      # postgres image doesn't honour a ``POSTGRES_SHARED_PRELOAD_LIBRARIES``
+      # env var, so configuring it here would be a silent no-op.
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:

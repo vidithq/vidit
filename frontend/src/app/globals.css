@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tiptap editor styles */
+.ProseMirror {
+  min-height: 200px;
+}
+.ProseMirror p {
+  margin: 0.5em 0;
+}
+.ProseMirror h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.75em 0 0.25em;
+}
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.5em 0;
+}
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* Custom scrollbar — dark theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #404040 transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+/* Offset MapLibre controls past the sidebar on full-screen map only */
+.map-fullscreen .maplibregl-ctrl-bottom-left {
+  left: 60px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+}
+.map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group {
+  order: 1 !important;
+}
+.map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl-attrib {
+  order: 2 !important;
+}
+
+/* Dark theme for MapLibre controls */
+.maplibregl-ctrl-group {
+  background: #171717 !important;
+  border: 1px solid #404040 !important;
+}
+.maplibregl-ctrl-group button {
+  border-color: #404040 !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: #404040 !important;
+}
+.maplibregl-ctrl-group button span {
+  filter: invert(1);
+}
+.maplibregl-ctrl-attrib {
+  background: transparent !important;
+  color: #525252 !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: #525252 !important;
+}
+.maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}

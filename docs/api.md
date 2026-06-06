@@ -1,0 +1,1284 @@
+# API — REST contracts
+
+Base URL: `/api/v1`
+
+All responses are JSON.
+
+**Auth.** Endpoints marked 🔒 require a logged-in session: the `vidit_session` cookie (set by `POST /auth/login`, `HttpOnly; Secure; SameSite=Lax`) plus, for state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`), the `X-CSRF-Token` header echoing the JS-readable `vidit_csrf` cookie. There is no `Authorization: Bearer` flow — the cookie + CSRF pair is the only authenticated channel into the backend; a `Bearer` header on a request is ignored. Endpoints marked 🛡️ additionally require `is_admin=true` on the caller (returns 403 otherwise).
+
+**Transport security.** Every response carries `Strict-Transport-Security: max-age=15768000` (Tier 4 lite). The header has no `includeSubDomains` or `preload` directives — both are public-launch concerns.
+
+**Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT — an audit failure never breaks the auth flow.
+
+---
+
+## Auth
+
+### `POST /auth/register`
+
+Stage a registration. Anonymous. **No `users` row is created here** — the submission lives in `pending_registrations` until the user proves they own the email by clicking the link in the confirmation message. The invite code is referenced by the pending row but not consumed; an abandoned signup does not burn the invite.
+
+**Request body:**
+```json
+{
+  "username": "kalush",
+  "email": "kalush@example.com",
+  "password": "••••••••",
+  "invite_code": "abc123"
+}
+```
+
+**Response 202:**
+```json
+{
+  "status": "pending_confirmation",
+  "email": "kalush@example.com"
+}
+```
+
+No session cookie is set. The confirmation email is sent on a background task so the success and error branches return at the same wire timing — keeping the response from leaking pending / already-registered state.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Invite code invalid, expired, revoked, or exhausted |
+| 409 | Email or username already registered (live or soft-deleted user) |
+| 409 | Email or username already has a live pending confirmation (distinct message) |
+| 429 | Rate-limited (10/hour/IP) |
+
+---
+
+### `POST /auth/confirm-registration`
+
+Anonymous. Consumes the token emailed by `POST /auth/register`, creates the `users` row, marks the invite consumed, and signs the analyst in (sets `vidit_session` + `vidit_csrf` cookies in the same response).
+
+**Request body:**
+```json
+{ "token": "Pv3oZc..." }
+```
+
+**Response 200:** `UserRead` (same shape as `GET /auth/me`).
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Account created; cookies set; redirect to / |
+| 400 | Token unknown, expired, or already consumed |
+| 409 | Email or username was taken in the gap between register and confirm |
+
+Rate-limited to 30/hour per IP.
+
+---
+
+### `GET /auth/invites/{code}/check`
+
+Anonymous. Cheap pre-flight probe used by the registration form to validate the invite code before the analyst types their full credentials. Mirrors the same `validate_invite_code` check the `POST /auth/register` step runs, so a `200 {"valid": true}` here does not reserve the code — a concurrent registration can still consume it between the check and the submit. The form treats this endpoint as advisory.
+
+**Response 200:**
+```json
+{ "valid": true }
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Invalid, exhausted, or expired invite code |
+
+---
+
+### `POST /auth/resend-confirmation`
+
+Anonymous. Re-mints the token for an outstanding pending registration and re-sends the confirmation email. Always returns 204, regardless of whether the email matched a live pending row, to avoid leaking which addresses are in flight. The previous token is invalidated by the re-mint — a shoulder-surfed link from the first email cannot be redeemed after the resend.
+
+**Request body:**
+```json
+{ "email": "kalush@example.com" }
+```
+
+**Response 204** (always).
+
+Rate-limited to 5/hour per IP.
+
+---
+
+### `POST /auth/login`
+
+**Request body:**
+```json
+{
+  "email": "kalush@example.com",
+  "password": "••••••••"
+}
+```
+
+**Response 200:** `UserRead` (same shape as `GET /auth/me`). Sets the `vidit_session` HttpOnly cookie and the JS-readable `vidit_csrf` cookie.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Wrong email or password |
+| 429 | Rate-limited (5/min/IP, 30/hour/IP) |
+
+---
+
+### `POST /auth/logout`
+
+Clears the session and CSRF cookies. Not session-gated — works even with no active session (idempotent); like any mutating request it still requires the `X-CSRF-Token` header when a `vidit_csrf` cookie is present. **Response 204:** no body.
+
+---
+
+### `GET /auth/me` 🔒
+
+Returns the current user.
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "username": "kalush",
+  "email": "kalush@example.com",
+  "is_trusted": false,
+  "trust_reason": null,
+  "bio": null,
+  "avatar_url": null,
+  "external_links": {},
+  "created_at": "2026-03-28T10:00:00Z"
+}
+```
+
+`is_trusted` / `trust_reason` are public on purpose — the trust mark is a credibility signal and the reason is what makes it credible. The profile fields (`bio`, `avatar_url`, `external_links`) ship with the self-payload so the sidebar avatar and "edit profile" form can render without a second fetch. **`is_admin` is not on this shape**; the admin role only surfaces via `GET /admin/me`. The internal `email_verified_at` column is set at confirmation time for every account but is not exposed on this response — the pre-creation flow guarantees the address was confirmed before the row existed, so there is no "unverified user" state for the UI to render.
+
+---
+
+### `POST /auth/forgot-password`
+
+Anonymous. Begins the password-reset flow by emailing a single-use token to the address — but only if the address matches an existing account. Always returns 204, regardless of whether the account exists, to avoid leaking user enumeration. Email-send failures are logged and swallowed for the same reason.
+
+**Body:**
+```json
+{ "email": "kalush@example.com" }
+```
+
+**Response 204** (always, on success or unknown email).
+
+Rate-limited to 5/hour per IP.
+
+---
+
+### `POST /auth/reset-password`
+
+Anonymous. Consumes a reset token and sets a new password. Tokens are single-use, expire 15 minutes after mint, and become invalid the moment a fresh `forgot-password` is issued for the same user.
+
+**Body:**
+```json
+{
+  "token": "Pv3oZc...",
+  "new_password": "atleasteightchars"
+}
+```
+
+**Response 204** on success.
+
+| Status | Meaning |
+|--------|---------|
+| 204 | Password updated; client should redirect to /login |
+| 400 | Token unknown, expired, already consumed, or wrong purpose — same opaque error to avoid leaking which |
+
+Rate-limited to 10/hour per IP.
+
+### `POST /auth/change-password` 🔒
+
+Authenticated password rotation from the settings page. Requires re-asserting the current password — a stolen session cookie alone cannot lock the legitimate owner out by rotating the credential. Audited as `password_changed` on success. A best-effort heads-up email is dispatched to the account address after the DB commit — informational only, no IP / UA, body links to `https://vidit.app/forgot-password` as the single recovery surface for an owner who didn't trigger the rotation themselves. Email-send failure is swallowed (logged with `user_id`, never the address); the rotation succeeds either way.
+
+**Body:**
+```json
+{
+  "current_password": "••••••••",
+  "new_password": "atleasteightchars"
+}
+```
+
+**Response 204** on success.
+
+| Status | Meaning |
+|--------|---------|
+| 204 | Password updated; session cookie stays valid |
+| 400 | Current password incorrect |
+| 401 | Not authenticated |
+| 422 | `new_password` shorter than 8 characters |
+
+Rate-limited to 10/hour per session.
+
+---
+
+## Geolocations
+
+### `GET /geolocations`
+
+List geolocations for the map. Returns a lightweight format (no full proof).
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `conflict` | string (repeatable) | Filter by conflict tag name. Repeat the param to OR within the conflict bucket (`?conflict=Ukraine&conflict=Gaza`). Matching tags must additionally carry `category == "conflict"`, so a free tag with the same name doesn't poison the result. |
+| `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
+| `tag` | string (repeatable) | Filter by tag name (any category). Repeat the param to OR within the tag bucket (`?tag=drone&tag=tank`). Combining buckets ANDs across them — the geolocation must satisfy each bucket independently. |
+| `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input — latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. An unbounded fallback would be the wrong default for a map endpoint, so a typo returns 422 rather than the full catalog. |
+| `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422 (used to silently 500 from Postgres `InvalidDatetimeFormat`). |
+| `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Same 422-on-malformed shape as the event-date filters. |
+| `author` | string | Substring match on author username. Whitelisted to `[A-Za-z0-9_-]{1,50}` — any other character (including the LIKE meta-characters `%` and `\`) returns 422. |
+| `limit` | int | Default 200 |
+
+**Response 200:**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Strike on depot, Donetsk",
+    "lat": 48.123,
+    "lng": 37.456,
+    "event_date": "2026-03-15",
+    "is_demo": false,
+    "author": {
+      "id": "uuid",
+      "username": "kalush",
+      "is_trusted": false,
+      "trust_reason": null
+    },
+    "tags": [
+      { "name": "Ukraine", "category": "conflict" },
+      { "name": "Drone", "category": "capture_source" },
+      { "name": "airstrike", "category": "free" }
+    ]
+  }
+]
+```
+
+---
+
+### `GET /geolocations/points`
+
+Compact map-points endpoint: every geolocation rendered as a tuple of
+`[id, lat, lng]`. Designed for client-side clustering on the map — no joins,
+no full payload, no pagination. Public (anonymous read).
+
+The same filter set as `GET /geolocations` applies (except `bbox` and `limit`).
+Results are cached in-memory for 60s per unique filter combination; the response
+echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
+to 60/min/IP.
+
+**Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`,
+`submitted_from`, `submitted_to`, `author` — see `GET /geolocations` for semantics.
+
+**Response 200:**
+```json
+[
+  ["6c1f…uuid", 48.123, 37.456],
+  ["a0b2…uuid", 50.450, 30.523]
+]
+```
+
+---
+
+### `GET /geolocations/possible-duplicates` 🔒
+
+Soft-warning probe wired into the submit form. Returns geolocations
+that might describe the same event as the one the caller is about to
+submit. **Never blocks submission** — the form renders the list above
+the submit button as a "did you mean…" prompt; the analyst decides.
+
+Match rule: within ~500 m geodesic of the proposed `(lat, lng)` **AND**
+(same source-URL host *or* same `event_date`). Both legs are heuristic
+— a strike footprint is usually <200 m but witnesses post coords off
+by a block or two, and "same channel posting the same date" is the
+typical re-post pattern. Authenticated-only so the cheap proximity
+probe isn't exposed to anonymous scraping (sidestepping the
+`bbox`-required hardening on `/points`). Rate-limited to 60/min/IP.
+
+Inputs are tolerated gracefully:
+
+- Partial / scheme-stripped source URLs (`t.me/channel/12345`) parse via a
+  best-effort host extractor (prepends `http://` and re-parses). Hosts that
+  don't match `^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$` after normalisation
+  (lowercase, leading `www.` stripped) disable the host leg rather than
+  422-ing — the leading-alphanumeric clause rejects dot- / hyphen-only
+  corner cases (`urlparse('http://./x').hostname == '.'`), and the
+  at-least-one-dot clause rejects single-label hosts (`co`, `me`,
+  `localhost`) whose ILIKE substring would otherwise match every
+  dot-containing source URL on the platform.
+- Malformed `event_date` values disable the date leg.
+- If neither leg ends up usable, the response is `[]` (not an error) so
+  the frontend can call this eagerly while fields are still being typed.
+
+**Query params:**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `lat` | float | yes | Latitude (-90 to 90) of the prospective submission. |
+| `lng` | float | yes | Longitude (-180 to 180). |
+| `source_url` | string | no | Best-effort host extracted for the host-match leg. |
+| `event_date` | string (YYYY-MM-DD) | no | Compared exactly for the date-match leg. |
+
+**Response 200:** array of up to 10 candidates ordered by distance ascending.
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Strike on depot, Donetsk",
+    "lat": 48.123,
+    "lng": 37.456,
+    "event_date": "2026-05-01",
+    "source_url": "https://t.me/somechannel/12345",
+    "distance_m": 55.4,
+    "author": {
+      "id": "uuid",
+      "username": "kalush",
+      "is_trusted": true,
+      "trust_reason": "Bellingcat affiliate"
+    }
+  }
+]
+```
+
+---
+
+### `POST /geolocations/import-from-tweet` 🔒
+
+Parse a public tweet URL into a pre-fill payload for the submit form. Read-only on the platform side — the route never creates a row; the analyst always reviews and clicks submit on the form itself. Auth + CSRF required (same shape as every other mutating route). Rate-limited to 30/min/IP.
+
+Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated, undocumented, and X can change the schema at any time — the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet — fill the form manually"). Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
+
+**Request body:**
+```json
+{ "url": "https://x.com/handle/status/1234567890" }
+```
+
+Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query string + fragment, and reduces the path to `/<handle>/status/<id>`. Anything else (profile, list, search, non-X host) returns 400.
+
+**Response 200:**
+```json
+{
+  "source_url": "https://x.com/source_handle/status/1234567890123456789",
+  "original_tweet_url": "https://x.com/analyst_handle/status/1234567890123456790",
+  "posted_at": "2025-11-12T14:33:00.000Z",
+  "author_handle": "analyst_handle",
+  "tweet_text": "<full OP tweet text>",
+  "suggested_title": "<first non-empty line, trimmed to 120 chars>",
+  "parsed_coords": [
+    { "lat": 48.012345, "lng": 37.802411 }
+  ],
+  "media": [
+    { "kind": "video", "remote_url": "https://video.twimg.com/...", "content_type": "video/mp4", "origin": "quote" },
+    { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
+  ],
+  "quoted_tweet": {
+    "source_url": "https://x.com/source_handle/status/1234567890123456789",
+    "author_handle": "source_handle",
+    "tweet_text": "<full quoted tweet text>"
+  }
+}
+```
+
+Every field is best-effort. `parsed_coords` runs three extractors over `tweet_text` first, then over `quoted_tweet.tweet_text` if the OP yielded nothing (decimal pairs, DMS with hemisphere letters, `@lat,lng,zoom` in Google Maps URLs) and caps at three candidates ordered by extractor. `suggested_title` is the first non-empty line of the OP's text with leading hashtags + URLs stripped, truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always either `pbs.twimg.com` or `video.twimg.com` — the response filters anything else.
+
+`source_url` resolution priority (the **OSINT-correct attribution** — the analyst is usually the messenger, not the source of the footage):
+
+1. **Quoted tweet's URL** — when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body.
+2. **First non-X URL in the OP's `entities.urls`** — catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` (or a Facebook / YouTube / Mastodon link) in the body. `x.com`, `twitter.com`, and bare `t.co` shortlinks are skipped.
+3. **OP's own URL** as a fallback so the form is at least filled; the analyst is expected to override when neither of the above applies.
+
+`original_tweet_url` is always the OP's canonical URL — kept separately so the proof body can credit the analyst even when `source_url` points at the source.
+
+`media[].origin` records where the media came from (`op` = analyst's own attachment, `quote` = quoted tweet) but does NOT drive the primary-vs-proof split. The frontend uses **media type** instead:
+
+- `kind: "video"` → **primary** (lands in `files[]` on the submit form).
+- `kind: "image"` → **proof** (uploaded to `/geolocations/proof-images` and embedded inline in the Tiptap doc).
+- No video in the response → no primary media is loaded; the analyst attaches the source media manually. Most analyst tweets are image-only proof, so a "first image becomes primary" guess would systematically mis-label the annotation as the source footage.
+
+The syndication endpoint doesn't expose reply-chain media, so a video the analyst posted as a self-reply on the same thread is invisible to this route.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Not a tweet URL (wrong host, profile / list / search path, malformed) |
+| 404 | Tweet not accessible (deleted, protected, never existed) |
+| 502 | Syndication endpoint timeout / 5xx / schema drift — frontend renders the "fill the form manually" banner |
+
+---
+
+### `GET /geolocations/import-from-tweet/media?u=<url>` 🔒
+
+Thin proxy that fetches a single X CDN media URL and streams the bytes back. Exists because `pbs.twimg.com` / `video.twimg.com` don't set the CORS headers a browser `fetch()` would need to pull the bytes directly — and the submit form's media pipeline keys off `File[]` in the multipart body, not URLs. After the proxy hands a `Blob` back, the frontend wraps it in a `File` and the existing upload path (EXIF strip, sha256, provenance) runs unchanged on submit.
+
+Auth-required so the proxy isn't a generic bandwidth pipe to X. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com` — any other host returns 400 (SSRF guard). Per-stream byte cap (~110 MB) matches the upload pipeline's video ceiling plus HTTP framing overhead.
+
+**Query params:**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `u` | string | yes | Absolute X CDN URL (`pbs.twimg.com` / `video.twimg.com`, `https://` only). |
+
+**Response 200:** the upstream bytes, with the upstream `Content-Type` preserved and `Cache-Control: private, max-age=300`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `u` host not in the whitelist |
+| 404 | Upstream returned 404 |
+| 502 | Upstream transport error, 5xx, or response above the size cap |
+
+---
+
+### `GET /geolocations/{id}`
+
+Full detail for a single geolocation.
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "title": "Strike on depot, Donetsk",
+  "lat": 48.123,
+  "lng": 37.456,
+  "source_url": "https://t.me/channel/12345",
+  "proof": { "type": "doc", "content": [] },
+  "event_date": "2026-03-15",
+  "created_at": "2026-03-16T09:42:00Z",
+  "updated_at": "2026-03-16T09:42:00Z",
+  "is_demo": false,
+  "author": {
+    "id": "uuid",
+    "username": "kalush"
+  },
+  "media": [
+    {
+      "id": "uuid",
+      "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../video.mp4",
+      "media_type": "video",
+      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+      "original_filename": "IMG_2034.MOV"
+    },
+    {
+      "id": "uuid",
+      "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../photo.jpg",
+      "media_type": "image",
+      "sha256": null,
+      "original_filename": null
+    }
+  ],
+  "tags": [
+    { "name": "Ukraine", "category": "conflict" }
+  ]
+}
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Geolocation not found |
+
+---
+
+### `POST /geolocations` 🔒
+
+Create a geolocation. Uses `multipart/form-data` to upload media in the same request.
+
+**Request body (`multipart/form-data`):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | yes | Title. The fulfilling analyst's title goes on the geolocation row — the bounty's own `title` stays on the bounty row unchanged. |
+| `lat` | float | yes | Latitude (-90 to 90) |
+| `lng` | float | yes | Longitude (-180 to 180) |
+| `source_url` | string | yes | Original source URL — ignored when `bounty_id` is set (see below) |
+| `event_date` | string (YYYY-MM-DD) | yes | Event date |
+| `proof` | string (JSON) | no | Serialized Tiptap document |
+| `tag_ids` | string (JSON array) | conditional | `["uuid1", "uuid2"]`. The fulfilling analyst's tag picks go on the geolocation — independent from the bounty's own tags. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
+| `bounty_id` | UUID | no | Fulfilment trace. See *Fulfilling a bounty* below. |
+| `files` | File[] | conditional | At least one file (image or video). **Optional iff `bounty_id` is set and the bounty contributes media.** Capped at **12 files per submission** — sized comfortably above any realistic OSINT submission (one source video + a handful of corroborating frames) and tight enough to refuse pathological payloads that would otherwise pin the worker through the Pillow + derivative + S3 pipeline. |
+
+**Response 201:** same shape as `GET /geolocations/{id}`.
+
+**Required categories.** The resolved `tag_ids` must reference at least one tag of category `conflict` and at least one of category `capture_source` — the two curated, server-managed taxonomies (see [`Tags`](#tags)). The check runs against the tags' categories *before* any media upload, so a missing or free-tag-only selection 400s without paying an S3 round-trip. Both categories ship an escape value (`conflict → "Other"`, `capture_source → "Unknown"`) so the requirement is always satisfiable, including on the bounty-fulfilment path (whose tag picks come from the same form field). This applies to every create; it is *not* relaxed when `bounty_id` is set.
+
+**Fulfilling a bounty.** When `bounty_id` is set, the server takes a `SELECT ... FOR UPDATE` on the bounty row and gates the insert on `status == 'open'`. The bounty's `source_url` is sourced **from the bounty row**, not the form — the source URL is the evidence link the bounty was opened against; if the fulfilling analyst could swap it, they could "fulfill" the bounty with proof from an unrelated event. The frontend renders that field read-only when arriving via `?bounty_id=…`, and the server enforces the same so a hostile caller can't bypass the UI lock. `title` and `tag_ids` are taken from the form — the fulfilling analyst knows more than the bounty author did at posting time (place name resolved, conflict tag refined, etc.) and the bounty's own `title` / tags remain on the bounty row, so the bounty page stays accurate. Bad-faith refinements surface visibly on the geolocation's `originated_from_bounty` trace, so moderation sees them without needing a server-side equality check. The bounty's `Media` rows transfer in place to the new geolocation (`UPDATE media SET bounty_id=NULL, geolocation_id=:geo`) so the S3 keys keep their original `bounty_uploads/<bounty>/` prefix; any extra `files` in the form upload alongside. The bounty flips to `fulfilled` with `closed_at` stamped, and `geolocations.originated_from_bounty_id` carries the trace back. A partial unique index on `(originated_from_bounty_id) WHERE originated_from_bounty_id IS NOT NULL` is the DB-level belt to the row-lock suspenders — at most one geolocation per fulfilled bounty.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Validation (invalid coordinates, **file too large**, no file when none transfer, malformed `bounty_id`, **missing required `conflict` or `capture_source` tag**) |
+| 404 | `bounty_id` references an unknown / soft-deleted bounty |
+| 409 | `bounty_id` references a bounty that's no longer open (`fulfilled` or `closed`) |
+| 413 | Request body exceeds the platform body-size cap (`max(max_video_size, 12 × max_image_size) + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
+| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
+
+---
+
+### `DELETE /geolocations/{id}` 🔒
+
+Delete a geolocation and all of its media. Only the author can delete.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Caller is not the author |
+| 404 | Geolocation not found |
+
+---
+
+### `POST /geolocations/proof-images` 🔒
+
+Upload a single inline image referenced by the proof Tiptap document. Inserts a `proof_images` row with `geolocation_id = NULL`; the row is linked to a geolocation when `POST /geolocations` runs and the URL survives sanitisation. Abandoned forms leave orphan rows that the admin Maintenance panel ("Reap orphan proof images" → `services/maintenance.py::reap_proof_image_orphans`) sweeps on a 24h grace window.
+
+**Request body (`multipart/form-data`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | File | `image/jpeg`, `image/png`, or `image/webp`, up to `MAX_IMAGE_SIZE` (default 10 MB) |
+
+**Response 201:**
+```json
+{
+  "url": "https://d10w3bld05vsky.cloudfront.net/uploads/proof/<user-id>/<key>.jpg",
+  "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890"
+}
+```
+
+`sha256` is the hex-encoded SHA-256 of the bytes that landed on S3 — useful for clients that want to verify integrity post-upload without re-downloading, and for any auditor cross-referencing later. The same hash is persisted on the `proof_images` row.
+
+**EXIF strip.** Image uploads (`image/jpeg`, `image/png`, `image/webp`) are decoded by Pillow and re-encoded **without** EXIF / IPTC / XMP / ICC profile / GPS coordinates / camera-make-and-model / thumbnails before they touch S3. This is non-negotiable for the OSINT-analyst persona — phone-shot JPEGs commonly carry the submitter's own GPS in EXIF, and shipping that raw to every viewer via CloudFront would directly compromise the analyst. The `sha256` therefore reflects the post-strip bytes; an auditor downloading the public URL gets a file whose hash matches what we recorded. Corrupt / undecodable images, decompression bombs (>60 MP), and animated images surface as 400 before any storage write. **The same strip applies to image uploads under `POST /geolocations` and `POST /bounties` multipart bodies** — only videos pass through untouched (mp4-side metadata strip is a separate slice, tracked in [`next.md`](next.md) → *Unscheduled candidates*).
+
+**Display derivatives.** Image uploads under `POST /geolocations` and `POST /bounties` produce three S3 objects per file: the EXIF-stripped original at `<key>.<ext>`, a JPEG hero derivative at `<key_stem>_hero.jpg` (max-dim 1280, q80) for detail-page renders, and a JPEG thumbnail at `<key_stem>_thumb.jpg` (max-dim 400, q80) for map popups / index cards. The frontend resolves the right derivative URL via `frontend/src/lib/mediaUrls.ts` — the API response still carries only the original URL on the `media.storage_url` field. Inline proof-image uploads (`POST /geolocations/proof-images`) intentionally **skip** derivative production because the Tiptap renderer consumes the raw URL directly; if that ever changes, flip `produce_derivatives=True` at the `upload_proof_image` call site and the cleanup paths already pick up the sibling keys. Video uploads never produce derivatives (first-frame extraction is tracked separately).
+
+**Rate limits:** 30/min/IP (slowapi) plus a per-user rolling-24h ceiling enforced against the DB (`MAX_PROOF_IMAGES_PER_USER_PER_DAY`).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | MIME type not allowed, or size > limit |
+| 429 | Per-user 24h ceiling reached |
+
+---
+
+## Bounties
+
+A bounty is an unfinished geolocation: media + a source the poster couldn't place. The full feature is now live end-to-end: post / list / read / delete, multi-analyst claim signaling, author-side close, and the fulfilment flow that promotes a bounty into a geolocation.
+
+**Statuses:** `open` (default on insert), `fulfilled` (a geolocation was submitted from this bounty), `closed` (author withdrew). The "claimed" state is intentionally absent — "I'm working on this" is a parallel multi-analyst signal via `POST /bounties/{id}/claim`, not a lifecycle state. A bounty can have N concurrent claimers while still in `open`.
+
+**Trace:** the pointer from a fulfilled bounty to the resulting geolocation lives on `geolocations.originated_from_bounty_id`. The bounty detail surfaces it as `fulfilled_by`; the geolocation detail surfaces it as `originated_from_bounty` (id + title + author).
+
+### `GET /bounties`
+
+List bounties, newest first. Soft-deleted rows are filtered out (same invariant as `/geolocations`).
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `status` | string | One of `open`, `fulfilled`, `closed` (there is no `claimed` status — see the Bounties intro above) |
+| `tag` | string | Filter by tag name |
+| `author` | string | Substring match on author username. Whitelisted to `[A-Za-z0-9_-]{1,50}` — any other character (including the LIKE meta-characters `%` and `\`) returns 422. |
+| `limit` | int | Default 50; must be in [1, 200] — 422 otherwise |
+
+**Response 200:**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Footage from a strike, location unknown",
+    "source_url": "https://t.me/channel/12345",
+    "status": "open",
+    "created_at": "2026-05-12T09:42:00Z",
+    "author": {
+      "id": "uuid",
+      "username": "kalush",
+      "is_trusted": false,
+      "trust_reason": null
+    },
+    "media": [
+      {
+        "id": "uuid",
+        "storage_url": "https://d10w3bld05vsky.cloudfront.net/bounty_uploads/.../photo.jpg",
+        "media_type": "image",
+        "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+        "original_filename": "screenshot.png"
+      }
+    ],
+    "tags": [
+      { "name": "Ukraine", "category": "conflict" }
+    ],
+    "claimer_count": 3,
+    "claimer_sample": [
+      { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "Established OSINT account" },
+      { "id": "uuid", "username": "frontline_watcher", "is_trusted": false, "trust_reason": null },
+      { "id": "uuid", "username": "geo_tracker", "is_trusted": false, "trust_reason": null }
+    ]
+  }
+]
+```
+
+`claimer_sample` is capped server-side (3 newest); `claimer_count` is the total. The full claimer list is on the detail endpoint.
+
+---
+
+### `GET /bounties/{id}`
+
+Full detail for one bounty.
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "title": "Footage from a strike, location unknown",
+  "source_url": "https://t.me/channel/12345",
+  "description": { "type": "doc", "content": [] },
+  "status": "fulfilled",
+  "created_at": "2026-05-12T09:42:00Z",
+  "updated_at": "2026-05-12T09:42:00Z",
+  "closed_at": "2026-05-13T11:00:00Z",
+  "author": { "id": "uuid", "username": "kalush", "is_trusted": false, "trust_reason": null },
+  "media": [ { "id": "uuid", "storage_url": "https://…/bounty_uploads/.../photo.jpg", "media_type": "image" } ],
+  "tags": [ { "name": "Ukraine", "category": "conflict" } ],
+  "claimers": [
+    { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "Established OSINT account" },
+    { "id": "uuid", "username": "frontline_watcher", "is_trusted": false, "trust_reason": null }
+  ],
+  "fulfilled_by": { "id": "uuid", "title": "Strike on depot, Donetsk" }
+}
+```
+
+`claimers` is the full ordered (newest-first) list of analysts currently signaling. Empty when no one is working on the bounty. `fulfilled_by` is `null` until a geolocation is submitted from this bounty.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Bounty not found, or soft-deleted |
+
+---
+
+### `POST /bounties` 🔒
+
+Post a bounty. Multipart so the required media files travel in the same request.
+
+**Request body (`multipart/form-data`):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | yes | Title; empty / whitespace-only rejected |
+| `source_url` | string | yes | URL where the media was found |
+| `description` | string (JSON) | no | Serialized Tiptap document; sanitised server-side |
+| `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]` |
+| `files` | File[] | yes | At least one image or video — bounties are "unfinished geolocations", evidence rides on the row from the start |
+
+**Response 201:** same shape as `GET /bounties/{id}`, with `status: "open"`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Validation (empty title / source_url, no files, malformed JSON, disallowed MIME, size limit, sanitiser rejection) |
+
+---
+
+### `DELETE /bounties/{id}` 🔒
+
+Hard-delete by the author. Cascades drop `bounty_tags`, `bounty_claims` and `media` rows; the S3 objects are swept after the DB commit lands. The endpoint takes a `SELECT ... FOR UPDATE` on the bounty row so a concurrent `POST /geolocations bounty_id=…` fulfilment can't race the delete — whoever holds the lock commits first; the loser observes the new state and 409s.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Caller is not the author |
+| 404 | Bounty not found, or soft-deleted |
+| 409 | A geolocation already traces back to this bounty (`Geolocation.originated_from_bounty_id`), including the case where a concurrent fulfilment committed first. The descendant would dangle — admin path required to walk it back. |
+
+---
+
+### `POST /bounties/{id}/claim` 🔒
+
+Signal "I'm working on this." Multi-claimer — any number of analysts can simultaneously hold a claim on the same bounty. Idempotent: re-claiming returns the same 204 without inserting a duplicate row.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Bounty not found, or soft-deleted |
+| 409 | Bounty status is not `open` (already `fulfilled` or `closed`) |
+
+---
+
+### `DELETE /bounties/{id}/claim` 🔒
+
+Caller leaves the working set. No-op when the caller wasn't a claimer — the user-observable post-condition is what we promise.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Bounty not found, or soft-deleted |
+
+---
+
+### `POST /bounties/{id}/close` 🔒
+
+Author withdraws the bounty without anyone geolocating it. Sets `status="closed"` and stamps `closed_at`. The bounty stays readable as an audit row; only fulfilment can clear the queue.
+
+**Response 200:** same shape as `GET /bounties/{id}`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Caller is not the author |
+| 404 | Bounty not found, or soft-deleted |
+| 409 | Bounty is already terminal (`fulfilled` or `closed`) |
+
+---
+
+## Search
+
+Slice-1 full-text discovery surface across the three first-class entity types. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions over `geolocations.title`, `bounties.title`, and `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). The `simple` dictionary keeps matching predictable — closed-beta queries hit place names, analyst handles, and conflict tags that don't stem cleanly under any natural-language config; "Donetsk" matches "Donetsk" exactly, not "donetsks".
+
+**Out of scope for slice 1:** searching `source_url` (Postgres' simple parser tokenizes URLs as host/path units, so URL-fragment matches don't survive anyway — the frontend renders the source link on each result instead), JSONB-content search (`proof`, `bounty.description`), per-group infinite scroll, and the filter chips beyond the entity-type pick. See [`next.md`](next.md) → *M4 — Public v1*.
+
+### `GET /search` 🔒
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups — keeps "user is still typing" hits cheap. |
+| `type` | enum | `all` (default), `geolocation`, `bounty`, or `user`. Anything else → 422. |
+| `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
+
+**Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
+
+**Soft-delete:** every group filters `deleted_at IS NULL` at query time.
+
+**Highlight markers:** each hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `` / ``. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>` — no raw HTML crosses the wire, so it's XSS-safe by construction. Control bytes (rather than an ASCII marker like ``) so a user can't plant the sentinels in their own `bio` / `title` to corrupt the highlight string for other readers; the SQL also strips both bytes from the source document before `ts_headline` runs, as belt-and-suspenders defence.
+
+**Response 200:**
+```json
+{
+  "geolocations": [
+    {
+      "id": "uuid",
+      "title": "Strike on warehouse complex, Donetsk Oblast",
+      "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
+      "lat": 48.01, "lng": 37.80,
+      "event_date": "2026-04-15",
+      "is_demo": false,
+      "author": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
+      "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
+    }
+  ],
+  "bounties": [
+    {
+      "id": "uuid",
+      "title": "Footage from Kharkiv area, can someone place it?",
+      "title_highlight": "Footage from Kharkiv area, can someone place it?",
+      "source_url": "https://twitter.com/…",
+      "status": "open",
+      "created_at": "2026-04-12T08:00:00Z",
+      "is_demo": false,
+      "author": { "…": "…" },
+      "media": [{ "id": "uuid", "storage_url": "…", "media_type": "image" }],
+      "tags": [],
+      "claimer_count": 3
+    }
+  ],
+  "users": [
+    {
+      "id": "uuid",
+      "username": "kharkiv_osint",
+      "username_highlight": "kharkiv_osint",
+      "bio": "Tracking armoured movement in Eastern Ukraine.",
+      "bio_highlight": null,
+      "is_trusted": true,
+      "trust_reason": "Established public track record",
+      "avatar_url": null
+    }
+  ],
+  "total": { "geolocations": 1, "bounties": 1, "users": 1 },
+  "query": "kharkiv",
+  "type": "all"
+}
+```
+
+`bio_highlight` is `null` when only the username matched — the UI uses this to hide the snippet block instead of rendering an un-highlighted bio. Groups the caller didn't request via `type=` come back as empty arrays so the JSON shape stays stable.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Unauthenticated |
+| 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
+
+---
+
+## Tags
+
+### `GET /tags`
+
+List tags. By default returns only tags referenced by at least one **live** geolocation, so the map filter never surfaces a chip that matches zero rows.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `category` | string | `conflict`, `capture_source`, or `free` |
+| `curated` | bool | When `true`, return the full curated taxonomy (`conflict` + `capture_source`) **regardless of live usage**, ignoring the default usage filter. Used by the submit form's two required selectors so an analyst can pick an option no geolocation references yet. Combine with `category` to scope to one curated bucket. |
+
+**Response 200:**
+```json
+[
+  { "id": "uuid", "name": "Ukraine", "category": "conflict" },
+  { "id": "uuid", "name": "Drone", "category": "capture_source" },
+  { "id": "uuid", "name": "airstrike", "category": "free" }
+]
+```
+
+---
+
+### `POST /tags` 🔒
+
+Create a tag. Only `free` tags are creatable via the API. The curated categories — `conflict` (managed by direct DB access) and `capture_source` (seeded by migration) — are server-managed and rejected with 403.
+
+**Request body:**
+```json
+{
+  "name": "drone strike",
+  "category": "free"
+}
+```
+
+**Validation.** `name` is stripped of leading / trailing whitespace before any check or DB write, then bounded `1 <= len(name) <= 100` (the `String(100)` column cap on `tags.name`). Empty or whitespace-only names return 422. Duplicate-name detection is **case-sensitive** to match the DB unique constraint — `Drone` and `drone` are distinct rows, so two analysts using different casing will create two tags; revisit if this bites.
+
+**Response 201:**
+```json
+{ "id": "uuid", "name": "drone strike", "category": "free" }
+```
+
+**Response 403:** category is not `free` (only `free` is creatable via the API; `conflict` and `capture_source` are curated server-side).
+
+**Response 409:** a tag with the same name already exists. Frontends typically fall back to selecting that existing tag rather than surfacing the error.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 409 | A tag with this name already exists |
+
+---
+
+## Users
+
+### `GET /users/{username}`
+
+Public profile of an analyst.
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "username": "kalush",
+  "is_trusted": false,
+  "trust_reason": null,
+  "bio": "OSINT analyst tracking armoured movement in Eastern Ukraine.",
+  "avatar_url": "https://cdn.example.com/avatars/kalush.jpg",
+  "external_links": {
+    "x": "@kalush",
+    "discord": null,
+    "website": "https://kalush.example.com",
+    "github": null
+  },
+  "created_at": "2026-03-28T10:00:00Z",
+  "geolocations_count": 42,
+  "followers_count": 17,
+  "following_count": 5,
+  "is_following": false
+}
+```
+
+`is_trusted` toggles via `PATCH /admin/users/{id}/trust`; `trust_reason` is required when granting and surfaces in the public trust-badge tooltip. `bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me` — defaults are `null` / `null` / `{}`. `is_following` is `true` only when the caller is authenticated and follows this user; anonymous viewers and self-views always get `false`. Email is never on this shape (free-harvest vector if surfaced).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | User not found |
+
+---
+
+### `PATCH /users/me` 🔒
+
+Edit your own profile — bio, avatar URL, and Linktree-style external account handles.
+
+**Body** (all fields optional; absent = leave column alone, explicit `null` or empty string = clear):
+```json
+{
+  "bio": "OSINT analyst, Eastern Ukraine armoured movement.",
+  "avatar_url": "https://cdn.example.com/avatars/me.jpg",
+  "external_links": {
+    "x": "@me",
+    "discord": "me",
+    "website": "https://me.example.com",
+    "github": "@me"
+  }
+}
+```
+
+`bio` is capped at 500 characters. `avatar_url` must be `http` or `https` — `javascript:` and other schemes are rejected (XSS class blocked at write time). `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Per-platform values are 200 chars max; values are free-form strings (handle or URL), the frontend decides whether to auto-link by sniffing for an http scheme.
+
+**Response 200:** the updated `UserRead` (same shape as `GET /auth/me`).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 422 | Validation failure (bio too long, non-http(s) URL, unknown field) |
+
+---
+
+### `GET /users/{username}/geolocations`
+
+Geolocations for a given analyst.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | int | Page number (default 1) |
+| `per_page` | int | Results per page (default 20, max 100) |
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "title": "Strike on depot, Donetsk",
+      "lat": 48.123,
+      "lng": 37.456,
+      "event_date": "2026-03-15",
+      "tags": [{ "name": "Ukraine", "category": "conflict" }]
+    }
+  ],
+  "total": 42,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+---
+
+### `POST /users/{username}/follow` 🔒
+
+Follow another analyst. Idempotent — re-following a user you already follow returns 204 without error. Self-follow is rejected with 400 (the DB also enforces this via the `ck_follows_no_self_follow` CHECK constraint).
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Cannot follow yourself |
+| 401 | Not authenticated |
+| 404 | Target user not found or soft-deleted |
+
+---
+
+### `DELETE /users/{username}/follow` 🔒
+
+Unfollow another analyst. Idempotent — unfollowing a user you don't follow returns 204 without error. A typo / unknown username surfaces a 404 instead of a silent 204 so the UI can show "no such analyst" rather than no-op'ing.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 404 | Target user not found or soft-deleted |
+
+---
+
+## Timeline
+
+### `GET /timeline` 🔒
+
+Activity feed of geolocations submitted by analysts the current user follows, ordered by event date descending.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | int | Page number (default 1) |
+| `per_page` | int | Results per page (default 20, max 100) |
+
+**Response 200:** same `PaginatedGeolocations` shape as `GET /users/{username}/geolocations`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+
+---
+
+## Admin
+
+All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. The frontend uses `GET /admin/me` as a route-guard probe so the role doesn't leak into the public `UserRead` schema.
+
+### `GET /admin/me` 🛡️
+
+**Response 200:**
+```json
+{ "is_admin": true }
+```
+
+Returns 403 for non-admins, 401 for anonymous callers. The frontend uses this to decide whether to render the sidebar entry and whether `/admin` should `notFound()`.
+
+### `POST /admin/invite-codes` 🛡️
+
+Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`).
+
+**Request body:**
+```json
+{
+  "expires_in_days": 14
+}
+```
+
+`max_uses` is server-fixed at `1` (closed-beta one-analyst-per-code default) and is not accepted in the request body. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`.
+
+**Response 201:**
+```json
+{
+  "id": "8e67f0…",
+  "code": "abc123xyz",
+  "max_uses": 1,
+  "use_count": 0,
+  "expires_at": "2026-05-23T10:00:00Z",
+  "revoked_at": null,
+  "created_at": "2026-05-09T10:00:00Z",
+  "status": "active",
+  "used_by_username": null,
+  "used_at": null
+}
+```
+
+`status` is one of `active | exhausted | revoked | expired`, computed at read time.
+
+### `GET /admin/invite-codes` 🛡️
+
+List every invite code (newest first), including exhausted / revoked / expired ones — the admin needs the full audit view, not just live codes.
+
+**Response 200:**
+```json
+[
+  { "id": "…", "code": "…", "status": "active", "max_uses": 1, "use_count": 0, "expires_at": null, "revoked_at": null, "created_at": "…", "used_by_username": null, "used_at": null }
+]
+```
+
+### `DELETE /admin/invite-codes/{id}` 🛡️
+
+Revoke an invite code (sets `revoked_at = now()`). Idempotent — revoking an already-revoked code preserves the original timestamp and is a no-op for the audit log. Audited via `admin_events` (`action = "invite_revoked"`).
+
+**Response 200:** the updated `AdminInviteCodeRead` payload (same shape as the list endpoint).
+
+**Response 404:** unknown id.
+
+### `GET /admin/users?q=<query>` 🛡️
+
+Case-insensitive substring match on username or email. Empty `q` returns `[]` (the admin search box doesn't preload the whole user table). Capped at 20 rows.
+
+**Response 200:**
+```json
+[
+  {
+    "id": "…",
+    "username": "tester2",
+    "email": "tester2@example.com",
+    "is_admin": false,
+    "is_trusted": true,
+    "trust_reason": "Established OSINT track record",
+    "created_at": "…"
+  }
+]
+```
+
+### `DELETE /admin/users/{id}` 🛡️
+
+Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-soft-deletes every live geolocation **and bounty** they authored); pass `?hard=true` for GDPR-grade erasure (drops the user + cascade-drops their geolocations + bounties + sweeps S3). Both modes invalidate the points cache. Audited via `admin_events` (`action = "user_soft_deleted"` / `"user_hard_deleted"`).
+
+**Soft delete** — the user can no longer log in (login returns the same opaque 401 as wrong credentials so it isn't a free oracle for "is this email a known-but-deleted user?"); their public profile 404s; their author handle still renders on geolocations preserved in the audit trail. Bounties cascade alongside geolocations: a banned author shouldn't leave open bounties on the index, and historical (fulfilled/closed) bounties shouldn't surface the banned account in their author slot. Idempotent: re-soft-deleting preserves the original timestamp.
+
+**Hard delete** — drops the user row, cascade-drops every geolocation **and bounty** they authored (which cascade to media + proof_images + bounty_claims + bounty_tags), then sweeps the S3 objects (geolocation media + bounty media + proof images). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. Geolocations *fulfilling* the deleted user's bounties (potentially authored by other analysts) keep their rows — only the `originated_from_bounty_id` trace pointer flips to NULL via the FK's SET NULL. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
+
+**Response 200:**
+```json
+{
+  "user_id": "…",
+  "username": "throwaway",
+  "mode": "soft",
+  "deleted_at": "2026-05-09T16:45:00Z",
+  "cascaded_geolocations": 3,
+  "cascaded_bounties": 2,
+  "media_count": 0,
+  "proof_image_count": 0
+}
+```
+
+For `mode = "hard"`, `deleted_at` is `null` and `media_count` / `proof_image_count` reflect what was swept from S3 (geolocation + bounty media combined under `media_count`).
+
+**Response 404:** unknown id.
+
+### `DELETE /admin/geolocations/{id}` 🛡️
+
+Remove a geolocation. Default is soft delete (sets `deleted_at`); pass `?hard=true` for GDPR-grade erasure. Both modes invalidate the `/geolocations/points` cache. Audited via `admin_events` (`action = "geolocation_soft_deleted"` / `"geolocation_hard_deleted"`).
+
+**Soft delete** (`?hard=false` or omitted) — the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
+
+**Hard delete** (`?hard=true`) — drops the row (cascade kills `media` and `proof_images` rows) and best-effort-deletes the corresponding S3 objects. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (orphaned objects are picked up by the proof-image reaper). Available on already-soft-deleted rows (escalation path) and on live rows (admin override).
+
+**Response 200:**
+```json
+{
+  "geolocation_id": "…",
+  "title": "Strike on depot, Donetsk",
+  "mode": "soft",
+  "deleted_at": "2026-05-09T16:30:00Z",
+  "media_count": 0,
+  "proof_image_count": 0
+}
+```
+
+For `mode = "hard"`, `deleted_at` is `null` and `media_count` / `proof_image_count` reflect what was swept.
+
+**Response 404:** unknown id.
+
+### `PATCH /admin/users/{id}/trust` 🛡️
+
+Grant or revoke `is_trusted`. Granting requires a non-empty `trust_reason` (rejected with 422 otherwise). Revoking ignores any reason in the body and clears `trust_reason` server-side so a non-trusted row never carries a stale rationale. Audited via `admin_events` (`action = "trust_granted"` / `"trust_revoked"`).
+
+**Request body:**
+```json
+{ "is_trusted": true, "trust_reason": "Established OSINT track record" }
+```
+
+**Response 200:** the updated `AdminUserRead`.
+
+**Response 422:** granting trust without a reason.
+
+**Response 404:** unknown user id.
+
+### `POST /admin/seed-demo-bounties` 🛡️
+
+Generate `count` synthetic demo bounties attributed to the same fixed pool of demo authors as `POST /admin/seed-demo`. Reads templates from the shared `demo-pool/` storage prefix; if the prefix is empty or missing the expected layout, returns 422 so the admin can populate the pool before retrying. A fraction of bounties get 1–3 random demo-author claims attached so the "N working" badge has something to render in the index. Audited as `demo_bounties_seeded`.
+
+**Request body:**
+```json
+{ "count": 20 }
+```
+Capped at 5000 per click (bounties are an inbox, not a catalog).
+
+**Response 200:**
+```json
+{
+  "created": 20,
+  "templates": 3,
+  "authors": 5,
+  "with_claims": 11
+}
+```
+
+---
+
+### `DELETE /admin/seed-demo-bounties` 🛡️
+
+Drop every `is_demo=true` bounty in one bulk DELETE. Demo users and demo geolocations are NOT touched — those live behind the separate `/admin/seed-demo` panel, and an admin may want to keep one population while wiping the other. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_bounties_wiped`.
+
+**Response 200:**
+```json
+{ "deleted_bounties": 20 }
+```
+
+---
+
+### `POST /admin/seed-demo` 🛡️
+
+Generate synthetic demo geolocations attributed to the demo author pool (`demo-analyst-1` … `-5`, `is_demo=true`). Reads templates from the `demo-pool/` storage prefix populated by the admin outside the codebase; each generated geo references (does not copy) a random subset of the template's media and proof imagery via CloudFront URLs. Region split (weights, integer percent): Ukraine 50, Middle East 20, Sahel 8, Western Europe 7, Balkans 4, North America 4, South America 3, East Asia 2, Sub-Saharan Africa 2 — Ukraine + Middle East stay the bulk; the rest add map variety so clustering / search read as a global product. Audited as `demo_seeded`. Invalidates the points cache.
+
+**Request body:**
+```json
+{ "count": 100 }
+```
+
+`count` is `1 ≤ count ≤ 50000`; default 100. The seeder commits in 1000-row batches internally so memory stays bounded for large seeds (~1 min per 10 k locally). Re-running is additive on geos and idempotent on demo authors.
+
+**Response 200:**
+```json
+{ "created": 100, "templates": 10, "authors": 5 }
+```
+
+**Response 422:** the `demo-pool/` prefix is empty or has no `geo-XX/media/<file>` entries.
+
+### `DELETE /admin/seed-demo` 🛡️
+
+Drop every `is_demo=true` geolocation + user. The `demo-pool/` S3 objects are NOT touched — they're shared assets for re-seeding. Audited as `demo_wiped`. Invalidates the points cache.
+
+**Response 200:**
+```json
+{ "deleted_geos": 100, "deleted_users": 5 }
+```
+
+### `POST /admin/maintenance/reap-auth-tokens` 🛡️
+
+Drop expired and old-consumed `auth_tokens` rows. Replaces the cron that previously lived in `scripts/reap_auth_tokens.py`. Audited as `maintenance_reap_auth_tokens`.
+
+**Response 200:**
+```json
+{ "expired": 12, "old_consumed": 3 }
+```
+
+### `POST /admin/maintenance/reap-proof-orphans` 🛡️
+
+Drop orphan `proof_images` rows + sweep their S3 objects. 24h grace window. Replaces the cron that previously lived in `scripts/reap_proof_image_orphans.py`. Audited as `maintenance_reap_proof_orphans`.
+
+**Response 200:**
+```json
+{ "rows_deleted": 4, "s3_deleted": 4, "s3_failed": 0 }
+```
+
+Per-key S3 failures keep their DB rows so the next sweep can retry.
+
+### `POST /admin/maintenance/reap-pending-registrations` 🛡️
+
+Drop expired `pending_registrations` rows. A pending row holds its email + username until the user confirms or the TTL expires (24h); the `/auth/register` path sweeps expired rows inline before its insert, so this button mostly mops up the long tail of abandoned signups whose addresses are still being held. Audited as `maintenance_reap_pending_registrations`.
+
+**Response 200:**
+```json
+{ "pending_registrations_deleted": 7 }
+```
+
+---
+
+## General conventions
+
+### Pagination
+
+Endpoints that return paginated lists use this shape:
+```json
+{
+  "items": [],
+  "total": 0,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+`GET /geolocations` and `GET /geolocations/points` are intentionally **unpaginated** today — both feed the map and need every point in one response. A hard server-side `LIMIT` lands before public read access ([`docs/next.md`](next.md) → *M3 — Open beta*).
+
+### Errors
+
+All errors follow this shape:
+```json
+{
+  "detail": "Human-readable error description"
+}
+```
+
+### File limits
+
+| Type | Extensions | Max size |
+|------|------------|----------|
+| Image | jpg, png, webp | 10 MB |
+| Video | mp4, webm | 100 MB |

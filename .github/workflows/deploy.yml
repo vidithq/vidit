@@ -1,0 +1,178 @@
+name: deploy
+
+# Manual production deploy. Auto-deploy on push to main is intentionally off
+# during the closed beta — every prod release goes through this workflow so
+# the deploy ref is recorded on a GitHub Actions run page.
+#
+# Required repository secrets:
+# - RAILWAY_TOKEN     project token from Railway → project settings → tokens
+# - VERCEL_TOKEN      personal token from https://vercel.com/account/tokens
+# - VERCEL_ORG_ID     `vercel link` writes it to .vercel/project.json
+# - VERCEL_PROJECT_ID same source as VERCEL_ORG_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (tag, branch, or commit SHA)"
+        required: true
+        default: "main"
+        type: string
+      target:
+        description: "Which side to deploy"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - backend
+          - frontend
+
+# Least-privilege: this workflow only reads the source and pushes builds out
+# to Railway / Vercel via their respective CLIs (authed by tokens in repo
+# secrets, NOT by ``GITHUB_TOKEN``). It does not push to the repo, comment
+# on PRs, or publish to any GitHub-side surface. ``contents: read`` is all
+# the workflow's ``GITHUB_TOKEN`` needs — for ``actions/checkout`` and for
+# ``git describe --tags`` against the fetched history.
+permissions:
+  contents: read
+
+jobs:
+  deploy-backend:
+    name: Deploy backend (Railway)
+    if: inputs.target == 'backend' || inputs.target == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: prod-deploy-backend
+      cancel-in-progress: false
+    # No job-wide ``working-directory`` — ``railway up`` uploads the
+    # snapshot from the CWD, and the Railway service has Root Directory
+    # = ``/backend`` configured in its dashboard, which navigates INTO
+    # ``backend/`` inside the uploaded snapshot. Running from repo root
+    # is therefore required; running from ``backend/`` would upload a
+    # snapshot that has no ``backend/`` subdir, and the build fails with
+    # ``lstat .../snapshot-target-unpack/backend: no such file``.
+    steps:
+      - name: Checkout ${{ inputs.ref }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Record deploying commit
+        run: |
+          SHA=$(git rev-parse HEAD)
+          SHORT=$(git rev-parse --short HEAD)
+          MSG=$(git log -1 --pretty=format:'%s')
+          AUTHOR=$(git log -1 --pretty=format:'%an')
+          {
+            echo "### Backend deploy"
+            echo ""
+            echo "- **Ref input:** \`${{ inputs.ref }}\`"
+            echo "- **Resolved SHA:** \`$SHA\` (\`$SHORT\`)"
+            echo "- **Commit:** $MSG"
+            echo "- **Author:** $AUTHOR"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend --ci
+
+  deploy-frontend:
+    name: Deploy frontend (Vercel)
+    if: inputs.target == 'frontend' || inputs.target == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: prod-deploy-frontend
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout ${{ inputs.ref }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref }}
+          # Full history so `git describe --tags` resolves the closest tag
+          # for the build-version baked into the "Closed beta · v..." badge.
+          fetch-depth: 0
+
+      - name: Resolve build version
+        id: version
+        working-directory: ${{ github.workspace }}
+        run: |
+          BUILD_VERSION=$(git describe --tags --always --dirty)
+          echo "version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: $BUILD_VERSION"
+
+      - name: Record deploying commit
+        run: |
+          SHA=$(git rev-parse HEAD)
+          SHORT=$(git rev-parse --short HEAD)
+          MSG=$(git log -1 --pretty=format:'%s')
+          AUTHOR=$(git log -1 --pretty=format:'%an')
+          {
+            echo "### Frontend deploy"
+            echo ""
+            echo "- **Ref input:** \`${{ inputs.ref }}\`"
+            echo "- **Resolved SHA:** \`$SHA\` (\`$SHORT\`)"
+            echo "- **Build version:** \`${{ steps.version.outputs.version }}\`"
+            echo "- **Commit:** $MSG"
+            echo "- **Author:** $AUTHOR"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel env (production)
+        run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Build
+        env:
+          # Baked into the bundle by next.config.mjs and read by
+          # ClosedBetaBanner. Passed explicitly here so the value shown on
+          # the deployed site matches the version recorded in the run summary
+          # above, regardless of whether `git describe` works inside the
+          # Vercel build container.
+          NEXT_PUBLIC_BUILD_VERSION: ${{ steps.version.outputs.version }}
+          # `vercel pull` should fetch this from the project's production env,
+          # but in practice it doesn't always make it into `next build`'s
+          # process.env when running outside Vercel infra (it failed once on
+          # this exact configuration — `Error: NEXT_PUBLIC_API_URL must be
+          # set at build time`). Passing it explicitly from a repo variable
+          # is belt-and-braces and keeps the value out of the YAML.
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          # Sentry — same `vercel pull` belt-and-braces story as
+          # NEXT_PUBLIC_API_URL. All four are optional: when unset (bootstrap
+          # phase before the Sentry project exists), `withSentryConfig` skips
+          # source-map upload and `Sentry.init()` no-ops at runtime, so the
+          # build still succeeds and the SDK stays inert. Populate the repo
+          # variables / secret once the Sentry project is provisioned (see
+          # `docs/architecture.md` → Observability).
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: vercel build --prod --token=$VERCEL_TOKEN
+
+      - name: Deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          echo "Deployed to $URL"
+          echo "- **URL:** $URL" >> "$GITHUB_STEP_SUMMARY"
