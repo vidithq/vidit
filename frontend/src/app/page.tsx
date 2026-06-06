@@ -77,17 +77,11 @@ const ROADMAP = [
   {
     tag: "Now",
     current: true,
-    title: "Visibility",
-    body: "This page, an about video, and a public roadmap, so anyone can judge Vidit before signing up. First analyst invites going out.",
+    title: "Open source launch",
+    body: "Vidit becomes open source under AGPL-3.0 — the clearest answer to “closed / unknown tool” — and the closed beta widens to more analysts in the same launch window.",
   },
   {
     tag: "Next",
-    current: false,
-    title: "Open source",
-    body: "The analyst platform becomes open source: the clearest answer to “closed / unknown tool”, and a standing invitation to contribute.",
-  },
-  {
-    tag: "Then",
     current: false,
     title: "Open beta",
     body: "Anonymous read and open self-registration: the invite-code gate comes down, behind a hardened safety and legal stack.",

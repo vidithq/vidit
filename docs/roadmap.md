@@ -6,7 +6,7 @@
 > A bad first impression is hard to recover from.
 > Priorities adjust based on beta feedback.
 
-What's currently open — across phases — lives in [`next.md`](next.md), organised into the four milestones that carry the platform from closed beta to public v1. What's already shipped lives in [`CHANGELOG.md`](../CHANGELOG.md). This file describes the *direction*: the four phases and what each one means.
+What's currently open — across phases — lives in [`next.md`](next.md), organised into the three milestones that carry the platform from closed beta to public v1. What's already shipped lives in [`CHANGELOG.md`](../CHANGELOG.md). This file describes the *direction*: the four phases and what each one means.
 
 ---
 
@@ -22,7 +22,7 @@ Five MVP features:
 4. Geolocation page (map, media, proof, metadata)
 5. Analyst profile (list of their geolocations)
 
-Code is shipped and deployed (see [CHANGELOG](../CHANGELOG.md)). Remaining work to issue the first analyst invite is in [`next.md`](next.md) — security hardening (Tier 4 lite, forgot-password, soft-delete), admin scripts, S3 hardening, beta-ready content + UX polish.
+Code is shipped and deployed (see [CHANGELOG](../CHANGELOG.md)). The closed beta is live with the first wave of analysts; remaining work for widening that pool — the M1 open-source launch — is in [`next.md`](next.md).
 
 **Exit criterion:** invited analysts use the tool without friction; qualitative feedback on the core experience is positive.
 
@@ -78,19 +78,19 @@ Smaller than the original draft: confidence levels, co-validation, comments, and
 **Goal:** open the platform — anonymous read for everyone, open self-registration for anyone who wants to contribute. Reached in two deliberate stages so the doors open before everything is polished: **3a — open beta**, then **3b — public v1**.
 
 - **Public read access** — anyone can browse the map and geolocation pages without an account.
-- **Open registration** — invite codes are retired. Anyone can sign up via the public registration form (CAPTCHA, honeypot, disposable-email blocklist, rate limits — see [`next.md`](next.md) → *M3 — Open beta*). Once registered, every analyst has full write capabilities (submit geolocations, post bounties, follow others).
-- **Trusted-contributor flag** ships here — single bit, admin-granted via an opt-in "Request analyst access" form, paired with a required `trust_reason` note explaining the basis (track record, profession, established X handle, etc.). The badge is **visible, clickable, and filterable**: clicking it surfaces the `trust_reason`; filter chips on the map, timeline, search, and bounty index let readers scope to vetted-only. Non-trusted analysts have identical capabilities — the flag is purely a credibility signal, never a gate. See [`next.md`](next.md) → *M3 — Open beta* for scope.
-- Public landing page explaining the platform — shipped earlier as the M1 vitrine and matured through the launch.
+- **Open registration** — invite codes are retired. Anyone can sign up via the public registration form (CAPTCHA, honeypot, disposable-email blocklist, rate limits — see [`next.md`](next.md) → *M2 — Open beta*). Once registered, every analyst has full write capabilities (submit geolocations, post bounties, follow others).
+- **Trusted-contributor flag** ships here — single bit, admin-granted via an opt-in "Request analyst access" form, paired with a required `trust_reason` note explaining the basis (track record, profession, established X handle, etc.). The badge is **visible, clickable, and filterable**: clicking it surfaces the `trust_reason`; filter chips on the map, timeline, search, and bounty index let readers scope to vetted-only. Non-trusted analysts have identical capabilities — the flag is purely a credibility signal, never a gate. See [`next.md`](next.md) → *M2 — Open beta* for scope.
+- Public landing page explaining the platform — shipped as the closed-beta vitrine and matured through the launch.
 
 The deliberate asymmetry: **read is open, write is open after registration, the trust flag is a curated quality filter on top.** Quality protection sits at three layers: anti-abuse on registration, content moderation on uploads, and the trust filter for readers.
 
 ### Stage 3a — Open beta
 
-Open the doors behind the hard safety + legal stack, with a beta badge still on. Anti-scraping, full Tier 3 + 4 auth hardening, content moderation, the trust-reason field on vetted analysts, and legal pre-flight all gate this stage — you cannot let the public in (or accept public content) without them. See [`next.md`](next.md) → *M3 — Open beta*. The codebase is **already open-source by this point** (see *Openness & transparency*).
+Open the doors behind the hard safety + legal stack, with a beta badge still on. Anti-scraping, full Tier 3 + 4 auth hardening, content moderation, the trust-reason field on vetted analysts, and legal pre-flight all gate this stage — you cannot let the public in (or accept public content) without them. See [`next.md`](next.md) → *M2 — Open beta*. The codebase is **already open-source by this point** (see *Openness & transparency*).
 
 ### Stage 3b — Public v1
 
-The open beta proven out and finished into a full release: real catalog density, search and social depth, cost tuning, and the closed-beta framing removed. See [`next.md`](next.md) → *M4 — Public v1*.
+The open beta proven out and finished into a full release: real catalog density, search and social depth, cost tuning, and the closed-beta framing removed. See [`next.md`](next.md) → *M3 — Public v1*.
 
 ---
 
@@ -115,10 +115,10 @@ Open candidates, prioritised later based on real usage:
 
 Not a phase — a commitment that runs across all of them, and the deliberate answer to a community that is skeptical of closed, unknown tools. Two concrete moves:
 
-- **100% open source under [AGPL-3.0](../LICENSE), before v1.** The codebase ships open ahead of the Phase 3b full release — and, because it's the cheapest and loudest rebuttal to the "closed-source / vibe-coded" objection, as early as the contributor-surface + git-history identity scrub allow (tracked as [`next.md`](next.md) → *M2 — Open source*, sequenced before open beta). **Nothing is proprietary.** The monetization layer on the maintainer's hosted instance (`vidit.app`) is **API rate limits + a small set of paid-only endpoints** (saved-search alert webhooks, larger exports) — the unit of sale is throughput against the hosted infrastructure, not feature access. Self-hosters get the full feature set with no rate-limit enforcement. AGPL is the right fit: it keeps any hosted fork open while letting anyone run their own instance.
-- **Public roadmap.** A reader-facing view of these milestones — what's shipped, what's next, when open registration and open source land — ships with the M1 vitrine and stays current. The internal `roadmap.md` / `next.md` / `CHANGELOG.md` are the source; the public page is the honest, simplified projection.
+- **100% open source under [AGPL-3.0](../LICENSE), before v1.** The codebase ships open ahead of the Phase 3b full release — and, because it's the cheapest and loudest rebuttal to the "closed-source / vibe-coded" objection, as early as the contributor-surface + git-history identity scrub allow (tracked as [`next.md`](next.md) → *M1 — Open source launch*, paired with the closed-beta widening). **Nothing is proprietary.** The monetization layer on the maintainer's hosted instance (`vidit.app`) is **API rate limits + a small set of paid-only endpoints** (saved-search alert webhooks, larger exports) — the unit of sale is throughput against the hosted infrastructure, not feature access. Self-hosters get the full feature set with no rate-limit enforcement. AGPL is the right fit: it keeps any hosted fork open while letting anyone run their own instance.
+- **Public roadmap.** A reader-facing view of these milestones — what's shipped, what's next, when open registration and open source land — already ships on the public landing and stays current. The internal `roadmap.md` / `next.md` / `CHANGELOG.md` are the source; the public page is the honest, simplified projection.
 
-The throughline across milestones is **progressive openness**: show the substance (M1 vitrine + video), open the code (M2), open the doors (M3 open beta), then finish it (M4 v1). Each step is also the next trust signal to a community where reach is the real bottleneck.
+The throughline across milestones is **progressive openness**: open the source + restart cold reach in a coordinated launch (M1 — the vitrine + demo video already ship, so the GitHub flip + pinned tweet + cold-reach DMs fire in the same window), open the doors (M2 open beta), then finish it (M3 v1). Each step is the next trust signal to a community where reach is the real bottleneck.
 
 ---
 
