@@ -168,7 +168,7 @@ jobs:
           # source-map upload and `Sentry.init()` no-ops at runtime, so the
           # build still succeeds and the SDK stays inert. Populate the repo
           # variables / secret once the Sentry project is provisioned (see
-          # `docs/architecture.md` → Observability).
+          # `docs/engineering.md` → Observability).
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}

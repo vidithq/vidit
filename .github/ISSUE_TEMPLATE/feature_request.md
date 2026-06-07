@@ -22,10 +22,9 @@ What else did you weigh, and why did you rule it out?
 
 Where does this fit on the roadmap?
 
-- [ ] M1 — Visibility
-- [ ] M2 — Open source
-- [ ] M3 — Open beta
-- [ ] M4 — Public v1
+- [ ] M1 — Open source launch
+- [ ] M2 — Open beta
+- [ ] M3 — Public v1
 - [ ] Refactor / hygiene (no milestone gating)
 - [ ] Unscheduled candidate
 
