@@ -194,25 +194,25 @@ erDiagram
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false` — auto-flipped on login/register if email matches `ADMIN_EMAILS` |
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false` — substantiated trust mark (toggle UI lands later; column ships now) |
 | `trust_reason` | `TEXT` | nullable — required at the application layer when `is_trusted=true` |
-| `email_verified_at` | `TIMESTAMPTZ` | nullable — set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. Legacy rows from before the cutover may still hold NULL; nothing branches on it today. |
-| `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (login rejected, profile 404s, every public read filters it out). Soft-deleting a user cascade-soft-deletes every geolocation they authored. Hard-delete (the GDPR escape hatch) drops the row + cascade-drops their geolocations + sweeps S3. |
+| `email_verified_at` | `TIMESTAMPTZ` | nullable — set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every geolocation they authored. Hard-delete (the GDPR escape hatch) drops the row + cascade-drops their geolocations + sweeps S3. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff created by the admin Demo data seeder (5 fixed `demo-analyst-N` accounts with unloggable hashes + `@vidit.invalid` emails). The wipe button drops every flagged user + their geolocations in one go. |
-| `bio` | `TEXT` | nullable — short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB length constraint so a future cap change doesn't need a migration). |
+| `bio` | `TEXT` | nullable — short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint — cap changes don't need migrations). |
 | `avatar_url` | `TEXT` | nullable — public avatar URL. Validated as http(s) at the API layer to keep `javascript:` URLs out of the `<img src>` render path. No upload pipeline yet (free-form URL — analysts paste a Gravatar / CDN link). |
-| `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb` — Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge would conflict with how the edit form submits the whole panel at once. |
+| `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb` — Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge conflicts with the whole-panel form submit. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
 - `ix_users_live` on `(created_at) WHERE deleted_at IS NULL` — partial; admin search and the auth path filter `deleted_at IS NULL`
 - `ix_users_demo` on `(id) WHERE is_demo = true` — partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
-- `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))` — backs `GET /search` (analyst-search branch); bio joins the indexed expression because it's the only prose field worth a snippet, and `ts_headline` returns a fragment-shaped highlight when the match lands there
+- `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))` — backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight
 
 ---
 
 ### `auth_tokens`
 
-Single-use, expiring tokens for password reset. (A second `email_verification` purpose exists in the schema but is **legacy and no longer minted** — the pre-creation registration flow confirms via `pending_registrations`, not these.)
+Single-use, expiring tokens for password reset.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -230,7 +230,7 @@ Indexes:
 - `ix_auth_tokens_user_purpose` on `(user_id, purpose)` — "is there a live reset for this user?" before mint
 - `ix_auth_tokens_live_expires_at` on `(expires_at) WHERE consumed_at IS NULL` — partial; reaper scan stays cheap as consumed rows accumulate
 
-Lifecycle: rows are created by `services/auth_tokens.py::mint`, consumed by `consume`, force-revoked by `revoke_all_live_for_user` when a fresh token of the same purpose is issued. Cleanup runs on-demand via the admin Maintenance panel (`services/maintenance.py::reap_auth_tokens`): live-but-expired rows are deleted immediately, and consumed rows older than 30 days are dropped.
+Lifecycle: created by `mint`, consumed by `consume`, force-revoked by `revoke_all_live_for_user` on fresh same-purpose mint. Cleanup runs on-demand via the admin Maintenance panel (`services/maintenance.py::reap_auth_tokens`): live-but-expired rows are deleted immediately, and consumed rows older than 30 days are dropped.
 
 ---
 
@@ -241,7 +241,7 @@ Lifecycle: rows are created by `services/auth_tokens.py::mint`, consumed by `con
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `code` | `VARCHAR(64)` | UNIQUE, NOT NULL |
 | `created_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable (admin-seeded codes; FK nulled on user hard-delete to preserve the audit row) |
-| `used_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable — **audit-only** (records the *first* user to consume the code; not a validity check; FK nulled on user hard-delete) |
+| `used_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable — **audit-only** (records the *first* user to consume the code; FK nulled on user hard-delete) |
 | `used_at` | `TIMESTAMPTZ` | nullable — audit-only, paired with `used_by` |
 | `expires_at` | `TIMESTAMPTZ` | nullable |
 | `max_uses` | `INTEGER` | NOT NULL, default `1` — quota; minted by the admin page (1 = single-use) |
@@ -249,7 +249,7 @@ Lifecycle: rows are created by `services/auth_tokens.py::mint`, consumed by `con
 | `revoked_at` | `TIMESTAMPTZ` | nullable — set by the admin page; non-null instantly invalidates the code |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-A code is valid iff `revoked_at IS NULL AND use_count < max_uses AND (expires_at IS NULL OR expires_at > now())`. `used_by` / `used_at` are *not* part of the validity check — they remain populated on first use as an audit trail.
+A code is valid iff `revoked_at IS NULL AND use_count < max_uses AND (expires_at IS NULL OR expires_at > now())`. `used_by` / `used_at` are *not* part of the validity check.
 
 ---
 
@@ -270,7 +270,7 @@ Indexes:
 
 - `ix_pending_registrations_expires_at` on `(expires_at)` — reaper sweep
 
-Why UNIQUE on `email` / `username` instead of a partial index? Partial-index predicates must be IMMUTABLE in Postgres, and `expires_at > now()` is STABLE. The plain UNIQUE keeps race-window protection (two concurrent `/auth/register` calls for the same email cannot both insert) without a predicate; the `/auth/register` path deletes expired rows inline before its INSERT and the admin Maintenance reaper sweeps the rest, so a recently-expired pending row does not permanently pin its address.
+Why UNIQUE on `email` / `username` instead of a partial index? Partial-index predicates must be IMMUTABLE in Postgres, and `expires_at > now()` is STABLE. The plain UNIQUE keeps race-window protection without a predicate; the `/auth/register` path deletes expired rows inline before its INSERT and the admin Maintenance reaper sweeps the rest, so a recently-expired pending row does not permanently pin its address.
 
 Lifecycle: `POST /auth/register` inserts via `services/registration.py::create_pending_registration`. `POST /auth/confirm-registration` consumes via `confirm_pending_registration` (creates the `users` row, bumps `invite_codes.use_count`, deletes the pending row). `POST /auth/resend-confirmation` re-mints the token on the same row, invalidating the previous link. Cleanup: `services/maintenance.py::reap_pending_registrations`, exposed in the admin Maintenance panel.
 
@@ -278,14 +278,14 @@ Lifecycle: `POST /auth/register` inserts via `services/registration.py::create_p
 
 ### `auth_events`
 
-Append-only audit log for auth-relevant events — forensics primitive shipped as Tier 4 lite. Populated synchronously from the auth router on `login` / `failed_login` / `logout` / `register_pending` / `register_resent` / `register_confirmed` / `password_reset_requested` / `password_reset_completed` / `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`) so an INSERT failure (e.g. INET coercion from a malformed `X-Forwarded-For`) rolls back only the audit row and the caller's transaction stays usable.
+Append-only audit log for auth-relevant events. Populated synchronously from the auth router on `login` / `failed_login` / `logout` / `register_pending` / `register_resent` / `register_confirmed` / `password_reset_requested` / `password_reset_completed` / `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`) so an INSERT failure (e.g. INET coercion from a malformed `X-Forwarded-For`) rolls back only the audit row and the caller's transaction stays usable.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable — NULL when the email didn't match a live user (failed_login, password_reset_requested no-op branch, register_pending, register_resent on both branches, anonymous logout) so the row doesn't double as a probe-able email-to-existence oracle |
 | `event` | `TEXT` | NOT NULL — plain string, no DB enum so adding a new event kind doesn't require a migration |
-| `ip` | `INET` | nullable — IPv4 / IPv6, parsed via `ipaddress.ip_address` in `services/audit.py::extract_client_ip`. We take the **right-most** entry of `X-Forwarded-For` (the trusted-proxy observation), not the left-most: a malicious client can prepend anything to the header, so taking the left-most would let them spoof the audit log's IP. Assumes one trusted hop (Railway); add a `TRUSTED_PROXY_HOPS` peel when a second trusted proxy lands in front. An invalid value lands as NULL rather than poisoning the savepoint. |
+| `ip` | `INET` | nullable — IPv4 / IPv6, parsed via `ipaddress.ip_address` in `services/audit.py::extract_client_ip`. We take the **right-most** entry of `X-Forwarded-For` (the trusted-proxy observation), not the left-most: left-most is client-spoofable. Assumes one trusted hop (Railway); add a `TRUSTED_PROXY_HOPS` peel when a second trusted proxy lands in front. An invalid value lands as NULL rather than poisoning the savepoint. |
 | `user_agent` | `TEXT` | nullable, capped at 1024 chars |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -294,13 +294,13 @@ Indexes:
 - `ix_auth_events_user_id_created_at` on `(user_id, created_at)` — "what did this user do, latest first" forensics query
 - `ix_auth_events_event_created_at` on `(event, created_at)` — "did event X spike recently"
 
-No retention policy at the closed-beta scale; a retention / rotation policy is tracked in [`next.md`](next.md) → *M4 — Public v1*.
+No retention policy today; tracked in [`next.md`](next.md).
 
 ---
 
 ### `admin_events`
 
-Append-only audit row for admin actions taken via the `/admin` page. Sibling to (and likely future-merged with) the `auth_events` table above.
+Append-only audit row for admin actions taken via the `/admin` page. Sibling to the `auth_events` table above.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -328,9 +328,9 @@ Indexes:
 | `source_url` | `TEXT` | NOT NULL |
 | `proof` | `JSONB` | nullable — Tiptap document (ProseMirror JSON) |
 | `event_date` | `DATE` | NOT NULL |
-| `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (filtered from every public read; only the admin path can act on these rows) |
+| `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
-| `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable — the provenance trace populated when a geolocation is promoted from a bounty (slice 2 of the bounties feature). `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |
+| `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable — provenance trace populated when a geolocation is promoted from a bounty. `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -339,10 +339,10 @@ Indexes:
 - `(author_id)` — profile lookup
 - `(event_date)`, `(created_at)` — time-based queries
 - `(author_id, created_at DESC)` — composite for profile listing
-- `ix_geolocations_live` on `(created_at) WHERE deleted_at IS NULL` — partial; every public list / map / profile query filters `deleted_at IS NULL`, so dropping the soft-deleted cohort from the index keeps it tight as removed rows accumulate
+- `ix_geolocations_live` on `(created_at) WHERE deleted_at IS NULL` — partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
 - `ix_geolocations_demo` on `(id) WHERE is_demo = true` — partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
 - `ix_geolocations_originated_from_bounty_id` on `(originated_from_bounty_id)` — bounty detail reads "what geolocation came from me?" via this column
-- `uq_geolocations_originated_from_bounty_id` on `(originated_from_bounty_id) WHERE originated_from_bounty_id IS NOT NULL` — **unique** partial; at most one geolocation per fulfilled bounty. Belt-and-suspenders to the `SELECT ... FOR UPDATE` taken by `POST /geolocations bounty_id=…`: even if a future code path forgets the row lock, the second insert fails on constraint violation. The `WHERE` clause keeps standalone geolocations (the dominant case, all `NULL`) out of the uniqueness check.
+- `uq_geolocations_originated_from_bounty_id` on `(originated_from_bounty_id) WHERE originated_from_bounty_id IS NOT NULL` — **unique** partial; at most one geolocation per fulfilled bounty. Backs the `SELECT ... FOR UPDATE` taken by `POST /geolocations bounty_id=…`: even if a future code path forgets the row lock, the second insert fails on constraint violation. The `WHERE` clause keeps standalone geolocations out of the uniqueness check.
 - `ix_geolocations_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))` — backs `GET /search`. `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression — see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 
 > `location` is a PostGIS point in WGS84 (SRID 4326 = standard GPS coordinates).
@@ -359,12 +359,12 @@ An **unfinished geolocation**: media + a source URL someone couldn't place. Life
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `author_id` | `UUID` | FK → `users.id`, NOT NULL |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `source_url` | `TEXT` | NOT NULL — required because a bounty is evidence in search of a location; without a source it's not actionable |
+| `source_url` | `TEXT` | NOT NULL — required because a bounty is evidence in search of a location |
 | `description` | `JSONB` | nullable — Tiptap document (ProseMirror JSON), sanitised server-side on insert |
 | `status` | `VARCHAR(20)` | NOT NULL, default `'open'` — one of `open`, `fulfilled`, `closed`. Plain string (no DB enum) so adding a state doesn't require a migration |
 | `closed_at` | `TIMESTAMPTZ` | nullable — set when status transitions to `fulfilled` or `closed` |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — soft-delete; filtered from every public read (admin path acts on the raw model) |
-| `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin "Demo bounties" panel. The wipe button drops every flagged row in one bulk DELETE; real analyst submissions never set this. |
+| `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin "Demo bounties" panel. The wipe button drops every flagged row in one bulk DELETE. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -375,7 +375,7 @@ An **unfinished geolocation**: media + a source URL someone couldn't place. Life
 - `ix_bounties_demo` on `(id) WHERE is_demo = true` — partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
 - `ix_bounties_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))` — parallel index to the geolocations one, backs the same `GET /search` endpoint
 
-The pointer from a fulfilled bounty to the resulting geolocation lives on `geolocations.originated_from_bounty_id` (not on this table) — that side carries the trace because most reads of a finished geolocation also want to render "originally posted as a bounty". `DELETE /bounties/{id}` refuses with **409** when a geolocation already points to the row, so the descendant isn't orphaned silently.
+The pointer from a fulfilled bounty to the resulting geolocation lives on `geolocations.originated_from_bounty_id` (not on this table) — geolocation-side because read paths render the trace. `DELETE /bounties/{id}` refuses with **409** when a geolocation already points to the row, so the descendant isn't orphaned silently.
 
 ---
 
@@ -394,7 +394,7 @@ Composite PK: `(bounty_id, tag_id)`
 
 ### `bounty_claims`
 
-Multi-analyst "I'm working on this" signal. Multiple analysts can hold a claim on the same bounty simultaneously — geolocation work is collaborative and partly competitive, so the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
+Multi-analyst "I'm working on this" signal. Multiple analysts can hold a claim on the same bounty simultaneously — the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -408,7 +408,7 @@ Composite PK: `(bounty_id, user_id)`
 - `ix_bounty_claims_bounty_id_created_at` on `(bounty_id, created_at)` — "who's working on bounty X right now?" detail-page query, newest-first ordering
 - `ix_bounty_claims_user_id` on `(user_id)` — profile / dashboard "what is this user working on?"
 
-Claims don't gate the lifecycle: a bounty can be fulfilled by an analyst who never claimed, and claims aren't cleared when the bounty terminates (they remain as historical signal). Hard-delete on the bounty cascades-drops the rows.
+Claims don't gate the lifecycle: a bounty can be fulfilled by an analyst who never claimed, and claims aren't cleared when the bounty terminates. Hard-delete on the bounty cascades-drops the rows.
 
 ---
 
@@ -424,10 +424,10 @@ Directed follow edges between analysts. Drives the per-user `GET /timeline` feed
 
 Composite PK: `(follower_id, followed_id)` — the pair is the natural identity (no surrogate id) and the PK alone gives uniqueness, so no separate UNIQUE constraint is shipped.
 
-Self-follow is rejected at **two** layers: the router returns `400 Cannot follow yourself` before the row is staged, and `CHECK (follower_id <> followed_id)` (constraint `ck_follows_no_self_follow`) refuses the INSERT even if a future code path skips the router check. The two layers serve different purposes — the 400 gives the UI a clean error, the CHECK is the durable invariant.
+Self-follow is rejected at **two** layers: the router returns `400 Cannot follow yourself` before the row is staged, and `CHECK (follower_id <> followed_id)` (constraint `ck_follows_no_self_follow`) refuses the INSERT even if a future code path skips the router check. The 400 gives the UI a clean error, the CHECK is the durable invariant.
 
 Indexes:
-- `ix_follows_followed_id` on `(followed_id)` — the PK indexes the forward direction (who is X following?) on its leading column, but the reverse direction (who follows X?) — the query that powers `followers_count` on every profile load — would otherwise full-scan. Explicit secondary index closes that gap.
+- `ix_follows_followed_id` on `(followed_id)` — the PK indexes the forward direction (who is X following?) on its leading column, but the reverse direction (who follows X?) — the query that powers `followers_count` on every profile load — would otherwise full-scan.
 
 `ON DELETE CASCADE` on both FKs: hard-deleting an analyst drops every edge they're on either side of, so a deleted user can't keep ghost-followers or ghost-followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges — the public profile 404s anyway, and resurrecting an account should resurrect its graph.
 
@@ -444,9 +444,9 @@ Shared by `geolocations` and `bounties`. Exactly one of `geolocation_id` / `boun
 | `bounty_id` | `UUID` | FK → `bounties.id` ON DELETE CASCADE, nullable — XOR with `geolocation_id` |
 | `storage_url` | `TEXT` | NOT NULL — S3 / CloudFront URL |
 | `media_type` | `VARCHAR(10)` | NOT NULL — `'image'` or `'video'` |
-| `sha256` | `VARCHAR(64)` | nullable — hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too — `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so the wipe + re-seed flow brings demo content in line with the evidence-integrity contract real uploads already honour. **The hash is computed on the bytes that physically land on S3 — for images that means after the EXIF strip — so an auditor downloading the public URL can independently verify the hash matches.** |
+| `sha256` | `VARCHAR(64)` | nullable — hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too — `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so demo content matches real upload integrity. **The hash is computed on the bytes that land on S3 — for images that means after the EXIF strip — so an auditor downloading the public URL can independently verify the hash matches.** |
 | `uploaded_ip` | `INET` | nullable — submitter IP at upload time. Extracted via `services/audit.py::extract_client_ip` (right-most XFF, defended against client-spoofed prepends). NULL when the value isn't parseable as IPv4 / IPv6, on demo-seeder rows, and on rows that pre-date the column. **Admin-only — never surfaced on the public read API.** |
-| `uploaded_user_agent` | `TEXT` | nullable — submitter `User-Agent` string at upload time, capped at 1 KB to bound the impact of garbage-UA scrapers. Same admin-only visibility as `uploaded_ip`. |
+| `uploaded_user_agent` | `TEXT` | nullable — submitter `User-Agent` string at upload time, capped at 1 KB. Same admin-only visibility as `uploaded_ip`. |
 | `original_filename` | `TEXT` | nullable — client-supplied filename (e.g. `IMG_1234.jpg`). Surfaced on the public read API because investigators sometimes need to trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -456,11 +456,11 @@ Shared by `geolocations` and `bounties`. Exactly one of `geolocation_id` / `boun
 **Indexes:**
 - `(sha256) WHERE sha256 IS NOT NULL` — partial index for "find every row with this content hash" audit / dedup queries; only the populated cohort, so demo rows don't bloat it.
 
-At least one media item is required per geolocation and per bounty (enforced at the application layer — both `POST /geolocations` and `POST /bounties` reject empty file lists). Multiple media items per parent are allowed (e.g. one video + two photos).
+At least one media item is required per geolocation and per bounty (enforced at the application layer — both `POST /geolocations` and `POST /bounties` reject empty file lists). Multiple media items per parent are allowed.
 
-The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded *inside* the proof body — added via the rich-text editor's `+ Image` button — live in `proof_images` instead, see below.
+The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded *inside* the proof body — added via the rich-text editor's `+ Image` button — live in `proof_images` instead.
 
-S3 key prefixes: `uploads/<geolocation_id>/...` for geolocation media, `bounty_uploads/<bounty_id>/...` for bounty media. When slice 2 promotes a bounty, we rewrite the DB pointers but leave the S3 keys where they are — so a fulfilled bounty's files keep their `bounty_uploads/` prefix even after the geolocation owns the row.
+S3 key prefixes: `uploads/<geolocation_id>/...` for geolocation media, `bounty_uploads/<bounty_id>/...` for bounty media. When slice 2 promotes a bounty, we rewrite the DB pointers but leave the S3 keys where they are.
 
 ---
 
@@ -492,7 +492,7 @@ Inline images embedded inside the Tiptap proof body (one row per image reference
 3. Geolocation deletion → the router collects matching `s3_key`s, deletes the S3 objects, then commits the cascade DB delete. (S3 is deleted post-commit so a failed transaction can't strand referenced files.)
 4. Form abandoned → the row stays with `geolocation_id = NULL` and is reaped on-demand from the admin Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`, 24h grace), which deletes both the S3 object and the row.
 
-Why a separate table instead of just embedding the URL in the proof JSON: gives O(1) orphan reaping, lets us sweep S3 on geolocation delete, and supports per-user quotas / takedown lookups without scanning the bucket or parsing JSONB.
+Why a separate table instead of embedding the URL in the proof JSON: gives O(1) orphan reaping, lets us sweep S3 on geolocation delete, and supports per-user quotas / takedown lookups without scanning the bucket or parsing JSONB.
 
 ---
 
@@ -508,7 +508,7 @@ Tags with category `conflict` are the main conflicts (Ukraine, Gaza, Sudan…), 
 Tags with category `capture_source` are the original "lens" that captured the media — `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Seeded in prod by migration `s5n7p9r1t3v5` (the demo seeder is local-only, but the category is required on the submit form, so the options must exist on a fresh prod DB).
 Tags with category `free` are user-created and free-form.
 
-`conflict` and `capture_source` are **curated** (server-managed, not user-creatable) and **required**: `POST /geolocations` rejects a submission that doesn't carry at least one tag from each category (see [`api.md`](api.md) → `POST /geolocations`). The rule is enforced at the API layer, not by a DB constraint — pre-existing rows and the demo seeder are unaffected, and each category ships an escape value so the requirement is always satisfiable. `name` is globally UNIQUE across all three categories, so a `capture_source` tag can't share a name with a `free` or `conflict` tag.
+`conflict` and `capture_source` are **curated** (server-managed, not user-creatable) and **required**: `POST /geolocations` rejects a submission that doesn't carry at least one tag from each category (see [`api.md`](api.md) → `POST /geolocations`). The rule is enforced at the API layer, not by a DB constraint — pre-existing rows and the demo seeder are unaffected, and each category ships an escape value. `name` is globally UNIQUE across all three categories, so a `capture_source` tag can't share a name with a `free` or `conflict` tag.
 
 ---
 
@@ -528,10 +528,10 @@ Composite PK: `(geolocation_id, tag_id)`
 ## Design decisions
 
 ### Why JSONB for `proof`?
-Tiptap (the rich editor) serializes content as ProseMirror JSON. Storing that JSON as-is in a JSONB column avoids any conversion. PostgreSQL can index and query JSONB natively if needed later.
+Tiptap (the rich editor) serializes content as ProseMirror JSON. Storing that JSON as-is in a JSONB column avoids any conversion. PostgreSQL can index and query JSONB natively.
 
 ### Why `geolocation_tags` and not an array column on `geolocations`?
-A geolocation can carry several tags, and a tag can appear on many geolocations — that's a many-to-many relationship. The `geolocation_tags` junction table is the standard solution: it allows efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative (a `tag_ids[]` array on `geolocations`) would make filters more complex and less performant at scale.
+Many-to-many: a geolocation can carry several tags, and a tag can appear on many geolocations. The `geolocation_tags` junction table is the standard solution: it allows efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative (a `tag_ids[]` array on `geolocations`) would make filters more complex and less performant at scale.
 
 ```sql
 -- Tags for a given geolocation
@@ -546,7 +546,7 @@ WHERE gt.geolocation_id = 'a3f8c2d1-...';
 Conflicts and free-form tags share the same mechanics (filtering, many-to-many association). A single table plus a `category` field avoids duplicating the logic. The distinction is still queryable: `WHERE category = 'conflict'`.
 
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
-PostGIS unlocks native geospatial queries (bounding-box filtering, distance computation, clustering) that two separate floats can't deliver. GeoAlchemy2 exposes those types directly to SQLAlchemy.
+PostGIS unlocks native geospatial queries (bounding-box filtering, distance computation, clustering). GeoAlchemy2 exposes those types directly to SQLAlchemy.
 
 ---
 
@@ -575,7 +575,7 @@ ORDER BY event_date DESC;
 
 ## Seed data
 
-A third-party KMZ export can be mapped locally to generate test data. Such files are large binaries and are not version-controlled.
+A third-party KMZ export can be mapped locally to generate test data. Large binaries; not version-controlled.
 
 **KML → Vidit mapping:**
 
@@ -588,4 +588,4 @@ A third-party KMZ export can be mapped locally to generate test data. Such files
 | "Geolocation(s)" URLs in `description` | → | `geolocations.proof` |
 | `styleUrl` (icon color) | → | `tags` (side / event type) |
 
-Local KMZ import is no longer scripted in this repo (the prior `seed_external.py` / `enrich_media.py` were deleted alongside every other `backend/scripts/` helper — the admin Demo data panel replaces them with a synthetic-data flow that references a curated `demo-pool/` S3 prefix). The mapping above documents the schema fit for a future, agreement-bound import.
+Local KMZ import is no longer scripted in this repo (the prior `seed_external.py` / `enrich_media.py` were deleted — the admin Demo data panel replaces them with a synthetic-data flow that references a curated `demo-pool/` S3 prefix). Mapping kept for a future agreement-bound import.

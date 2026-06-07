@@ -1,18 +1,59 @@
 # Roadmap
 
 > Core goal: become the home of the OSINT/GEOINT community.
-> **Quality through admin-curated trust marks + content moderation, not reputation math** — readers can always filter to vetted analysts when they want a higher signal-to-noise.
-> **Openness is the strategy, not just a value** — a public roadmap, and the code open-sourced before the v1 launch (see *Openness & transparency* below). Reach into a skeptical community is the bottleneck; progressive openness is how trust gets earned.
+> **Quality through admin-curated trust marks + content moderation, not reputation math** — readers can always filter to vetted analysts.
+> **Openness is the strategy** — a public roadmap, and the code open-sourced before the v1 launch (see *Openness & transparency* below).
 > A bad first impression is hard to recover from.
 > Priorities adjust based on beta feedback.
 
-What's currently open — across phases — lives in [`next.md`](next.md), organised into the three milestones that carry the platform from closed beta to public v1. What's already shipped lives in [`CHANGELOG.md`](../CHANGELOG.md). This file describes the *direction*: the four phases and what each one means.
+What's currently open — across phases — lives in [`next.md`](next.md), organised into the three milestones. What's already shipped lives in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
-## Phase 1 — Closed beta (current)
+## Vision
 
-**Goal:** validate that the tool answers the basic need.
+### The problem
+
+OSINT/GEOINT analysts who geolocate armed-conflict events have no dedicated, open, professional tool to archive and share their work.
+
+The current workflow is fragmented: geolocations are posted to Twitter, with no structured format and no place to centralize them. The few dedicated tools that exist tend to be closed to part of the community and ship with dated interfaces.
+
+### The solution
+
+A web platform where analysts reference, archive, and visualize geolocations of armed-conflict events.
+
+### Primary persona — the OSINT/GEOINT analyst
+
+**Who they are.**
+An enthusiast (amateur or professional) who collects media (images, videos) from armed conflicts via open sources: Twitter/X, Telegram, Signal, satellite-imagery providers, etc. They use visual cues in the media to pin down where it was filmed.
+
+**Where they live.**
+Mostly on Twitter/X and Discord. The community is international, English-speaking, and active around major conflicts (Ukraine, Middle East, sub-Saharan Africa…).
+
+**Their current frustrations**
+- No standardized format for sharing a geolocation
+- Work scattered across Twitter, hard to retrieve and archive
+- Existing tools are closed (restricted access, not open to the whole community)
+- Interfaces feel rough and don't reflect the quality of the work
+
+**What they're looking for**
+- A single place to centralize and archive their geolocations
+- A structured, readable format to present their proof
+- An interactive map to visualize all events
+- A tool they can recommend to their community
+
+### Guiding principles
+
+1. **Openness** — the platform must be accessible to as many people as possible, with no artificial barriers.
+2. **Simplicity** — the UI must be intuitive. Posting a geolocation should take less than two minutes.
+3. **Quality** — the design and experience must match the seriousness of the community.
+4. **Neutrality** — the platform references geolocated facts, not political stances.
+
+---
+
+## Phase 1 — Closed beta
+
+**Goal:** validate that the tool answers the need.
 
 Five MVP features:
 
@@ -22,9 +63,7 @@ Five MVP features:
 4. Geolocation page (map, media, proof, metadata)
 5. Analyst profile (list of their geolocations)
 
-Code is shipped and deployed (see [CHANGELOG](../CHANGELOG.md)). The closed beta is live with the first wave of analysts; remaining work for widening that pool — the M1 open-source launch — is in [`next.md`](next.md).
-
-**Exit criterion:** invited analysts use the tool without friction; qualitative feedback on the core experience is positive.
+**Exit criterion:** invited analysts use the tool without friction; feedback is positive.
 
 ### What we're not building in the MVP
 
@@ -40,19 +79,17 @@ Code is shipped and deployed (see [CHANGELOG](../CHANGELOG.md)). The closed beta
 
 ## Phase 2 — Curated-platform consolidation
 
-**Goal:** make the platform feel finished as a community — social/discovery features (follow, timeline, search, bounties), the admin panel, profile expansion, UX polish. Registration model unchanged from Phase 1: still invite-code-based. The trusted-contributor flag and its filter ship together with open registration in Phase 3 (the flag becomes a meaningful filter only when the analyst pool is heterogeneous).
+**Goal:** make the platform feel finished as a community — social/discovery features (follow, timeline, search, bounties), the admin panel, profile expansion, UX polish. The trusted-contributor flag and its filter ship together with open registration in [Phase 3](#phase-3--public-launch) (the flag becomes a meaningful filter only when the analyst pool is heterogeneous).
 
-**Capabilities never depend on the trust flag.** Every registered analyst can submit geolocations, post bounties, follow other analysts, and use every feature. The flag, once it lands in Phase 3, is a **visible, filterable status** — not a capability gate.
-
-Smaller than the original draft: confidence levels, co-validation, comments, and reputation systems are dropped. Admin-driven moderation plus the future trust filter cover the quality bar without the operational complexity of UGC-style reputation systems (spam, brigading, DSA notice-and-action surface for every comment).
+Confidence levels, co-validation, comments, and reputation systems are dropped — see *[Explicitly out of scope](#explicitly-out-of-scope)*.
 
 ### Profile & identity
 - Bio + external links on the profile (linktree-style: X, Discord, website, GitHub).
 - Twitter/X account link on the profile (identity anchor).
 
 ### Moderation (lightweight, admin-driven)
-- **Report this content** → admin review queue. **No** community vote, **no** reputation impact, **no** thresholding rules.
-- Sensitive-content gate UI on geolocation media (compliance, ties to AWS Rekognition + Cloudflare CSAM scanning at upload — see [`next.md`](next.md)).
+- **Report this content** → admin review queue. No community vote, reputation impact, or thresholding.
+- Sensitive-content gate UI on geolocation media (ties to AWS Rekognition + Cloudflare CSAM scanning at upload — see [`next.md`](next.md)).
 - Admin panel: review reports, manage users, grant/revoke the trusted-contributor flag, manage the canonical conflict list, suspend/ban.
 - Roles: **admin** and **analyst** (no separate "moderator" role at this scale).
 
@@ -75,34 +112,32 @@ Smaller than the original draft: confidence levels, co-validation, comments, and
 
 ## Phase 3 — Public launch
 
-**Goal:** open the platform — anonymous read for everyone, open self-registration for anyone who wants to contribute. Reached in two deliberate stages so the doors open before everything is polished: **3a — open beta**, then **3b — public v1**.
+**Goal:** open the platform — anonymous read for everyone, open self-registration for anyone who wants to contribute. Reached in two stages: **3a — open beta**, then **3b — public v1**.
 
 - **Public read access** — anyone can browse the map and geolocation pages without an account.
-- **Open registration** — invite codes are retired. Anyone can sign up via the public registration form (CAPTCHA, honeypot, disposable-email blocklist, rate limits — see [`next.md`](next.md) → *M2 — Open beta*). Once registered, every analyst has full write capabilities (submit geolocations, post bounties, follow others).
-- **Trusted-contributor flag** ships here — single bit, admin-granted via an opt-in "Request analyst access" form, paired with a required `trust_reason` note explaining the basis (track record, profession, established X handle, etc.). The badge is **visible, clickable, and filterable**: clicking it surfaces the `trust_reason`; filter chips on the map, timeline, search, and bounty index let readers scope to vetted-only. Non-trusted analysts have identical capabilities — the flag is purely a credibility signal, never a gate. See [`next.md`](next.md) → *M2 — Open beta* for scope.
-- Public landing page explaining the platform — shipped as the closed-beta vitrine and matured through the launch.
+- **Open registration** — invite codes are retired. Anyone can sign up via the public registration form (CAPTCHA, honeypot, disposable-email blocklist, rate limits — see [`next.md`](next.md)).
+- **Trusted-contributor flag** ships here — single bit, admin-granted via an opt-in "Request analyst access" form, paired with a required `trust_reason` note explaining the basis (track record, profession, established X handle, etc.). The badge is **visible and filterable**: clicking it surfaces the `trust_reason`; filter chips on the map, timeline, search, and bounty index let readers scope to vetted-only. See [`next.md`](next.md) for scope.
+- Public landing page explaining the platform.
 
-The deliberate asymmetry: **read is open, write is open after registration, the trust flag is a curated quality filter on top.** Quality protection sits at three layers: anti-abuse on registration, content moderation on uploads, and the trust filter for readers.
+The asymmetry: **read is open, write is open after registration, the trust flag is a curated quality filter on top.** Quality protection sits at three layers: anti-abuse on registration, content moderation on uploads, and the trust filter for readers.
 
 ### Stage 3a — Open beta
 
-Open the doors behind the hard safety + legal stack, with a beta badge still on. Anti-scraping, full Tier 3 + 4 auth hardening, content moderation, the trust-reason field on vetted analysts, and legal pre-flight all gate this stage — you cannot let the public in (or accept public content) without them. See [`next.md`](next.md) → *M2 — Open beta*. The codebase is **already open-source by this point** (see *Openness & transparency*).
+Open the doors behind the hard safety + legal stack, with a beta badge still on. Anti-scraping, full Tier 3 + 4 auth hardening, content moderation, the trust-reason field on vetted analysts, and legal pre-flight all gate this stage. See [`next.md`](next.md). The codebase is **already open-source by this point** (see *Openness & transparency*).
 
 ### Stage 3b — Public v1
 
-The open beta proven out and finished into a full release: real catalog density, search and social depth, cost tuning, and the closed-beta framing removed. See [`next.md`](next.md) → *M3 — Public v1*.
+Open beta hardened into v1: catalog density, search and social depth, cost tuning, closed-beta framing removed. See [`next.md`](next.md).
 
 ---
 
 ## Phase 4 — Long-term enrichment
 
-**Goal:** deepen the value of every geolocation over time.
-
-Reputation, comments, co-validation, and community-driven moderation were in earlier drafts. Explicitly dropped — see Phase 2.
+**Goal:** deepen the value of every geolocation.
 
 Open candidates, prioritised later based on real usage:
 
-- Automated source archival (Wayback Machine / archive.today) for every submission, so the platform's evidence promise stays honoured even when X rotates URLs.
+- Automated source archival (Wayback Machine / archive.today) for every submission, so links survive X URL rotation.
 - OCR on uploaded media to make captions and signage searchable.
 - Related-events suggestions on a geolocation page.
 - Translation of proof text between major languages.
@@ -113,12 +148,12 @@ Open candidates, prioritised later based on real usage:
 
 ## Openness & transparency (cross-cutting)
 
-Not a phase — a commitment that runs across all of them, and the deliberate answer to a community that is skeptical of closed, unknown tools. Two concrete moves:
+Two moves:
 
-- **100% open source under [AGPL-3.0](../LICENSE), before v1.** The codebase ships open ahead of the Phase 3b full release — and, because it's the cheapest and loudest rebuttal to the "closed-source / vibe-coded" objection, as early as the contributor-surface + git-history identity scrub allow (tracked as [`next.md`](next.md) → *M1 — Open source launch*, paired with the closed-beta widening). **Nothing is proprietary.** The monetization layer on the maintainer's hosted instance (`vidit.app`) is **API rate limits + a small set of paid-only endpoints** (saved-search alert webhooks, larger exports) — the unit of sale is throughput against the hosted infrastructure, not feature access. Self-hosters get the full feature set with no rate-limit enforcement. AGPL is the right fit: it keeps any hosted fork open while letting anyone run their own instance.
-- **Public roadmap.** A reader-facing view of these milestones — what's shipped, what's next, when open registration and open source land — already ships on the public landing and stays current. The internal `roadmap.md` / `next.md` / `CHANGELOG.md` are the source; the public page is the honest, simplified projection.
+- **100% open source under [AGPL-3.0](../LICENSE), before v1.** Nothing is proprietary. Monetization on the maintainer's hosted instance (`vidit.app`) is **API rate limits + paid-only endpoints** (saved-search alert webhooks, larger exports). AGPL keeps any hosted fork open while letting anyone run their own instance.
+- **Public roadmap.** A reader-facing projection of these milestones ships on the public landing. The internal `roadmap.md` / `next.md` / `CHANGELOG.md` are the source.
 
-The throughline across milestones is **progressive openness**: open the source + restart cold reach in a coordinated launch (M1 — the vitrine + demo video already ship, so the GitHub flip + pinned tweet + cold-reach DMs fire in the same window), open the doors (M2 open beta), then finish it (M3 v1). Each step is the next trust signal to a community where reach is the real bottleneck.
+The throughline is **progressive openness**: open the source, open the doors (Phase 3a), then v1 (Phase 3b). Operational plan: [`next.md`](next.md).
 
 ---
 
