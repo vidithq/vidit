@@ -215,7 +215,7 @@ vidit/
     └── workflows/
         ├── backend.yml
         ├── deploy.yml              # manual workflow_dispatch (railway up / vercel deploy)
-        ├── doc-sync.yml            # routers↔api.md, models↔data-model.md, etc.
+        ├── docs-pairing.yml        # PR must touch docs/ AND planning/
         ├── frontend.yml
         └── pr-title.yml
 ```
@@ -296,7 +296,7 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 |----------|---------|-------|
 | `backend.yml` | Push (when `backend/` changes) | `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `alembic upgrade head` → `pytest` |
 | `frontend.yml` | Push (when `frontend/` changes) | `npm ci` → `eslint` → `tsc --noEmit` → `next build` |
-| `doc-sync.yml` | PR to `main` | Fails the PR when production code moves without the paired doc update (routers ↔ `api.md`, models/migrations ↔ `data-model.md`, deploy/infra ↔ this doc, any production code ↔ `CHANGELOG.md`). |
+| `docs-pairing.yml` | PR to `main` | Fails the PR when it doesn't touch *both* `docs/` (api / data-model / engineering / design / backups) AND `planning/` (`next.md` or `roadmap.md`). Friction-first guardrail: if the change genuinely needs neither, override with a justification in the PR description. Renamed from the previous `doc-sync.yml` (which had ~5 granular path-pairing rules) because the workflow's GitHub registration got stuck after a large rewrite and only a rename forced a fresh record. |
 | `pr-title.yml` | PR opened / synchronized | Validates the PR title against Conventional Commits. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
 
@@ -361,7 +361,7 @@ Vercel **Keychain quirk**: CLI ≥ 32 stores tokens in macOS Keychain; the `auth
 | Frontend Sentry | SDK wired in [`frontend/sentry.client.config.ts`](../frontend/sentry.client.config.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) + the auto-injected client entry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig`. | On Vercel set `NEXT_PUBLIC_SENTRY_DSN` (Production) + `SENTRY_DSN` (server runtime) + `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` + `SENTRY_ENVIRONMENT=production`. For build-time source-map upload also add repo variables `SENTRY_ORG` + `SENTRY_PROJECT` + repo secret `SENTRY_AUTH_TOKEN` ([wired through `deploy.yml`](../.github/workflows/deploy.yml)) and set the same on Vercel. Trigger a `deploy` workflow run. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
 | Uptime monitor | External. Pings `/health` from outside Railway region to catch outages. | Pick a free tier (UptimeRobot, BetterStack, Hyperping). Add `https://api.vidit.app/health` as an HTTP monitor, 1–5 min cadence, alert routes to owner email + the Vidit Discord webhook. Health endpoint is unauthenticated and returns `{"status":"ok"}`. |
 | CloudWatch budget alarm | External. $20/mo guardrail against a forgotten log-volume spike or a runaway CloudFront-cache-miss bill. | AWS console → Billing → Budgets → Create budget → Cost budget, monthly $20 fixed amount, threshold 80% actual + 100% forecasted → email alert to owner. |
-| Branch protection on `main` | External — requires GitHub Pro on private repos. | GitHub → Settings → Branches → Add rule for `main`: require PR review (1), require CI green (`backend.yml` + `frontend.yml` + `doc-sync.yml` + `pr-title.yml`), disallow force-push, disallow deletion. |
+| Branch protection on `main` | External — requires GitHub Pro on private repos. | GitHub → Settings → Branches → Add rule for `main`: require PR review (1), require CI green (`backend.yml` + `frontend.yml` + `docs-pairing.yml` + `pr-title.yml`), disallow force-push, disallow deletion. |
 
 ### Frontend Sentry verification
 

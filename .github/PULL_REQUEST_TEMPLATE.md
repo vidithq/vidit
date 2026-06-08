@@ -13,7 +13,7 @@ Why this is the right change — the user problem, the constraint, the trade-off
 
 ## Doc-sync checklist
 
-The mechanical pairings from [`CONTRIBUTING.md`](../CONTRIBUTING.md) → *Doc-sync rule*. Check the box if the rule applies to your diff:
+CI hard-fails the PR if `docs/` AND `planning/` aren't both touched ([`.github/workflows/docs-pairing.yml`](../.github/workflows/docs-pairing.yml)). The bullets below are the conventions human review still owns — tick what applies; if none apply, explain why in the description.
 
 - [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
 - [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
@@ -22,8 +22,7 @@ The mechanical pairings from [`CONTRIBUTING.md`](../CONTRIBUTING.md) → *Doc-sy
 - [ ] Tech-choice swap (not a routine version bump) → updated [`docs/engineering.md`](../docs/engineering.md)
 - [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`AGENTS.md`](../AGENTS.md) **and** [`README.md`](../README.md)
 - [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Orange palette recipe*)
-
-The `doc-sync` workflow will hard-fail the PR if a required pairing is missing. If a rule is wrong for your case, say so in the description below.
+- [ ] Shipped item removed from [`planning/next.md`](../planning/next.md) (or briefly noted in the relevant macro)
 
 ## Test plan
 
