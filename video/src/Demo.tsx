@@ -37,7 +37,13 @@ const RECORDING_FPS = 30;
 
 const SCENES = [
   { name: "intro", frames: 180 },   // 3s
-  { name: "video", frames: 3570 },  // 59.5s @ 60fps — matches recording
+  { name: "video", frames: 4140 },  // 69s @ 60fps — full recording flow
+                                    // (`STOP_AFTER_SUBMIT=false`) lands
+                                    // around ~67s wall-clock with the
+                                    // 4-step proof-edit beat. 69s
+                                    // leaves a small buffer past the
+                                    // recording's end so the outro
+                                    // fade-in catches the last beat.
   { name: "outro", frames: 360 },   // 6s — fits the "Also in the platform" list
 ] as const;
 
@@ -84,6 +90,11 @@ const CHROME_TOP = 32;
 //   25–31s  the just-published geolocation detail page
 //   31–42s  bounties list + click bounty + "I'm working on this"
 //   42–59s  Post bounty form: type title + paste URL + media + submit
+// Captions are anchored to the beat they describe — "Review" and
+// "Publish" live on their own beats (proof-edit, submit) instead of
+// being smuggled into the form-fill caption. The 5–10s sidebar-tour
+// beat is intentionally silent; a label there would compete with the
+// nav exposition.
 const CAPTIONS: { from: number; frames: number; title: string; eyebrow?: string }[] = [
   {
     from: 0,
@@ -93,25 +104,37 @@ const CAPTIONS: { from: number; frames: number; title: string; eyebrow?: string 
   },
   {
     from: 60 * 10,
-    frames: 60 * 15, // 10–25s
-    eyebrow: "Your work, archived",
-    title: "Paste your own tweet. Review. Publish.",
+    frames: 60 * 12, // 10–22s — paste tweet URL → Import → tag pick
+    eyebrow: "Auto-fill",
+    title: "Paste a tweet. The form fills itself.",
   },
   {
-    from: 60 * 25,
-    frames: 60 * 6, // 25–31s
-    eyebrow: "Archive",
-    title: "Structured. Verifiable. Permanent.",
+    from: 60 * 22,
+    frames: 60 * 10, // 22–32s — proof-edit beat (scroll, 4× drag-
+                     // select + Delete: `(img …)`, `Geolocation: …`,
+                     // both `t.co/…` URLs)
+    eyebrow: "Proof",
+    title: "Review the auto-fill. Strip the noise.",
   },
   {
-    from: 60 * 31,
-    frames: 60 * 11, // 31–42s (slower bounty browse + slow scroll to "working" + back arrow)
+    from: 60 * 32,
+    frames: 60 * 7, // 32–39s — scroll to Submit + click + redirect +
+                    // hold on the new geolocation's detail page
+    eyebrow: "Publish",
+    title: "One click. It joins the archive.",
+  },
+  {
+    from: 60 * 39,
+    frames: 60 * 11, // 39–50s — bounty browse + click + "I'm working
+                     // on this"
     eyebrow: "Bounties",
     title: "See what other analysts are working on. Lend a hand.",
   },
   {
-    from: 60 * 42,
-    frames: 60 * 17, // 42–59s (typed title + paste URL + choose-files click + slow scroll + submit)
+    from: 60 * 50,
+    frames: 60 * 16, // 50–66s — post-bounty form (title typed, URL
+                     // pasted, media attached, slow scroll, submit,
+                     // hold on the new bounty's detail page)
     eyebrow: "Bounties",
     title: "Or post your own — the community picks it up.",
   },

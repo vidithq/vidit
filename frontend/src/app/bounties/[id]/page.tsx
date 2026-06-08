@@ -156,9 +156,18 @@ export default function BountyDetailPage() {
                       className="w-full h-48 object-cover"
                     />
                   ) : (
+                    // `#t=0.1` is an HTML media-fragment URI that
+                    // tells the browser to seek to t=0.1s on metadata
+                    // load — combined with `preload="metadata"`, this
+                    // forces the first frame to paint as a
+                    // poster-equivalent so the tile isn't a black box
+                    // until the user clicks play. Cheap fix that
+                    // sidesteps generating + storing a real poster
+                    // image per bounty.
                     <video
-                      src={m.storage_url}
+                      src={`${m.storage_url}#t=0.1`}
                       controls
+                      preload="metadata"
                       className="w-full h-48 object-cover"
                     />
                   )}
@@ -212,20 +221,24 @@ export default function BountyDetailPage() {
                 </div>
               </div>
             )}
-            {bounty.status === "open" && bounty.claimers.length > 0 && (
+            {bounty.status === "open" && (
               <div className="flex justify-between items-start px-4 py-3">
                 <span className="text-sm text-neutral-500">Working on</span>
-                <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
-                  {bounty.claimers.map((c) => (
-                    <Link
-                      key={c.id}
-                      href={`/profile/${c.username}`}
-                      className="text-sm text-orange-400 hover:underline transition-colors"
-                    >
-                      @{c.username}
-                    </Link>
-                  ))}
-                </div>
+                {bounty.claimers.length > 0 ? (
+                  <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
+                    {bounty.claimers.map((c) => (
+                      <Link
+                        key={c.id}
+                        href={`/profile/${c.username}`}
+                        className="text-sm text-orange-400 hover:underline transition-colors"
+                      >
+                        @{c.username}
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-neutral-600">—</span>
+                )}
               </div>
             )}
             {bounty.fulfilled_by && (

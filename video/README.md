@@ -27,9 +27,12 @@ needs (idempotent — re-running is safe):
 cd backend && uv run python scripts/mock_demo_user.py
 ```
 
-That creates two non-admin users (`demo-analyst` + `analyst-helper`) so
-the bounty viewer in the recording is NOT also the bounty author — the
+That creates three non-admin users (`analyst` + `demo-analyst` + `analyst-helper`)
+so the bounty viewer in the recording is NOT also the bounty author — the
 "I'm working on this" button only renders on a bounty you don't own.
+`analyst` is who the recording logs in as (community-handle perspective,
+no admin badge); `demo-analyst` owns the seeded bounties; `analyst-helper`
+pre-seeds the "1 working" indicator on one bounty in the list view.
 
 ## Generate the promo (one command)
 
@@ -65,7 +68,7 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 | Tweet imported in the recording's geolocation submit | `TWEET_URL` at top of `record-submit.js` |
 | Bounty form's source URL + uploaded video source | `BOUNTY_SOURCE_URL` + `BOUNTY_TWEET_URL` in `record-submit.js` |
 | Cursor speed / scroll cadence | `glideAndClick` defaults + `slowScrollToY` durations in `record-submit.js` |
-| Faked browser chrome (URL bar, traffic lights) | `src/components/BrowserChrome.tsx` |
+| Faked browser chrome (URL bar, traffic lights) | `src/components/VideoChrome.tsx` |
 
 ## How it works, in 30 seconds
 
@@ -75,7 +78,7 @@ For 4K (3840×2160), append `--scale 2` to the render command.
    them as bounties. It then logs in as `analyst-helper` and claims one
    so the list shows "1 working" social proof. Idempotent.
 
-2. **`record-submit.js`** logs in as `admin`, opens Chrome headlessly
+2. **`record-submit.js`** logs in as `analyst`, opens Chrome headlessly
    with an injected DOM cursor overlay (the OS cursor isn't captured by
    `page.screenshot()`, so we render our own SVG cursor), and drives the
    page through the full flow: map cold open → sidebar tour → submit
@@ -109,11 +112,13 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 - **The pipeline assumes the local dev stack is running.** Backend at
   `:8000` and frontend at `:3000`. No remote/headless mode — Playwright
   drives the real Next.js frontend.
-- **Bounty author setup.** If you skip `mock_demo_user.py`, bounties get
-  posted by admin instead of `demo-analyst`. Admin viewing their own
-  bounty in the recording would then see "Close this bounty" instead of
-  "I'm working on this", and the recording would fail at that step with
-  a TimeoutError on the missing button.
+- **User setup.** If you skip `mock_demo_user.py`, the recording's
+  login (`analyst@vidit.app`) fails outright. Even if you create just
+  `analyst` and skip the rest, bounties get posted by `analyst` itself
+  instead of `demo-analyst` — viewing their own bounty in the recording
+  would then show "Close this bounty" instead of "I'm working on this",
+  and the recording would fail at that step with a TimeoutError on the
+  missing button.
 
 ## Why this stack
 
