@@ -524,9 +524,7 @@ def test_delete_requires_authentication(db, author):
 
 
 def test_delete_returns_404_for_unknown_id(author):
-    response = client.delete(
-        f"/api/v1/bounties/{uuid.uuid4()}", headers=login_as(client, author)
-    )
+    response = client.delete(f"/api/v1/bounties/{uuid.uuid4()}", headers=login_as(client, author))
     assert response.status_code == 404
 
 
@@ -538,9 +536,7 @@ def test_delete_returns_404_for_soft_deleted(db, author):
 
 def test_delete_returns_403_when_not_author(db, author, second_user):
     bounty = _make_bounty(db, author=author)
-    response = client.delete(
-        f"/api/v1/bounties/{bounty.id}", headers=login_as(client, second_user)
-    )
+    response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, second_user))
     assert response.status_code == 403
 
 
@@ -567,9 +563,7 @@ def test_delete_returns_409_when_fulfilled(db, author):
     db.add(geo)
     db.commit()
     try:
-        response = client.delete(
-            f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author)
-        )
+        response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author))
         assert response.status_code == 409
     finally:
         db.expire_all()
@@ -617,9 +611,7 @@ def test_claim_is_idempotent(db, author, second_user):
 def test_multiple_analysts_can_claim_same_bounty(db, author, second_user, third_user):
     """The core multi-claim contract — two analysts both signaling."""
     bounty = _make_bounty(db, author=author)
-    r1 = client.post(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
-    )
+    r1 = client.post(f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user))
     r2 = client.post(f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, third_user))
     assert r1.status_code == 204
     assert r2.status_code == 204
@@ -691,9 +683,7 @@ def test_close_author_only(db, author, second_user):
 
 def test_close_transitions_to_closed(db, author):
     bounty = _make_bounty(db, author=author)
-    response = client.post(
-        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author)
-    )
+    response = client.post(f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author))
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == STATUS_CLOSED
@@ -702,9 +692,7 @@ def test_close_transitions_to_closed(db, author):
 
 def test_close_rejected_on_terminal_state(db, author):
     bounty = _make_bounty(db, author=author, status=STATUS_FULFILLED)
-    response = client.post(
-        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author)
-    )
+    response = client.post(f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author))
     assert response.status_code == 409
 
 

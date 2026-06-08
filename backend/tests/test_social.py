@@ -170,9 +170,7 @@ def test_follow_soft_deleted_user_404(db, cleanup):
     db.commit()
     record_user(target)
 
-    response = client.post(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, me)
-    )
+    response = client.post(f"/api/v1/users/{target.username}/follow", headers=login_as(client, me))
     assert response.status_code == 404
 
 

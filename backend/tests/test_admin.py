@@ -177,9 +177,7 @@ def test_list_invite_codes_includes_status(admin_user):
     )
     code = create_response.json()["code"]
 
-    list_response = client.get(
-        "/api/v1/admin/invite-codes", headers=login_as(client, admin_user)
-    )
+    list_response = client.get("/api/v1/admin/invite-codes", headers=login_as(client, admin_user))
     assert list_response.status_code == 200
     rows = list_response.json()
     matching = [r for r in rows if r["code"] == code]

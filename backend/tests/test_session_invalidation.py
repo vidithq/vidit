@@ -52,8 +52,9 @@ def user_factory(db):
 
     created: list[User] = []
 
-    def _make(*, password: str = "originalpassword1", deleted: bool = False,
-              active: bool = True) -> tuple[User, str]:
+    def _make(
+        *, password: str = "originalpassword1", deleted: bool = False, active: bool = True
+    ) -> tuple[User, str]:
         user = User(
             username=f"u{uuid.uuid4().hex[:12]}",
             email=f"{uuid.uuid4().hex}@example.com",
@@ -97,9 +98,7 @@ def _hit_me_with(client: TestClient, session_token: str) -> int:
 # ── Logout ────────────────────────────────────────────────────────────────
 
 
-def test_logout_bumps_token_version_and_invalidates_sibling_sessions(
-    client, user_factory, db
-):
+def test_logout_bumps_token_version_and_invalidates_sibling_sessions(client, user_factory, db):
     user, _ = user_factory()
     sibling_token = _sibling_session_cookie_for(user)
     assert _hit_me_with(client, sibling_token) == 200
@@ -124,9 +123,7 @@ def test_logout_without_cookie_does_not_touch_any_user(client, user_factory, db)
     # CSRF still required (the middleware fires regardless of session); set
     # only the CSRF pair to bypass it.
     client.cookies.set(CSRF_COOKIE, TEST_CSRF_TOKEN)
-    response = client.post(
-        "/api/v1/auth/logout", headers={CSRF_HEADER: TEST_CSRF_TOKEN}
-    )
+    response = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: TEST_CSRF_TOKEN})
     assert response.status_code == 204
 
     db.refresh(user)
@@ -146,9 +143,7 @@ def test_logout_with_tampered_cookie_does_not_bump(client, user_factory, db):
     client.cookies.clear()
     client.cookies.set(SESSION_COOKIE, forged)
     client.cookies.set(CSRF_COOKIE, TEST_CSRF_TOKEN)
-    response = client.post(
-        "/api/v1/auth/logout", headers={CSRF_HEADER: TEST_CSRF_TOKEN}
-    )
+    response = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: TEST_CSRF_TOKEN})
     assert response.status_code == 204
 
     db.refresh(user)
@@ -188,9 +183,7 @@ def test_change_password_invalidates_other_sessions_but_keeps_current_cookie_ali
     # source.
     response_session = response.cookies.get(SESSION_COOKIE)
     assert response_session is not None
-    decoded = jwt.decode(
-        response_session, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
-    )
+    decoded = jwt.decode(response_session, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     assert decoded["tv"] == 1
     assert _hit_me_with(client, response_session) == 200
 
