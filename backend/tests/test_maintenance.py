@@ -135,7 +135,7 @@ def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
 def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
     response = client.post(
         "/api/v1/admin/maintenance/reap-auth-tokens",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -157,7 +157,7 @@ def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
 def test_reap_auth_tokens_endpoint_403_for_regular_user(regular_user):
     response = client.post(
         "/api/v1/admin/maintenance/reap-auth-tokens",
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
@@ -201,7 +201,7 @@ def test_reap_proof_orphans_skips_recent_and_linked(db, regular_user, monkeypatc
 def test_reap_proof_orphans_endpoint_for_admin(admin_user, db):
     response = client.post(
         "/api/v1/admin/maintenance/reap-proof-orphans",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()

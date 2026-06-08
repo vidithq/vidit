@@ -44,6 +44,7 @@ from app.services import audit, auth_tokens, email, registration
 from app.services.audit import rate_limit_key
 from app.services.auth import (
     DUMMY_PASSWORD_HASH,
+    bump_token_version,
     create_access_token,
     hash_password,
     maybe_promote_admin,
@@ -233,7 +234,7 @@ def confirm_registration(
     db.commit()
     db.refresh(user)
 
-    token = create_access_token(user.id)
+    token = create_access_token(user)
     issue_session_cookies(response, token)
     return user
 
@@ -337,7 +338,7 @@ def login(
     )
     db.commit()
 
-    token = create_access_token(user.id)
+    token = create_access_token(user)
     issue_session_cookies(response, token)
     return user
 
@@ -378,6 +379,18 @@ def logout(
             # investigating — silent NULLs for legitimate-no-cookie and
             # forged-cookie cases look identical otherwise.
             logger.warning("logout: rejected session cookie: %s", exc)
+
+    # Invalidate every outstanding session for this user, not just the
+    # cookie on this device. The full Tier-3 refresh-token system in the
+    # open-beta milestone supersedes this; the interim Tier-2 mechanism
+    # is bumping `token_version` so older JWTs 401 at `get_current_user`.
+    # Skip on a malformed / missing / unknown-user cookie — we don't want
+    # an attacker spamming /logout with a guessed sub to bump arbitrary
+    # users' counters, and there's nothing to invalidate anyway.
+    if user_id is not None:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is not None and user.deleted_at is None:
+            bump_token_version(user)
 
     audit.log_auth_event_from_request(
         db,
@@ -494,16 +507,28 @@ def reset_password(
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user = db.query(User).filter(User.id == row.user_id).first()
-    if user is None:
-        # The FK has ON DELETE CASCADE so this branch is theoretically
-        # unreachable. If we *do* hit it, the consume() above already
-        # flipped consumed_at — roll back so the burned token isn't
-        # persisted with no corresponding password change. Then return
-        # the same opaque error.
+    # Mirror the mint-side guards: `_process_forgot_password` only mints a
+    # token for an account that is live + active, and `/login` rejects
+    # both soft-deleted and deactivated accounts. Without this parity,
+    # an attacker holding a reset token captured before the account was
+    # disabled could still rotate the password. Soft-delete also FK
+    # cascades the token row away, so this branch is rare in practice —
+    # but the explicit guard prevents the deactivation case (which has
+    # no cascade) from sneaking through.
+    if user is None or user.deleted_at is not None or not user.is_active:
+        # ``consume`` above already flipped ``consumed_at``. Roll back so
+        # the burned token isn't persisted without a matching password
+        # change, then return the same opaque error.
         db.rollback()
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user.password_hash = hash_password(body.new_password)
+    # Invalidate every outstanding session for this user. A reset means
+    # the user has lost control of (or never had control of) the
+    # currently-logged-in devices — every existing JWT must stop working
+    # now, not at its `exp`. Re-login on the new password mints a fresh
+    # cookie with the bumped `tv`.
+    bump_token_version(user)
     audit.log_auth_event_from_request(
         db,
         request,
@@ -517,6 +542,7 @@ def reset_password(
 @limiter.limit("10/hour", key_func=_session_or_ip_key)
 def change_password(
     request: Request,
+    response: Response,
     body: ChangePasswordRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -550,6 +576,12 @@ def change_password(
     notify_to = current_user.email
 
     current_user.password_hash = hash_password(body.new_password)
+    # Invalidate every other session this user has open. Bumping
+    # `token_version` 401s every JWT minted before this point —
+    # including the one this request used. Re-issuing a fresh cookie on
+    # the same response (below) keeps the device the user is on now
+    # logged in; the others lose access at the next request.
+    bump_token_version(current_user)
     audit.log_auth_event_from_request(
         db,
         request,
@@ -557,6 +589,8 @@ def change_password(
         user_id=user_id,
     )
     db.commit()
+    db.refresh(current_user)
+    issue_session_cookies(response, create_access_token(current_user))
 
     background_tasks.add_task(
         _send_password_changed_notification_best_effort,

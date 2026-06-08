@@ -43,7 +43,7 @@ def authed_user(db):
     db.add(user)
     db.commit()
     db.refresh(user)
-    headers = login_as(client, user.id)
+    headers = login_as(client, user)
     yield user, headers
     db.delete(user)
     db.commit()

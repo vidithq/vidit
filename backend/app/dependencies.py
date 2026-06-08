@@ -34,7 +34,8 @@ def get_current_user(
             algorithms=[settings.jwt_algorithm],
         )
         user_id = payload.get("sub")
-        if not isinstance(user_id, str):
+        token_version = payload.get("tv")
+        if not isinstance(user_id, str) or not isinstance(token_version, int):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     except jwt.InvalidTokenError as err:
         # InvalidTokenError is the PyJWT base class for every decode
@@ -52,6 +53,13 @@ def get_current_user(
     # the next request, not the next token rotation.
     if user is None or not user.is_active or user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Session-lifecycle check: a JWT minted before the user's last
+    # invalidation event (logout / password change / reset / soft-
+    # delete) carries a stale ``tv`` claim. Opaque 401 — same shape as
+    # every other decode failure so a leaked-token probe can't tell
+    # "expired" from "invalidated" from "tampered".
+    if token_version != user.token_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return user
 
 

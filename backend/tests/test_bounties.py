@@ -391,7 +391,7 @@ def test_create_requires_authentication():
 def test_create_rejects_missing_files(author):
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={"title": "x", "source_url": "https://example.com"},
     )
     assert response.status_code in (400, 422)
@@ -401,7 +401,7 @@ def test_create_rejects_blank_title(author):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={"title": "   ", "source_url": "https://example.com"},
         files=files,
     )
@@ -413,7 +413,7 @@ def test_create_rejects_blank_source_url(author):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={"title": "ok", "source_url": "  "},
         files=files,
     )
@@ -425,7 +425,7 @@ def test_create_rejects_invalid_description_json(author):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "ok",
             "source_url": "https://example.com",
@@ -441,7 +441,7 @@ def test_create_happy_path(db, author, free_tag):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "Footage from a strike",
             "source_url": "https://example.com/post/1",
@@ -479,7 +479,7 @@ def test_create_populates_sha256_on_media(db, author):
 
     response = client.post(
         "/api/v1/bounties",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "hash test",
             "source_url": "https://example.com/post/1",
@@ -524,30 +524,26 @@ def test_delete_requires_authentication(db, author):
 
 
 def test_delete_returns_404_for_unknown_id(author):
-    response = client.delete(
-        f"/api/v1/bounties/{uuid.uuid4()}", headers=login_as(client, author.id)
-    )
+    response = client.delete(f"/api/v1/bounties/{uuid.uuid4()}", headers=login_as(client, author))
     assert response.status_code == 404
 
 
 def test_delete_returns_404_for_soft_deleted(db, author):
     bounty = _make_bounty(db, author=author, deleted=True)
-    response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author.id))
+    response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author))
     assert response.status_code == 404
 
 
 def test_delete_returns_403_when_not_author(db, author, second_user):
     bounty = _make_bounty(db, author=author)
-    response = client.delete(
-        f"/api/v1/bounties/{bounty.id}", headers=login_as(client, second_user.id)
-    )
+    response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, second_user))
     assert response.status_code == 403
 
 
 def test_delete_succeeds_for_author_and_cascades_media(db, author):
     bounty = _make_bounty(db, author=author)
     bounty_id = bounty.id
-    response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author.id))
+    response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
     assert db.query(Bounty).filter(Bounty.id == bounty_id).first() is None
@@ -567,9 +563,7 @@ def test_delete_returns_409_when_fulfilled(db, author):
     db.add(geo)
     db.commit()
     try:
-        response = client.delete(
-            f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author.id)
-        )
+        response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author))
         assert response.status_code == 409
     finally:
         db.expire_all()
@@ -589,7 +583,7 @@ def test_claim_requires_authentication(db, author):
 def test_claim_inserts_row(db, author, second_user):
     bounty = _make_bounty(db, author=author)
     response = client.post(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
     db.expire_all()
@@ -602,7 +596,7 @@ def test_claim_is_idempotent(db, author, second_user):
     bounty = _make_bounty(db, author=author)
     for _ in range(3):
         response = client.post(
-            f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+            f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
         )
         assert response.status_code == 204
     db.expire_all()
@@ -617,10 +611,8 @@ def test_claim_is_idempotent(db, author, second_user):
 def test_multiple_analysts_can_claim_same_bounty(db, author, second_user, third_user):
     """The core multi-claim contract — two analysts both signaling."""
     bounty = _make_bounty(db, author=author)
-    r1 = client.post(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
-    )
-    r2 = client.post(f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, third_user.id))
+    r1 = client.post(f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user))
+    r2 = client.post(f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, third_user))
     assert r1.status_code == 204
     assert r2.status_code == 204
     db.expire_all()
@@ -633,7 +625,7 @@ def test_multiple_analysts_can_claim_same_bounty(db, author, second_user, third_
 def test_claim_rejected_on_non_open_status(db, author, second_user):
     bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
     response = client.post(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
     )
     assert response.status_code == 409
 
@@ -641,7 +633,7 @@ def test_claim_rejected_on_non_open_status(db, author, second_user):
 def test_claim_404_for_soft_deleted(db, author, second_user):
     bounty = _make_bounty(db, author=author, deleted=True)
     response = client.post(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
     )
     assert response.status_code == 404
 
@@ -655,7 +647,7 @@ def test_unclaim_removes_row(db, author, second_user):
     db.commit()
 
     response = client.delete(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
     db.expire_all()
@@ -673,7 +665,7 @@ def test_unclaim_is_noop_when_not_a_claimer(db, author, second_user):
     we promise, not "exactly one row was deleted." """
     bounty = _make_bounty(db, author=author)
     response = client.delete(
-        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/claim", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
 
@@ -684,16 +676,14 @@ def test_unclaim_is_noop_when_not_a_claimer(db, author, second_user):
 def test_close_author_only(db, author, second_user):
     bounty = _make_bounty(db, author=author)
     response = client.post(
-        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, second_user.id)
+        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, second_user)
     )
     assert response.status_code == 403
 
 
 def test_close_transitions_to_closed(db, author):
     bounty = _make_bounty(db, author=author)
-    response = client.post(
-        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author.id)
-    )
+    response = client.post(f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author))
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == STATUS_CLOSED
@@ -702,9 +692,7 @@ def test_close_transitions_to_closed(db, author):
 
 def test_close_rejected_on_terminal_state(db, author):
     bounty = _make_bounty(db, author=author, status=STATUS_FULFILLED)
-    response = client.post(
-        f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author.id)
-    )
+    response = client.post(f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author))
     assert response.status_code == 409
 
 
@@ -723,7 +711,7 @@ def test_geolocate_from_bounty_transfers_media_and_fulfills(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, second_user.id),
+        headers=login_as(client, second_user),
         data={
             "title": "Promoted from bounty",
             "lat": "48.5",
@@ -762,7 +750,7 @@ def test_geolocate_from_bounty_rejected_when_bounty_not_open(db, author, second_
     bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, second_user.id),
+        headers=login_as(client, second_user),
         data={
             "title": "x",
             "lat": "48.5",
@@ -778,7 +766,7 @@ def test_geolocate_from_bounty_rejected_when_bounty_not_open(db, author, second_
 def test_geolocate_from_bounty_404_for_unknown(author):
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "48.5",
@@ -794,7 +782,7 @@ def test_geolocate_from_bounty_404_for_unknown(author):
 def test_geolocate_without_bounty_still_requires_media(author):
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "48.5",
@@ -829,7 +817,7 @@ def test_geolocate_from_bounty_overrides_form_source_url(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, second_user.id),
+        headers=login_as(client, second_user),
         data={
             "title": "Analyst-refined title",
             # Hostile source_url — must be ignored server-side.
@@ -878,7 +866,7 @@ def test_geolocate_from_bounty_honors_analyst_title_and_tags(
 
         response = client.post(
             "/api/v1/geolocations",
-            headers=login_as(client, second_user.id),
+            headers=login_as(client, second_user),
             data={
                 "title": "Refined title with place name",
                 "lat": "48.5",
@@ -971,7 +959,7 @@ def test_fulfilled_by_excludes_soft_deleted_geolocation(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, second_user.id),
+        headers=login_as(client, second_user),
         data={
             "title": "fulfiller",
             "lat": "48.5",
@@ -1021,7 +1009,7 @@ def test_geolocate_from_bounty_accepts_extra_files(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, second_user.id),
+        headers=login_as(client, second_user),
         data={
             "title": "x",
             "lat": "48.5",

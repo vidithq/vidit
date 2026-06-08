@@ -83,7 +83,7 @@ def test_bearer_header_ignored_on_get(user_with_password):
     into the backend now.
     """
     user, _ = user_with_password
-    token = create_access_token(user.id)
+    token = create_access_token(user)
     client = _client()
     response = client.get(
         "/api/v1/auth/me",

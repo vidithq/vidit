@@ -721,7 +721,7 @@ def test_delete_requires_authentication(db, author):
 
 def test_delete_returns_404_for_unknown_id(author):
     response = client.delete(
-        f"/api/v1/geolocations/{uuid.uuid4()}", headers=login_as(client, author.id)
+        f"/api/v1/geolocations/{uuid.uuid4()}", headers=login_as(client, author)
     )
     assert response.status_code == 404
 
@@ -734,14 +734,14 @@ def test_delete_returns_404_for_soft_deleted(db, author):
     gone from their perspective.
     """
     geo = _make_geo(db, author=author, deleted=True)
-    response = client.delete(f"/api/v1/geolocations/{geo.id}", headers=login_as(client, author.id))
+    response = client.delete(f"/api/v1/geolocations/{geo.id}", headers=login_as(client, author))
     assert response.status_code == 404
 
 
 def test_delete_returns_403_when_not_author(db, author, second_user):
     geo = _make_geo(db, author=author)
     response = client.delete(
-        f"/api/v1/geolocations/{geo.id}", headers=login_as(client, second_user.id)
+        f"/api/v1/geolocations/{geo.id}", headers=login_as(client, second_user)
     )
     assert response.status_code == 403
 
@@ -749,7 +749,7 @@ def test_delete_returns_403_when_not_author(db, author, second_user):
 def test_delete_succeeds_for_author_and_removes_row(db, author):
     geo = _make_geo(db, author=author)
     geo_id = geo.id
-    response = client.delete(f"/api/v1/geolocations/{geo_id}", headers=login_as(client, author.id))
+    response = client.delete(f"/api/v1/geolocations/{geo_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
     assert db.query(Geolocation).filter(Geolocation.id == geo_id).first() is None
@@ -768,7 +768,7 @@ def test_delete_invalidates_points_cache(db, author):
     warm = client.get("/api/v1/geolocations/points")
     assert warm.headers.get("x-cache") == "HIT"
 
-    client.delete(f"/api/v1/geolocations/{geo.id}", headers=login_as(client, author.id))
+    client.delete(f"/api/v1/geolocations/{geo.id}", headers=login_as(client, author))
 
     # After delete the cache must be cold again
     after = client.get("/api/v1/geolocations/points")
@@ -793,7 +793,7 @@ def test_create_rejects_missing_files(author):
     """
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -817,7 +817,7 @@ def test_create_rejects_invalid_latitude(author):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "95.0",  # invalid
@@ -841,7 +841,7 @@ def test_create_rejects_invalid_event_date(author):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -863,7 +863,7 @@ def test_list_rejects_malformed_date_filter(author):
     endpoints open, so this is a Sentry-noise + abuse-amplifier vector."""
     response = client.get(
         "/api/v1/geolocations/points?submitted_to=not-a-date",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
     )
     assert response.status_code == 422
 
@@ -877,7 +877,7 @@ def test_create_rejects_too_many_files(author):
     files = [("files", (f"tiny-{i}.jpg", TINY_JPEG, "image/jpeg")) for i in range(13)]
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -896,7 +896,7 @@ def test_create_rejects_invalid_proof_json(author):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -919,7 +919,7 @@ def test_create_rejects_no_tags(author):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -938,7 +938,7 @@ def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -958,7 +958,7 @@ def test_create_rejects_missing_capture_source_tag(author, conflict_tag):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -982,7 +982,7 @@ def test_create_rejects_free_tag_only(author, free_tag):
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "x",
             "lat": "0.0",
@@ -1007,7 +1007,7 @@ def test_create_succeeds_with_both_required_tags(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "valid create",
             "lat": "48.5",
@@ -1031,7 +1031,7 @@ def test_proof_image_upload_persists_sha256_and_provenance(db, author):
     """Inline-proof image upload captures sha256 + provenance on the row."""
     response = client.post(
         "/api/v1/geolocations/proof-images",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         files={"file": ("p.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert response.status_code == 201, response.text
@@ -1072,7 +1072,7 @@ def test_proof_image_upload_rejects_corrupt_image(db, author):
     """
     response = client.post(
         "/api/v1/geolocations/proof-images",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         files={"file": ("bad.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
     )
     assert response.status_code == 400
@@ -1104,7 +1104,7 @@ def test_create_geolocation_cleans_up_s3_on_mid_batch_failure(
 
     response = client.post(
         "/api/v1/geolocations",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         data={
             "title": "orphan cleanup test",
             "lat": "0.0",
@@ -1191,7 +1191,7 @@ def test_possible_duplicates_returns_host_match(db, author):
         source_url="https://t.me/somechannel/12345",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1224,7 +1224,7 @@ def test_possible_duplicates_returns_date_match(db, author):
         source_url="https://t.me/somechannel/12345",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1255,7 +1255,7 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
         source_url="https://t.me/somechannel/12345",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1297,7 +1297,7 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
         source_url="https://twitter.com/foo",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1329,7 +1329,7 @@ def test_possible_duplicates_excludes_soft_deleted(db, author):
     )
     geo.deleted_at = datetime.now(UTC)
     db.commit()
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1356,7 +1356,7 @@ def test_possible_duplicates_returns_empty_without_either_leg(db, author):
         source_url="https://t.me/somechannel/12345",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={"lat": 48.50000, "lng": 34.50000},
@@ -1378,7 +1378,7 @@ def test_possible_duplicates_tolerates_partial_source_url(db, author):
         source_url="https://t.me/somechannel/12345",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1412,7 +1412,7 @@ def test_possible_duplicates_orders_by_distance(db, author):
         source_url="https://t.me/somechannel/bbb",
         event_date_value=date(2026, 5, 1),
     )
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/possible-duplicates",
         params={
@@ -1489,7 +1489,7 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
     )
     response = client.post(
         "/api/v1/geolocations/import-from-tweet",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         json={"url": "https://x.com/handle/status/1234567890"},
     )
     assert response.status_code == 200, response.text
@@ -1507,7 +1507,7 @@ def test_import_from_tweet_returns_400_for_invalid_url(author, monkeypatch):
     _stub_parse_tweet(monkeypatch, raises=InvalidTweetUrl("Not a tweet URL"))
     response = client.post(
         "/api/v1/geolocations/import-from-tweet",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         json={"url": "https://example.com"},
     )
     assert response.status_code == 400
@@ -1520,7 +1520,7 @@ def test_import_from_tweet_returns_404_for_inaccessible_tweet(author, monkeypatc
     _stub_parse_tweet(monkeypatch, raises=TweetNotAccessible("Tweet not accessible"))
     response = client.post(
         "/api/v1/geolocations/import-from-tweet",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         json={"url": "https://x.com/handle/status/9999999999"},
     )
     assert response.status_code == 404
@@ -1533,7 +1533,7 @@ def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatc
     _stub_parse_tweet(monkeypatch, raises=TweetFetchFailed("upstream timeout"))
     response = client.post(
         "/api/v1/geolocations/import-from-tweet",
-        headers=login_as(client, author.id),
+        headers=login_as(client, author),
         json={"url": "https://x.com/handle/status/1234567890"},
     )
     assert response.status_code == 502
@@ -1557,7 +1557,7 @@ def test_import_from_tweet_media_requires_auth():
 def test_import_from_tweet_media_rejects_non_twitter_host(author):
     """SSRF guard: only ``pbs.twimg.com`` / ``video.twimg.com`` are
     fetchable through the proxy."""
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/import-from-tweet/media",
         params={"u": "https://evil.example.com/foo.jpg"},
@@ -1611,7 +1611,7 @@ def test_import_from_tweet_media_aborts_above_size_cap(author, monkeypatch):
 
     monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
 
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/import-from-tweet/media",
         params={"u": "https://pbs.twimg.com/media/foo.jpg"},
@@ -1656,7 +1656,7 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
 
     monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
 
-    login_as(client, author.id)
+    login_as(client, author)
     response = client.get(
         "/api/v1/geolocations/import-from-tweet/media",
         params={"u": "https://pbs.twimg.com/media/foo.jpg"},
