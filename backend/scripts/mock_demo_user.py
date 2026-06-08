@@ -29,28 +29,36 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.services.auth import hash_password
 
+# ``external_links`` is per-user; the promo recorder needs ``x``
+# pre-linked to the same handle as the seeded tweets so the
+# import-from-tweet authorship check returns ``match`` and the form
+# doesn't render the amber "no X account linked" / "different account"
+# heads-up during the recording. The other two users don't import
+# tweets in any scene, so they keep ``{}``.
+RECORDER_X_HANDLE = "geo27752"
+
 USERS = [
     # The recording viewer — the promo logs in as this user so the
     # recorded UI shows a realistic community handle, not the admin
     # badge. Must be neither the bounty author nor the pre-seeded
     # claimer (otherwise the "I'm working on this" beat collapses).
-    ("analyst@vidit.app", "analyst", "analyst"),
+    ("analyst@vidit.app", "analyst", "analyst", {"x": RECORDER_X_HANDLE}),
     # The bounty author — bounties owned by someone other than the
     # recording viewer keep the viewer in the participant view
     # ("I'm working on this") on the detail page.
-    ("demo-analyst@vidit.app", "demo-analyst", "demo-analyst"),
+    ("demo-analyst@vidit.app", "demo-analyst", "demo-analyst", {}),
     # A second analyst whose "I'm working on this" click pre-seeds the
     # "1 working" indicator on one bounty in the list view.
     # `demo-analyst-1..5` already exist (created by the seed-demo
     # geolocation flow). Pick a username outside that namespace.
-    ("analyst-helper@vidit.app", "analyst-helper", "analyst-helper"),
+    ("analyst-helper@vidit.app", "analyst-helper", "analyst-helper", {}),
 ]
 
 
 def main() -> None:
     db = SessionLocal()
     try:
-        for email, username, password in USERS:
+        for email, username, password, external_links in USERS:
             user = db.query(User).filter(User.email == email).first()
             if user:
                 # Re-hash the password on every run so the script keeps a
@@ -62,6 +70,7 @@ def main() -> None:
                 user.password_hash = hash_password(password)
                 user.is_active = True
                 user.email_verified_at = user.email_verified_at or datetime.now(UTC)
+                user.external_links = external_links
             else:
                 print(f"Creating demo user: {email} / {password}")
                 user = User(
@@ -72,6 +81,7 @@ def main() -> None:
                     is_admin=False,
                     is_active=True,
                     email_verified_at=datetime.now(UTC),
+                    external_links=external_links,
                 )
                 db.add(user)
         db.commit()

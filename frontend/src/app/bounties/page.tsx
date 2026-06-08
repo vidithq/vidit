@@ -170,8 +170,9 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
             />
           ) : (
             <video
-              src={hero.storage_url}
+              src={`${hero.storage_url}#t=0.1`}
               className="w-full h-full object-cover"
+              preload="metadata"
               muted
             />
           )

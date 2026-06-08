@@ -152,7 +152,7 @@ async function createBounty(auth, { title, sourceUrl, tagIds, mediaFiles }) {
 
 async function wipeUserBounties(auth) {
   // Delete every bounty owned by the currently-authenticated user.
-  const me = await fetch(`${API}/users/me`, {
+  const me = await fetch(`${API}/auth/me`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
   const all = await fetch(`${API}/bounties`, {
@@ -175,6 +175,36 @@ async function wipeUserBounties(auth) {
   }
 }
 
+async function wipeUserGeolocations(auth) {
+  // Delete every geolocation authored by the currently-authenticated
+  // user. The recording submits a geolocation from a fixed tweet URL on
+  // every run; without this wipe the second run hits the duplicate
+  // warning card and the screenshot reads "this analyst already
+  // submitted it", contradicting the live-submit framing.
+  const me = await fetch(`${API}/auth/me`, {
+    headers: { cookie: auth.cookieHeader },
+  }).then((r) => r.json());
+  const list = await fetch(
+    `${API}/geolocations?author=${encodeURIComponent(me.username)}&limit=200`,
+    { headers: { cookie: auth.cookieHeader } }
+  ).then((r) => r.json());
+  const items = Array.isArray(list) ? list : list.items || [];
+  for (const g of items) {
+    const res = await fetch(`${API}/geolocations/${g.id}`, {
+      method: "DELETE",
+      headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
+    });
+    if (!res.ok && res.status !== 409) {
+      console.warn(`  skip geoloc ${g.id}: ${res.status}`);
+    }
+  }
+  if (items.length) {
+    console.log(
+      `✓ wiped ${items.length} prior geolocation(s) for ${me.username}`
+    );
+  }
+}
+
 (async () => {
   // The bounty author has to be someone OTHER than the recording
   // viewer — the bounty detail page only shows "I'm working on this"
@@ -185,9 +215,13 @@ async function wipeUserBounties(auth) {
 
   // The recording's `analyst` also posts a new bounty in the live
   // "Post bounty" beat. Wipe any prior bounties they own from earlier
-  // record-submit runs so they don't linger as ghost rows.
+  // record-submit runs so they don't linger as ghost rows. Geolocations
+  // get wiped too because the recording submits one from a fixed tweet
+  // URL — without this, the second run trips the duplicate-warning
+  // card on the submit form.
   const recorder = await mintAuth("analyst@vidit.app", "analyst");
   await wipeUserBounties(recorder);
+  await wipeUserGeolocations(recorder);
 
   const auth = author; // reuse the rest of this script unchanged
   // Conflict + capture-source — every bounty needs both for the

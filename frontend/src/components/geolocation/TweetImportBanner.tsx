@@ -132,16 +132,27 @@ export function TweetImportBanner({
 
   if (importedFrom !== null) {
     const state = authorshipState(linkedX, importedFrom);
+    // Keep the post-import section structurally aligned with the
+    // pre-import one — same header + a one-row content block where the
+    // input used to be — so the boundary reads as a content swap rather
+    // than a layout collapse.
     return (
       <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-neutral-300">
-            Imported from{" "}
-            <span className="font-medium text-neutral-100">
-              @{importedFrom}
-            </span>{" "}
-            — review and submit.
+        <header className="space-y-1">
+          <h2 className="text-sm font-medium text-neutral-200">
+            Tweet imported
+          </h2>
+          <p className="text-xs text-neutral-500">
+            Title, source, event date, media and best-effort coordinates
+            were pre-filled from{" "}
+            <span className="text-neutral-300">@{importedFrom}</span>.
+            Review and submit.
           </p>
+        </header>
+        {state !== "match" && (
+          <AuthorshipWarning state={state} tweetAuthor={importedFrom} linkedX={linkedX} />
+        )}
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={onClear}
@@ -151,9 +162,6 @@ export function TweetImportBanner({
             Clear
           </button>
         </div>
-        {state !== "match" && (
-          <AuthorshipWarning state={state} tweetAuthor={importedFrom} linkedX={linkedX} />
-        )}
       </section>
     );
   }
