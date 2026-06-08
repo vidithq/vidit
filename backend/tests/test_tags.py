@@ -110,10 +110,11 @@ def test_create_free_tag_rejects_too_long(authed_user):
     assert response.status_code == 422
 
 
-def test_create_free_tag_duplicate_returns_409(authed_user, db):
-    """A second create with the same name returns 409. The frontend
-    uses this signal to fall back to selecting the existing tag rather
-    than surfacing an error to the analyst."""
+def test_create_free_tag_duplicate_returns_existing(authed_user, db):
+    """A second create with the same name + category returns 200 OK
+    with the existing row, not 409. Lets the frontend's `NewTagInput`
+    select an orphan tag (refs == 0, hidden from `GET /tags`) by name
+    without needing the backend to expose a separate get-by-name."""
     _, headers = authed_user
     name = f"dup-{uuid.uuid4().hex[:8]}"
     r1 = client.post(
@@ -127,9 +128,33 @@ def test_create_free_tag_duplicate_returns_409(authed_user, db):
         json={"name": name, "category": "free"},
         headers=headers,
     )
-    assert r2.status_code == 409
+    assert r2.status_code == 200
+    assert r2.json()["id"] == r1.json()["id"]
     db.query(Tag).filter(Tag.name == name).delete()
     db.commit()
+
+
+def test_create_free_tag_clashing_category_returns_409(authed_user, db):
+    """A second create with the same name but a different category
+    still 409s — the row already exists but the caller is asking for
+    something semantically different."""
+    _, headers = authed_user
+    name = f"clash-{uuid.uuid4().hex[:8]}"
+    # Seed a curated row directly (the public API only lets analysts
+    # create `free` tags, so the clash setup needs DB access).
+    db.add(Tag(name=name, category="conflict"))
+    db.commit()
+    try:
+        r = client.post(
+            "/api/v1/tags",
+            json={"name": name, "category": "free"},
+            headers=headers,
+        )
+        assert r.status_code == 409
+        assert "different category" in r.json()["detail"]
+    finally:
+        db.query(Tag).filter(Tag.name == name).delete()
+        db.commit()
 
 
 def test_create_conflict_tag_forbidden(authed_user):

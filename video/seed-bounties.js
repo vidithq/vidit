@@ -150,8 +150,14 @@ async function createBounty(auth, { title, sourceUrl, tagIds, mediaFiles }) {
   return res.json();
 }
 
+// Cleanup helpers. The public `DELETE /bounties/{id}` and
+// `DELETE /geolocations/{id}` enforce author-only access (admins can
+// not delete other users' rows through the public endpoints), so
+// per-user wipes still need that user's own auth. Only the
+// cross-author tweet-duplicate wipe routes through the admin-only
+// `DELETE /admin/geolocations/{id}`, which bypasses `ensure_author`.
+
 async function wipeUserBounties(auth) {
-  // Delete every bounty owned by the currently-authenticated user.
   const me = await fetch(`${API}/auth/me`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
@@ -176,11 +182,6 @@ async function wipeUserBounties(auth) {
 }
 
 async function wipeUserGeolocations(auth) {
-  // Delete every geolocation authored by the currently-authenticated
-  // user. The recording submits a geolocation from a fixed tweet URL on
-  // every run; without this wipe the second run hits the duplicate
-  // warning card and the screenshot reads "this analyst already
-  // submitted it", contradicting the live-submit framing.
   const me = await fetch(`${API}/auth/me`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
@@ -199,13 +200,76 @@ async function wipeUserGeolocations(auth) {
     }
   }
   if (items.length) {
-    console.log(
-      `✓ wiped ${items.length} prior geolocation(s) for ${me.username}`
-    );
+    console.log(`✓ wiped ${items.length} prior geolocation(s) for ${me.username}`);
   }
 }
 
+// Wipe every geolocation that the recording's tweet would resolve to
+// as "possibly related" — same heuristic the submit form uses
+// (`/geolocations/possible-duplicates`). Routes through the
+// `DELETE /admin/geolocations/{id}` endpoint so cross-author rows
+// (e.g. an old admin@vidit.app submission of the same tweet) actually
+// get cleaned up; the public DELETE would 403 on those and the wipe
+// would silently no-op, leaving the duplicate-warning card to fire on
+// every re-record.
+async function wipeTweetDuplicatesAs(adminAuth, tweetUrl) {
+  const parsed = await fetch(`${API}/geolocations/import-from-tweet`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: adminAuth.cookieHeader,
+      "X-CSRF-Token": adminAuth.csrf,
+    },
+    body: JSON.stringify({ url: tweetUrl }),
+  }).then((r) => (r.ok ? r.json() : null));
+  if (!parsed) {
+    console.warn("  wipeTweetDuplicatesAs: could not parse tweet, skipping");
+    return;
+  }
+  const coord = parsed.parsed_coords?.[0];
+  const date = parsed.posted_at?.slice(0, 10);
+  if (!coord || !date) {
+    console.warn(
+      "  wipeTweetDuplicatesAs: missing coords/date on tweet, skipping"
+    );
+    return;
+  }
+  const dups = await fetch(
+    `${API}/geolocations/possible-duplicates?lat=${coord.lat}&lng=${coord.lng}&event_date=${date}`,
+    { headers: { cookie: adminAuth.cookieHeader } }
+  ).then((r) => r.json());
+  if (!dups.length) return;
+  for (const g of dups) {
+    const res = await fetch(`${API}/admin/geolocations/${g.id}?hard=true`, {
+      method: "DELETE",
+      headers: {
+        cookie: adminAuth.cookieHeader,
+        "X-CSRF-Token": adminAuth.csrf,
+      },
+    });
+    if (!res.ok && res.status !== 409) {
+      console.warn(`  skip dup ${g.id}: ${res.status}`);
+    }
+  }
+  console.log(`✓ wiped ${dups.length} prior tweet-duplicate(s)`);
+}
+
+// The tweet URL the recording posts a geolocation from. Kept in sync
+// with `RECORDING_TWEET_URL` in `record-submit.js` — if you change one,
+// change the other (or extract to a shared constants file).
+const RECORDING_TWEET_URL =
+  "https://x.com/geo27752/status/2060086984513626223";
+
 (async () => {
+  // Admin login handles the only wipe that needs cross-author reach:
+  // possible-duplicate geolocations near the recording's tweet, where
+  // prior runs sometimes left rows authored by `admin@vidit.app`
+  // itself. Per-user logins below handle each user's own rows via the
+  // public DELETE (admin can't reach those without going through the
+  // soft-delete admin path, which leaves orphan `deleted_at` rows).
+  const admin = await mintAuth("admin@vidit.app", "admin");
+  await wipeTweetDuplicatesAs(admin, RECORDING_TWEET_URL);
+
   // The bounty author has to be someone OTHER than the recording
   // viewer — the bounty detail page only shows "I'm working on this"
   // when the viewer is NOT the bounty's author. The recording logs in
@@ -213,12 +277,9 @@ async function wipeUserGeolocations(auth) {
   const author = await mintAuth("demo-analyst@vidit.app", "demo-analyst");
   await wipeUserBounties(author);
 
-  // The recording's `analyst` also posts a new bounty in the live
-  // "Post bounty" beat. Wipe any prior bounties they own from earlier
-  // record-submit runs so they don't linger as ghost rows. Geolocations
-  // get wiped too because the recording submits one from a fixed tweet
-  // URL — without this, the second run trips the duplicate-warning
-  // card on the submit form.
+  // The recording's `analyst` also posts a bounty + a geolocation
+  // during the live "Post bounty" / "Submit geolocation" beats. Wipe
+  // any prior copies from earlier recordings so they don't linger.
   const recorder = await mintAuth("analyst@vidit.app", "analyst");
   await wipeUserBounties(recorder);
   await wipeUserGeolocations(recorder);

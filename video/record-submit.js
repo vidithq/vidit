@@ -52,13 +52,13 @@ const bountyUploadCachePath = (url) =>
 fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
 fs.mkdirSync(FRAMES_DIR, { recursive: true });
 
-async function mintCookiesFor(email, password) {
+async function mintCookies() {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: "analyst@vidit.app", password: "analyst" }),
   });
-  if (!res.ok) throw new Error(`login ${email}: ${res.status}`);
+  if (!res.ok) throw new Error(`login ${res.status}`);
   const out = [];
   let csrf = null;
   for (const c of res.headers.getSetCookie()) {
@@ -73,65 +73,6 @@ async function mintCookiesFor(email, password) {
     csrf,
     cookieHeader: out.map((c) => `${c.name}=${c.value}`).join("; "),
   };
-}
-
-const mintCookies = () => mintCookiesFor("analyst@vidit.app", "analyst");
-const mintAdminCookies = () => mintCookiesFor("admin@vidit.app", "admin");
-
-// Idempotent cleanup: each recording's Submit click creates a real
-// geolocation at the tweet's coords, which would then show up as a
-// "possibly related" warning on the NEXT recording. Delete them all
-// before we start, so every run reproduces the same clean flow.
-//
-// Coords + event_date are derived from the tweet itself via the
-// import-from-tweet endpoint — if `TWEET_URL` is swapped or the
-// tweet's parsed coords drift, the dedupe wipe still matches whatever
-// the recording will actually post, instead of going stale and
-// silently leaving duplicates behind.
-//
-// The DELETE runs under an ADMIN cookie because prior runs sometimes
-// land rows under a different author (admin, an earlier promo
-// recorder); analyst-auth DELETE returns 403 on those and the wipe
-// silently skipped them, so the duplicate banner kept firing.
-async function clearTweetDuplicates({ csrf, cookieHeader }, tweetUrl) {
-  const parsed = await fetch(`${API}/geolocations/import-from-tweet`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie: cookieHeader,
-      "X-CSRF-Token": csrf,
-    },
-    body: JSON.stringify({ url: tweetUrl }),
-  }).then((r) => (r.ok ? r.json() : null));
-  if (!parsed) {
-    console.warn("  clearTweetDuplicates: could not parse tweet, skipping");
-    return 0;
-  }
-  const coord = parsed.parsed_coords?.[0];
-  const date = parsed.posted_at?.slice(0, 10);
-  if (!coord || !date) {
-    console.warn("  clearTweetDuplicates: missing coords/date on tweet, skipping");
-    return 0;
-  }
-  const url = `${API}/geolocations/possible-duplicates?lat=${coord.lat}&lng=${coord.lng}&event_date=${date}`;
-  const dups = await (
-    await fetch(url, { headers: { cookie: cookieHeader } })
-  ).json();
-  if (!dups.length) return 0;
-  const admin = await mintAdminCookies();
-  for (const g of dups) {
-    const res = await fetch(`${API}/geolocations/${g.id}`, {
-      method: "DELETE",
-      headers: {
-        cookie: admin.cookieHeader,
-        "X-CSRF-Token": admin.csrf,
-      },
-    });
-    if (!res.ok) {
-      console.warn(`  skip dup ${g.id}: ${res.status}`);
-    }
-  }
-  return dups.length;
 }
 
 // Human-paced sleep — readable on video.
@@ -270,11 +211,9 @@ async function prepareBountyUpload(auth) {
 
 (async () => {
   const auth = await mintCookies();
-  // Pre-flight: wipe any geolocations the tweet's coords would resolve
-  // to as "possibly related" — keeps the prefilled view free of the
-  // duplicate-warning banner across repeated recordings.
-  const wiped = await clearTweetDuplicates(auth, TWEET_URL);
-  if (wiped) console.log(`✓ cleared ${wiped} prior duplicate(s)`);
+  // `seed-bounties.js` already wiped tweet-coords duplicates under an
+  // admin cookie before we got here, so the submit form starts clean
+  // — no extra login needed in this script for that cleanup step.
 
   // Pre-fetch the bounty video so the upload during the recording is
   // instant. Returns the on-disk path to upload (per-URL cache), or
@@ -307,6 +246,24 @@ async function prepareBountyUpload(auth) {
         document.head.appendChild(style);
       }
       if (document.getElementById("__demo_cursor__")) return;
+      // Click pulse on the cursor itself — quick scale-down/back-up
+      // beat on each mousedown, no continuous animation. Reads as the
+      // analyst "tapping" without distracting visual chrome while the
+      // cursor is just travelling. Implemented as a one-shot CSS
+      // keyframe so the dip is visible even when Playwright's
+      // synthetic mousedown → mouseup pair lands inside a single
+      // frame (a JS-driven `style.transform =` toggle would race the
+      // immediate reset and the dip would never appear on screen).
+      const pulseStyle = document.createElement("style");
+      pulseStyle.id = "__demo_cursor_pulse_kf__";
+      pulseStyle.textContent =
+        "@keyframes __demo_cursor_pulse__ {" +
+        "  0%   { transform: scale(1); }" +
+        "  25%  { transform: scale(0.85); }" +
+        "  100% { transform: scale(1); }" +
+        "}";
+      document.head.appendChild(pulseStyle);
+
       const cursor = document.createElement("div");
       cursor.id = "__demo_cursor__";
       cursor.style.cssText = [
@@ -321,31 +278,21 @@ async function prepareBountyUpload(auth) {
         "transform: translate(-9999px, -9999px)",
       ].join(";");
       cursor.innerHTML =
+        // The SVG sits inside its own wrapper so the click-pulse
+        // (which mutates `transform: scale(...)`) doesn't fight the
+        // mousemove handler that sets `transform: translate(...)` on
+        // the outer `__demo_cursor__` element. ``transform-origin``
+        // is the arrow's hotspot (top-left) so the scale doesn't
+        // drift the visual click point off-pixel.
+        '<div id="__demo_cursor_inner__" style="transform-origin:2px 2px;">' +
         '<svg width="24" height="24" viewBox="0 0 28 28" style="display:block;filter:drop-shadow(0 1.5px 2px rgba(0,0,0,0.55))">' +
         '<path d="M 2 2 L 2 22 L 7.5 17.5 L 11 25 L 14 23.5 L 10.5 16 L 18 16 Z" ' +
         'fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round" />' +
-        "</svg>";
-
-      const ripple = document.createElement("div");
-      ripple.id = "__demo_ripple__";
-      ripple.style.cssText = [
-        "position: fixed",
-        "left: 0",
-        "top: 0",
-        "width: 44px",
-        "height: 44px",
-        "margin: -22px 0 0 -22px",
-        "border: 2.5px solid #f97316",
-        "background: rgba(249,115,22,0.18)",
-        "border-radius: 50%",
-        "pointer-events: none",
-        "z-index: 2147483646",
-        "opacity: 0",
-        "transform: translate(-9999px, -9999px) scale(0.4)",
-      ].join(";");
+        "</svg>" +
+        "</div>";
 
       document.documentElement.appendChild(cursor);
-      document.documentElement.appendChild(ripple);
+      const cursorInner = document.getElementById("__demo_cursor_inner__");
 
       document.addEventListener(
         "mousemove",
@@ -354,18 +301,20 @@ async function prepareBountyUpload(auth) {
         },
         true
       );
+      // Trigger the one-shot pulse on mousedown. Removing then
+      // re-adding the animation property (with a reflow in between)
+      // re-runs the keyframe even when the previous run hasn't
+      // finished — every click gets its own dip beat.
       document.addEventListener(
         "mousedown",
-        (e) => {
-          ripple.style.transition = "none";
-          ripple.style.transform = `translate(${e.clientX}px, ${e.clientY}px) scale(0.4)`;
-          ripple.style.opacity = "0.6";
-          requestAnimationFrame(() => {
-            ripple.style.transition =
-              "transform 420ms cubic-bezier(0,0,0.2,1), opacity 420ms cubic-bezier(0,0,0.2,1)";
-            ripple.style.transform = `translate(${e.clientX}px, ${e.clientY}px) scale(2.4)`;
-            ripple.style.opacity = "0";
-          });
+        () => {
+          cursorInner.style.animation = "none";
+          // Force reflow so removing + re-adding `animation` actually
+          // restarts the keyframe rather than being collapsed by the
+          // browser as a no-op style update.
+          void cursorInner.offsetWidth;
+          cursorInner.style.animation =
+            "__demo_cursor_pulse__ 320ms cubic-bezier(0.4,0,0.6,1)";
         },
         true
       );
@@ -522,14 +471,28 @@ async function prepareBountyUpload(auth) {
   await slowScrollToSelector(page, '[data-promo-anchor="tags"]', 2200);
   await wait(600);
 
-  console.log("→ glide → click tag chips");
-  for (const name of ["Israel Gaza", "Drone", "drone strike"]) {
+  console.log("→ glide → click curated tag chips");
+  for (const name of ["Israel Gaza", "Drone"]) {
     const chip = page
       .getByRole("button", { name: new RegExp(`^${name}$`, "i") })
       .first();
     await glideAndClick(page, chip, { steps: 38, settle: 320 });
     await wait(400);
   }
+  await wait(500);
+
+  console.log("→ type free tag → click Add");
+  // Type the free tag instead of clicking a suggestion chip — the chip
+  // is only rendered when the tag already has ≥1 live geolocation
+  // reference, which the duplicate-wipe step strips. Typing + Add
+  // produces the same UX beat without coupling the recording to demo
+  // data we no longer keep around.
+  const freeTagInput = page.getByLabel(/new free tag name/i).first();
+  await glideAndClick(page, freeTagInput, { steps: 38, settle: 320 });
+  await freeTagInput.type("drone strike", { delay: 55 });
+  await wait(400);
+  const addBtn = page.getByRole("button", { name: /^\+ add$/i }).first();
+  await glideAndClick(page, addBtn, { steps: 38, settle: 320 });
   await wait(700);
 
   console.log("→ scroll to submit (slow)");
@@ -670,7 +633,11 @@ async function prepareBountyUpload(auth) {
   await glideAndClick(page, submitBountyBtn, { steps: 55, settle: 450 });
   try {
     await page.waitForURL(/\/bounties\/[0-9a-f-]+(?:$|\?)/i, { timeout: 15000 });
-    await wait(2800); // longer hold on the new bounty's detail page
+    // Short hold on the new bounty's detail page before the recording
+    // stops + the outro fades in. Stays paired with
+    // `SCENES.video.frames` in `src/Demo.tsx` — both numbers control
+    // how much post-submit beat the final promo carries.
+    await wait(1800);
   } catch (e) {
     // Capture the form's error state for debugging, stop the grabber
     // cleanly (we still want partial frames to inspect), then throw so

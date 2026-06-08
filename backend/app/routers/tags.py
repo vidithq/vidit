@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -77,7 +77,27 @@ def create_tag(
 
     existing = db.query(Tag).filter(Tag.name == body.name).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Tag already exists")
+        # Idempotent create: same name + same category → just hand the
+        # row back. ``GET /tags`` filters orphan tags (refs == 0), so an
+        # analyst typing the exact name of an existing-but-orphaned free
+        # tag previously hit a 409 with no way out from the form. Returns
+        # ``200 OK`` (not the ``201 Created`` default) to surface "no new
+        # row created" to API consumers that care about it.
+        if existing.category == body.category:
+            return Response(
+                content=TagRead.model_validate(
+                    existing, from_attributes=True
+                ).model_dump_json(),
+                media_type="application/json",
+                status_code=200,
+            )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Tag {body.name!r} already exists under a different "
+                f"category ({existing.category!r})"
+            ),
+        )
 
     # The SELECT above gives the friendly-error path; the UNIQUE on
     # ``tags.name`` is the actual race backstop. Two concurrent POSTs

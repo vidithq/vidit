@@ -37,7 +37,15 @@ const RECORDING_FPS = 30;
 
 const SCENES = [
   { name: "intro", frames: 180 },   // 3s
-  { name: "video", frames: 3570 },  // 59.5s @ 60fps — matches recording
+  { name: "video", frames: 3630 },  // 60.5s @ 60fps — matches the
+                                    // recording's natural length with a
+                                    // small post-submit beat before the
+                                    // outro fade. Earlier renders pushed
+                                    // this up to 3960 (66s) to chase
+                                    // breathing room and overshot the
+                                    // outro cut by ~7s; keeping the comp
+                                    // close to the recording's actual
+                                    // duration is the sweet spot.
   { name: "outro", frames: 360 },   // 6s — fits the "Also in the platform" list
 ] as const;
 
