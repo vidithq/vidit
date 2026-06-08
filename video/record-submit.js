@@ -52,13 +52,13 @@ const bountyUploadCachePath = (url) =>
 fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
 fs.mkdirSync(FRAMES_DIR, { recursive: true });
 
-async function mintCookies() {
+async function mintCookiesFor(email, password) {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "analyst@vidit.app", password: "analyst" }),
+    body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new Error(`login ${res.status}`);
+  if (!res.ok) throw new Error(`login ${email}: ${res.status}`);
   const out = [];
   let csrf = null;
   for (const c of res.headers.getSetCookie()) {
@@ -68,8 +68,15 @@ async function mintCookies() {
       if (m[1] === "vidit_csrf") csrf = m[2];
     }
   }
-  return { cookies: out, csrf, cookieHeader: out.map((c) => `${c.name}=${c.value}`).join("; ") };
+  return {
+    cookies: out,
+    csrf,
+    cookieHeader: out.map((c) => `${c.name}=${c.value}`).join("; "),
+  };
 }
+
+const mintCookies = () => mintCookiesFor("analyst@vidit.app", "analyst");
+const mintAdminCookies = () => mintCookiesFor("admin@vidit.app", "admin");
 
 // Idempotent cleanup: each recording's Submit click creates a real
 // geolocation at the tweet's coords, which would then show up as a
@@ -81,6 +88,11 @@ async function mintCookies() {
 // tweet's parsed coords drift, the dedupe wipe still matches whatever
 // the recording will actually post, instead of going stale and
 // silently leaving duplicates behind.
+//
+// The DELETE runs under an ADMIN cookie because prior runs sometimes
+// land rows under a different author (admin, an earlier promo
+// recorder); analyst-auth DELETE returns 403 on those and the wipe
+// silently skipped them, so the duplicate banner kept firing.
 async function clearTweetDuplicates({ csrf, cookieHeader }, tweetUrl) {
   const parsed = await fetch(`${API}/geolocations/import-from-tweet`, {
     method: "POST",
@@ -106,11 +118,18 @@ async function clearTweetDuplicates({ csrf, cookieHeader }, tweetUrl) {
     await fetch(url, { headers: { cookie: cookieHeader } })
   ).json();
   if (!dups.length) return 0;
+  const admin = await mintAdminCookies();
   for (const g of dups) {
-    await fetch(`${API}/geolocations/${g.id}`, {
+    const res = await fetch(`${API}/geolocations/${g.id}`, {
       method: "DELETE",
-      headers: { cookie: cookieHeader, "X-CSRF-Token": csrf },
+      headers: {
+        cookie: admin.cookieHeader,
+        "X-CSRF-Token": admin.csrf,
+      },
     });
+    if (!res.ok) {
+      console.warn(`  skip dup ${g.id}: ${res.status}`);
+    }
   }
   return dups.length;
 }
