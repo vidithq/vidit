@@ -14,14 +14,13 @@ The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not g
 
 ## M1 — Open source launch *(now)*
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The vitrine and the repo-prep work have shipped (see [CHANGELOG](../CHANGELOG.md) under *Unreleased* and *v0.2.0*). What's left: an optional public docs site, then the flip + the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, all firing in the same window.
+Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The vitrine, the repo-prep work, and the public docs site at [`docs.vidit.app`](https://docs.vidit.app) have shipped (see [CHANGELOG](../CHANGELOG.md) under *Unreleased* and *v0.2.0*). What's left: the flip + the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, all firing in the same window.
 
 DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https://github.com/apps/dco) (installed at the org level), not an in-repo workflow file — same standard installation as Kubernetes / Helm / containerd. Branch protection on `main` requires the `DCO` status check.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
-| P2 | Repo | Public docs site via MkDocs Material → `docs.vidit.app` | Today's `docs/` is in-repo only — discoverable for contributors, not for analysts/evaluators. **Scope: `docs/` only** (api, backups, data-model, design, engineering) — pure reference site. `planning/` stays GitHub-only as a markdown tracker (roadmap remains readable on GitHub but unstyled; the landing's ROADMAP array already covers the public-facing projection). MkDocs Material reads `docs/*.md` with minimal restructuring (nav configured in a new `mkdocs.yml` at root, `docs_dir: docs`), builds via GitHub Actions, hosts on Cloudflare Pages or GitHub Pages, points `docs.vidit.app` at it. Matches the Astral / uv / Bun pattern of `docs/` = source for a hosted site. Add a `https://docs.vidit.app` link to the README's Documentation section. |
-| P1 | Repo | Flip the repository public | The flip itself, once the docs-site call is settled (ship-or-skip). |
+| P1 | Repo | Flip the repository public | The flip itself, once the rows above are done. |
 
 ---
 

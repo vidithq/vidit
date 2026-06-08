@@ -90,6 +90,8 @@ More detail: [docs/engineering.md](docs/engineering.md).
 
 ## Documentation
 
+The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.app)** (MkDocs Material build of [`docs/`](docs/)).
+
 - [Roadmap](planning/roadmap.md)
 - [What's next](planning/next.md)
 - [Engineering](docs/engineering.md)
