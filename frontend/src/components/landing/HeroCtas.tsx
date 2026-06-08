@@ -29,7 +29,7 @@ export default function HeroCtas() {
   }
 
   return (
-    <div className="mt-8 flex items-center justify-center">
+    <div className="mt-8 flex flex-col items-center gap-3">
       <Link
         href="/register"
         className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
@@ -37,6 +37,27 @@ export default function HeroCtas() {
         Have an invite code?
         <ArrowRight size={15} />
       </Link>
+      <p className="text-sm text-neutral-400">
+        No invite? Request access — DM{" "}
+        <a
+          href="https://x.com/vidithq"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-orange-400 hover:text-orange-300"
+        >
+          @vidithq
+        </a>{" "}
+        or ask in{" "}
+        <a
+          href="https://discord.gg/9wPtsrrKyJ"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-orange-400 hover:text-orange-300"
+        >
+          Discord
+        </a>
+        .
+      </p>
     </div>
   );
 }
