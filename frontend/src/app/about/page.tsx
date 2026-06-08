@@ -22,7 +22,7 @@ const COMMITMENTS = [
   },
   {
     title: "Attribution we can enforce",
-    body: "Twitter and Telegram can't help you when a media outlet reuses your geolocation without crediting you. Vidit will. We'll formalise the licence terms before public launch and pursue uncredited reuse as a project commitment. As the legal entity hosting the work, the platform can give the community a piece of standing it doesn't get from social media.",
+    body: "Twitter and Telegram can't help you when a media outlet reuses your geolocation without crediting you. Vidit will. We'll formalise the licence terms before open registration and pursue uncredited reuse as a project commitment. As the legal entity hosting the work, the platform can give the community a piece of standing it doesn't get from social media.",
   },
   {
     title: "Your work, kept safe and verifiable",
@@ -186,9 +186,10 @@ export default function AboutPage() {
           description="How Vidit pays for itself, today and longer-term."
         >
           <p className="text-sm text-neutral-300 leading-relaxed">
-            Today, Vidit is a hobby project. All running costs (hosting,
-            domain, storage, CDN, email) come out of one person&apos;s pocket.
-            No investor, no grant, no ad revenue, no data resale.
+            The aim is independence and longevity, not maximising revenue. In
+            the long run, if the model works, the goal is to redistribute
+            meaningful income back to the analysts whose geolocations the
+            platform is built on. That is an ambition, not a promise.
           </p>
           <p className="text-sm text-neutral-300 leading-relaxed">
             Longer-term, the platform needs to cover its own costs without
@@ -201,10 +202,9 @@ export default function AboutPage() {
             institutional users).
           </p>
           <p className="text-sm text-neutral-300 leading-relaxed">
-            The aim is independence and longevity, not maximising revenue. In
-            the long run, if the model works, the goal is to redistribute
-            meaningful income back to the analysts whose geolocations the
-            platform is built on. That is an ambition, not a promise.
+            Today, Vidit is a hobby project. All running costs (hosting,
+            domain, storage, CDN, email) come out of one person&apos;s pocket.
+            No investor, no grant, no ad revenue, no data resale.
           </p>
         </Section>
 
@@ -242,7 +242,7 @@ export default function AboutPage() {
             </a>{" "}
             from the address tied to the account, and we&apos;ll handle it. A
             full legal terms-of-service and privacy policy will land before
-            public launch.
+            open registration.
           </p>
         </Section>
 
@@ -252,10 +252,12 @@ export default function AboutPage() {
           description="Who&rsquo;s building the platform."
         >
           <p className="text-sm text-neutral-300 leading-relaxed">
-            For now, Vidit is a one-person project, built and maintained by a solo
-            European developer who has followed the OSINT/GEOINT community
-            for years on Twitter and Discord. As Vidit grows, so will the
-            team.
+            Vidit is a one-person project, maintained pseudonymously under
+            operational security similar to the analysts the platform serves.
+            Trust rests on the AGPL-3.0 guarantee and the auditable codebase,
+            not on the maintainer&apos;s identity. The maintainer has followed
+            the OSINT/GEOINT community for years on Twitter and Discord. As
+            Vidit grows, so will the team.
           </p>
         </Section>
 
