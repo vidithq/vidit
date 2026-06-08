@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -103,7 +103,8 @@ export function TweetImportBanner({
         { method: "POST", body: JSON.stringify({ url }) }
       );
       await onImported(parsed);
-      setUrl("");
+      // Keep ``url`` populated so the post-import view shows the
+      // imported URL in-place rather than collapsing the input.
     } catch (err) {
       // ``ApiError`` carries the server's ``detail`` text — render it
       // verbatim. For 400 / 404 / 502 the backend already speaks
@@ -130,34 +131,13 @@ export function TweetImportBanner({
     }
   };
 
-  if (importedFrom !== null) {
-    const state = authorshipState(linkedX, importedFrom);
-    return (
-      <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-neutral-300">
-            Imported from{" "}
-            <span className="font-medium text-neutral-100">
-              @{importedFrom}
-            </span>{" "}
-            — review and submit.
-          </p>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors"
-          >
-            <X size={12} />
-            Clear
-          </button>
-        </div>
-        {state !== "match" && (
-          <AuthorshipWarning state={state} tweetAuthor={importedFrom} linkedX={linkedX} />
-        )}
-      </section>
-    );
-  }
-
+  // Single-shape banner across the import boundary: same layout pre and
+  // post import, just the button label + the input's disabled state
+  // change. The earlier swap-to-a-different-section approach read as a
+  // visible layout flicker on the recorded screen capture even with
+  // matching height.
+  const imported = importedFrom !== null;
+  const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
       <header className="space-y-1">
@@ -170,14 +150,18 @@ export function TweetImportBanner({
         </p>
       </header>
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-      {/* Pre-import nudge: surface the same authorship signal *before*
-          the analyst pastes anything, so the constraint is visible up
-          front rather than as a surprise after the round trip. Only
-          when the analyst hasn't linked an X handle at all — once
-          they have one, the post-import "different account" warning
-          covers the meaningful failure mode. */}
-      {!linkedX && (
-        <AuthorshipNudgeNoLink />
+      {/* Pre-import nudge surfaces the no-linked-X signal *before* the
+          analyst pastes anything. Once an import has succeeded the
+          post-import ``AuthorshipWarning`` (no-link or different
+          account) covers the same failure mode with a more pointed
+          message. */}
+      {!imported && !linkedX && <AuthorshipNudgeNoLink />}
+      {imported && state !== "match" && (
+        <AuthorshipWarning
+          state={state}
+          tweetAuthor={importedFrom}
+          linkedX={linkedX}
+        />
       )}
       <div className="flex gap-2">
         <input
@@ -187,15 +171,15 @@ export function TweetImportBanner({
           onKeyDown={handleKeyDown}
           placeholder="https://x.com/handle/status/…"
           className={FORM_INPUT}
-          disabled={busy}
+          disabled={busy || imported}
         />
         <button
           type="button"
-          onClick={() => void runImport()}
-          disabled={busy || !url}
+          onClick={() => (imported ? onClear() : void runImport())}
+          disabled={busy || (!imported && !url)}
           className={`px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap ${PRIMARY_BUTTON}`}
         >
-          {busy ? "Importing…" : "Import"}
+          {imported ? "Imported!" : busy ? "Importing…" : "Import"}
         </button>
       </div>
     </section>

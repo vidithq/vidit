@@ -22,7 +22,14 @@ const { spawn } = require("child_process");
 const BASE = "http://localhost:3000";
 const API = "http://localhost:8000/api/v1";
 const FRAMES_DIR = "./out/rec-frames";
-const FPS = 30;
+// 60 fps capture. The 30 fps it ran at before is half what the comp
+// (`Root.tsx`) renders at, so every captured frame played for 2 comp
+// frames and motion was visibly stepped. At the existing 2560×1440
+// JPEG q=95 frame cost (~10-12 ms with disk write ~1-2 ms) the
+// grabber fits in the 16.6 ms per-frame budget with margin; pushing
+// to 4K or q≥98 would not. Must stay paired with the ffmpeg encode's
+// `-framerate 60` below.
+const FPS = 60;
 const TWEET_URL = "https://x.com/geo27752/status/2060086984513626223";
 // For the live "Post a bounty" beat in the recording:
 //   - The form's Source URL field gets a Telegram link — the realistic
@@ -56,7 +63,7 @@ async function mintCookies() {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "admin@vidit.app", password: "admin" }),
+    body: JSON.stringify({ email: "analyst@vidit.app", password: "analyst" }),
   });
   if (!res.ok) throw new Error(`login ${res.status}`);
   const out = [];
@@ -68,51 +75,11 @@ async function mintCookies() {
       if (m[1] === "vidit_csrf") csrf = m[2];
     }
   }
-  return { cookies: out, csrf, cookieHeader: out.map((c) => `${c.name}=${c.value}`).join("; ") };
-}
-
-// Idempotent cleanup: each recording's Submit click creates a real
-// geolocation at the tweet's coords, which would then show up as a
-// "possibly related" warning on the NEXT recording. Delete them all
-// before we start, so every run reproduces the same clean flow.
-//
-// Coords + event_date are derived from the tweet itself via the
-// import-from-tweet endpoint — if `TWEET_URL` is swapped or the
-// tweet's parsed coords drift, the dedupe wipe still matches whatever
-// the recording will actually post, instead of going stale and
-// silently leaving duplicates behind.
-async function clearTweetDuplicates({ csrf, cookieHeader }, tweetUrl) {
-  const parsed = await fetch(`${API}/geolocations/import-from-tweet`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie: cookieHeader,
-      "X-CSRF-Token": csrf,
-    },
-    body: JSON.stringify({ url: tweetUrl }),
-  }).then((r) => (r.ok ? r.json() : null));
-  if (!parsed) {
-    console.warn("  clearTweetDuplicates: could not parse tweet, skipping");
-    return 0;
-  }
-  const coord = parsed.parsed_coords?.[0];
-  const date = parsed.posted_at?.slice(0, 10);
-  if (!coord || !date) {
-    console.warn("  clearTweetDuplicates: missing coords/date on tweet, skipping");
-    return 0;
-  }
-  const url = `${API}/geolocations/possible-duplicates?lat=${coord.lat}&lng=${coord.lng}&event_date=${date}`;
-  const dups = await (
-    await fetch(url, { headers: { cookie: cookieHeader } })
-  ).json();
-  if (!dups.length) return 0;
-  for (const g of dups) {
-    await fetch(`${API}/geolocations/${g.id}`, {
-      method: "DELETE",
-      headers: { cookie: cookieHeader, "X-CSRF-Token": csrf },
-    });
-  }
-  return dups.length;
+  return {
+    cookies: out,
+    csrf,
+    cookieHeader: out.map((c) => `${c.name}=${c.value}`).join("; "),
+  };
 }
 
 // Human-paced sleep — readable on video.
@@ -184,6 +151,73 @@ async function slowScrollToSelector(page, selector, durationMs = 1800) {
   if (targetY !== null) await slowScrollToY(page, targetY, durationMs);
 }
 
+// Variant of `slowScrollToSelector` that lands the target near the top
+// of the viewport (default 80px in) instead of centering it. Useful
+// when the section's BODY (proof editor + inline media) is what we
+// want visible, not just the heading.
+async function slowScrollToTopOf(
+  page,
+  selector,
+  durationMs = 1800,
+  offsetFromTop = 80
+) {
+  const targetY = await page.evaluate(
+    ({ sel, offset }) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return Math.max(0, window.scrollY + rect.top - offset);
+    },
+    { sel: selector, offset: offsetFromTop }
+  );
+  if (targetY !== null) await slowScrollToY(page, targetY, durationMs);
+}
+
+// Find the screen-space rect of a substring inside the ProseMirror
+// proof editor. Returns `null` when the substring isn't currently in
+// the rendered text (e.g., already deleted by a previous beat).
+async function findProofTextRect(page, substring) {
+  return page.evaluate((needle) => {
+    const pm = document.querySelector(".ProseMirror");
+    if (!pm) return null;
+    const walker = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const idx = (node.textContent || "").indexOf(needle);
+      if (idx >= 0) {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + needle.length);
+        const r = range.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }
+    }
+    return null;
+  }, substring);
+}
+
+// Mouse-drag to visibly select a substring in the proof editor, then
+// press Delete. ProseMirror handles the keyboard event as a content
+// removal, so the doc model + DOM stay in sync. No-op when the
+// substring isn't found.
+async function selectAndDeleteProofText(page, substring) {
+  const rect = await findProofTextRect(page, substring);
+  if (!rect) return false;
+  const y = rect.y + rect.height / 2;
+  const startX = rect.x + 0.5;
+  const endX = rect.x + rect.width - 0.5;
+  await page.mouse.move(startX, y, { steps: 20 });
+  await wait(220);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 22 });
+  await wait(280);
+  await page.mouse.up();
+  await wait(450);
+  await page.keyboard.press("Delete");
+  await wait(550);
+  return true;
+}
+
 async function slowScrollToBottom(page, durationMs = 2200) {
   const targetY = await page.evaluate(
     () => document.documentElement.scrollHeight
@@ -251,11 +285,9 @@ async function prepareBountyUpload(auth) {
 
 (async () => {
   const auth = await mintCookies();
-  // Pre-flight: wipe any geolocations the tweet's coords would resolve
-  // to as "possibly related" — keeps the prefilled view free of the
-  // duplicate-warning banner across repeated recordings.
-  const wiped = await clearTweetDuplicates(auth, TWEET_URL);
-  if (wiped) console.log(`✓ cleared ${wiped} prior duplicate(s)`);
+  // `seed-bounties.js` already wiped tweet-coords duplicates under an
+  // admin cookie before we got here, so the submit form starts clean
+  // — no extra login needed in this script for that cleanup step.
 
   // Pre-fetch the bounty video so the upload during the recording is
   // instant. Returns the on-disk path to upload (per-URL cache), or
@@ -288,6 +320,24 @@ async function prepareBountyUpload(auth) {
         document.head.appendChild(style);
       }
       if (document.getElementById("__demo_cursor__")) return;
+      // Click pulse on the cursor itself — quick scale-down/back-up
+      // beat on each mousedown, no continuous animation. Reads as the
+      // analyst "tapping" without distracting visual chrome while the
+      // cursor is just travelling. Implemented as a one-shot CSS
+      // keyframe so the dip is visible even when Playwright's
+      // synthetic mousedown → mouseup pair lands inside a single
+      // frame (a JS-driven `style.transform =` toggle would race the
+      // immediate reset and the dip would never appear on screen).
+      const pulseStyle = document.createElement("style");
+      pulseStyle.id = "__demo_cursor_pulse_kf__";
+      pulseStyle.textContent =
+        "@keyframes __demo_cursor_pulse__ {" +
+        "  0%   { transform: scale(1); }" +
+        "  25%  { transform: scale(0.85); }" +
+        "  100% { transform: scale(1); }" +
+        "}";
+      document.head.appendChild(pulseStyle);
+
       const cursor = document.createElement("div");
       cursor.id = "__demo_cursor__";
       cursor.style.cssText = [
@@ -302,31 +352,21 @@ async function prepareBountyUpload(auth) {
         "transform: translate(-9999px, -9999px)",
       ].join(";");
       cursor.innerHTML =
+        // The SVG sits inside its own wrapper so the click-pulse
+        // (which mutates `transform: scale(...)`) doesn't fight the
+        // mousemove handler that sets `transform: translate(...)` on
+        // the outer `__demo_cursor__` element. ``transform-origin``
+        // is the arrow's hotspot (top-left) so the scale doesn't
+        // drift the visual click point off-pixel.
+        '<div id="__demo_cursor_inner__" style="transform-origin:2px 2px;">' +
         '<svg width="24" height="24" viewBox="0 0 28 28" style="display:block;filter:drop-shadow(0 1.5px 2px rgba(0,0,0,0.55))">' +
         '<path d="M 2 2 L 2 22 L 7.5 17.5 L 11 25 L 14 23.5 L 10.5 16 L 18 16 Z" ' +
         'fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round" />' +
-        "</svg>";
-
-      const ripple = document.createElement("div");
-      ripple.id = "__demo_ripple__";
-      ripple.style.cssText = [
-        "position: fixed",
-        "left: 0",
-        "top: 0",
-        "width: 44px",
-        "height: 44px",
-        "margin: -22px 0 0 -22px",
-        "border: 2.5px solid #f97316",
-        "background: rgba(249,115,22,0.18)",
-        "border-radius: 50%",
-        "pointer-events: none",
-        "z-index: 2147483646",
-        "opacity: 0",
-        "transform: translate(-9999px, -9999px) scale(0.4)",
-      ].join(";");
+        "</svg>" +
+        "</div>";
 
       document.documentElement.appendChild(cursor);
-      document.documentElement.appendChild(ripple);
+      const cursorInner = document.getElementById("__demo_cursor_inner__");
 
       document.addEventListener(
         "mousemove",
@@ -335,18 +375,20 @@ async function prepareBountyUpload(auth) {
         },
         true
       );
+      // Trigger the one-shot pulse on mousedown. Removing then
+      // re-adding the animation property (with a reflow in between)
+      // re-runs the keyframe even when the previous run hasn't
+      // finished — every click gets its own dip beat.
       document.addEventListener(
         "mousedown",
-        (e) => {
-          ripple.style.transition = "none";
-          ripple.style.transform = `translate(${e.clientX}px, ${e.clientY}px) scale(0.4)`;
-          ripple.style.opacity = "0.6";
-          requestAnimationFrame(() => {
-            ripple.style.transition =
-              "transform 420ms cubic-bezier(0,0,0.2,1), opacity 420ms cubic-bezier(0,0,0.2,1)";
-            ripple.style.transform = `translate(${e.clientX}px, ${e.clientY}px) scale(2.4)`;
-            ripple.style.opacity = "0";
-          });
+        () => {
+          cursorInner.style.animation = "none";
+          // Force reflow so removing + re-adding `animation` actually
+          // restarts the keyframe rather than being collapsed by the
+          // browser as a no-op style update.
+          void cursorInner.offsetWidth;
+          cursorInner.style.animation =
+            "__demo_cursor_pulse__ 320ms cubic-bezier(0.4,0,0.6,1)";
         },
         true
       );
@@ -377,7 +419,7 @@ async function prepareBountyUpload(auth) {
         try {
           const buf = await page.screenshot({
             type: "jpeg",
-            quality: 92,
+            quality: 95,
           });
           const filename = path.join(
             FRAMES_DIR,
@@ -397,7 +439,12 @@ async function prepareBountyUpload(auth) {
 
   // ─── The flow ───────────────────────────────────────────────────────────
   console.log("→ navigate to /map");
-  await page.goto(`${BASE}/map`, { waitUntil: "networkidle" });
+  // `networkidle` was timing out once the map started serving the
+  // ~1000 demo geolocations — the points fetch + clustering keeps
+  // network activity going past Playwright's 500 ms "idle" window.
+  // `domcontentloaded` is good enough here; the subsequent
+  // `waitForSelector` calls below handle the actual readiness signals.
+  await page.goto(`${BASE}/map`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('a[href="/map"]', { timeout: 10000 });
   await page.waitForSelector(".maplibregl-canvas", { timeout: 10000 });
   await page.waitForFunction(
@@ -503,15 +550,99 @@ async function prepareBountyUpload(auth) {
   await slowScrollToSelector(page, '[data-promo-anchor="tags"]', 2200);
   await wait(600);
 
-  console.log("→ glide → click tag chips");
-  for (const name of ["Israel Gaza", "Drone", "drone strike"]) {
+  console.log("→ glide → click curated tag chips");
+  for (const name of ["Israel Gaza", "Drone"]) {
     const chip = page
       .getByRole("button", { name: new RegExp(`^${name}$`, "i") })
       .first();
     await glideAndClick(page, chip, { steps: 38, settle: 320 });
     await wait(400);
   }
+  await wait(500);
+
+  console.log("→ type free tag → click Add");
+  // Type the free tag instead of clicking a suggestion chip — the chip
+  // is only rendered when the tag already has ≥1 live geolocation
+  // reference, which the duplicate-wipe step strips. Typing + Add
+  // produces the same UX beat without coupling the recording to demo
+  // data we no longer keep around.
+  const freeTagInput = page.getByLabel(/new free tag name/i).first();
+  await glideAndClick(page, freeTagInput, { steps: 38, settle: 320 });
+  await freeTagInput.type("drone strike", { delay: 55 });
+  await wait(400);
+  const addBtn = page.getByRole("button", { name: /^\+ add$/i }).first();
+  await glideAndClick(page, addBtn, { steps: 38, settle: 320 });
   await wait(700);
+
+  console.log("→ scroll to Proof (top-of-viewport so the body + media show)");
+  // Tag the Proof header dynamically (no stable hook in the form
+  // markup), then scroll with the heading near the TOP of the viewport
+  // instead of centred — that puts the editor body and any inline
+  // proof image in view, which is the part the analyst is about to
+  // edit. The default `slowScrollToSelector` centres the header and
+  // leaves the body partly clipped.
+  await page.evaluate(() => {
+    const headers = Array.from(document.querySelectorAll("h2,h3"));
+    const proof = headers.find((h) => /^proof/i.test(h.textContent || ""));
+    if (proof) proof.setAttribute("data-promo-anchor", "proof");
+  });
+  await slowScrollToTopOf(page, '[data-promo-anchor="proof"]', 1800, 90);
+  await wait(700);
+
+  console.log("→ strip noise from proof (4× drag-select + Delete)");
+  // The auto-import seeds the proof with the OP tweet text +
+  // `Source:` attribution paragraph. Four chunks are noise the
+  // analyst would clean before publishing:
+  //   1. `(img 4th attack)` — the OP's own parenthetical reference
+  //      to the tweet's images, irrelevant once the images sit
+  //      inline in the proof.
+  //   2. `Geolocation: 33.2241725, 35.5489751` — duplicates the
+  //      lat/lng fields filled in above.
+  //   3. `https://t.co/dKCgli05Hl` — the OP's t.co shortener (no
+  //      content value once the canonical URL is in the source
+  //      field).
+  //   4. `https://t.co/1us3ra5ZJO` — same, on the Source paragraph.
+  // Each search string includes the surrounding `\n\n` separators
+  // when present so the orphan line breaks vanish with the chunk;
+  // without that the proof keeps visible blank lines after the
+  // delete. Falls back to the bare string if the leading `\n\n`
+  // form isn't found (e.g., after a previous delete collapsed the
+  // separators).
+  const proofCuts = [
+    ["\n\n(img 4th attack)", "(img 4th attack)"],
+    [
+      "\n\nGeolocation: 33.2241725, 35.5489751",
+      "Geolocation: 33.2241725, 35.5489751",
+    ],
+    [" https://t.co/dKCgli05Hl", "https://t.co/dKCgli05Hl"],
+    [" https://t.co/1us3ra5ZJO", "https://t.co/1us3ra5ZJO"],
+  ];
+  for (const variants of proofCuts) {
+    for (const needle of variants) {
+      if (await selectAndDeleteProofText(page, needle)) break;
+    }
+  }
+  // Belt-and-braces collapse: walk the proof's text nodes and squeeze
+  // any double-newlines that survived the deletes (Tiptap sometimes
+  // keeps the `\n` chars even when the surrounding text is gone). The
+  // mutation goes through ProseMirror's contenteditable surface via
+  // execCommand so the editor model picks up the change.
+  await page.evaluate(() => {
+    const pm = document.querySelector(".ProseMirror");
+    if (!pm) return;
+    const walker = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const before = node.textContent || "";
+      const after = before
+        .replace(/\n{2,}/g, " ")
+        .replace(/[ \t]+/g, " ")
+        .replace(/^ /, "")
+        .replace(/ $/, "");
+      if (after !== before) node.textContent = after;
+    }
+  });
+  await wait(900); // beat to read the cleaned proof
 
   console.log("→ scroll to submit (slow)");
   await slowScrollToBottom(page, 2400);
@@ -529,6 +660,59 @@ async function prepareBountyUpload(auth) {
   });
   // Let the detail page render (map, fields, media thumbnails).
   await wait(3000);
+
+  // Iteration shortcut — flip to `true` to truncate the recording
+  // right after the geolocation submit (no bounty browse, no bounty
+  // post). Useful when tuning the form-fill / proof-edit beats; the
+  // full flow adds ~40s of capture + render time.
+  const STOP_AFTER_SUBMIT = false;
+  if (STOP_AFTER_SUBMIT) {
+    console.log("→ stop grabber early (STOP_AFTER_SUBMIT=true)");
+    stopped = true;
+    const tEndEarly = Date.now();
+    await grabber;
+    await browser.close();
+    const wallEarly = (tEndEarly - t0) / 1000;
+    const fpsEarly = frameIdx / wallEarly;
+    console.log(
+      `\nCaptured ${frameIdx} frames in ${wallEarly.toFixed(1)}s` +
+        ` (${fpsEarly.toFixed(2)} fps; target ${FPS})`
+    );
+    console.log("→ encode mp4");
+    const outPathEarly = "./out/recording-submit.mp4";
+    const ffEarly = spawn(
+      "ffmpeg",
+      [
+        "-y",
+        "-framerate",
+        fpsEarly.toFixed(3),
+        "-i",
+        `${FRAMES_DIR}/f_%05d.jpg`,
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "16",
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        outPathEarly,
+      ],
+      { stdio: ["ignore", "inherit", "inherit"] }
+    );
+    await new Promise((resolve, reject) => {
+      ffEarly.on("exit", (code) => {
+        if (code === 0) {
+          console.log(`\n✓ ${outPathEarly}`);
+          resolve();
+        } else {
+          reject(new Error(`ffmpeg exit ${code}`));
+        }
+      });
+      ffEarly.on("error", reject);
+    });
+    return;
+  }
 
   console.log("→ glide → click Bounties (in sidebar)");
   const bountiesNav = page.locator('a[href="/bounties"]').first();
@@ -651,7 +835,13 @@ async function prepareBountyUpload(auth) {
   await glideAndClick(page, submitBountyBtn, { steps: 55, settle: 450 });
   try {
     await page.waitForURL(/\/bounties\/[0-9a-f-]+(?:$|\?)/i, { timeout: 15000 });
-    await wait(2800); // longer hold on the new bounty's detail page
+    // Post-submit hold so the analyst's just-created bounty is on
+    // screen for a real beat before the outro cut. ~2.5s of recording
+    // here pairs with `SCENES.video.frames = 3840` in `src/Demo.tsx`
+    // (64s comp Sequence) — the comp covers the submit click + this
+    // hold + a small fade-in window without any frozen-last-frame
+    // dead air.
+    await wait(2500);
   } catch (e) {
     // Capture the form's error state for debugging, stop the grabber
     // cleanly (we still want partial frames to inspect), then throw so
@@ -681,12 +871,20 @@ async function prepareBountyUpload(auth) {
   await grabber;
   await browser.close();
 
+  const wallSeconds = (tEnd - t0) / 1000;
+  const actualFps = frameIdx / wallSeconds;
   console.log(
-    `\nCaptured ${frameIdx} frames in ${((tEnd - t0) / 1000).toFixed(1)}s` +
-      ` (${(frameIdx / ((tEnd - t0) / 1000)).toFixed(1)} fps)`
+    `\nCaptured ${frameIdx} frames in ${wallSeconds.toFixed(1)}s` +
+      ` (${actualFps.toFixed(2)} fps; target ${FPS})`
   );
 
   // ─── Mux frames → MP4 ───────────────────────────────────────────────────
+  // Encode at the MEASURED capture fps, not the target `FPS`. When the
+  // grabber can't sustain the target (screenshot + JPEG encode + disk
+  // write goes over the per-frame budget) the labeled framerate ends
+  // up faster than the wall-clock cadence, and the recording plays
+  // sped-up inside the comp. Using `actualFps` keeps playback duration
+  // identical to the analyst's lived experience.
   console.log("→ encode mp4");
   const outPath = "./out/recording-submit.mp4";
   const ff = spawn(
@@ -694,7 +892,7 @@ async function prepareBountyUpload(auth) {
     [
       "-y",
       "-framerate",
-      String(FPS),
+      actualFps.toFixed(3),
       "-i",
       `${FRAMES_DIR}/f_%05d.jpg`,
       "-c:v",

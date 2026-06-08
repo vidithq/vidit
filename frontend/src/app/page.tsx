@@ -14,10 +14,32 @@ import DemoVideo from "@/components/landing/DemoVideo";
 // for SEO; the hero CTAs are a small `<HeroCtas>` client island that swaps
 // Sign-in / invite for "Open the map" once the visitor is signed in.
 
+// `openGraph` + `twitter` blocks make the pinned X tweet render a
+// summary_large_image card (rich) instead of the bland text card a
+// title+description-only metadata produces. The image itself is the
+// sibling `opengraph-image.tsx` + `twitter-image.tsx` route files —
+// Next.js auto-attaches them to every page that doesn't override.
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
     "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events. In closed beta.",
+  openGraph: {
+    type: "website",
+    url: "https://vidit.app",
+    siteName: "Vidit",
+    title: "Vidit: archive and map conflict geolocations",
+    description:
+      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@vidithq",
+    creator: "@vidithq",
+    title: "Vidit: archive and map conflict geolocations",
+    description:
+      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+  },
 };
 
 // Set NEXT_PUBLIC_DEMO_VIDEO_URL to a YouTube/Vimeo *embed* URL (or a

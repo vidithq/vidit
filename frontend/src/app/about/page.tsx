@@ -1,5 +1,4 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ShieldCheck,
@@ -14,6 +13,34 @@ import {
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
+
+// Server component (no interactive state — all sections are static markup
+// + icons), so we can export `metadata` directly. Same openGraph + twitter
+// shape as the landing so a shared link reads as Vidit, not a bare title.
+// The shared `opengraph-image.tsx` / `twitter-image.tsx` at the app root
+// fills in the image without per-page binary assets.
+export const metadata: Metadata = {
+  title: "About Vidit",
+  description:
+    "Commitments, methodology, funding, and privacy posture behind Vidit — the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
+  openGraph: {
+    type: "website",
+    url: "https://vidit.app/about",
+    siteName: "Vidit",
+    title: "About Vidit",
+    description:
+      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@vidithq",
+    creator: "@vidithq",
+    title: "About Vidit",
+    description:
+      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+  },
+};
 
 const COMMITMENTS = [
   {
