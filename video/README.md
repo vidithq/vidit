@@ -68,7 +68,7 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 | Tweet imported in the recording's geolocation submit | `TWEET_URL` at top of `record-submit.js` |
 | Bounty form's source URL + uploaded video source | `BOUNTY_SOURCE_URL` + `BOUNTY_TWEET_URL` in `record-submit.js` |
 | Cursor speed / scroll cadence | `glideAndClick` defaults + `slowScrollToY` durations in `record-submit.js` |
-| Faked browser chrome (URL bar, traffic lights) | `src/components/BrowserChrome.tsx` |
+| Faked browser chrome (URL bar, traffic lights) | `src/components/VideoChrome.tsx` |
 
 ## How it works, in 30 seconds
 

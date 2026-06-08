@@ -156,6 +156,14 @@ export default function BountyDetailPage() {
                       className="w-full h-48 object-cover"
                     />
                   ) : (
+                    // `#t=0.1` is an HTML media-fragment URI that
+                    // tells the browser to seek to t=0.1s on metadata
+                    // load — combined with `preload="metadata"`, this
+                    // forces the first frame to paint as a
+                    // poster-equivalent so the tile isn't a black box
+                    // until the user clicks play. Cheap fix that
+                    // sidesteps generating + storing a real poster
+                    // image per bounty.
                     <video
                       src={`${m.storage_url}#t=0.1`}
                       controls
