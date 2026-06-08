@@ -56,7 +56,7 @@ async function mintCookies() {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "admin@vidit.app", password: "admin" }),
+    body: JSON.stringify({ email: "analyst@vidit.app", password: "analyst" }),
   });
   if (!res.ok) throw new Error(`login ${res.status}`);
   const out = [];

@@ -8,8 +8,9 @@
 //   3. POST /bounties multipart: title (from tweet text), source_url
 //      (canonical tweet URL), tags, files (the downloaded media)
 //
-// Idempotent: deletes the admin user's prior "seeded bounty" rows
-// before re-seeding so re-runs converge to the same state.
+// Idempotent: deletes the bounty author's and the recording viewer's
+// prior "seeded bounty" rows before re-seeding so re-runs converge to
+// the same state.
 
 const { Blob } = require("node:buffer");
 
@@ -175,16 +176,18 @@ async function wipeUserBounties(auth) {
 }
 
 (async () => {
-  // The bounty author has to be someone OTHER than admin — the recording
-  // logs in as admin, and the bounty detail page only shows "I'm working
-  // on this" when the viewer is NOT the bounty's author.
+  // The bounty author has to be someone OTHER than the recording
+  // viewer — the bounty detail page only shows "I'm working on this"
+  // when the viewer is NOT the bounty's author. The recording logs in
+  // as `analyst`, so `demo-analyst` owns the seeded bounties.
   const author = await mintAuth("demo-analyst@vidit.app", "demo-analyst");
   await wipeUserBounties(author);
 
-  // Admin's prior bounties (from older record-submit runs) too — they'd
-  // otherwise linger in the list as ghost rows.
-  const admin = await mintAuth("admin@vidit.app", "admin");
-  await wipeUserBounties(admin);
+  // The recording's `analyst` also posts a new bounty in the live
+  // "Post bounty" beat. Wipe any prior bounties they own from earlier
+  // record-submit runs so they don't linger as ghost rows.
+  const recorder = await mintAuth("analyst@vidit.app", "analyst");
+  await wipeUserBounties(recorder);
 
   const auth = author; // reuse the rest of this script unchanged
   // Conflict + capture-source — every bounty needs both for the
@@ -243,10 +246,10 @@ async function wipeUserBounties(auth) {
   }
 
   // Pre-seed a single "I'm working on this" claim from analyst-helper
-  // (a NON-admin user) so the list visibly shows "1 working" on one
-  // bounty when admin opens the page in the recording. The recording's
-  // admin then clicks "I'm working on this" on a *different* bounty
-  // to demonstrate the action live.
+  // (a separate non-admin user) so the list visibly shows "1 working"
+  // on one bounty when the recording viewer opens the page. The
+  // recording then clicks "I'm working on this" on a *different*
+  // bounty to demonstrate the action live.
   const helper = await mintAuth("analyst-helper@vidit.app", "analyst-helper");
   const all = await fetch(`${API}/bounties`, {
     headers: { cookie: helper.cookieHeader },

@@ -1,10 +1,21 @@
-"""Create (or refresh) a demo analyst user for the promo-video pipeline.
+"""Create (or refresh) the three non-admin users the promo-video pipeline
+relies on.
 
-The promo records the admin clicking "I'm working on this" on a bounty,
-which only renders when the viewer is NOT the bounty's author. The seed
-bounties therefore need to belong to a non-admin user. This script
-creates such a user with a stable email + password the JS scripts can
-use to authenticate.
+The promo records a community analyst clicking "I'm working on this"
+on a bounty, which only renders when the viewer is NOT the bounty's
+author. Three distinct identities are needed:
+
+- ``analyst@vidit.app`` — the recording viewer. The promo runs as
+  this user so the recorded sidebar / profile shows a realistic
+  community handle, not the admin badge.
+- ``demo-analyst@vidit.app`` — the bounty author. Owns the seeded
+  bounties so the viewer sees the participant view.
+- ``analyst-helper@vidit.app`` — pre-seeds the "1 working" social
+  proof on one bounty in the list view; never the recording viewer
+  (that would surface "You're working on this" instead of the
+  desired "I'm working on this" beat).
+
+Each gets a stable email + password the JS scripts authenticate with.
 """
 
 import sys
@@ -19,9 +30,14 @@ from app.models.user import User
 from app.services.auth import hash_password
 
 USERS = [
-    # The bounty author — recording auth is admin, so bounties owned by
-    # someone else mean admin gets the participant view ("I'm working on
-    # this") on the detail page.
+    # The recording viewer — the promo logs in as this user so the
+    # recorded UI shows a realistic community handle, not the admin
+    # badge. Must be neither the bounty author nor the pre-seeded
+    # claimer (otherwise the "I'm working on this" beat collapses).
+    ("analyst@vidit.app", "analyst", "analyst"),
+    # The bounty author — bounties owned by someone other than the
+    # recording viewer keep the viewer in the participant view
+    # ("I'm working on this") on the detail page.
     ("demo-analyst@vidit.app", "demo-analyst", "demo-analyst"),
     # A second analyst whose "I'm working on this" click pre-seeds the
     # "1 working" indicator on one bounty in the list view.
