@@ -85,9 +85,7 @@ def create_tag(
         # row created" to API consumers that care about it.
         if existing.category == body.category:
             return Response(
-                content=TagRead.model_validate(
-                    existing, from_attributes=True
-                ).model_dump_json(),
+                content=TagRead.model_validate(existing, from_attributes=True).model_dump_json(),
                 media_type="application/json",
                 status_code=200,
             )
