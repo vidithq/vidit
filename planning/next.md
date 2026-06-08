@@ -115,6 +115,7 @@ Concept-level only — **no commitment** to design or ship. Promote a candidate 
 
 | Area | Item | Why / how |
 |---|---|---|
+| Security | Enable GitHub code scanning (CodeQL) + secret scanning on the repo | Both free for public repos; both currently off. Code scanning would give CodeQL dataflow alerts (taint, deserialization, SSRF, etc.) on each push + PR; secret scanning would catch committed tokens. Settings → Code security → enable both. One-click each; both light up on the next push. Pick up once Dependabot's surface stabilises so the alert volume stays signal-rich. |
 | Gamification | Virtual community-credit rewards on fulfilled bounties | Visible counter on the profile, no money. Bounties (scheduled above) are the natural starting point. |
 | Gamification | Achievement badges | First 100 geolocations, first bounty fulfilled, longest streak, top contributor by conflict, etc. |
 | Gamification | Public leaderboards | Filterable by conflict + time window. |
