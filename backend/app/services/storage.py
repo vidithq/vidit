@@ -465,7 +465,7 @@ async def _upload_with_optional_strip(
     * **Video** — no metadata-strip path today (would need ffmpeg /
       mp4-atom rewriting; out of scope for slice 1 of evidence
       integrity) and no derivatives either (first-frame thumb is
-      tracked separately on `next.md`). Stream-hash + stream-upload
+      a separate slice). Stream-hash + stream-upload
       via ``upload`` — memory bounded at one chunk regardless of file
       size.
 
@@ -582,8 +582,7 @@ async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
     storage URL, never the derivative path. Producing them would
     write two JPEGs per upload that nothing ever fetches, locked for
     365 days under bucket-default Object Lock. When the proof-image
-    renderer adopts derivatives (separate slice on `next.md`), flip
-    this back to the default.
+    renderer adopts derivatives, flip this back to the default.
     """
     ext = _safe_storage_extension(file.content_type)
     key = f"proof/{user_id}/{uuid4()}{ext}"

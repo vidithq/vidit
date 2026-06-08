@@ -25,10 +25,10 @@ Where does this fit on the roadmap?
 - [ ] M1 — Open source launch
 - [ ] M2 — Open beta
 - [ ] M3 — Public v1
-- [ ] Refactor / hygiene (no milestone gating)
+- [ ] Refactor / hygiene (no macro gating)
 - [ ] Unscheduled candidate
 
-See [`docs/next.md`](../../docs/next.md) for the milestone tables and the *Unscheduled candidates* section. Items already in [`docs/roadmap.md`](../../docs/roadmap.md) → *Explicitly out of scope* are not going to be reopened — please check that list first.
+See [`planning/next.md`](../../planning/next.md) for the milestone tables and the *Unscheduled candidates* section. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger — check that your proposal isn't already covered there.
 
 ## Anything else
 

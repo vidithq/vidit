@@ -21,8 +21,8 @@ What we lock in:
 * `bbox` validation (422 on malformed) — also covered in dedicated
   tests below.
 
-Out of scope (tracked in `next.md` → "Comprehensive test suite"):
-file-upload happy path, proof-image adoption, S3 sweep on delete.
+Out of scope here: file-upload happy path, proof-image adoption,
+S3 sweep on delete.
 """
 
 from __future__ import annotations
@@ -859,8 +859,8 @@ def test_list_rejects_malformed_date_filter(author):
     """``submitted_to=not-a-date`` returns 422, NOT a 500. Before the
     fix the raw string was concatenated with ``' 23:59:59'`` and
     handed to Postgres, which raised ``InvalidDatetimeFormat`` and
-    surfaced as a 500. ``/points`` is anonymous-reachable in M3 so
-    this is a Sentry-noise + abuse-amplifier vector."""
+    surfaced as a 500. ``/points`` will be anonymous-reachable once read
+    endpoints open, so this is a Sentry-noise + abuse-amplifier vector."""
     response = client.get(
         "/api/v1/geolocations/points?submitted_to=not-a-date",
         headers=login_as(client, author.id),

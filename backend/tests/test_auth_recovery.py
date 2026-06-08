@@ -332,7 +332,7 @@ def test_reset_password_rejects_token_with_wrong_purpose(client, user_factory, d
     assert response.status_code == 400
 
 
-# ── Race-safety: M1 regression ────────────────────────────────────────────
+# ── Race-safety regression ────────────────────────────────────────────────
 
 
 def test_consume_atomic_under_parallel_use(user_factory):

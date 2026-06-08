@@ -28,9 +28,9 @@ Reporters are credited in the advisory's *Credits* field on request; say so in t
 ## Scope
 
 In scope:
-- Production application code under [`backend/`](../backend/) and [`frontend/`](../frontend/).
-- Database schema and migrations under [`backend/alembic/`](../backend/alembic/).
-- CI / CD workflow files under [`.github/workflows/`](../.github/workflows/).
+- Production application code under [`backend/`](backend/) and [`frontend/`](frontend/).
+- Database schema and migrations under [`backend/alembic/`](backend/alembic/).
+- CI / CD workflow files under [`.github/workflows/`](.github/workflows/).
 - The deployed instance at `https://vidit.app` / `https://api.vidit.app` (cap testing at 5 req/s).
 
 Out of scope:

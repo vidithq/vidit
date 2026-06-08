@@ -496,7 +496,7 @@ def _prepare_pool_media(
        no-op (cheap but unbounded version churn over time).
 
     Videos: hashed for the row, no derivatives produced. First-frame
-    extraction is tracked separately on ``next.md``.
+    extraction is a separate slice.
 
     Returns ``{pool_key: sha256_hex}``. Proof-image keys (used for
     inline Tiptap nodes only) are intentionally excluded — they don't

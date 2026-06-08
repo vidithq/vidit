@@ -129,8 +129,8 @@ app.add_middleware(
 
 
 # HSTS — tells browsers "for the next 6 months, never speak HTTP to this
-# origin." 15768000 s = 6 months, the value spec'd in next.md → Tier 4
-# lite. No `includeSubDomains` and no `preload`: subdomain coverage is
+# origin." 15768000 s = 6 months. No `includeSubDomains` and no
+# `preload`: subdomain coverage is
 # a future-coupling commitment we can't unwind for months, and preload
 # submission belongs to the public-launch checklist, not closed beta.
 # Pin is per-origin: this header on `api.vidit.app` protects API calls;

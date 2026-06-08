@@ -70,8 +70,7 @@ const FEATURES: {
   },
 ];
 
-// Reader-facing roadmap. Kept deliberately honest and high-level — the
-// internal milestone detail lives in docs/next.md + docs/roadmap.md. Keep
+// Reader-facing roadmap. Kept deliberately honest and high-level. Keep
 // the `status` current as milestones land.
 const ROADMAP = [
   {

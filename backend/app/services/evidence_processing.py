@@ -118,7 +118,7 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
     if content_type not in _STRIPPABLE_IMAGE_TYPES:
         # Videos and any future non-image type pass through untouched.
         # Adding video-side strip-equivalent work (probe streams,
-        # strip metadata atoms) is a separate slice — see next.md.
+        # strip metadata atoms) is a separate slice.
         return data
 
     try:

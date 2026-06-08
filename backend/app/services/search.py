@@ -1,6 +1,6 @@
 """Full-text search across geolocations, bounties, and users.
 
-Slice 1 of the search feature — see ``docs/next.md`` → *Search*.
+Slice 1 of the search feature.
 
 Postgres FTS is the engine: ``plainto_tsquery`` parses user input
 (forgiving of spaces / punctuation, no operator surface to escape),

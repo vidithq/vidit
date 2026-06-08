@@ -1,6 +1,6 @@
 <!--
 Title: Conventional Commit format — `type(scope): subject`, subject starts lowercase.
-Enforced by .github/workflows/pr-title.yml. Examples in docs/CONTRIBUTING.md.
+Enforced by .github/workflows/pr-title.yml. Examples in CONTRIBUTING.md.
 -->
 
 ## Summary
@@ -13,14 +13,14 @@ Why this is the right change — the user problem, the constraint, the trade-off
 
 ## Doc-sync checklist
 
-The mechanical pairings from [`CLAUDE.md`](../CLAUDE.md) → *Before merging — doc sync rule*. Check the box if the rule applies to your diff:
+The mechanical pairings from [`CONTRIBUTING.md`](../CONTRIBUTING.md) → *Doc-sync rule*. Check the box if the rule applies to your diff:
 
 - [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
 - [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
 - [ ] Touched `.github/workflows/**`, `backend/Dockerfile`, `backend/railway.json`, or `docker-compose.yml` → updated [`docs/engineering.md`](../docs/engineering.md)
-- [ ] Touched production code (`backend/app/**`, `frontend/src/**`, or a migration) → added a one-line entry under `## Unreleased` in [`docs/CHANGELOG.md`](../docs/CHANGELOG.md)
+- [ ] Touched production code (`backend/app/**`, `frontend/src/**`, or a migration) → added a one-line entry under `## Unreleased` in [`CHANGELOG.md`](../CHANGELOG.md)
 - [ ] Tech-choice swap (not a routine version bump) → updated [`docs/engineering.md`](../docs/engineering.md)
-- [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`CLAUDE.md`](../CLAUDE.md) **and** [`README.md`](../README.md)
+- [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`AGENTS.md`](../AGENTS.md) **and** [`README.md`](../README.md)
 - [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Orange palette recipe*)
 
 The `doc-sync` workflow will hard-fail the PR if a required pairing is missing. If a rule is wrong for your case, say so in the description below.

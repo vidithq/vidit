@@ -81,9 +81,15 @@ MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports cl
 
 ```
 vidit/
-├── CLAUDE.md
-├── README.md
+├── AGENTS.md
+├── CHANGELOG.md                    # release history (append-only)
+├── CLAUDE.md                       # one-line `@AGENTS.md` pointer for Claude Code
+├── CODE_OF_CONDUCT.md              # Contributor Covenant 2.1
+├── CONTRIBUTING.md                 # PR flow, doc-sync rule, commit conventions
+├── LICENSE                         # AGPL-3.0
 ├── Makefile                        # init / dev / seed / mock-admin / test entry points
+├── README.md
+├── SECURITY.md                     # vulnerability reporting
 ├── docker-compose.yml              # PostgreSQL + PostGIS for local dev
 ├── docker/                         # custom PG 18 image (PostGIS + AGE + pg_cron) + backup cron
 │
@@ -187,18 +193,16 @@ vidit/
 │   ├── tailwind.config.ts
 │   └── next.config.mjs
 │
-├── docs/
+├── docs/                          # technical reference
 │   ├── api.md
 │   ├── backups.md              # weekly pg_dump cron + restore drill
 │   ├── data-model.md
 │   ├── design.md
-│   ├── engineering.md          # tech stack + repo layout + deployment + particularities
+│   └── engineering.md          # tech stack + repo layout + deployment + particularities
+│
+├── planning/                       # project planning (not user docs)
 │   ├── next.md                 # scheduled work + unscheduled candidates
-│   ├── roadmap.md              # vision + 4 phases + openness commitment
-│   ├── CHANGELOG.md            # what shipped per release (append-only)
-│   ├── CODE_OF_CONDUCT.md      # Contributor Covenant 2.1
-│   ├── CONTRIBUTING.md         # PR flow, doc-sync rule, commit conventions
-│   └── SECURITY.md             # vulnerability reporting
+│   └── roadmap.md              # vision + openness commitment
 │
 ├── video/                          # "Promo as code" pipeline — see video/README.md
 │   ├── src/                        # Remotion composition (Demo.tsx) + components
@@ -366,7 +370,7 @@ Drilled 2026-05-18. In an incognito window (extensions disabled):
 - (a) **Browse a few pages** and check **sentry.io → your project → Sessions** for ticks within ~1 min. Session tracking emits an envelope per page load — no console action needed.
 - (b) For an explicit issue, run `setTimeout(() => { throw new Error("manual test") }, 0)` in DevTools. The `setTimeout` matters: a synchronous `throw` from the console is swallowed by the DevTools wrapper and never reaches `window.onerror`. The SDK doesn't expose `Sentry` on `window` in 10.x, so `Sentry.captureMessage(...)` from the console errors with `Sentry is not defined`.
 
-**Ad-blocker caveat.** uBlock, Brave shields, AdGuard, and most browser tracking-protection lists block direct POSTs to `*.ingest.sentry.io` with `ERR_BLOCKED_BY_CLIENT`. The fix is `tunnelRoute: "/monitoring"` in `withSentryConfig`, which proxies envelopes through a same-origin route — tracked in [`next.md`](next.md).
+**Ad-blocker caveat.** uBlock, Brave shields, AdGuard, and most browser tracking-protection lists block direct POSTs to `*.ingest.sentry.io` with `ERR_BLOCKED_BY_CLIENT`. The fix is `tunnelRoute: "/monitoring"` in `withSentryConfig`, which proxies envelopes through a same-origin route — not yet wired.
 
 ### Maintenance runbooks
 
@@ -397,6 +401,8 @@ finally:
     db.close()
 EOF
 ```
+
+**Generate curated demo geolocations from the admin panel**: `make seed` covers the auto-generated 50-point dataset for onboarding. For curated demos (promo recordings, screenshots, manually-themed content), populate `s3://<bucket>/demo-pool/geo-XX/{media,proof}/` (or `.local-storage/demo-pool/geo-XX/{media,proof}/` when `STORAGE_BACKEND=local`) with photos per template, then go to `/admin` → *Demo data* panel → enter a count → Generate. Seeded geos carry a `demo` tag for filtering; the same panel wipes them.
 
 **Clean up an orphan Railway domain** (e.g. an auto-generated `*.up.railway.app` host — leaks the project name to scanners):
 
