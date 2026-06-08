@@ -1,0 +1,27 @@
+# Per-file merge strategies.
+#
+# `merge=union` keeps BOTH sides of every conflict block in the named
+# files. We apply it to two collaboration choke-points whose conflicts
+# are always false positives at the semantic level:
+#
+# - `CHANGELOG.md` — every feature PR inserts a new bullet at the top
+#   of `## Unreleased`. Two PRs inserting at the same anchor produce a
+#   text-level conflict that git's default merge cannot resolve, even
+#   though the right answer is always "keep both entries". Union merge
+#   does exactly that.
+#
+# - `planning/next.md` — the M1/M2/M3 work-tracker tables pack rows
+#   tightly with no blank lines, so two PRs each deleting a different
+#   row land inside the same 3-line context window and conflict. Union
+#   merge keeps both rows; the row each PR meant to delete just lingers
+#   for one extra cycle until a doc-sync sweep removes it. Strictly
+#   better than the current state where six in-flight PRs all go DIRTY
+#   the moment one of them merges.
+#
+# Drawback to know: union-merged conflicts are silently resolved by
+# concatenation, so a deliberate row-rewrite (one branch reword, the
+# other branch deletes) loses the deletion. The only thing that gets
+# reliably merged in either of these files is appends and deletes —
+# rewrites need a manual pass at PR-author time, which is fine.
+CHANGELOG.md     merge=union
+planning/next.md merge=union
