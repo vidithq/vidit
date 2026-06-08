@@ -25,8 +25,9 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 3. **Write the tests that lock in the change.** Backend: `pytest` next to whatever you touched. Frontend: `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 4. **Update the docs in the same PR.** This is mechanically enforced by [`.github/workflows/doc-sync.yml`](.github/workflows/doc-sync.yml) — see *Doc-sync rule* below.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below — the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
-6. **CI must be green.** Backend, frontend, doc-sync, and PR-title workflows all need to pass.
-7. **Read touched docs cold before requesting review** — if anything misleads a new contributor, the PR isn't ready.
+6. **CI must be green.** Backend, frontend, doc-sync, PR-title, and DCO workflows all need to pass.
+7. **Sign off every commit.** See *Contributor sign-off* below.
+8. **Read touched docs cold before requesting review** — if anything misleads a new contributor, the PR isn't ready.
 
 ## Commit conventions
 
@@ -46,6 +47,27 @@ chore(repo): pre-invite dead-code cleanup + factorization pass
 ```
 
 PR title is the commit message (squash-merge).
+
+## Contributor sign-off
+
+Every commit on a PR must carry a `Signed-off-by:` trailer. This is the [Developer Certificate of Origin 1.1](https://developercertificate.org) — by signing off, you certify that you have the right to submit the code under [AGPL-3.0](LICENSE). It is **not** a CLA: there is no relicensing clause, inbound = outbound = AGPL-3.0 (the PostgreSQL / Mastodon shape).
+
+Add the trailer with `git commit -s`:
+
+```bash
+git commit -s -m "feat(map): cluster by capture source"
+# → final line of the message is:
+#   Signed-off-by: Your Name <you@example.com>
+```
+
+If you forgot, amend the latest commit or sign-off the whole branch:
+
+```bash
+git commit --amend --signoff
+git rebase --signoff main
+```
+
+The DCO check ([`.github/workflows/dco.yml`](.github/workflows/dco.yml)) walks every commit on the PR and fails on the first one without the trailer.
 
 ## Doc-sync rule
 
