@@ -88,7 +88,7 @@ def test_change_password_happy_path(client, user_factory):
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": current, "new_password": new_password},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 204
 
@@ -118,7 +118,7 @@ def test_change_password_rejects_wrong_current_password(client, user_factory):
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": "definitelynotthecorrectone", "new_password": "newpassword2"},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 400
 
@@ -128,7 +128,7 @@ def test_change_password_does_not_rotate_on_wrong_current(client, user_factory):
     client.post(
         "/api/v1/auth/change-password",
         json={"current_password": "wrong-password", "new_password": "newpassword2"},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     # Original credential still works after a rejected rotation attempt.
     client.cookies.clear()
@@ -144,7 +144,7 @@ def test_change_password_rejects_short_new_password(client, user_factory):
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": current, "new_password": "short"},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 422
 
@@ -168,7 +168,7 @@ def test_change_password_writes_audit_event(client, user_factory, db, email_reco
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": current, "new_password": "brandnewpassword2"},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 204
 
@@ -193,7 +193,7 @@ def test_change_password_sends_heads_up_email(client, user_factory, email_record
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": current, "new_password": "brandnewpassword2"},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 204
     assert len(email_recorder) == 1
@@ -214,7 +214,7 @@ def test_change_password_does_not_email_on_wrong_current(client, user_factory, e
             "current_password": "definitelynotthecorrectone",
             "new_password": "newpassword2",
         },
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 400
     assert email_recorder == []
@@ -239,7 +239,7 @@ def test_change_password_swallows_email_send_failure(client, user_factory, monke
     response = client.post(
         "/api/v1/auth/change-password",
         json={"current_password": current, "new_password": new_password},
-        headers=login_as(client, user.id),
+        headers=login_as(client, user),
     )
     assert response.status_code == 204
 

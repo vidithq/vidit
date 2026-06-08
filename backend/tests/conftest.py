@@ -9,12 +9,11 @@ limiter before each test to make rate-limit-sensitive tests deterministic.
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models.user import User
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import bounties as bounties_router
@@ -26,17 +25,21 @@ from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 TEST_CSRF_TOKEN = "test-csrf-token"
 
 
-def login_as(client: TestClient, user_id: uuid.UUID) -> dict[str, str]:
-    """Set the session + CSRF cookies on ``client`` for ``user_id``; return
+def login_as(client: TestClient, user: User) -> dict[str, str]:
+    """Set the session + CSRF cookies on ``client`` for ``user``; return
     the ``X-CSRF-Token`` header dict to echo on mutating calls.
 
     Equivalent to a successful ``POST /auth/login`` for the user, but skips
     the round-trip — tests that aren't exercising the login flow shouldn't
-    pay for it. The CSRF token is a fixed test value; the helper sets the
-    cookie and returns the matching header so the middleware sees a valid
-    double-submit pair.
+    pay for it. The minted JWT embeds the user's current ``token_version``
+    in the ``tv`` claim (the session-lifecycle invalidation mechanism),
+    so refreshing the row's ``token_version`` after this call invalidates
+    the cookie at the next request — exactly the production semantics.
+    The CSRF token is a fixed test value; the helper sets the cookie and
+    returns the matching header so the middleware sees a valid double-
+    submit pair.
     """
-    token = create_access_token(user_id)
+    token = create_access_token(user)
     client.cookies.set(SESSION_COOKIE, token)
     client.cookies.set(CSRF_COOKIE, TEST_CSRF_TOKEN)
     return {CSRF_HEADER: TEST_CSRF_TOKEN}

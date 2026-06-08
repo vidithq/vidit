@@ -124,12 +124,12 @@ def test_follow_creates_edge_and_is_idempotent(db, cleanup):
     record_user(target)
 
     first = client.post(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower.id)
+        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower)
     )
     assert first.status_code == 204
 
     second = client.post(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower.id)
+        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower)
     )
     assert second.status_code == 204
 
@@ -146,7 +146,7 @@ def test_follow_self_rejected_400(db, cleanup):
     me = _make_user(db, suffix="me")
     record_user(me)
 
-    response = client.post(f"/api/v1/users/{me.username}/follow", headers=login_as(client, me.id))
+    response = client.post(f"/api/v1/users/{me.username}/follow", headers=login_as(client, me))
     assert response.status_code == 400
 
 
@@ -156,7 +156,7 @@ def test_follow_unknown_user_404(db, cleanup):
     record_user(me)
 
     response = client.post(
-        f"/api/v1/users/ghost-{uuid.uuid4().hex}/follow", headers=login_as(client, me.id)
+        f"/api/v1/users/ghost-{uuid.uuid4().hex}/follow", headers=login_as(client, me)
     )
     assert response.status_code == 404
 
@@ -171,7 +171,7 @@ def test_follow_soft_deleted_user_404(db, cleanup):
     record_user(target)
 
     response = client.post(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, me.id)
+        f"/api/v1/users/{target.username}/follow", headers=login_as(client, me)
     )
     assert response.status_code == 404
 
@@ -194,13 +194,13 @@ def test_unfollow_removes_edge_and_is_idempotent(db, cleanup):
     db.commit()
 
     first = client.delete(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower.id)
+        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower)
     )
     assert first.status_code == 204
 
     # Idempotent: no edge → still 204.
     second = client.delete(
-        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower.id)
+        f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower)
     )
     assert second.status_code == 204
 
@@ -218,7 +218,7 @@ def test_unfollow_unknown_user_404(db, cleanup):
     record_user(me)
 
     response = client.delete(
-        f"/api/v1/users/ghost-{uuid.uuid4().hex}/follow", headers=login_as(client, me.id)
+        f"/api/v1/users/ghost-{uuid.uuid4().hex}/follow", headers=login_as(client, me)
     )
     assert response.status_code == 404
 
@@ -287,7 +287,7 @@ def test_timeline_empty_when_no_follows(db, cleanup):
     me = _make_user(db, suffix="me")
     record_user(me)
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, me.id))
+    response = client.get("/api/v1/timeline", headers=login_as(client, me))
     assert response.status_code == 200
     body = response.json()
     assert body["items"] == []
@@ -316,7 +316,7 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     db.add(Follow(follower_id=viewer.id, followed_id=author_b.id))
     db.commit()
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, viewer.id))
+    response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
     assert response.status_code == 200
     body = response.json()
     titles = [item["title"] for item in body["items"]]
@@ -348,7 +348,7 @@ def test_timeline_excludes_soft_deleted_geolocations(db, cleanup):
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, viewer.id))
+    response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
     body = response.json()
     titles = [item["title"] for item in body["items"]]
     assert titles == ["Live"]
@@ -369,10 +369,10 @@ def test_timeline_paginates(db, cleanup):
     db.commit()
 
     page1 = client.get(
-        "/api/v1/timeline?page=1&per_page=2", headers=login_as(client, viewer.id)
+        "/api/v1/timeline?page=1&per_page=2", headers=login_as(client, viewer)
     ).json()
     page2 = client.get(
-        "/api/v1/timeline?page=2&per_page=2", headers=login_as(client, viewer.id)
+        "/api/v1/timeline?page=2&per_page=2", headers=login_as(client, viewer)
     ).json()
     assert page1["total"] == 5
     assert len(page1["items"]) == 2
@@ -407,7 +407,7 @@ def test_profile_includes_follow_counters_and_is_following(db, cleanup):
     assert anon["is_following"] is False
 
     # Logged-in viewer (``me``) — is_following is True.
-    authed = client.get(f"/api/v1/users/{target.username}", headers=login_as(client, me.id)).json()
+    authed = client.get(f"/api/v1/users/{target.username}", headers=login_as(client, me)).json()
     assert authed["followers_count"] == 2
     assert authed["following_count"] == 1
     assert authed["is_following"] is True
@@ -420,5 +420,5 @@ def test_profile_self_view_is_following_false(db, cleanup):
     me = _make_user(db, suffix="me")
     record_user(me)
 
-    body = client.get(f"/api/v1/users/{me.username}", headers=login_as(client, me.id)).json()
+    body = client.get(f"/api/v1/users/{me.username}", headers=login_as(client, me)).json()
     assert body["is_following"] is False

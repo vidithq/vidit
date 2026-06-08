@@ -93,13 +93,13 @@ def regular_user(db):
 
 
 def test_admin_me_returns_200_for_admin(admin_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, admin_user.id))
+    response = client.get("/api/v1/admin/me", headers=login_as(client, admin_user))
     assert response.status_code == 200
     assert response.json() == {"is_admin": True}
 
 
 def test_admin_me_returns_403_for_regular_user(regular_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user.id))
+    response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user))
     assert response.status_code == 403
 
 
@@ -112,7 +112,7 @@ def test_create_invite_code_persists_and_returns_active(admin_user, db):
     response = client.post(
         "/api/v1/admin/invite-codes",
         json={"expires_in_days": 7},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 201
     body = response.json()
@@ -133,7 +133,7 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
     response = client.post(
         "/api/v1/admin/invite-codes",
         json={},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 201
     invite_id = uuid.UUID(response.json()["id"])
@@ -154,7 +154,7 @@ def test_create_invite_code_ignores_max_uses_in_body(admin_user, db):
     response = client.post(
         "/api/v1/admin/invite-codes",
         json={"max_uses": 50},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 201
     assert response.json()["max_uses"] == 1
@@ -164,7 +164,7 @@ def test_create_invite_code_403_for_regular_user(regular_user):
     response = client.post(
         "/api/v1/admin/invite-codes",
         json={},
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
@@ -173,12 +173,12 @@ def test_list_invite_codes_includes_status(admin_user):
     create_response = client.post(
         "/api/v1/admin/invite-codes",
         json={},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     code = create_response.json()["code"]
 
     list_response = client.get(
-        "/api/v1/admin/invite-codes", headers=login_as(client, admin_user.id)
+        "/api/v1/admin/invite-codes", headers=login_as(client, admin_user)
     )
     assert list_response.status_code == 200
     rows = list_response.json()
@@ -191,13 +191,13 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     create_response = client.post(
         "/api/v1/admin/invite-codes",
         json={},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     invite_id = create_response.json()["id"]
 
     revoke_response = client.delete(
         f"/api/v1/admin/invite-codes/{invite_id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert revoke_response.status_code == 200
     body = revoke_response.json()
@@ -213,7 +213,7 @@ def test_revoke_invite_code_marks_revoked(admin_user):
 def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
     response = client.delete(
         f"/api/v1/admin/invite-codes/{uuid.uuid4()}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
 
@@ -251,7 +251,7 @@ def test_login_auto_promotes_when_email_matches_admin_emails(monkeypatch, db):
 def test_search_users_returns_matches_for_admin(admin_user, regular_user):
     response = client.get(
         f"/api/v1/admin/users?q={regular_user.username[:6]}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     rows = response.json()
@@ -266,13 +266,13 @@ def test_search_users_returns_matches_for_admin(admin_user, regular_user):
 def test_search_users_403_for_regular_user(regular_user):
     response = client.get(
         f"/api/v1/admin/users?q={regular_user.username}",
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
 
 def test_search_users_returns_empty_for_blank_query(admin_user):
-    response = client.get("/api/v1/admin/users?q=", headers=login_as(client, admin_user.id))
+    response = client.get("/api/v1/admin/users?q=", headers=login_as(client, admin_user))
     assert response.status_code == 200
     assert response.json() == []
 
@@ -281,7 +281,7 @@ def test_grant_trust_sets_flag_and_reason(admin_user, regular_user, db):
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "Established OSINT track record"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -310,7 +310,7 @@ def test_grant_trust_rejects_empty_reason(admin_user, regular_user):
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "   "},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
 
@@ -320,13 +320,13 @@ def test_revoke_trust_clears_reason(admin_user, regular_user, db):
     client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "Long-standing analyst"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     # Then revoke — body's trust_reason is intentionally ignored on revoke
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": False, "trust_reason": "shouldn't persist"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -342,7 +342,7 @@ def test_set_trust_403_for_regular_user(regular_user):
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "x"},
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
@@ -351,7 +351,7 @@ def test_set_trust_404_for_unknown_user(admin_user):
     response = client.patch(
         f"/api/v1/admin/users/{uuid.uuid4()}/trust",
         json={"is_trusted": True, "trust_reason": "x"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
 
@@ -381,7 +381,7 @@ def geolocation(db, regular_user):
 def test_soft_delete_geolocation_marks_deleted_at(admin_user, geolocation, db):
     response = client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -398,7 +398,7 @@ def test_soft_delete_geolocation_marks_deleted_at(admin_user, geolocation, db):
 def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
     client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     event = (
         db.query(AdminEvent)
@@ -419,14 +419,14 @@ def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
 def test_soft_delete_is_idempotent(admin_user, geolocation, db):
     first = client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert first.status_code == 200
     first_ts = first.json()["deleted_at"]
 
     second = client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert second.status_code == 200
     # Re-soft-delete preserves the original timestamp
@@ -448,7 +448,7 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
 def test_soft_deleted_row_hidden_from_public_reads(admin_user, geolocation):
     client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     # Detail
     detail = client.get(f"/api/v1/geolocations/{geolocation.id}")
@@ -461,7 +461,7 @@ def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geo
 
     client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
 
     after = client.get(f"/api/v1/users/{regular_user.username}").json()
@@ -477,7 +477,7 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
 
     response = client.delete(
         f"/api/v1/admin/geolocations/{geo_id}?hard=true",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -502,7 +502,7 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
 def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation):
     response = client.delete(
         f"/api/v1/admin/geolocations/{geolocation.id}",
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
@@ -510,7 +510,7 @@ def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation
 def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
     response = client.delete(
         f"/api/v1/admin/geolocations/{uuid.uuid4()}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
 
@@ -520,7 +520,7 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
 ):
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -541,7 +541,7 @@ def test_soft_delete_user_blocks_login(admin_user, regular_user):
     # Soft-delete via admin
     fresh.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(fresh, admin_user.id),
+        headers=login_as(fresh, admin_user),
     )
     # Attempt login — same opaque 401 as wrong credentials
     fresh.cookies.clear()
@@ -555,7 +555,7 @@ def test_soft_delete_user_blocks_login(admin_user, regular_user):
 def test_soft_delete_user_hides_profile(admin_user, regular_user):
     client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     response = client.get(f"/api/v1/users/{regular_user.username}")
     assert response.status_code == 404
@@ -564,7 +564,7 @@ def test_soft_delete_user_hides_profile(admin_user, regular_user):
 def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
     client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     event = (
         db.query(AdminEvent)
@@ -583,11 +583,11 @@ def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
 def test_soft_delete_user_is_idempotent(admin_user, regular_user, db):
     first = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     second = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert first.status_code == 200
     assert second.status_code == 200
@@ -602,7 +602,7 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
 
     response = client.delete(
         f"/api/v1/admin/users/{user_id}?hard=true",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -647,7 +647,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
 
     response = client.delete(
         f"/api/v1/admin/users/{user_id}?hard=true",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
 
@@ -665,7 +665,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
 def test_admin_user_delete_403_for_regular_user(regular_user):
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
 
@@ -673,7 +673,7 @@ def test_admin_user_delete_403_for_regular_user(regular_user):
 def test_admin_user_delete_404_for_unknown_id(admin_user):
     response = client.delete(
         f"/api/v1/admin/users/{uuid.uuid4()}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
 
@@ -686,7 +686,7 @@ def test_user_profile_carries_trust_fields(admin_user, regular_user):
     client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "Cross-checks against satellite"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
 
     response = client.get(f"/api/v1/users/{regular_user.username}")
@@ -713,7 +713,7 @@ def test_search_users_excludes_soft_deleted(admin_user, regular_user, db):
 
     response = client.get(
         f"/api/v1/admin/users?q={regular_user.username}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     rows = response.json()
@@ -727,7 +727,7 @@ def test_set_trust_404_for_soft_deleted_user(admin_user, regular_user, db):
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/trust",
         json={"is_trusted": True, "trust_reason": "should not apply"},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
 
@@ -783,7 +783,7 @@ def test_login_runs_bcrypt_for_soft_deleted_user(monkeypatch, admin_user, regula
     fresh = TestClient(app)
     fresh.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(fresh, admin_user.id),
+        headers=login_as(fresh, admin_user),
     )
     fresh.cookies.clear()
     # Both right-password and wrong-password against a soft-deleted user
@@ -805,7 +805,7 @@ def test_login_runs_bcrypt_for_soft_deleted_user(monkeypatch, admin_user, regula
 def test_create_unguarded_invite_code_route_is_gone(regular_user):
     response = client.post(
         "/api/v1/auth/invite-codes",
-        headers=login_as(client, regular_user.id),
+        headers=login_as(client, regular_user),
     )
     assert response.status_code == 404
 
@@ -845,7 +845,7 @@ def test_soft_delete_user_cascades_to_bounties(admin_user, regular_user, db):
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -868,11 +868,11 @@ def test_soft_delete_user_bounty_count_is_idempotent(admin_user, regular_user, d
 
     first = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     second = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert first.status_code == second.status_code == 200
     assert first.json()["cascaded_bounties"] == 1
@@ -888,7 +888,7 @@ def test_hard_delete_user_drops_bounties(admin_user, regular_user, db):
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -910,7 +910,7 @@ def test_soft_delete_user_writes_bounty_count_in_admin_event(admin_user, regular
 
     client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     event = (
         db.query(AdminEvent)

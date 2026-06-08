@@ -15,7 +15,7 @@ from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.schemas.admin import AdminInviteCodeRead, InviteCodeStatus
-from app.services.auth import generate_invite_code
+from app.services.auth import bump_token_version, generate_invite_code
 from app.services.storage import StorageDeleteError, get_storage
 
 logger = logging.getLogger(__name__)
@@ -319,6 +319,14 @@ def soft_delete_user(
 
     now = datetime.now(UTC)
     user.deleted_at = now
+    # Invalidate every outstanding session. `get_current_user` already
+    # rejects soft-deleted accounts on the next request, but bumping
+    # `token_version` makes the invalidation explicit so any code path
+    # that one day fetched the user *before* checking `deleted_at`
+    # still 401s — and so an admin un-soft-deleting the user later
+    # (no UI today, but the column is recoverable) doesn't accidentally
+    # re-revive their old sessions.
+    bump_token_version(user)
 
     # Cascade soft-delete to every live geolocation by this user. ``UPDATE
     # ... WHERE deleted_at IS NULL`` leaves any earlier soft-delete

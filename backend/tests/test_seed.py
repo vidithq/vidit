@@ -354,7 +354,7 @@ def test_seed_demo_endpoint_for_admin(admin_user, demo_pool, db):
     response = client.post(
         "/api/v1/admin/seed-demo",
         json={"count": 3},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -386,7 +386,7 @@ def test_seed_demo_endpoint_403_for_regular_user(db, demo_pool):
         response = client.post(
             "/api/v1/admin/seed-demo",
             json={"count": 1},
-            headers=login_as(client, user.id),
+            headers=login_as(client, user),
         )
         assert response.status_code == 403
     finally:
@@ -400,7 +400,7 @@ def test_seed_demo_endpoint_422_when_pool_empty(admin_user, monkeypatch, tmp_pat
     response = client.post(
         "/api/v1/admin/seed-demo",
         json={"count": 1},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
     assert "demo-pool" in response.json()["detail"].lower()
@@ -410,7 +410,7 @@ def test_wipe_demo_endpoint_for_admin(admin_user, demo_pool, db):
     seed_service.seed_demo(db, count=2)
     response = client.delete(
         "/api/v1/admin/seed-demo",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -499,7 +499,7 @@ def test_seed_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
     response = client.post(
         "/api/v1/admin/seed-demo-bounties",
         json={"count": 3},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -531,7 +531,7 @@ def test_seed_demo_bounties_endpoint_403_for_regular_user(db, demo_pool):
         response = client.post(
             "/api/v1/admin/seed-demo-bounties",
             json={"count": 1},
-            headers=login_as(client, user.id),
+            headers=login_as(client, user),
         )
         assert response.status_code == 403
     finally:
@@ -545,7 +545,7 @@ def test_seed_demo_bounties_endpoint_422_when_pool_empty(admin_user, monkeypatch
     response = client.post(
         "/api/v1/admin/seed-demo-bounties",
         json={"count": 1},
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
     assert "demo-pool" in response.json()["detail"].lower()
@@ -555,7 +555,7 @@ def test_wipe_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
     seed_service.seed_demo_bounties(db, count=2)
     response = client.delete(
         "/api/v1/admin/seed-demo-bounties",
-        headers=login_as(client, admin_user.id),
+        headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
     assert response.json()["deleted_bounties"] == 2

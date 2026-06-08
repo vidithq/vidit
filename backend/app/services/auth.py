@@ -30,10 +30,36 @@ def verify_password(plain: str, hashed: str) -> bool:
 DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-equalisation")
 
 
-def create_access_token(user_id: uuid.UUID) -> str:
+def create_access_token(user: User) -> str:
+    """Mint a session JWT for ``user``.
+
+    Embeds the user's ``token_version`` as a ``tv`` claim alongside the
+    standard ``sub`` + ``exp``. ``get_current_user`` compares the
+    decoded ``tv`` against the row at request time and 401s on
+    mismatch — so bumping ``token_version`` (logout, password change,
+    password reset, soft-delete) invalidates every outstanding session
+    for the user at once.
+    """
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(user_id), "exp": expire}
+    payload = {"sub": str(user.id), "exp": expire, "tv": user.token_version}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def bump_token_version(user: User) -> None:
+    """Invalidate every outstanding session for ``user``.
+
+    Increments the row's ``token_version`` — every JWT previously
+    minted (which carried the old value in its ``tv`` claim) now
+    mismatches the row and 401s at ``get_current_user``. Caller is
+    responsible for committing the surrounding transaction; this
+    function mutates the in-session row only.
+
+    Called at the four session-mint-side mutation points: logout,
+    password change, password reset, soft-delete. Re-issuing a fresh
+    cookie for the current device after a bump (the change-password
+    flow) keeps that one device live while the others get logged out.
+    """
+    user.token_version = user.token_version + 1
 
 
 def validate_invite_code(db: Session, code: str) -> InviteCode | None:

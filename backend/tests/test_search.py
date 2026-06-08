@@ -95,7 +95,7 @@ def test_search_requires_auth():
 
 
 def test_empty_query_returns_empty_groups(caller):
-    response = client.get("/api/v1/search?q=&type=all", headers=login_as(client, caller.id))
+    response = client.get("/api/v1/search?q=&type=all", headers=login_as(client, caller))
     assert response.status_code == 200
     body = response.json()
     assert body["geolocations"] == []
@@ -107,21 +107,21 @@ def test_empty_query_returns_empty_groups(caller):
 
 
 def test_whitespace_only_query_returns_empty_groups(caller):
-    response = client.get("/api/v1/search?q=%20%20%20", headers=login_as(client, caller.id))
+    response = client.get("/api/v1/search?q=%20%20%20", headers=login_as(client, caller))
     assert response.status_code == 200
     assert all(response.json()[k] == [] for k in ("geolocations", "bounties", "users"))
 
 
 def test_invalid_type_returns_422(caller):
-    response = client.get("/api/v1/search?q=x&type=bogus", headers=login_as(client, caller.id))
+    response = client.get("/api/v1/search?q=x&type=bogus", headers=login_as(client, caller))
     assert response.status_code == 422
     assert "type" in response.json()["detail"].lower()
 
 
 def test_limit_outside_range_returns_422(caller):
-    response = client.get("/api/v1/search?q=x&limit=0", headers=login_as(client, caller.id))
+    response = client.get("/api/v1/search?q=x&limit=0", headers=login_as(client, caller))
     assert response.status_code == 422
-    response = client.get("/api/v1/search?q=x&limit=51", headers=login_as(client, caller.id))
+    response = client.get("/api/v1/search?q=x&limit=51", headers=login_as(client, caller))
     assert response.status_code == 422
 
 
@@ -143,7 +143,7 @@ def test_search_matches_geolocation_by_title(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
@@ -180,7 +180,7 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         ids = [h["id"] for h in response.json()["geolocations"]]
@@ -206,7 +206,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         assert response.json()["geolocations"] == []
@@ -240,7 +240,7 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=bounty",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
@@ -272,7 +272,7 @@ def test_search_excludes_soft_deleted_bounties(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=bounty",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.json()["bounties"] == []
     finally:
@@ -299,7 +299,7 @@ def test_search_matches_user_by_username(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=user",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
@@ -333,7 +333,7 @@ def test_search_matches_user_by_bio_with_highlighted_snippet(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=user",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         hits = response.json()["users"]
@@ -361,7 +361,7 @@ def test_search_excludes_soft_deleted_users(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=user",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.json()["users"] == []
     finally:
@@ -408,7 +408,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=all",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
@@ -459,7 +459,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         body = response.json()
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
@@ -502,7 +502,7 @@ def test_search_limit_caps_per_group(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=bounty&limit=2",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
@@ -549,7 +549,7 @@ def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=user",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         hit = next(h for h in response.json()["users"] if h["id"] == str(user_id))
@@ -587,7 +587,7 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller.id),
+            headers=login_as(client, caller),
         )
         assert response.status_code == 200
         hit = next(h for h in response.json()["geolocations"] if h["id"] == str(geo_id))
