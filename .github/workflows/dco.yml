@@ -20,8 +20,11 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # Fetch the full PR range so the script below can walk every
-          # commit, not just the merge head. `pull_request` events pass
-          # the merge ref as HEAD and the base as `github.base_ref`.
+          # commit, not just the merge head. Explicit `ref:` checks out
+          # the actual PR head (`pull_request.head.sha`); we read the
+          # corresponding base SHA from `pull_request.base.sha` below
+          # — note that's the SHA, not the `github.base_ref` branch
+          # name.
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -79,21 +82,25 @@ jobs:
           if [ "${failed}" -gt 0 ]; then
             echo
             echo "${failed} commit(s) above are missing a Developer Certificate of Origin sign-off."
-            cat <<'EOF'
-
-          Re-commit with the trailer (or amend the existing commit):
-
-              git commit -s -m "..."        # new commit
-              git commit --amend --signoff  # latest commit
-              git rebase --signoff main     # every commit on the branch
-
-          The trailer takes the shape:
-
-              Signed-off-by: Your Name <you@example.com>
-
-          See CONTRIBUTING.md → "Contributor sign-off" for the full
-          contract (the DCO certifies you have the right to submit the
-          code under AGPL-3.0; it is not a CLA).
-          EOF
+            # `printf` rather than `cat <<EOF` so the message renders
+            # flush-left in the Actions log — a heredoc inside a YAML
+            # `run: |` block has to keep YAML's indent on every line
+            # (including the closing `EOF`) and that padding then
+            # surfaces in the output.
+            printf '%s\n' \
+              '' \
+              'Re-commit with the trailer (or amend the existing commit):' \
+              '' \
+              '    git commit -s -m "..."        # new commit' \
+              '    git commit --amend --signoff  # latest commit' \
+              '    git rebase --signoff main     # every commit on the branch' \
+              '' \
+              'The trailer takes the shape:' \
+              '' \
+              '    Signed-off-by: Your Name <you@example.com>' \
+              '' \
+              'See CONTRIBUTING.md → "Contributor sign-off" for the full contract' \
+              '(the DCO certifies you have the right to submit the code under' \
+              'AGPL-3.0; it is not a CLA).'
             exit 1
           fi
