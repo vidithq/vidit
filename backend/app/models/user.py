@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +47,16 @@ class User(Base):
     # seeder. Demo users have an unloggable password and a synthetic
     # `@vidit.invalid` email; the wipe button drops every is_demo=TRUE row.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Monotonic session-invalidation counter. The session JWT embeds this
+    # as a `tv` claim at mint time and `get_current_user` 401s when the
+    # claim doesn't match the row. Bumped on logout, password change,
+    # password reset, and soft-delete so all outstanding sessions for
+    # the user become invalid at once — clearing the cookie alone does
+    # not invalidate the token. Interim Tier-2 fix; the Tier-3 refresh-
+    # token system supersedes it.
+    token_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     # Public profile fields — opt-in, set via PATCH /users/me. Bio is plain
     # text (no Tiptap, no inline media — the profile blurb is a short
     # signal, not a post). Avatar is a free-form URL today; the platform

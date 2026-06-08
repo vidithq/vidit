@@ -1,5 +1,4 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ShieldCheck,
@@ -14,6 +13,34 @@ import {
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
+
+// Server component (no interactive state — all sections are static markup
+// + icons), so we can export `metadata` directly. Same openGraph + twitter
+// shape as the landing so a shared link reads as Vidit, not a bare title.
+// The shared `opengraph-image.tsx` / `twitter-image.tsx` at the app root
+// fills in the image without per-page binary assets.
+export const metadata: Metadata = {
+  title: "About Vidit",
+  description:
+    "Commitments, methodology, funding, and privacy posture behind Vidit — the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
+  openGraph: {
+    type: "website",
+    url: "https://vidit.app/about",
+    siteName: "Vidit",
+    title: "About Vidit",
+    description:
+      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@vidithq",
+    creator: "@vidithq",
+    title: "About Vidit",
+    description:
+      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+  },
+};
 
 const COMMITMENTS = [
   {
@@ -75,6 +102,12 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
   },
 ];
 
+// Lucide dropped the brand-mark icons (Github, X, Discord) — the
+// sidebar handles those via hand-rolled SVG glyphs. The contact panel
+// here keeps the lucide vocabulary for the channels lucide still
+// covers; the GitHub link is surfaced as a footer line at the bottom
+// of the page so /about still cross-links the source repo without
+// dragging a brand-icon dependency into this file.
 const CONTACT = [
   {
     icon: AtSign,
@@ -290,6 +323,15 @@ export default function AboutPage() {
           <Link href="/map" className="text-orange-400 hover:underline">
             map
           </Link>
+          , or read the source on{" "}
+          <a
+            href="https://github.com/vidithq/vidit"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-orange-400 hover:underline"
+          >
+            GitHub
+          </a>
           .
         </p>
     </PageShell>

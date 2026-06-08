@@ -14,7 +14,7 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 | Local-dev setup | `README.md` | `docs/`, `planning/` |
 | AI / agent rules (this file) | `AGENTS.md` | scattered |
 
-CI enforces it: milestone IDs and `next.md` / `roadmap.md` references only appear in `planning/`, root meta files, issue / PR templates, and `docs/engineering.md` (repo tree). See [`.github/workflows/doc-sync.yml`](.github/workflows/doc-sync.yml) → *Rule 5*.
+CI enforces a floor — every PR to `main` must touch *both* `docs/` and `planning/`. See [`.github/workflows/docs-pairing.yml`](.github/workflows/docs-pairing.yml). Granular pairings (routers ↔ `api.md`, milestone IDs only in `planning/`, etc.) are conventions the writing rules below + human review own; the workflow stays deliberately blunt so it ages well.
 
 ## Doc writing rules
 

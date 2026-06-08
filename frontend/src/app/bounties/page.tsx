@@ -169,9 +169,16 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
               className="w-full h-full object-cover"
             />
           ) : (
+            // `#t=0.1` is an HTML media-fragment URI that tells the
+            // browser to seek to t=0.1s on metadata load — combined
+            // with `preload="metadata"`, this forces the first frame
+            // to paint as a poster-equivalent so the thumbnail isn't a
+            // black box. Cheap fix that sidesteps generating + storing
+            // a real poster image per bounty.
             <video
-              src={hero.storage_url}
+              src={`${hero.storage_url}#t=0.1`}
               className="w-full h-full object-cover"
+              preload="metadata"
               muted
             />
           )

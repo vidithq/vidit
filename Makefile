@@ -41,13 +41,29 @@ mock-demo-user:
 # Also assumes `make seed` has been executed at least once for curated tags
 # + the demo geolocations that make the map look populated — the deps
 # below only cover the user accounts the pipeline mints itself.
+#
+# Two outputs stage off one capture run:
+#   - `promo-master.mp4` — 2560×1440 / 60fps comp / CRF 16, +faststart
+#                          (S3 → landing's `<video>`; also the archive)
+#   - `promo-readme.mp4` — 1280×720  / 30fps      / CRF 26, +faststart
+#                          (drag-drop into a GitHub draft for the
+#                           user-attachments URL the README embeds)
+#
+# Master is rendered at Remotion `--scale 2` (4K canvas) so the
+# rasterised captions / brand chrome are crisp, then ffmpeg downscales
+# to 2K. A 1080p intermediate isn't worth maintaining at closed-beta
+# traffic — the master streams fine over CloudFront and the browser
+# downscales for free.
 # See video/README.md for the breakdown of each step.
 promo: mock-admin mock-demo-user
 	cd video && node seed-bounties.js
 	cd video && node record-submit.js
 	cp video/out/recording-submit.mp4 video/public/recording-submit.mp4
-	cd video && npx remotion render src/index.ts Demo out/promo-final.mp4 --codec h264 --crf 16
-	@echo "Done. Promo at video/out/promo-final.mp4"
+	cd video && npx remotion render src/index.ts Demo out/promo-4k.mp4 --codec h264 --crf 16 --scale 2
+	ffmpeg -y -i video/out/promo-4k.mp4 -vf scale=2560:-2 -c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-master.mp4
+	ffmpeg -y -i video/out/promo-4k.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-readme.mp4
+	@ls -lh video/out/promo-master.mp4 video/out/promo-readme.mp4
+	@echo "Done. Master 2K (S3) → video/out/promo-master.mp4 | README 720p → video/out/promo-readme.mp4"
 
 seed: mock-admin seed-demo seed-timeline
 	@echo "Done. admin@vidit.app exists, 50 demo geolocations seeded, admin follows every demo analyst."

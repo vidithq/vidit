@@ -310,7 +310,7 @@ def test_patch_me_sets_bio_and_avatar(live_user, db):
             "bio": "OSINT analyst, Eastern Ukraine armoured movement.",
             "avatar_url": "https://example.com/me.jpg",
         },
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 200
     body = response.json()
@@ -336,14 +336,14 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
     client.patch(
         "/api/v1/users/me",
         json={"external_links": {"x": "@me", "github": "@me-gh"}},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
 
     # Now PATCH with only github — x should be gone
     response = client.patch(
         "/api/v1/users/me",
         json={"external_links": {"github": "@me-gh-2"}},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 200
 
@@ -363,7 +363,7 @@ def test_patch_me_omitted_fields_preserved(live_user, db):
     response = client.patch(
         "/api/v1/users/me",
         json={"avatar_url": "https://example.com/b.jpg"},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 200
 
@@ -385,7 +385,7 @@ def test_patch_me_empty_string_clears_bio(live_user, db):
     response = client.patch(
         "/api/v1/users/me",
         json={"bio": "   "},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 200
     assert response.json()["bio"] is None
@@ -404,7 +404,7 @@ def test_patch_me_rejects_non_http_avatar(live_user):
     response = client.patch(
         "/api/v1/users/me",
         json={"avatar_url": "javascript:alert(1)"},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 422
 
@@ -413,7 +413,7 @@ def test_patch_me_rejects_overlong_bio(live_user):
     response = client.patch(
         "/api/v1/users/me",
         json={"bio": "x" * 501},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 422
 
@@ -424,7 +424,7 @@ def test_patch_me_ignores_extra_fields(live_user):
     response = client.patch(
         "/api/v1/users/me",
         json={"is_trusted": True},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     assert response.status_code == 422
 
@@ -435,7 +435,7 @@ def test_patch_me_does_not_leak_email_in_public_profile(live_user):
     client.patch(
         "/api/v1/users/me",
         json={"bio": "leak check"},
-        headers=login_as(client, live_user.id),
+        headers=login_as(client, live_user),
     )
     response = client.get(f"/api/v1/users/{live_user.username}")
     assert response.status_code == 200

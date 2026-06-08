@@ -16,6 +16,7 @@ erDiagram
         TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo author"
+        INTEGER token_version "session-invalidation counter"
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}, linktree-style"
@@ -197,6 +198,7 @@ erDiagram
 | `email_verified_at` | `TIMESTAMPTZ` | nullable — set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every geolocation they authored. Hard-delete (the GDPR escape hatch) drops the row + cascade-drops their geolocations + sweeps S3. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff created by the admin Demo data seeder (5 fixed `demo-analyst-N` accounts with unloggable hashes + `@vidit.invalid` emails). The wipe button drops every flagged user + their geolocations in one go. |
+| `token_version` | `INTEGER` | NOT NULL, default `0` — monotonic session-invalidation counter. The session JWT embeds this as a `tv` claim; `get_current_user` 401s on mismatch. Bumped on logout, password change, password reset, and soft-delete so every outstanding JWT for the user becomes invalid at once. Pre-migration cookies (no `tv`) 401 too — the migration's one-time forced logout is intended. |
 | `bio` | `TEXT` | nullable — short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint — cap changes don't need migrations). |
 | `avatar_url` | `TEXT` | nullable — public avatar URL. Validated as http(s) at the API layer to keep `javascript:` URLs out of the `<img src>` render path. No upload pipeline yet (free-form URL — analysts paste a Gravatar / CDN link). |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb` — Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge conflicts with the whole-panel form submit. |

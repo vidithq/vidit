@@ -14,10 +14,32 @@ import DemoVideo from "@/components/landing/DemoVideo";
 // for SEO; the hero CTAs are a small `<HeroCtas>` client island that swaps
 // Sign-in / invite for "Open the map" once the visitor is signed in.
 
+// `openGraph` + `twitter` blocks make the pinned X tweet render a
+// summary_large_image card (rich) instead of the bland text card a
+// title+description-only metadata produces. The image itself is the
+// sibling `opengraph-image.tsx` + `twitter-image.tsx` route files —
+// Next.js auto-attaches them to every page that doesn't override.
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
     "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events. In closed beta.",
+  openGraph: {
+    type: "website",
+    url: "https://vidit.app",
+    siteName: "Vidit",
+    title: "Vidit: archive and map conflict geolocations",
+    description:
+      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@vidithq",
+    creator: "@vidithq",
+    title: "Vidit: archive and map conflict geolocations",
+    description:
+      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+  },
 };
 
 // Set NEXT_PUBLIC_DEMO_VIDEO_URL to a YouTube/Vimeo *embed* URL (or a
@@ -70,14 +92,25 @@ const FEATURES: {
   },
 ];
 
+const GITHUB_URL = "https://github.com/vidithq/vidit";
+
 // Reader-facing roadmap. Kept deliberately honest and high-level. Keep
-// the `status` current as milestones land.
-const ROADMAP = [
+// the `status` current as milestones land. Optional `link` surfaces an
+// orange in-card link — used by the current milestone to point at the
+// concrete artifact (the repo for "Open source launch", etc.).
+const ROADMAP: {
+  tag: string;
+  current: boolean;
+  title: string;
+  body: string;
+  link?: { href: string; label: string };
+}[] = [
   {
     tag: "Now",
     current: true,
     title: "Open source launch",
     body: "Vidit becomes open source under AGPL-3.0 — the clearest answer to “closed / unknown tool” — and the closed beta widens to more analysts in the same launch window.",
+    link: { href: GITHUB_URL, label: "View on GitHub" },
   },
   {
     tag: "Next",
@@ -175,7 +208,7 @@ export default function LandingPage() {
           </h2>
         </div>
         <ol className="mt-6 space-y-3">
-          {ROADMAP.map(({ tag, current, title, body }) => (
+          {ROADMAP.map(({ tag, current, title, body, link }) => (
             <li
               key={title}
               className={`flex gap-4 rounded-lg border p-4 ${
@@ -196,6 +229,16 @@ export default function LandingPage() {
                 <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
                   {body}
                 </p>
+                {link && (
+                  <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block text-[13px] text-orange-400 hover:text-orange-300"
+                  >
+                    {link.label} →
+                  </a>
+                )}
               </div>
             </li>
           ))}
