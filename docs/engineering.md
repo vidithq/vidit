@@ -296,7 +296,7 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 |----------|---------|-------|
 | `backend.yml` | Push (when `backend/` changes) | `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `alembic upgrade head` → `pytest` |
 | `frontend.yml` | Push (when `frontend/` changes) | `npm ci` → `eslint` → `tsc --noEmit` → `next build` |
-| `doc-sync.yml` | PR to `main` | Fails the PR when production code moves without the paired doc update (routers ↔ `api.md`, models/migrations ↔ `data-model.md`, deploy/infra ↔ this doc, any production code ↔ `CHANGELOG.md`). |
+| `doc-sync.yml` | PR to `main` | Fails the PR when production code moves without the paired doc update (routers ↔ `api.md`, models/migrations ↔ `data-model.md`, deploy/infra ↔ this doc, any production code ↔ `CHANGELOG.md`, `CHANGELOG.md` ↔ `planning/next.md` so the tracker reflects what shipped). Also blocks milestone IDs (M1/M2/M3) + `next.md` / `roadmap.md` references from leaking outside planning/ + root meta files. |
 | `pr-title.yml` | PR opened / synchronized | Validates the PR title against Conventional Commits. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
 

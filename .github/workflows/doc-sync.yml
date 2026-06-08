@@ -119,6 +119,24 @@ $HITS
             fail_rule "Planning vocabulary (milestone IDs M1/M2/M3, or next.md/roadmap.md references) leaked outside allowed homes. Tracker labels and planning-file references only belong in planning/, root meta files, issue/PR templates, and docs/engineering.md (repo tree). See AGENTS.md → 'Where things live'. Hits:$LEAKS"
           fi
 
+          # ── Rule 6: CHANGELOG entry ↔ planning/next.md tracker ─────────────
+          # CONTRIBUTING.md → *Doc-sync rule*: "Item shipped? Delete it
+          # from next.md. Add a one-line entry to CHANGELOG.md." The
+          # CHANGELOG side already has its own rule (Rule 4 fires when
+          # production code lands without an entry); this is the other
+          # half. Any PR that adds something to CHANGELOG should also
+          # touch the tracker — either to remove the row that shipped,
+          # or (rarely) to add a candidate that wasn't on the tracker
+          # yet. Bugfix / chore PRs that never had a tracker row at all
+          # land here legitimately too: in that case touching next.md
+          # is a no-op edit (whitespace, or a sentence in the relevant
+          # macro's Strategic context). The friction is the point —
+          # forces a 5-second "did this need to be tracked?" check
+          # rather than letting the tracker drift behind ship reality.
+          if touched '^CHANGELOG\.md$' && ! touched '^planning/next\.md$'; then
+            fail_rule "Touched CHANGELOG.md but planning/next.md was not updated. The tracker should reflect what shipped (remove the row, move it, or — for bugfixes that were never on the tracker — leave a brief note in the relevant macro). See CONTRIBUTING.md → 'Doc-sync rule'."
+          fi
+
           if [ "$FAIL" -eq 1 ]; then
             echo ""
             echo "::error::doc-sync check failed."
