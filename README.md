@@ -1,6 +1,35 @@
 # Vidit
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Live demo](https://img.shields.io/badge/live-vidit.app-orange)](https://vidit.app)
+
 A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + Tiptap proof + tags), community bounties, and analyst profiles.
+
+Live at **[vidit.app](https://vidit.app)** (closed beta).
+
+---
+
+## Why open source
+
+**100% open source under [AGPL-3.0](LICENSE) — nothing proprietary.** Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. Monetization on the maintainer's hosted instance (`vidit.app`) is API rate limits + a small set of paid-only endpoints (alert webhooks, larger exports) — the analyst-facing platform is, and will stay, free. Strategy lives in [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+
+---
+
+## Demo
+
+<!--
+Embed source: the README variant rendered by `make promo` (1280×720,
+~1.6 MB), uploaded as a GitHub user-attachment so the player renders
+inline on github.com. To swap in a re-render: drag the new
+`video/out/promo-readme.mp4` into any GitHub draft comment textarea,
+copy the `https://github.com/user-attachments/assets/<uuid>` URL it
+generates, and replace the URL on the bare line below — leaving the
+URL alone on its own line is what triggers GitHub's auto-player.
+The hero on [vidit.app](https://vidit.app) plays the matching 2K
+master (10 MB) from CloudFront.
+-->
+
+https://github.com/user-attachments/assets/8b3689a9-b840-4ffb-8e91-21aef1aaca48
 
 ---
 
@@ -138,6 +167,10 @@ See [AGENTS.md](AGENTS.md) → *Conventions*.
 
 ## License
 
-Vidit is licensed under the **GNU Affero General Public License v3.0** — see [`LICENSE`](LICENSE) for the full text. AGPL-3.0 means anyone can use, study, modify, and self-host the platform; modifications that are deployed as a network service must publish their source under the same license. The rationale (open codebase, monetization via API rate limits on the maintainer's hosted instance) lives in [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Licensed under the [GNU Affero General Public License v3.0](LICENSE). See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md). Code of Conduct: [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
+---
+
+## Acknowledgements
+
+The demo content shipped on the landing video and in the seed bounties uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.
