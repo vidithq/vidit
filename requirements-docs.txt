@@ -1,0 +1,4 @@
+# MkDocs Material — builds the hosted reference site at docs.vidit.app
+# from docs/*.md. CI pins via this file; contributors run `pip install
+# -r requirements-docs.txt && mkdocs serve` for a local preview.
+mkdocs-material==9.7.6

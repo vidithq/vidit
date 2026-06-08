@@ -1,0 +1,67 @@
+name: deploy-docs
+
+# Build the MkDocs Material site from docs/ and deploy it to GitHub
+# Pages on every push to main that touches docs source or this
+# workflow. The custom domain docs.vidit.app is wired via the CNAME
+# file at docs/CNAME — MkDocs copies it into the site/ output so
+# GitHub Pages serves it under that domain. DNS: a CNAME record on
+# the Cloudflare zone for `docs` → `vidithq.github.io`, grey cloud
+# (DNS only), so GitHub Pages can issue the Let's Encrypt cert
+# (proxy mode would block validation — same constraint as the apex
+# and `api.` records, see docs/engineering.md → Particularities).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-flight deploy when a
+# new push arrives, so a fast follow-up commit can't interrupt a deploy and
+# leave the live site mid-update.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install MkDocs Material
+        run: pip install -r requirements-docs.txt
+
+      - name: Build site
+        run: mkdocs build
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
