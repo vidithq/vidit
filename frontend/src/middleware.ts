@@ -112,11 +112,20 @@ export const config = {
   // browser requests them on every page load and an auth redirect on a
   // favicon request makes the tab fall back to its default stub icon.
   // `opengraph-image` and `twitter-image` are Next.js metadata file
-  // conventions served at `/opengraph-image[<hash>]` / `/twitter-image[<hash>]`
-  // (the hash is appended for cache busting); social crawlers fetch them
-  // unauthenticated, so they must bypass the auth wall the way favicons
-  // do — otherwise the pinned tweet renders the login redirect HTML
-  // instead of the og:image.
+  // conventions served at `/opengraph-image?<hash>` / `/twitter-image?<hash>`
+  // (the hash rides as a query string for cache busting); social
+  // crawlers fetch them unauthenticated, so they must bypass the auth
+  // wall the way favicons do — otherwise the pinned tweet renders the
+  // login redirect HTML instead of the og:image.
+  //
+  // The negative lookahead is anchored at the start of the path, so the
+  // exclusion only covers ROOT-LEVEL `/opengraph-image` + `/twitter-image`.
+  // The about-page variants at `/about/opengraph-image` ride on the
+  // pre-existing `/about` entry in `PUBLIC_PREFIXES` above — `isPublic`
+  // short-circuits before the auth check. If `/about` is ever moved
+  // behind auth, the about-page social card silently breaks; widen this
+  // matcher to cover the segment-nested form (e.g. `.*opengraph-image`)
+  // at that point.
   matcher: [
     "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],
