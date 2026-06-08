@@ -42,7 +42,12 @@ export default function OpenGraphImage() {
         padding: "80px",
         background: "#0a0a0a",
         color: "#f5f5f5",
+        // Only the 700 cut is bundled (the same TTF the favicon already
+        // ships) — satori falls back to its built-in default font for
+        // any weight it doesn't have loaded, so every node here uses 700.
+        // Stylistic differentiation comes from size and colour, not weight.
         fontFamily: "Montserrat",
+        fontWeight: 700,
       }}
     >
       {/* Closed-beta pill — orange vocabulary from the landing's BETA_PILL.
@@ -61,7 +66,6 @@ export default function OpenGraphImage() {
             color: "#fb923c",
             border: "1px solid rgba(249, 115, 22, 0.30)",
             fontSize: "20px",
-            fontWeight: 500,
           }}
         >
           <div
@@ -81,7 +85,6 @@ export default function OpenGraphImage() {
         style={{
           marginTop: "32px",
           fontSize: "84px",
-          fontWeight: 600,
           letterSpacing: "-0.025em",
           lineHeight: 1.05,
           display: "flex",
@@ -91,7 +94,9 @@ export default function OpenGraphImage() {
         <div>The home for</div>
         <div>conflict geolocations.</div>
       </div>
-      {/* Subhead — slightly trimmed version of the landing subhead */}
+      {/* Subhead — slightly trimmed version of the landing subhead.
+          Same 700 weight but smaller + neutral-400 colour so the
+          hierarchy still reads as subordinate to the headline. */}
       <div
         style={{
           marginTop: "32px",
