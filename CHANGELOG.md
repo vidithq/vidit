@@ -8,6 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- **"Request access" affordance on the landing** ([`frontend/src/components/landing/HeroCtas.tsx`](frontend/src/components/landing/HeroCtas.tsx)). The sole signed-out CTA used to be a single "Have an invite code?" button — cold traffic without an invite hit a dead end. Below the button now reads "No invite? Request access — DM @vidithq or ask in Discord." with both handles linked in the landing's orange link style. No waitlist to build; both channels already exist. The signed-in CTA is unchanged.
 ### Fixed
 - **Bounties sidebar nav highlights on bounty sub-routes** ([`frontend/src/components/Sidebar.tsx`](frontend/src/components/Sidebar.tsx)). The Bounties entry had no `activeFor`, so it fell through to exact-path matching and went dark on `/bounties/[id]` and `/bounties/new` — every other section keeps its highlight on deep pages. Added `activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/")`. Submit owns `/geolocations/new` (not `/bounties/new`), so the matcher doesn't need an exclusion clause the way Map's does.
 
