@@ -111,7 +111,13 @@ export const config = {
   // Icon / Apple-touch-icon / manifest routes also stay public — the
   // browser requests them on every page load and an auth redirect on a
   // favicon request makes the tab fall back to its default stub icon.
+  // `opengraph-image` and `twitter-image` are Next.js metadata file
+  // conventions served at `/opengraph-image[<hash>]` / `/twitter-image[<hash>]`
+  // (the hash is appended for cache busting); social crawlers fetch them
+  // unauthenticated, so they must bypass the auth wall the way favicons
+  // do — otherwise the pinned tweet renders the login redirect HTML
+  // instead of the og:image.
   matcher: [
-    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml).*)",
+    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],
 };
