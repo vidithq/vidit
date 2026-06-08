@@ -18,14 +18,18 @@ Live at **[vidit.app](https://vidit.app)** (closed beta).
 ## Demo
 
 <!--
-Embed the promo MP4 inline once it's uploaded. To upload: open a draft
-GitHub issue or release, drag the file from `video/out/promo-final.mp4`
-into the description, copy the `https://github.com/user-attachments/...`
-URL GitHub generates, and replace the placeholder line below. GitHub
-auto-renders the player when the URL is on a line by itself.
+Embed source: the README variant rendered by `make promo` (1280×720,
+~1.6 MB), uploaded as a GitHub user-attachment so the player renders
+inline on github.com. To swap in a re-render: drag the new
+`video/out/promo-readme.mp4` into any GitHub draft comment textarea,
+copy the `https://github.com/user-attachments/assets/<uuid>` URL it
+generates, and replace the URL on the bare line below — leaving the
+URL alone on its own line is what triggers GitHub's auto-player.
+The hero on [vidit.app](https://vidit.app) plays the matching 2K
+master (10 MB) from CloudFront.
 -->
 
-Short walkthrough: [vidit.app](https://vidit.app) renders the same `.mp4` in the hero. A GitHub user-attachment embed lands here once the next re-render is uploaded.
+https://github.com/user-attachments/assets/8b3689a9-b840-4ffb-8e91-21aef1aaca48
 
 ---
 
