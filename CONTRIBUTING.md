@@ -25,7 +25,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 3. **Write the tests that lock in the change.** Backend: `pytest` next to whatever you touched. Frontend: `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by [`.github/workflows/docs-pairing.yml`](.github/workflows/docs-pairing.yml) — see *Doc-sync rule* below for the conventions the check is a floor for.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below — the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
-6. **CI must be green.** Backend, frontend, `docs-pairing`, PR-title, and DCO workflows all need to pass.
+6. **CI must be green.** Backend, frontend, `docs-pairing`, PR-title workflows and the `DCO` status check (Probot app) all need to pass.
 7. **Sign off every commit.** See *Contributor sign-off* below.
 8. **Read touched docs cold before requesting review** — if anything misleads a new contributor, the PR isn't ready.
 
@@ -67,7 +67,7 @@ git commit --amend --signoff
 git rebase --signoff main
 ```
 
-The DCO check ([`.github/workflows/dco.yml`](.github/workflows/dco.yml)) walks every commit on the PR and fails on the first one without the trailer.
+The check is posted by the [DCO App](https://github.com/apps/dco) (Probot, installed on the org) as a status named `DCO`. It walks every commit on the PR and fails on the first one without the trailer.
 
 ## Doc-sync rule
 

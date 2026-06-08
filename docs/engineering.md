@@ -214,12 +214,13 @@ vidit/
 └── .github/
     └── workflows/
         ├── backend.yml
-        ├── dco.yml                 # every commit needs Signed-off-by (DCO 1.1)
         ├── deploy.yml              # manual workflow_dispatch (railway up / vercel deploy)
         ├── docs-pairing.yml        # PR must touch docs/ AND planning/
         ├── frontend.yml
         └── pr-title.yml
 ```
+
+DCO sign-off is enforced by the [Probot DCO App](https://github.com/apps/dco), not an in-tree workflow file.
 
 ---
 
@@ -299,8 +300,9 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 | `frontend.yml` | Push (when `frontend/` changes) | `npm ci` → `eslint` → `tsc --noEmit` → `next build` |
 | `docs-pairing.yml` | PR to `main` | Fails the PR when it doesn't touch *both* `docs/` (api / data-model / engineering / design / backups) AND `planning/` (`next.md` or `roadmap.md`). Friction-first guardrail: if the change genuinely needs neither, override with a justification in the PR description. Renamed from the previous `doc-sync.yml` (which had ~5 granular path-pairing rules) because the workflow's GitHub registration got stuck after a large rewrite and only a rename forced a fresh record. |
 | `pr-title.yml` | PR opened / synchronized | Validates the PR title against Conventional Commits. |
-| `dco.yml` | PR opened / edited / synchronized / reopened | Walks every commit on the PR and fails when any lacks a `Signed-off-by:` trailer. Implements [DCO 1.1](https://developercertificate.org) — **not** a CLA, no relicensing, inbound = outbound = AGPL-3.0. Self-contained shell script (no third-party action, so a silent tag-republish on a vendor action can't substitute its own check semantics). Merge commits are skipped so a mid-flight `git pull` doesn't false-positive the auto-generated subject. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
+
+DCO sign-off is enforced by the [Probot **DCO App**](https://github.com/apps/dco), not an in-repo workflow. The app is installed on the org and posts a status check named `DCO` on every PR — walks every commit, fails the first one missing a `Signed-off-by:` trailer, links remediation instructions. The same de-facto-standard installation Kubernetes / Helm / containerd / Linux-kernel mirror use; trades the "no third-party in CI" posture for zero maintenance + no Actions minutes per PR event. Implements [DCO 1.1](https://developercertificate.org) — **not** a CLA, no relicensing, inbound = outbound = AGPL-3.0.
 
 Hardening (forks make every workflow run attacker-reachable):
 
@@ -364,7 +366,7 @@ Vercel **Keychain quirk**: CLI ≥ 32 stores tokens in macOS Keychain; the `auth
 | Frontend Sentry | SDK wired in [`frontend/sentry.client.config.ts`](../frontend/sentry.client.config.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) + the auto-injected client entry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig`. | On Vercel set `NEXT_PUBLIC_SENTRY_DSN` (Production) + `SENTRY_DSN` (server runtime) + `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` + `SENTRY_ENVIRONMENT=production`. For build-time source-map upload also add repo variables `SENTRY_ORG` + `SENTRY_PROJECT` + repo secret `SENTRY_AUTH_TOKEN` ([wired through `deploy.yml`](../.github/workflows/deploy.yml)) and set the same on Vercel. Trigger a `deploy` workflow run. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
 | Uptime monitor | External. Pings `/health` from outside Railway region to catch outages. | Pick a free tier (UptimeRobot, BetterStack, Hyperping). Add `https://api.vidit.app/health` as an HTTP monitor, 1–5 min cadence, alert routes to owner email + the Vidit Discord webhook. Health endpoint is unauthenticated and returns `{"status":"ok"}`. |
 | CloudWatch budget alarm | External. $20/mo guardrail against a forgotten log-volume spike or a runaway CloudFront-cache-miss bill. | AWS console → Billing → Budgets → Create budget → Cost budget, monthly $20 fixed amount, threshold 80% actual + 100% forecasted → email alert to owner. |
-| Branch protection on `main` | External — requires GitHub Pro on private repos. | GitHub → Settings → Branches → Add rule for `main`: require PR review (1), require CI green (`backend.yml` + `frontend.yml` + `docs-pairing.yml` + `pr-title.yml` + `dco.yml`), disallow force-push, disallow deletion. |
+| Branch protection on `main` | External — requires GitHub Pro on private repos. | GitHub → Settings → Branches → Add rule for `main`: require PR review (1), require CI green (`backend.yml` + `frontend.yml` + `docs-pairing.yml` + `pr-title.yml` + `DCO` — the last name comes from the Probot DCO App, not a workflow file), disallow force-push, disallow deletion. |
 
 ### Frontend Sentry verification
 

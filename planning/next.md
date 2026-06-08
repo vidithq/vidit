@@ -16,6 +16,8 @@ The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not g
 
 Strategic context: [`roadmap.md`](roadmap.md) → *M1*. What's already shipped: the public vitrine — landing + demo video (see [CHANGELOG](../CHANGELOG.md) under *Unreleased* and *v0.2.0*). What's left: the open-source flip + the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, all firing in the same window.
 
+DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https://github.com/apps/dco) (installed at the org level), not an in-repo workflow file — same standard installation as Kubernetes / Helm / containerd. Branch protection on `main` requires the `DCO` status check.
+
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
 | P0 | Vitrine | Re-record the promo video — not signed in as admin, clearer bounty preview | Current promo runs from the admin account, which betrays an internal-tester perspective. The bounty preview in the "working on this" segment doesn't read clearly. Pipeline: [`video/`](../video/) (`make promo`). |
