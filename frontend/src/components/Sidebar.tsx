@@ -111,7 +111,17 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search", auth: true },
-  { href: "/bounties", icon: Target, label: "Bounties", auth: true },
+  {
+    href: "/bounties",
+    icon: Target,
+    label: "Bounties",
+    auth: true,
+    // Bounty detail and creation pages belong conceptually to Bounties.
+    // Unlike Map (which has to exclude /geolocations/new because Submit
+    // lives there), Submit owns /geolocations/new — not /bounties/new —
+    // so no exclusion is needed here.
+    activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
+  },
   { href: "/geolocations/new", icon: Plus, label: "Submit", auth: true },
   { href: "/about", icon: Info, label: "About" },
 ];
