@@ -294,7 +294,7 @@ Indexes:
 - `ix_auth_events_user_id_created_at` on `(user_id, created_at)` — "what did this user do, latest first" forensics query
 - `ix_auth_events_event_created_at` on `(event, created_at)` — "did event X spike recently"
 
-No retention policy today; tracked in [`next.md`](next.md).
+No retention policy today.
 
 ---
 

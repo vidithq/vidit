@@ -178,7 +178,7 @@ def test_profile_surfaces_trust_signal(trusted_user):
 
     Asserts the public schema carries `is_trusted` AND `trust_reason`
     together. Surfacing the flag without its reason would defeat the
-    "substantiated trust" design intent from `roadmap.md`.
+    "substantiated trust" design intent.
     """
     response = client.get(f"/api/v1/users/{trusted_user.username}")
     assert response.status_code == 200
@@ -279,7 +279,7 @@ def test_feed_orders_by_event_date_desc(db, live_user):
 def test_feed_caps_per_page_at_100(db, live_user):
     """Whatever the caller requests, the server caps at 100 — a
     backstop against accidental large reads (and the cheapest piece
-    of anti-scraping discipline before the proper Phase 3 limits)."""
+    of anti-scraping discipline before the proper per-IP / per-user limits land)."""
     response = client.get(f"/api/v1/users/{live_user.username}/geolocations?per_page=500")
     assert response.status_code == 200
     assert response.json()["per_page"] == 100

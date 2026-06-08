@@ -50,8 +50,7 @@ class User(Base):
     # Public profile fields — opt-in, set via PATCH /users/me. Bio is plain
     # text (no Tiptap, no inline media — the profile blurb is a short
     # signal, not a post). Avatar is a free-form URL today; the platform
-    # has no upload pipeline for it yet (next.md → S3 hardening +
-    # server-side image resize tracks that follow-up).
+    # has no upload pipeline for it yet.
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSONB object keyed by platform (x, discord, website, github). Default

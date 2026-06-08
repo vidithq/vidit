@@ -5,7 +5,7 @@ Revises: d4e6f8a0b2c4
 Create Date: 2026-05-09 16:30:00.000000
 
 Soft-delete on geolocations matches the platform's evidence-preservation
-promise (per docs/next.md → Security gaps) — admins remove a
+promise — admins remove a
 submission from public view while leaving the row + its proof / S3
 objects intact for forensic recall. ``DELETE /admin/geolocations/{id}``
 flips ``deleted_at`` by default; the ``?hard=true`` toggle is the GDPR

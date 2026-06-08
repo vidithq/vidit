@@ -10,7 +10,7 @@ from app.database import Base
 # Event names. Kept as plain strings (not a DB enum) so adding a new
 # kind doesn't require a migration — the audit log is append-only and
 # query-on-read, the writer is the only thing that needs to agree on
-# spelling. Mirrors the list in `next.md` → "Tier 4 lite".
+# spelling.
 EVENT_LOGIN = "login"
 EVENT_FAILED_LOGIN = "failed_login"
 EVENT_LOGOUT = "logout"

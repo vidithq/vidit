@@ -1,12 +1,10 @@
 """``GET /search`` — full-text search across geolocations, bounties, users.
 
 Slice 1 of the search feature. Single endpoint, single query box,
-grouped response. See ``services/search.py`` for the FTS plumbing and
-``docs/next.md`` → *Search* for the roadmap context.
+grouped response. See ``services/search.py`` for the FTS plumbing.
 
 Auth: matches the rest of the read surface for the closed beta —
-requires a logged-in user. Phase 3 will likely open this up to
-anonymous reads alongside the map.
+requires a logged-in user. Public reads are a likely future direction.
 """
 
 from __future__ import annotations

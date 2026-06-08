@@ -23,7 +23,7 @@ const CSRF_COOKIE = "vidit_csrf";
 // (validated at `POST /auth/register`) — there is no separate site-wide
 // gate cookie any more.
 //
-// M3 (open beta) opens anonymous read by ADDING the content routes to
+// When anonymous read opens, the content routes get added to
 // this set: `/map`, `/geolocations/[id]`, `/profile/[username]`,
 // `/bounties`. Until then a logged-in account is the closed-beta wall —
 // a strictly stronger lock than the old shared `vidit_beta_gate` cookie.

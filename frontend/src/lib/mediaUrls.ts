@@ -77,8 +77,8 @@ function mediaUrls(storage_url: string): MediaUrlBundle {
 /**
  * Pick the right URL for a Media row given the desired render size,
  * accounting for `media_type`. Videos always fall back to the
- * original (no first-frame extraction yet — tracked separately on
- * `next.md`). Use this helper in `<img>` / `<video>` `src` attributes
+ * original (no first-frame extraction yet). Use this helper in
+ * `<img>` / `<video>` `src` attributes
  * instead of reaching for `storage_url` directly.
  */
 export function displayUrlsFor(media: {

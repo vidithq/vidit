@@ -127,4 +127,4 @@ Confirm a fresh object lands under today's `YYYY/MM/DD/` prefix before deploying
   ```
 - **2c — Full restore** (data corruption, or downgrade isn't safe): the [restore drill](#one-time-restore-drill) below is the validated `pg_restore` procedure. Live restore: run `pg_restore` from a one-off `postgres:16` container on the Railway network, or temporarily open public DB networking. `pg_restore --clean --if-exists` **wipes anything added since the snapshot**; for partial recovery, restore into a scratch DB and copy specific tables out.
 
-A dedicated restore job is tracked in [`next.md`](next.md).
+A dedicated restore job is not yet scheduled.

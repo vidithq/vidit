@@ -2,7 +2,7 @@ name: doc-sync
 
 # Mechanical guardrail against doc drift: certain code-path changes
 # must come with a paired doc update in the same PR. The rules
-# mirror the "Before merging — doc sync rule" section of CLAUDE.md;
+# mirror the "Doc-sync rule" section of CONTRIBUTING.md;
 # this workflow is what enforces it instead of relying on author
 # memory + reviewer discipline.
 #
@@ -75,12 +75,48 @@ jobs:
             fail_rule "Touched deploy/infra config but docs/engineering.md was not updated. Workflow / Dockerfile / Railway-config / docker-compose changes must update the engineering doc (Operating-the-platform or Particularities) in the same PR."
           fi
 
-          # ── Rule 4: production code ↔ docs/CHANGELOG.md ─────────────────────
+          # ── Rule 4: production code ↔ CHANGELOG.md ──────────────────────────
           # Tests are excluded — green refactors don't need a user-facing
           # entry. Migrations DO require an entry (they ship a schema
           # change to prod).
-          if { touched '^backend/app/' || touched '^backend/alembic/versions/' || touched '^frontend/src/'; } && ! touched '^docs/CHANGELOG\.md$'; then
-            fail_rule "Touched production code (backend/app/, frontend/src/, or a migration) but docs/CHANGELOG.md was not updated. Add a one-line entry under '## Unreleased' in the same PR."
+          if { touched '^backend/app/' || touched '^backend/alembic/versions/' || touched '^frontend/src/'; } && ! touched '^CHANGELOG\.md$'; then
+            fail_rule "Touched production code (backend/app/, frontend/src/, or a migration) but CHANGELOG.md was not updated. Add a one-line entry under '## Unreleased' in the same PR."
+          fi
+
+          # ── Rule 5: planning vocabulary stays in planning ─────────────────
+          # Milestone IDs (M1/M2/M3) and references to planning files
+          # (next.md / roadmap.md) only belong in planning/, root meta
+          # files (CHANGELOG, README, AGENTS, CLAUDE, CONTRIBUTING,
+          # SECURITY, CODE_OF_CONDUCT), issue / PR templates, this
+          # workflow's own comments, and docs/engineering.md (repo
+          # tree). Cleaned in the structural reorg; this rule prevents
+          # regression. See AGENTS.md → "Where things live".
+          #
+          # `while IFS= read -r f` (not `for f in $FILES`) so the loop is
+          # newline-safe regardless of the runner's IFS.
+          LEAKS=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              planning/*) continue ;;
+              CHANGELOG.md|README.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|CODE_OF_CONDUCT.md|SECURITY.md) continue ;;
+              .github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|.github/workflows/doc-sync.yml) continue ;;
+              docs/engineering.md|video/*) continue ;;
+              *.md|*.ts|*.tsx|*.py|*.yml|*.yaml)
+                if [ -f "$f" ]; then
+                  HITS=$(grep -nE '\bM[1-9]\b|(next|roadmap)\.md' "$f" 2>/dev/null || true)
+                  if [ -n "$HITS" ]; then
+                    LEAKS="$LEAKS
+$f:
+$HITS
+"
+                  fi
+                fi
+                ;;
+            esac
+          done <<< "$FILES"
+          if [ -n "$LEAKS" ]; then
+            fail_rule "Planning vocabulary (milestone IDs M1/M2/M3, or next.md/roadmap.md references) leaked outside allowed homes. Tracker labels and planning-file references only belong in planning/, root meta files, issue/PR templates, and docs/engineering.md (repo tree). See AGENTS.md → 'Where things live'. Hits:$LEAKS"
           fi
 
           if [ "$FAIL" -eq 1 ]; then

@@ -136,7 +136,7 @@ def _parse_filter_date(value: str | None, field: str) -> date | None:
     The previous shape forwarded the raw string straight into the
     SQLAlchemy comparison, which let Postgres raise
     ``InvalidDatetimeFormat`` at query time and surfaced as a 500. The
-    ``/points`` endpoint is anonymous-reachable in M3, so without this
+    ``/points`` will be anonymous-reachable once read endpoints open, so without this
     guard an anonymous scraper can fill Sentry with 500s. Matches the
     ``_parse_bbox`` pattern.
 

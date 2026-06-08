@@ -16,8 +16,8 @@ Errors are deliberately distinct between "address has a live pending
 verification" and "address already belongs to a live or soft-deleted
 user" — closed beta registration requires an invite, so the
 enumeration-oracle risk is bounded and the UX gain from a real
-explanation is worth the trade. Revisit when Phase 3 opens
-self-registration to anonymous traffic.
+explanation is worth the trade. Revisit when self-registration
+opens to anonymous traffic.
 """
 
 from __future__ import annotations
@@ -194,7 +194,7 @@ def create_pending_registration(
     Known timing-oracle caveat: the "invalid invite" branch returns
     after a single indexed lookup and is measurably faster than the
     other error branches. Acceptable in closed beta (invite gating is
-    the bottleneck); revisit at Phase 3 when registration opens.
+    the bottleneck); revisit when registration opens.
     """
     invite = validate_invite_code(db, invite_code)
     if invite is None:
