@@ -102,6 +102,12 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
   },
 ];
 
+// Lucide dropped the brand-mark icons (Github, X, Discord) — the
+// sidebar handles those via hand-rolled SVG glyphs. The contact panel
+// here keeps the lucide vocabulary for the channels lucide still
+// covers; the GitHub link is surfaced as a footer line at the bottom
+// of the page so /about still cross-links the source repo without
+// dragging a brand-icon dependency into this file.
 const CONTACT = [
   {
     icon: AtSign,
@@ -317,6 +323,15 @@ export default function AboutPage() {
           <Link href="/map" className="text-orange-400 hover:underline">
             map
           </Link>
+          , or read the source on{" "}
+          <a
+            href="https://github.com/vidithq/vidit"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-orange-400 hover:underline"
+          >
+            GitHub
+          </a>
           .
         </p>
     </PageShell>
