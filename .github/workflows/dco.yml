@@ -1,0 +1,106 @@
+name: dco
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+# Read-only access: this workflow inspects commit messages on a PR and
+# fails the check when any commit lacks a `Signed-off-by:` trailer.
+# Nothing is written back — the result surfaces via the job's success/
+# failure status, which `GITHUB_TOKEN`'s default scope already publishes.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR commits
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Fetch the full PR range so the script below can walk every
+          # commit, not just the merge head. Explicit `ref:` checks out
+          # the actual PR head (`pull_request.head.sha`); we read the
+          # corresponding base SHA from `pull_request.base.sha` below
+          # — note that's the SHA, not the `github.base_ref` branch
+          # name.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify every commit carries a Signed-off-by trailer
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Self-contained DCO check — no third-party action so the
+          # workflow can't be silently changed by a tag re-publish.
+          # Implements the same contract as the Developer Certificate
+          # of Origin 1.1 (https://developercertificate.org): every
+          # commit on the PR must end with a `Signed-off-by:` line that
+          # carries a name + email. The trailer is appended by
+          # `git commit -s` (or `git rebase --signoff` for retro-fits).
+
+          commits=$(git rev-list "${BASE_SHA}..${HEAD_SHA}")
+          if [ -z "${commits}" ]; then
+            echo "No new commits in this PR — DCO check passes vacuously."
+            exit 0
+          fi
+
+          # Match `Signed-off-by: Name <email@host>` with a permissive
+          # email regex (any non-space sequence inside angle brackets).
+          # GitHub's "Sign off" web-UI uses the noreply address shape
+          # (`<id+username@users.noreply.github.com>`), which this
+          # accepts.
+          signoff_re='^Signed-off-by: .+ <[^>]+>$'
+
+          failed=0
+          while IFS= read -r sha; do
+            short=$(git log -1 --format=%h "${sha}")
+            subject=$(git log -1 --format=%s "${sha}")
+
+            # Merge commits inherit their parents' trailers; skip them.
+            # `pull_request` events on a regular branch don't include
+            # merge commits, but a PR that ran `git pull` mid-flight
+            # could carry one, and the trailer check would fail on the
+            # generated "Merge branch …" subject.
+            if [ "$(git log -1 --format=%P "${sha}" | wc -w)" -gt 1 ]; then
+              echo "skip merge commit ${short} (${subject})"
+              continue
+            fi
+
+            if git log -1 --format=%B "${sha}" | grep -Eq "${signoff_re}"; then
+              echo "ok   ${short} ${subject}"
+            else
+              echo "FAIL ${short} ${subject} — missing Signed-off-by trailer"
+              failed=$((failed + 1))
+            fi
+          done <<< "${commits}"
+
+          if [ "${failed}" -gt 0 ]; then
+            echo
+            echo "${failed} commit(s) above are missing a Developer Certificate of Origin sign-off."
+            # `printf` rather than `cat <<EOF` so the message renders
+            # flush-left in the Actions log — a heredoc inside a YAML
+            # `run: |` block has to keep YAML's indent on every line
+            # (including the closing `EOF`) and that padding then
+            # surfaces in the output.
+            printf '%s\n' \
+              '' \
+              'Re-commit with the trailer (or amend the existing commit):' \
+              '' \
+              '    git commit -s -m "..."        # new commit' \
+              '    git commit --amend --signoff  # latest commit' \
+              '    git rebase --signoff main     # every commit on the branch' \
+              '' \
+              'The trailer takes the shape:' \
+              '' \
+              '    Signed-off-by: Your Name <you@example.com>' \
+              '' \
+              'See CONTRIBUTING.md → "Contributor sign-off" for the full contract' \
+              '(the DCO certifies you have the right to submit the code under' \
+              'AGPL-3.0; it is not a CLA).'
+            exit 1
+          fi
