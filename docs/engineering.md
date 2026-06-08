@@ -48,7 +48,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 
 | Component | Choice |
 |-----------|--------|
-| Framework | **Next.js 14** (App Router) |
+| Framework | **Next.js 15** (App Router) |
 | Language | **TypeScript** |
 | Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **CARTO Dark Matter** vector tiles |
 | Rich editor (proof) | **Tiptap** |
