@@ -50,34 +50,14 @@ export default function OpenGraphImage() {
         fontWeight: 700,
       }}
     >
-      {/* Closed-beta pill — orange vocabulary from the landing's BETA_PILL.
-          Satori only allows display:flex|block|none on each node and has
-          no inline-flex / fit-content, so the row is a flex container
-          whose first child is the pill (flex, auto-sized by content). */}
-      <div style={{ display: "flex" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "6px 14px",
-            borderRadius: "9999px",
-            background: "rgba(249, 115, 22, 0.10)",
-            color: "#fb923c",
-            border: "1px solid rgba(249, 115, 22, 0.30)",
-            fontSize: "20px",
-          }}
-        >
-          <div
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "9999px",
-              background: "#f97316",
-            }}
-          />
-          <div>Vidit</div>
-        </div>
+      {/* Wordmark — matches the sidebar header treatment (orange `V` +
+          neutral-100 `idit`, both same weight, V acts as the brand
+          mark). Satori only allows display:flex|block|none, so the
+          wordmark is a flex row whose two children get the colour
+          contrast. */}
+      <div style={{ display: "flex", alignItems: "baseline", fontSize: "64px" }}>
+        <div style={{ color: "#f97316" }}>V</div>
+        <div style={{ color: "#f5f5f5" }}>idit</div>
       </div>
       {/* Headline mirrors the landing's H1. Two-line layout via stacked
           divs because satori's flex line-break support is unreliable. */}
