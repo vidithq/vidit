@@ -68,6 +68,11 @@ jobs:
 
   backend-test:
     name: Backend tests
+    # Gated on the lint job: ruff + mypy fail in well under a minute,
+    # pytest + the PostGIS service container cost several. A lint-red
+    # commit never spins up the container; a green run pays the lint
+    # duration up front before tests start — accepted trade.
+    needs: backend-lint
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -110,6 +115,10 @@ jobs:
       - name: pytest
         run: uv run pytest -v
 
+  # Deliberately ONE job, not a checks job gating a test job: the steps
+  # already run in fail-fast order (eslint → tsc → vitest → next build)
+  # off a single `npm ci`, so a lint failure stops everything after it.
+  # Splitting would buy nothing and pay a second dependency install.
   frontend:
     name: Frontend lint, type-check, test, build
     runs-on: ubuntu-latest
