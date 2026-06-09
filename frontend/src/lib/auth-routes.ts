@@ -5,7 +5,7 @@
 //
 // This is the auth-flow subset only; it is NOT the full public set (the
 // landing `/` and `/about` are public too — see `PUBLIC_*` in
-// `middleware.ts`). Kept separate from the middleware lists because this
+// `proxy.ts`). Kept separate from the proxy lists because this
 // predicate is permanent — the sidebar still needs to stay hidden on
 // /login etc. after the closed-beta wall comes down at public launch.
 

@@ -51,6 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // flip a freshly-logged-in user back to null when the pre-login /me
   // request arrives late.
   const stateVersion = useRef(0);
+  // Self-reference handle for the retry-on-transient branch below. The
+  // React Compiler-integrated `react-hooks` v7 rule rightly flags a raw
+  // `fetchUser(false)` call inside the `useCallback` defining `fetchUser`
+  // as a TDZ access (the closure captures the binding before it resolves).
+  // Routing the recursive call through a ref breaks the cycle: the ref is
+  // assigned right after the `useCallback`, and the `setTimeout` reads it
+  // 500ms later when the binding is long since live.
+  const fetchUserRef = useRef<((retryOnTransient?: boolean) => Promise<void>) | null>(null);
 
   const fetchUser = useCallback(async (retryOnTransient = true) => {
     // No JS-visible session cookie → don't bother /auth/me. The probe
@@ -88,13 +96,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAuthFailure =
         err instanceof ApiError && (err.status === 401 || err.status === 403);
       if (!isAuthFailure && retryOnTransient) {
-        setTimeout(() => fetchUser(false), 500);
+        setTimeout(() => fetchUserRef.current?.(false), 500);
         return;
       }
       if (isAuthFailure) setUser(null);
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    // Ref assignment in an effect (not during render) — React Compiler-
+    // integrated `react-hooks` v7 forbids ref writes during render. The
+    // setTimeout in the retry branch fires after this commit phase runs,
+    // so by the time it reads `fetchUserRef.current`, the binding is live.
+    fetchUserRef.current = fetchUser;
+  }, [fetchUser]);
 
   useEffect(() => {
     fetchUser();
