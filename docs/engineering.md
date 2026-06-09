@@ -54,6 +54,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 | Rich editor (proof) | **Tiptap** |
 | Styles | **Tailwind CSS** |
 | Icons | **lucide-react** |
+| Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), bridged via `FlatCompat` to `eslint-config-next`'s `next/core-web-vitals` preset). The `next lint` wrapper was deprecated in Next 15 and removed in Next 16 — `npm run lint` invokes `eslint` directly. |
 
 MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
 
