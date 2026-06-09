@@ -20,7 +20,7 @@ DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
-| P1 | Repo | Flip the repository public | The flip itself, once the rows above are done. |
+| P1 | Repo | Flip the repository public + enable secret scanning | The flip itself, once the rows above are done. Also activates the dormant [`codeql.yml`](../.github/workflows/codeql.yml) workflow automatically (its `analyze` job is gated on `!repository.private`, free on public repos, paid on private). At the same moment, toggle *Settings → Code security → Secret scanning* — free on public, no config file, catches committed tokens/keys. |
 
 ---
 
@@ -116,8 +116,6 @@ Concept-level only — **no commitment** to design or ship. Promote a candidate 
 
 | Area | Item | Why / how |
 |---|---|---|
-| Security | Enable GitHub code scanning (CodeQL) + secret scanning on the repo | Both free for public repos; both currently off. Code scanning would give CodeQL dataflow alerts (taint, deserialization, SSRF, etc.) on each push + PR; secret scanning would catch committed tokens. Settings → Code security → enable both. One-click each; both light up on the next push. Pick up once Dependabot's surface stabilises so the alert volume stays signal-rich. |
-| Security | `.github/dependabot.yml` — version-update PRs + grouping config | Repo currently runs on Dependabot's UI defaults (security alerts + auto-open security PRs only — no version-update PRs, no grouping). A `.github/dependabot.yml` would (a) enable weekly non-security version-update PRs for both `npm` and `pip` ecosystems so the gap between routine resolver drift and the next security alert closes, and (b) group related bumps (e.g., all `@sentry/*` packages into one PR, all `@tiptap/*` into another, all `@typescript-eslint/*` into another) so the review surface stays human-scaled. Worth wiring once the dependency surface is wider and the security-alert volume is signal-rich enough that batched routine bumps don't crowd it out. |
 | Gamification | Virtual community-credit rewards on fulfilled bounties | Visible counter on the profile, no money. Bounties (scheduled above) are the natural starting point. |
 | Gamification | Achievement badges | First 100 geolocations, first bounty fulfilled, longest streak, top contributor by conflict, etc. |
 | Gamification | Public leaderboards | Filterable by conflict + time window. |

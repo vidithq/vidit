@@ -1,0 +1,71 @@
+name: codeql
+
+# CodeQL static analysis for Python (backend) + TypeScript/JavaScript (frontend).
+#
+# **Currently inert.** The repository is private and GitHub Advanced Security
+# isn't enabled, so the `analyze` job is gated on the repo being public — code
+# scanning is free on public repos but a paid add-on on private ones. The
+# workflow file lands now so it lights up automatically the moment the M1
+# *Flip the repository public* row in `planning/next.md` ships, without
+# needing a follow-up PR.
+#
+# Once the gate clears: each push to `main`, each PR, and the weekly cron
+# fire a CodeQL analysis. Results post to the Security tab → Code scanning
+# alerts as severity-rated dataflow findings (taint, deserialization, SSRF,
+# command injection, etc.). The Monday 06:00 UTC schedule catches regressions
+# in upstream queries that didn't fire on prior pushes — recommended in
+# GitHub's CodeQL setup docs.
+#
+# Hardening (matches the rest of `.github/workflows/`):
+# - All third-party actions SHA-pinned with a `# tag` comment.
+# - Top-level `permissions:` block scoped to the minimum (`contents: read`
+#   for checkout, `security-events: write` for the upload-results step,
+#   `actions: read` for private-mode action metadata).
+# - `pull_request` (not `pull_request_target`) — fork-PR escalation closed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    # Private repos require GitHub Advanced Security (paid) for code scanning;
+    # public repos get it for free. Skip while private — the file activates
+    # automatically on the M1 public flip.
+    if: ${{ !github.event.repository.private }}
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - python
+          - javascript-typescript
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8272c299f21ca24af15dfe9ac0971ba969e5e0d5 # v3.36.2
+        with:
+          languages: ${{ matrix.language }}
+          # Default + `security-extended` query suite — broader coverage at
+          # the cost of more findings to triage. Drop to default only if the
+          # extended pack's noise outweighs its signal in practice.
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@8272c299f21ca24af15dfe9ac0971ba969e5e0d5 # v3.36.2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@8272c299f21ca24af15dfe9ac0971ba969e5e0d5 # v3.36.2
+        with:
+          category: "/language:${{ matrix.language }}"
