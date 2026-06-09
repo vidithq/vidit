@@ -213,7 +213,7 @@ export default function LandingPage() {
               key={title}
               className={`flex gap-4 rounded-lg border p-4 ${
                 current
-                  ? "border-orange-500/40 bg-orange-500/[0.04]"
+                  ? "border-orange-500/40 bg-orange-500/4"
                   : "border-neutral-800 bg-neutral-900"
               }`}
             >

@@ -28,7 +28,7 @@ export default function ClosedBetaBanner() {
     <div
       role="status"
       aria-label="Closed beta"
-      className={`fixed bottom-3 right-3 z-[1200] inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight pointer-events-none select-none backdrop-blur-sm ${BETA_PILL}`}
+      className={`fixed bottom-3 right-3 z-1200 inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight pointer-events-none select-none backdrop-blur-xs ${BETA_PILL}`}
     >
       <span className="size-1.5 rounded-full bg-orange-500" />
       <span>Closed beta · {displayVersion}</span>

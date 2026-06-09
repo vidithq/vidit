@@ -440,7 +440,7 @@ export default function ProfilePage() {
                             [p.key]: e.target.value,
                           }))
                         }
-                        className="block w-full bg-transparent text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
+                        className="block w-full bg-transparent text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-hidden"
                       />
                     </div>
                   </div>

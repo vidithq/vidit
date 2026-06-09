@@ -198,7 +198,7 @@ export default function HomePage() {
       />
 
       {/* Left panel — filters */}
-      <div className="absolute top-4 left-[72px] z-[1000] w-60">
+      <div className="absolute top-4 left-[72px] z-1000 w-60">
         {/* Compact header — always visible */}
         <button
           onClick={() => setFiltersOpen((o) => !o)}
@@ -313,13 +313,13 @@ export default function HomePage() {
                   type="date"
                   value={eventDateFrom}
                   onChange={(e) => setEventDateFrom(e.target.value)}
-                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded text-[11px] text-neutral-300 focus:outline-none focus:border-orange-500"
+                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
                 />
                 <input
                   type="date"
                   value={eventDateTo}
                   onChange={(e) => setEventDateTo(e.target.value)}
-                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded text-[11px] text-neutral-300 focus:outline-none focus:border-orange-500"
+                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
                 />
               </div>
             </div>
@@ -334,13 +334,13 @@ export default function HomePage() {
                   type="date"
                   value={submittedFrom}
                   onChange={(e) => setSubmittedFrom(e.target.value)}
-                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded text-[11px] text-neutral-300 focus:outline-none focus:border-orange-500"
+                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
                 />
                 <input
                   type="date"
                   value={submittedTo}
                   onChange={(e) => setSubmittedTo(e.target.value)}
-                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded text-[11px] text-neutral-300 focus:outline-none focus:border-orange-500"
+                  className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
                 />
               </div>
             </div>
@@ -355,7 +355,7 @@ export default function HomePage() {
                 value={authorFilter}
                 onChange={(e) => setAuthorFilter(e.target.value)}
                 placeholder="Username..."
-                className="w-full mt-1 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-none focus:border-orange-500"
+                className="w-full mt-1 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
               />
             </div>
 
@@ -381,7 +381,7 @@ export default function HomePage() {
           tall + ~6px border, so ~56px keeps the report link off the panel
           even on hover). */}
       {selectedId && (
-        <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-[1000] w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
+        <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
           <button
             onClick={closeDetail}
             className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-300 text-lg z-10"

@@ -42,7 +42,7 @@ export default function ProofEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-invert prose-sm max-w-none min-h-[200px] px-3 py-2 focus:outline-none",
+          "prose prose-invert prose-sm max-w-none min-h-[200px] px-3 py-2 focus:outline-hidden",
       },
     },
     onUpdate({ editor }) {
@@ -80,7 +80,7 @@ export default function ProofEditor({
   if (!editor) return null;
 
   return (
-    <div className="border border-neutral-700 rounded bg-neutral-800">
+    <div className="border border-neutral-700 rounded-sm bg-neutral-800">
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-700 flex-wrap">
         <button
@@ -124,7 +124,7 @@ export default function ProofEditor({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="px-2 py-1 rounded text-xs text-neutral-400 hover:bg-neutral-700 disabled:opacity-50"
+          className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 disabled:opacity-50"
         >
           {uploading ? "Uploading…" : "+ Image"}
         </button>

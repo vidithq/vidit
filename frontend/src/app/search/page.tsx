@@ -182,7 +182,7 @@ function SearchPageBody() {
             onChange={(e) => setQueryInput(e.target.value)}
             placeholder="Try a location, an analyst handle, or a keyword from a title…"
             autoFocus
-            className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-orange-500"
+            className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-hidden focus:border-orange-500"
           />
         </div>
 
@@ -298,7 +298,7 @@ function Highlighted({ value }: { value: string }) {
         seg.highlighted ? (
           <mark
             key={i}
-            className="bg-orange-500/30 text-orange-200 rounded px-0.5"
+            className="bg-orange-500/30 text-orange-200 rounded-sm px-0.5"
           >
             {seg.text}
           </mark>

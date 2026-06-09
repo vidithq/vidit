@@ -110,7 +110,7 @@ export default function SettingsPage() {
               // deliberately out — design.md's palette recipe explains why: "success"
               // celebrations next to red destructive actions read wrong,
               // and the rest of the app stays in the orange family.
-              <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded text-xs">
+              <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
                 Password updated.
               </div>
             )}

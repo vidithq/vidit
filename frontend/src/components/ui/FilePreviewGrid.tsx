@@ -53,7 +53,7 @@ export function FilePreviewGrid({ files }: { files: File[] }) {
                 className="w-full h-full object-cover"
               />
             )}
-            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
+            <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
               <p className="truncate text-[10px] text-neutral-200">{f.name}</p>
             </div>
           </div>
