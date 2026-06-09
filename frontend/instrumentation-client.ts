@@ -20,3 +20,8 @@ if (dsn) {
     sendDefaultPii: false,
   });
 }
+
+// Surface client-side navigation (route transition) errors to Sentry.
+// Without this re-export the Sentry SDK logs an ACTION REQUIRED warning on
+// every build and silently misses transition errors at runtime.
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
