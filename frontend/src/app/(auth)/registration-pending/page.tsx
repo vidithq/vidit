@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { AuthCard } from "@/components/auth/AuthCard";
 
 type ResendState = "idle" | "sending" | "sent" | "failed";
 
@@ -38,22 +39,26 @@ function PendingInner() {
   };
 
   return (
-    <div className="w-full max-w-sm space-y-5 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
-      <div className="flex items-start gap-3">
-        <Mail size={20} className="text-orange-400 shrink-0 mt-1" />
-        <div>
-          <h1 className="text-lg font-medium text-neutral-100">
-            Check your inbox
-          </h1>
-          <p className="text-xs text-neutral-400 mt-1">
-            We sent a confirmation link to{" "}
-            <span className="text-neutral-200">{email || "your address"}</span>.
-            The link is valid for the next 24 hours. Your account will be
-            created when you click it.
-          </p>
-        </div>
-      </div>
-
+    <AuthCard
+      icon={Mail}
+      title="Check your inbox"
+      subtitle={
+        <>
+          We sent a confirmation link to{" "}
+          <span className="text-neutral-200">{email || "your address"}</span>.
+          The link is valid for the next 24 hours. Your account will be created
+          when you click it.
+        </>
+      }
+      footer={
+        <>
+          Already confirmed?{" "}
+          <Link href="/login" className="text-orange-400 hover:underline">
+            Sign in
+          </Link>
+        </>
+      }
+    >
       <div className="border-t border-neutral-800 pt-4 space-y-2">
         <p className="text-xs text-neutral-500">
           Didn&apos;t get the email? Check spam, then resend.
@@ -86,14 +91,7 @@ function PendingInner() {
           </button>
         )}
       </div>
-
-      <p className="text-center text-xs text-neutral-500">
-        Already confirmed?{" "}
-        <Link href="/login" className="text-orange-400 hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </AuthCard>
   );
 }
 

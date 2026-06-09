@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import { FORM_ERROR_BANNER_COMPACT } from "@/components/ui/form-styles";
+import {
+  FORM_ERROR_BANNER_COMPACT,
+  FORM_INPUT,
+  FORM_LABEL_COMPACT,
+} from "@/components/ui/form-styles";
 
 
 /**
@@ -59,8 +64,7 @@ function ResetPasswordInner() {
 
   if (tokenMissing) {
     return (
-      <div className="w-full max-w-sm space-y-6 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
-        <h1 className="text-lg font-medium text-neutral-100">Link incomplete</h1>
+      <AuthCard title="Link incomplete">
         <p className="text-xs text-neutral-400">
           This URL doesn&apos;t carry a valid reset token. Open the link from
           the email we sent, or{" "}
@@ -72,22 +76,20 @@ function ResetPasswordInner() {
           </Link>
           .
         </p>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
-      <div>
-        <h1 className="text-lg font-medium text-neutral-100">
-          Set a new password
-        </h1>
-        <p className="text-neutral-400 text-xs mt-1">
-          Pick something at least 8 characters long. The link is single-use, so
-          finish here.
-        </p>
-      </div>
-
+    <AuthCard
+      title="Set a new password"
+      subtitle="Pick something at least 8 characters long. The link is single-use, so finish here."
+      footer={
+        <Link href="/login" className="text-orange-400 hover:underline">
+          Back to sign in
+        </Link>
+      }
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className={FORM_ERROR_BANNER_COMPACT}>
@@ -96,10 +98,7 @@ function ResetPasswordInner() {
         )}
 
         <div>
-          <label
-            htmlFor="password"
-            className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1"
-          >
+          <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             New password
           </label>
           <input
@@ -109,15 +108,12 @@ function ResetPasswordInner() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
+            className={FORM_INPUT}
           />
         </div>
 
         <div>
-          <label
-            htmlFor="confirm"
-            className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1"
-          >
+          <label htmlFor="confirm" className={FORM_LABEL_COMPACT}>
             Confirm
           </label>
           <input
@@ -127,7 +123,7 @@ function ResetPasswordInner() {
             minLength={8}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
+            className={FORM_INPUT}
           />
         </div>
 
@@ -139,13 +135,7 @@ function ResetPasswordInner() {
           {submitting ? "Saving..." : "Set new password"}
         </button>
       </form>
-
-      <p className="text-center text-xs text-neutral-400">
-        <Link href="/login" className="text-orange-400 hover:underline">
-          Back to sign in
-        </Link>
-      </p>
-    </div>
+    </AuthCard>
   );
 }
 

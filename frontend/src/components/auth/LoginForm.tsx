@@ -4,8 +4,13 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import { FORM_ERROR_BANNER_COMPACT } from "@/components/ui/form-styles";
+import {
+  FORM_ERROR_BANNER_COMPACT,
+  FORM_INPUT,
+  FORM_LABEL_COMPACT,
+} from "@/components/ui/form-styles";
 
 
 interface Props {
@@ -38,14 +43,7 @@ export default function LoginForm({ onSuccess }: Props) {
   };
 
   return (
-    <div className="w-full max-w-sm space-y-6 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
-      <div>
-        <h1 className="text-lg font-medium text-neutral-100">Sign in to Vidit</h1>
-        <p className="text-neutral-400 text-xs mt-1">
-          OSINT/GEOINT geolocation platform
-        </p>
-      </div>
-
+    <AuthCard title="Sign in to Vidit" subtitle="OSINT/GEOINT geolocation platform">
       <form onSubmit={handleSubmit} className="space-y-4">
         {justReset && !error && (
           <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
@@ -59,10 +57,7 @@ export default function LoginForm({ onSuccess }: Props) {
         )}
 
         <div>
-          <label
-            htmlFor="email"
-            className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1"
-          >
+          <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
           <input
@@ -71,7 +66,7 @@ export default function LoginForm({ onSuccess }: Props) {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
+            className={FORM_INPUT}
           />
         </div>
 
@@ -96,7 +91,7 @@ export default function LoginForm({ onSuccess }: Props) {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
+            className={FORM_INPUT}
           />
         </div>
 
@@ -125,6 +120,6 @@ export default function LoginForm({ onSuccess }: Props) {
           Resend it
         </Link>
       </p>
-    </div>
+    </AuthCard>
   );
 }
