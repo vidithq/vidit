@@ -1,5 +1,4 @@
 import json
-import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -37,14 +36,12 @@ from app.services.audit import extract_client_ip, extract_user_agent, rate_limit
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import sanitize_tiptap_doc
 from app.services.storage import (
-    StorageDeleteError,
     get_storage,
     safe_original_filename,
+    sweep_keys,
     upload_bounty_file,
     validate_file,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -328,11 +325,7 @@ async def create_bounty(
         # The DB transaction will roll back via the session-scope teardown;
         # sweep S3 best-effort so the bucket doesn't grow unbounded.
         db.rollback()
-        if uploaded_keys:
-            try:
-                get_storage().delete_many(uploaded_keys)
-            except StorageDeleteError:
-                logger.exception("Partial S3 cleanup failure after failed bounty create")
+        sweep_keys(uploaded_keys, context="bounty create rollback")
         raise
 
     db.refresh(bounty)
@@ -404,14 +397,7 @@ def delete_bounty(
     db.delete(bounty)
     db.commit()
 
-    if media_keys:
-        try:
-            storage.delete_many(media_keys)
-        except StorageDeleteError:
-            logger.exception(
-                "Partial S3 delete failure on bounty %s; orphans may remain",
-                bounty.id,
-            )
+    sweep_keys(media_keys, context=f"bounty {bounty.id} delete")
 
 
 @router.post("/{bounty_id}/claim", status_code=status.HTTP_204_NO_CONTENT)

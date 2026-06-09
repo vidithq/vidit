@@ -149,7 +149,7 @@ vidit/
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
 │   │       ├── seed.py             # Admin demo-data seeder
 │   │       ├── social.py           # Follow edges, timeline assembly
-│   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage
+│   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
 │   ├── tests/

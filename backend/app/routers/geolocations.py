@@ -54,9 +54,9 @@ from app.services.audit import extract_client_ip, extract_user_agent, rate_limit
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc
 from app.services.storage import (
-    StorageDeleteError,
     get_storage,
     safe_original_filename,
+    sweep_keys,
     upload_file,
     upload_proof_image,
     validate_file,
@@ -935,13 +935,7 @@ async def upload_proof_image_endpoint(
         # is here so a future flip of ``produce_derivatives`` cleans
         # up correctly without a separate edit.
         db.rollback()
-        cleanup_keys = [key, *result.derivative_keys]
-        try:
-            get_storage().delete_many(cleanup_keys)
-        except Exception:
-            logger.exception(
-                "Failed to clean up S3 objects %s after DB commit failed", cleanup_keys
-            )
+        sweep_keys([key, *result.derivative_keys], context="proof-image upload commit failure")
         raise
     return {"url": url, "sha256": result.sha256}
 
@@ -1224,29 +1218,13 @@ async def create_geolocation(
         # ``get_db``'s ``finally`` to clean up, because partially-added
         # ``Media`` rows could otherwise get autoflushed by any query a
         # downstream error handler or metrics middleware happens to run.
-        # The cleanup itself is best-effort: per-key failures are reported
-        # on the ``StorageDeleteError`` it raises; we swallow the cleanup
-        # exception so the original error reaches the client, but log it
-        # so the operator can see leaked keys in the next admin pass.
-        # Note this runs even for benign 400s (e.g. a corrupt file later
-        # in the batch) — that's correct, the earlier files in the batch
+        # ``sweep_keys`` swallows per-key + transport-level failures so
+        # the original error reaches the client; leaked keys land in logs
+        # for the next admin pass. This also runs for benign 400s (e.g.
+        # a corrupt file later in the batch) — earlier files in the batch
         # genuinely *did* land on S3 and need sweeping.
         db.rollback()
-        if uploaded_keys:
-            try:
-                get_storage().delete_many(uploaded_keys)
-            except StorageDeleteError as cleanup_exc:
-                logger.exception(
-                    "Failed to clean up uploaded S3 objects after geolocation "
-                    "creation failed: %d orphan(s)",
-                    len(cleanup_exc.errors),
-                )
-            except Exception:
-                logger.exception(
-                    "Unexpected error cleaning up S3 objects after geolocation "
-                    "creation failed: %d candidate(s)",
-                    len(uploaded_keys),
-                )
+        sweep_keys(uploaded_keys, context="geolocation create rollback")
         raise
 
     db.refresh(geo)
@@ -1317,17 +1295,10 @@ def delete_geolocation(
     db.delete(geo)
     db.commit()
 
-    if proof_image_keys:
-        # If S3 reports per-key failures (transient outage, key already
-        # gone), the rows are already deleted — swallow and log; the
-        # objects will be picked up by the next reaper sweep, which
-        # cross-references against the table.
-        try:
-            get_storage().delete_many(proof_image_keys)
-        except StorageDeleteError:
-            logger.exception(
-                "Partial S3 delete failure on geolocation %s; orphans may remain",
-                geo.id,
-            )
+    # If S3 reports per-key failures (transient outage, key already gone),
+    # the rows are already deleted — swallow and log; the objects will be
+    # picked up by the next reaper sweep, which cross-references against
+    # the table.
+    sweep_keys(proof_image_keys, context=f"geolocation {geo.id} delete")
 
     points_cache.invalidate()
