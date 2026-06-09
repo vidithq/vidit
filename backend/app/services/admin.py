@@ -3,7 +3,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -19,6 +18,29 @@ from app.services.auth import bump_token_version, generate_invite_code
 from app.services.storage import StorageDeleteError, get_storage
 
 logger = logging.getLogger(__name__)
+
+
+class AdminError(Exception):
+    """Base for friendly errors raised back to the user by admin services.
+
+    Carries a ``code`` so the router can map to a specific HTTP status
+    and message without string-matching exception text. Mirrors
+    :class:`app.services.registration.RegistrationError`.
+    """
+
+    code: str = "admin_error"
+
+
+class UserNotFoundError(AdminError):
+    code = "user_not_found"
+
+
+class GeolocationNotFoundError(AdminError):
+    code = "geolocation_not_found"
+
+
+class TrustReasonRequiredError(AdminError):
+    code = "trust_reason_required"
 
 
 def _invite_code_status(invite: InviteCode) -> InviteCodeStatus:
@@ -177,10 +199,10 @@ def set_user_trust(
         # Tombstoned rows are invisible to the trust panel — flipping
         # is_trusted on a deleted account would resurrect a stale signal
         # the moment the row is ever un-deleted.
-        raise HTTPException(status_code=404, detail="User not found")
+        raise UserNotFoundError("User not found")
 
     if is_trusted and not trust_reason:
-        raise HTTPException(status_code=422, detail="trust_reason is required when granting trust")
+        raise TrustReasonRequiredError("trust_reason is required when granting trust")
 
     if is_trusted:
         user.is_trusted = True
@@ -214,7 +236,7 @@ def soft_delete_geolocation(
     """
     geo = db.query(Geolocation).filter(Geolocation.id == geolocation_id).first()
     if geo is None:
-        raise HTTPException(status_code=404, detail="Geolocation not found")
+        raise GeolocationNotFoundError("Geolocation not found")
     if geo.deleted_at is not None:
         return geo
 
@@ -247,7 +269,7 @@ def hard_delete_geolocation(
     """
     geo = db.query(Geolocation).filter(Geolocation.id == geolocation_id).first()
     if geo is None:
-        raise HTTPException(status_code=404, detail="Geolocation not found")
+        raise GeolocationNotFoundError("Geolocation not found")
 
     # Capture S3 keys *before* the cascade fires. Media rows store the
     # public URL; convert them via the storage layer's reverse-lookup so
@@ -313,7 +335,7 @@ def soft_delete_user(
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise UserNotFoundError("User not found")
     if user.deleted_at is not None:
         return user, 0, 0
 
@@ -404,7 +426,7 @@ def hard_delete_user(
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise UserNotFoundError("User not found")
 
     storage = get_storage()
 

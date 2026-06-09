@@ -239,8 +239,8 @@ HTTP request → router → service → model / DB
 
 | Layer | Role | Rule |
 |-------|------|------|
-| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema |
-| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response` |
+| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema. Maps service-raised typed errors to HTTP status + `{code, message}` detail (see [`routers/auth.py`](../backend/app/routers/auth.py) `_REGISTRATION_ERROR_STATUS` / [`routers/admin.py`](../backend/app/routers/admin.py) `_ADMIN_ERROR_STATUS`). |
+| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException` — raise a typed error subclass with a stable `code` and let the router translate. |
 | **models/** | SQLAlchemy tables | No logic — just structure |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |

@@ -1,4 +1,5 @@
 import uuid
+from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
@@ -33,6 +34,26 @@ router = APIRouter()
 
 limiter = Limiter(key_func=rate_limit_key)
 limiter.enabled = settings.rate_limit_enabled
+
+
+_ADMIN_ERROR_STATUS: dict[str, int] = {
+    "user_not_found": 404,
+    "geolocation_not_found": 404,
+    "trust_reason_required": 422,
+}
+
+
+def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
+    """Translate a typed admin error into a structured HTTP response.
+
+    Same ``{"code", "message"}`` shape as the registration-error
+    mapping in routers/auth.py so the frontend's generic error
+    renderer treats both flows identically.
+    """
+    raise HTTPException(
+        status_code=_ADMIN_ERROR_STATUS.get(exc.code, 400),
+        detail={"code": exc.code, "message": str(exc)},
+    )
 
 
 @router.get("/me", response_model=AdminMeResponse)
@@ -107,13 +128,16 @@ def set_user_trust(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> User:
-    return admin_service.set_user_trust(
-        db,
-        actor_id=current_user.id,
-        user_id=user_id,
-        is_trusted=body.is_trusted,
-        trust_reason=body.trust_reason,
-    )
+    try:
+        return admin_service.set_user_trust(
+            db,
+            actor_id=current_user.id,
+            user_id=user_id,
+            is_trusted=body.is_trusted,
+            trust_reason=body.trust_reason,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
 
 
 @router.delete(
@@ -132,23 +156,28 @@ def delete_user_admin(
     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
     (drops the row + cascade-drops their geolocations + sweeps S3). Both
     paths invalidate the points cache."""
-    if hard:
-        result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
-        points_cache.invalidate()
-        return AdminUserDeleteResponse(
-            user_id=user_id,
-            username=result["username"],
-            mode="hard",
-            deleted_at=None,
-            cascaded_geolocations=result["geolocation_count"],
-            cascaded_bounties=result["bounty_count"],
-            media_count=result["media_count"],
-            proof_image_count=result["proof_image_count"],
-        )
+    try:
+        if hard:
+            result = admin_service.hard_delete_user(
+                db, actor_id=current_user.id, user_id=user_id
+            )
+            points_cache.invalidate()
+            return AdminUserDeleteResponse(
+                user_id=user_id,
+                username=result["username"],
+                mode="hard",
+                deleted_at=None,
+                cascaded_geolocations=result["geolocation_count"],
+                cascaded_bounties=result["bounty_count"],
+                media_count=result["media_count"],
+                proof_image_count=result["proof_image_count"],
+            )
 
-    user, cascaded_geolocations, cascaded_bounties = admin_service.soft_delete_user(
-        db, actor_id=current_user.id, user_id=user_id
-    )
+        user, cascaded_geolocations, cascaded_bounties = admin_service.soft_delete_user(
+            db, actor_id=current_user.id, user_id=user_id
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
     points_cache.invalidate()
     return AdminUserDeleteResponse(
         user_id=user.id,
@@ -175,23 +204,26 @@ def delete_geolocation_admin(
     """Remove a geolocation. Default is soft (sets `deleted_at`); pass
     `?hard=true` for GDPR-grade erasure (drops the row, media rows, and
     S3 objects). Both paths invalidate the points cache."""
-    if hard:
-        result = admin_service.hard_delete_geolocation(
+    try:
+        if hard:
+            result = admin_service.hard_delete_geolocation(
+                db, actor_id=current_user.id, geolocation_id=geolocation_id
+            )
+            points_cache.invalidate()
+            return AdminGeolocationDeleteResponse(
+                geolocation_id=geolocation_id,
+                title=result["title"],
+                mode="hard",
+                deleted_at=None,
+                media_count=result["media_count"],
+                proof_image_count=result["proof_image_count"],
+            )
+
+        geo = admin_service.soft_delete_geolocation(
             db, actor_id=current_user.id, geolocation_id=geolocation_id
         )
-        points_cache.invalidate()
-        return AdminGeolocationDeleteResponse(
-            geolocation_id=geolocation_id,
-            title=result["title"],
-            mode="hard",
-            deleted_at=None,
-            media_count=result["media_count"],
-            proof_image_count=result["proof_image_count"],
-        )
-
-    geo = admin_service.soft_delete_geolocation(
-        db, actor_id=current_user.id, geolocation_id=geolocation_id
-    )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
     points_cache.invalidate()
     return AdminGeolocationDeleteResponse(
         geolocation_id=geo.id,
