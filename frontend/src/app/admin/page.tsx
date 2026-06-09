@@ -362,7 +362,7 @@ function TrustUserRow({
               <BadgeCheck size={14} className="text-orange-500" strokeWidth={1.8} />
             )}
             {user.is_admin && (
-              <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded px-1">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded-sm px-1">
                 admin
               </span>
             )}

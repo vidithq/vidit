@@ -79,7 +79,7 @@ export default function TrustBadge({
           e.stopPropagation();
           setPinned((p) => !p);
         }}
-        className="inline-flex items-center text-orange-500 outline-none focus-visible:ring-1 focus-visible:ring-orange-400 rounded-sm"
+        className="inline-flex items-center text-orange-500 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400 rounded-xs"
       >
         <BadgeCheck size={size} strokeWidth={1.8} />
       </button>

@@ -26,7 +26,7 @@ function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
         return <s>{acc}</s>;
       case "code":
         return (
-          <code className="px-1 py-0.5 rounded bg-neutral-800 text-orange-300 text-xs">
+          <code className="px-1 py-0.5 rounded-sm bg-neutral-800 text-orange-300 text-xs">
             {acc}
           </code>
         );
@@ -129,7 +129,7 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
       return (
         <pre
           key={key}
-          className="bg-neutral-950 border border-neutral-800 rounded p-3 my-3 overflow-x-auto text-xs"
+          className="bg-neutral-950 border border-neutral-800 rounded-sm p-3 my-3 overflow-x-auto text-xs"
         >
           <code>{(node.content ?? []).map((c) => c.text ?? "").join("")}</code>
         </pre>
@@ -155,7 +155,7 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
           title={title}
           loading="lazy"
           referrerPolicy="no-referrer"
-          className="my-3 max-w-full h-auto rounded border border-neutral-800"
+          className="my-3 max-w-full h-auto rounded-sm border border-neutral-800"
         />
       );
     }

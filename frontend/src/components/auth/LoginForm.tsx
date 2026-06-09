@@ -48,7 +48,7 @@ export default function LoginForm({ onSuccess }: Props) {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {justReset && !error && (
-          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded text-xs">
+          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
             Password reset — sign in with your new password.
           </div>
         )}
@@ -71,7 +71,7 @@ export default function LoginForm({ onSuccess }: Props) {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-none focus:border-orange-500"
+            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
           />
         </div>
 
@@ -96,7 +96,7 @@ export default function LoginForm({ onSuccess }: Props) {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-none focus:border-orange-500"
+            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500"
           />
         </div>
 

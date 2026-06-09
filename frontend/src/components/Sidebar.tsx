@@ -226,7 +226,7 @@ export default function Sidebar() {
   return (
     <aside
       aria-label="Primary navigation"
-      className={`fixed top-0 left-0 h-screen z-[1100] flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 ${
+      className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 ${
         expanded ? "w-48" : "w-14"
       }`}
     >

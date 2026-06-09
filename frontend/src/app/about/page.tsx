@@ -94,7 +94,7 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
   },
   {
     title: "Check the time-of-day",
-    body: "Validate shadow direction and length against the timestamp. SunCalc takes 30 seconds.",
+    body: "Validate shadow-sm direction and length against the timestamp. SunCalc takes 30 seconds.",
   },
   {
     title: "Optional: aerial alignment",

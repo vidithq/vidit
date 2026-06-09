@@ -29,7 +29,7 @@ export const FORM_LABEL_COMPACT =
 // matching the palette in `styles.ts`. Used on every input the analyst
 // is expected to *type into*: auth forms, settings, submit forms.
 export const FORM_INPUT =
-  "w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-none focus:border-orange-500";
+  "w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500";
 
 // Compact input — slightly less padding, dimmer text, no focus ring.
 // Used on display-leaning inputs (admin invite-code rows, profile
@@ -53,4 +53,4 @@ export const FORM_ERROR_BANNER =
 
 // Compact error banner — auth cards and tight panels.
 export const FORM_ERROR_BANNER_COMPACT =
-  "bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 rounded text-xs";
+  "bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 rounded-sm text-xs";

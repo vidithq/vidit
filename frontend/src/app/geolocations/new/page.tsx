@@ -826,7 +826,7 @@ function NewGeolocationForm() {
                     multiple
                     accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
                     onChange={handleFiles}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-neutral-700 file:text-neutral-300 file:cursor-pointer"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-sm file:border-0 file:bg-neutral-700 file:text-neutral-300 file:cursor-pointer"
                   />
                 </div>
                 {files.length > 0 && (
