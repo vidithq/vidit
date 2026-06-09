@@ -1,0 +1,222 @@
+name: ci
+
+# The per-commit checks-and-tests gate, consolidated from the previous
+# backend.yml + frontend.yml + docs-pairing.yml trio. One workflow, one
+# place to read what a commit must pass.
+#
+# Deliberately NO path filters: every push to main and every PR runs
+# every job. Two reasons over the previous per-area `paths:` filters:
+# - Required status checks that get path-skipped never report, which
+#   blocks the merge button forever on (e.g.) a docs-only PR once
+#   branch protection is on. Always-run jobs always report.
+# - The suites are small (backend ~1 min with the service container,
+#   frontend <1 min) — the simplicity is worth more than the minutes.
+#
+# pr-title.yml stays a separate workflow on purpose: it triggers on
+# `edited` (title changes) and merging it here would re-run the full
+# test suite on every title edit.
+#
+# Least-privilege: jobs only read source + run tests. No PR comments,
+# no pushes, no artefact publication. ``contents: read`` is the
+# minimum for checkout.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A force-push to a PR branch obsoletes the in-flight run — cancel it.
+# Pushes to main always run to completion so the post-merge signal on
+# every merged commit stays intact.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend-lint:
+    name: Backend lint & format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy app
+
+  backend-test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: vision
+          POSTGRES_USER: vision
+          POSTGRES_PASSWORD: vision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vision:vision@localhost:5432/vision
+      JWT_SECRET: test-secret-not-for-production
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: pytest
+        run: uv run pytest -v
+
+  frontend:
+    name: Frontend lint, type-check, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Sentinel value: api.ts hard-fails if unset, but CI doesn't deploy
+          # the bundle so the URL just needs to exist, not work. Real deploys
+          # get the production URL from Vercel project settings.
+          NEXT_PUBLIC_API_URL: https://api.invalid
+
+  # Lightweight, opinionated guardrail: every PR to `main` must touch
+  # at least one file under `docs/` AND at least one file under
+  # `planning/`. The intent is friction, not granular pairing rules:
+  #
+  # - `docs/` is the reference surface (api / data-model / engineering /
+  #   design / backups). If a change is doc-worthy at all, *something*
+  #   under here usually moves.
+  # - `planning/` is the in-flight tracker (`next.md` + `roadmap.md`).
+  #   A shipped change should remove or amend a tracker row; a non-
+  #   shipped change (refactor, bugfix never on the tracker) is rare
+  #   enough that touching `planning/next.md` with a brief note in the
+  #   relevant macro is reasonable overhead.
+  #
+  # If the rule fires legitimately for a PR that genuinely doesn't need
+  # either touch, justify it in the PR description; the rule is a
+  # friction-first guardrail, not a hard contract.
+  #
+  # Exempt from the rule: Dependabot PRs. Routine version-bump PRs
+  # (security or version-update) don't carry reference-doc or tracker
+  # impact — every Dependabot bump that would, gets its own human-
+  # authored CHANGELOG entry on merge anyway. Forcing a doc/+planning/
+  # touch on each weekly Dependabot wave is friction without signal.
+  docs-pairing:
+    name: PR touches docs/ and planning/
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Note Dependabot exemption
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        run: |
+          echo "✓ Dependabot PR — docs-pairing check is exempt for routine version bumps."
+          echo "If this PR turns out to need a doc / planning note (e.g., a breaking-change migration), the human handling the merge adds it via a follow-up commit on the branch."
+
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        with:
+          fetch-depth: 0
+
+      - name: Enumerate changed files
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          MERGE_BASE=$(git merge-base "$BASE" "$HEAD")
+          git diff --name-only "$MERGE_BASE..$HEAD" > /tmp/changed.txt
+          echo "Changed files in this PR:"
+          cat /tmp/changed.txt
+
+      - name: Check docs/ + planning/ touched
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          set -e
+          FILES=$(cat /tmp/changed.txt)
+          touched() { echo "$FILES" | grep -qE "$1"; }
+          FAIL=0
+
+          if ! touched '^docs/'; then
+            echo "::error::No file under docs/ was touched. Every PR should update reference docs (api / data-model / engineering / design / backups) when production behavior, API surface, schema, or operational config changes. If the PR genuinely has no docs/ impact, justify it in the description and override the check."
+            FAIL=1
+          fi
+
+          if ! touched '^planning/'; then
+            echo "::error::No file under planning/ was touched. Every PR should update the tracker — remove or amend a row in planning/next.md for shipped work, or leave a brief note in the relevant macro for changes that weren't tracked. If the PR genuinely has no planning impact, justify it in the description and override."
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::docs-pairing check failed."
+            exit 1
+          fi
+
+          echo "✓ docs/ and planning/ both touched."

@@ -13,7 +13,7 @@ Why this is the right change — the user problem, the constraint, the trade-off
 
 ## Doc-sync checklist
 
-CI hard-fails the PR if `docs/` AND `planning/` aren't both touched ([`.github/workflows/docs-pairing.yml`](../.github/workflows/docs-pairing.yml)). The bullets below are the conventions human review still owns — tick what applies; if none apply, explain why in the description.
+CI hard-fails the PR if `docs/` AND `planning/` aren't both touched (the `docs-pairing` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). The bullets below are the conventions human review still owns — tick what applies; if none apply, explain why in the description.
 
 - [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
 - [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
@@ -29,7 +29,7 @@ CI hard-fails the PR if `docs/` AND `planning/` aren't both touched ([`.github/w
 How you verified this. Include the commands you ran (`make test`, `npm run lint`, etc.) and, for UI changes, the flow you walked through in the browser.
 
 - [ ] `make test` passes locally
-- [ ] Frontend `npm run lint` + `npx tsc --noEmit` + `npm run build` pass
+- [ ] Frontend `npm test` + `npm run lint` + `npx tsc --noEmit` + `npm run build` pass
 - [ ] Manual check of the affected user flow (describe below)
 
 ## Notes for the reviewer

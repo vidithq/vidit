@@ -23,9 +23,9 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 1. **Fork + branch.** Name the branch after the work, not the issue number — `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-bounty-claim`.
 2. **One coherent change per PR.** A bug fix shouldn't drag in surrounding cleanup; "while I was there" refactors land in their own PR.
 3. **Write the tests that lock in the change.** Backend: `pytest` next to whatever you touched. Frontend: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`.
-4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by [`.github/workflows/docs-pairing.yml`](.github/workflows/docs-pairing.yml) — see *Doc-sync rule* below for the conventions the check is a floor for.
+4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — see *Doc-sync rule* below for the conventions the check is a floor for.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below — the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
-6. **CI must be green.** Backend, frontend, `docs-pairing`, PR-title workflows and the `DCO` status check (Probot app) all need to pass.
+6. **CI must be green.** The `ci` workflow (backend lint + backend tests + frontend + `docs-pairing` jobs), the PR-title workflow, and the `DCO` status check (Probot app) all need to pass.
 7. **Sign off every commit.** See *Contributor sign-off* below.
 8. **Read touched docs cold before requesting review** — if anything misleads a new contributor, the PR isn't ready.
 
@@ -82,7 +82,7 @@ Touched a published surface → sync the matching doc:
 - Auth model, deploy URLs, env vars, dev workflow → [`../AGENTS.md`](AGENTS.md) and [`../README.md`](README.md)
 - Palette or shared style constant → [`design.md`](docs/design.md)
 
-CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` — see [`.github/workflows/docs-pairing.yml`](.github/workflows/docs-pairing.yml). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract.
+CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` — see the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract.
 
 ## Security issues
 
