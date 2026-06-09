@@ -436,3 +436,14 @@ Public networking on `postgres-db` is off. Delete any public domain with no `DAT
 |---------|------|------|
 | Backend | **uv** | `pyproject.toml` + `uv.lock` |
 | Frontend | **npm** | `package.json` + `package-lock.json` |
+
+### Dependency security updates
+
+Dependabot watches both ecosystems (`pip` on [`backend/uv.lock`](../backend/uv.lock), `npm` on [`frontend/package-lock.json`](../frontend/package-lock.json)) and opens a security alert per advisory at [github.com/vidithq/vidit/security/dependabot](https://github.com/vidithq/vidit/security/dependabot). The alert carries the GHSA ID, the vulnerable range, and the first patched version — the inputs needed to decide whether the fix lands as a lockfile-only refresh or as a direct-dep bump.
+
+Two flows in practice:
+
+- **Transitive — lockfile-only.** When the vulnerable package is reached through another dep and the resolver can pull the patched version without lifting a top-level constraint, the fix is a `uv lock --upgrade` (backend) or `npm update <pkg>` / `npm audit fix` (frontend) and nothing else. `pyproject.toml` and `package.json` don't move. Bundles the rest of the resolver-drift bumps along with it; gated by `backend.yml` / `frontend.yml` CI green on the lock-only diff.
+- **Direct — manifest + lock.** When the patched version is outside the current top-level constraint (a SemVer-major bump on a direct dep is the common case), the fix lands the manifest bump in the same PR as the lock refresh. A breaking-change pass is part of the diff; tests and types are the floor, browser smoke for the frontend.
+
+Dependabot itself opens version-bump PRs when it can — those land via the same PR flow as any contribution (Conventional title, sign-off, docs/+planning/ touch). Batched lockfile refreshes (closing N advisories at once with one `uv lock --upgrade`) cite each GHSA in the CHANGELOG entry so the audit trail stays per-advisory even though the diff is one lockfile.
