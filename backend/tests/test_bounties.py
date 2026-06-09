@@ -792,7 +792,9 @@ def test_geolocate_without_bounty_still_requires_media(author):
         },
     )
     assert response.status_code == 400
-    assert "media" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "media_required"
+    assert "media" in detail["message"].lower()
 
 
 # ── Hardening: trust the bounty, never the form ───────────────────────────
