@@ -394,6 +394,38 @@ def get_storage() -> Storage:
     return LocalStorage(settings.local_storage_dir)
 
 
+def sweep_keys(keys: list[str], *, context: str) -> None:
+    """Best-effort delete a list of storage keys; swallow + log every failure.
+
+    Callers reach this AFTER the DB transaction they cared about has
+    committed (or rolled back) — storage failures must not propagate up
+    and turn a settled DB state into a 500 the client gets to retry. Per-key
+    failures (``StorageDeleteError``) log the failed-key count; any other
+    exception (network blip, auth failure mid-call) logs the candidate
+    count. The proof-image reaper picks up survivors on its next sweep.
+
+    ``context`` is a short caller-formatted phrase identifying the call site
+    in logs, e.g. ``f"geolocation {geo.id} hard-delete"``.
+    """
+    if not keys:
+        return
+    try:
+        get_storage().delete_many(keys)
+    except StorageDeleteError as exc:
+        logger.exception(
+            "S3 sweep failed (%s): %d/%d object(s) failed to delete; orphans may remain",
+            context,
+            len(exc.errors),
+            len(keys),
+        )
+    except Exception:
+        logger.exception(
+            "S3 sweep failed (%s): unexpected error; %d candidate object(s); orphans may remain",
+            context,
+            len(keys),
+        )
+
+
 def derivative_key(original_key: str, suffix: str) -> str:
     """Build the sibling key for a hero / thumbnail derivative.
 

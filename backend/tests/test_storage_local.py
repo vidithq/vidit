@@ -12,7 +12,9 @@ from app.services.storage import (
     LOCAL_STORAGE_MOUNT_PATH,
     LOCAL_STORAGE_URL_PREFIX,
     LocalStorage,
+    StorageDeleteError,
     derivative_key,
+    sweep_keys,
     upload_file,
 )
 
@@ -312,6 +314,72 @@ def test_local_storage_delete_many_keeps_nonempty_parent_dirs(tmp_path: Path):
     # b.jpg still there → parent dirs stay
     assert (tmp_path / "proof" / "u" / "b.jpg").exists()
     assert (tmp_path / "proof" / "u").exists()
+
+
+# ── sweep_keys ────────────────────────────────────────────────────────────
+
+
+def test_sweep_keys_empty_list_short_circuits(tmp_path: Path, monkeypatch):
+    """Empty input must not even resolve ``get_storage()`` — callers reach
+    sweep_keys on cleanup paths that should be a no-op when nothing landed."""
+    called = False
+
+    def _fail_if_called() -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("get_storage() must not be called on empty input")
+
+    monkeypatch.setattr(storage_module, "get_storage", _fail_if_called)
+    sweep_keys([], context="empty-input test")
+    assert called is False
+
+
+def test_sweep_keys_happy_path_deletes_files(tmp_path: Path):
+    (tmp_path / "proof" / "u").mkdir(parents=True)
+    (tmp_path / "proof" / "u" / "a.jpg").write_bytes(b"a")
+    (tmp_path / "proof" / "u" / "b.jpg").write_bytes(b"b")
+
+    sweep_keys(["proof/u/a.jpg", "proof/u/b.jpg"], context="happy path")
+
+    assert not (tmp_path / "proof" / "u" / "a.jpg").exists()
+    assert not (tmp_path / "proof" / "u" / "b.jpg").exists()
+
+
+def test_sweep_keys_swallows_storage_delete_error_and_logs(tmp_path: Path, monkeypatch, caplog):
+    """Per-key failures (StorageDeleteError) must not propagate — the caller
+    already committed the DB side and a thrown sweep would turn settled state
+    into a client-visible 500."""
+
+    def _raise_partial(self, keys: list[str]) -> None:
+        raise StorageDeleteError({"a.jpg": "AccessDenied: blocked"})
+
+    monkeypatch.setattr(LocalStorage, "delete_many", _raise_partial)
+    with caplog.at_level("ERROR"):
+        sweep_keys(["a.jpg"], context="partial-failure test")
+
+    assert any(
+        "S3 sweep failed (partial-failure test)" in r.message
+        and "1/1 object(s) failed to delete" in r.message
+        for r in caplog.records
+    )
+
+
+def test_sweep_keys_swallows_unexpected_error_and_logs(tmp_path: Path, monkeypatch, caplog):
+    """Transport-level failures (network blip, auth) come up as something
+    other than StorageDeleteError. sweep_keys must still swallow + log."""
+
+    def _raise_runtime(self, keys: list[str]) -> None:
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(LocalStorage, "delete_many", _raise_runtime)
+    with caplog.at_level("ERROR"):
+        sweep_keys(["a.jpg", "b.jpg"], context="transport-failure test")
+
+    assert any(
+        "S3 sweep failed (transport-failure test)" in r.message
+        and "2 candidate object(s)" in r.message
+        for r in caplog.records
+    )
 
 
 def test_main_app_registers_local_storage_mount():

@@ -15,7 +15,7 @@ from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.schemas.admin import AdminInviteCodeRead, InviteCodeStatus
 from app.services.auth import bump_token_version, generate_invite_code
-from app.services.storage import StorageDeleteError, get_storage
+from app.services.storage import get_storage, sweep_keys
 
 logger = logging.getLogger(__name__)
 
@@ -303,15 +303,10 @@ def hard_delete_geolocation(
     log_admin_event(db, actor_id=actor_id, action="geolocation_hard_deleted", target=target)
     db.commit()
 
-    storage_keys = proof_image_keys + media_keys
-    if storage_keys:
-        try:
-            storage.delete_many(storage_keys)
-        except StorageDeleteError:
-            logger.exception(
-                "Partial S3 delete failure on hard-delete of geolocation %s; orphans may remain",
-                geolocation_id,
-            )
+    sweep_keys(
+        proof_image_keys + media_keys,
+        context=f"geolocation {geolocation_id} hard-delete",
+    )
 
     return target
 
@@ -487,14 +482,9 @@ def hard_delete_user(
     db.commit()
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
-    storage_keys = proof_image_keys + geo_media_keys + bounty_media_keys
-    if storage_keys:
-        try:
-            storage.delete_many(storage_keys)
-        except StorageDeleteError:
-            logger.exception(
-                "Partial S3 delete failure on hard-delete of user %s; orphans may remain",
-                user_id,
-            )
+    sweep_keys(
+        proof_image_keys + geo_media_keys + bounty_media_keys,
+        context=f"user {user_id} hard-delete",
+    )
 
     return target
