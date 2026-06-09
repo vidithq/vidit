@@ -18,7 +18,9 @@ interface FetchResult<T> {
  *
  * `refetch` re-runs the current path. After an error it resets to the
  * loading state (retry buttons); after a success the stale data stays
- * rendered while the request is in flight (post-mutation refresh).
+ * rendered while the request is in flight (post-mutation refresh). A
+ * refetch that fails replaces that stale data with the error — the
+ * previous body is not kept as a fallback.
  */
 export function useApiResource<T>(path: string | null): {
   data: T | null;
