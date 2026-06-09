@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/8b3689a9-b840-4ffb-8e91-21aef1aaca48
 | Database | PostgreSQL + PostGIS 3 (16 in prod, 18 locally) |
 | Auth | Cookie session + double-submit CSRF (JWT payload, PyJWT) + bcrypt + invite codes |
 | Storage | AWS S3 + CloudFront (media) |
-| Frontend | Next.js 14 (App Router) + TypeScript + Tailwind |
+| Frontend | Next.js 16 (App Router) + TypeScript + Tailwind |
 | Map | MapLibre GL JS + CARTO Dark Matter tiles, client-side clustering |
 | Editor | Tiptap (rich proof) |
 | Hosting | Railway (API + DB) + Vercel (frontend) |
@@ -60,7 +60,7 @@ vidit/
 │   ├── alembic/      migrations
 │   ├── scripts/      one-off ops scripts (mock admin, demo seeders)
 │   └── tests/
-├── frontend/         Next.js 14 app (npm)
+├── frontend/         Next.js 16 app (npm)
 │   └── src/
 │       ├── app/         App Router pages
 │       ├── components/
@@ -68,7 +68,7 @@ vidit/
 │       ├── hooks/
 │       ├── lib/
 │       ├── types/
-│       └── middleware.ts   default-deny auth + host canonicalisation
+│       └── proxy.ts     default-deny auth + host canonicalisation
 ├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
 ├── docs/             api, backups, data-model, design, engineering (technical reference)
 ├── planning/         roadmap + next (project planning, not user docs)

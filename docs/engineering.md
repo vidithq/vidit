@@ -158,7 +158,7 @@ vidit/
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
 │
-├── frontend/                       # Next.js 14 (TypeScript)
+├── frontend/                       # Next.js 16 (TypeScript)
 │   ├── src/
 │   │   ├── app/                    # App Router
 │   │   │   ├── layout.tsx
@@ -193,7 +193,6 @@ vidit/
 │   ├── public/
 │   ├── package.json
 │   ├── tsconfig.json
-│   ├── tailwind.config.ts
 │   └── next.config.mjs
 │
 ├── docs/                          # technical reference
@@ -287,9 +286,9 @@ cd frontend
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 npx next dev -p 3030
 ```
 
-The override is *only* the localhost regex — explicit `CORS_ORIGINS` (production hosts) still apply. Auth cookies are domain-scoped, so this is safe in prod: a page at `localhost:N` in a real user's browser can't include `.vidit.app` cookies in a request to `api.vidit.app` even if CORS lets the request through.
+The override is *only* the localhost regex — explicit `CORS_ORIGINS` (production hosts) still apply. What keeps this safe in prod is the `SameSite=lax` attribute on the auth cookies ([`backend/app/config.py`](../backend/app/config.py) `cookie_samesite`), not cookie domain scoping — domain scoping governs which *host* receives cookies, not which *origin* may trigger the request. A cross-site `fetch` from a page at `localhost:N` doesn't carry `lax` cookies to `api.vidit.app`, so a hostile local page gets no credentialed response.
 
-In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localhost allowance — cookie scoping already prevents real attacks, but it keeps the public CORS surface tight.
+In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localhost allowance — the protection above holds only while the cookies stay `SameSite=lax`, and the public CORS surface shouldn't depend on a cookie attribute staying put.
 
 ---
 
