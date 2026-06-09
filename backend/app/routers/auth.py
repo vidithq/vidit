@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import uuid
+from typing import NoReturn
 from urllib.parse import urlencode
 
 import jwt
@@ -139,7 +140,7 @@ _REGISTRATION_ERROR_STATUS: dict[str, int] = {
 }
 
 
-def _raise_registration_error(exc: registration.RegistrationError) -> None:
+def _raise_registration_error(exc: registration.RegistrationError) -> NoReturn:
     """Translate a typed registration error into a structured HTTP response.
 
     ``detail`` is a ``{"code", "message"}`` dict so the frontend can
