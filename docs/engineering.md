@@ -309,7 +309,7 @@ DCO sign-off is enforced by the [Probot **DCO App**](https://github.com/apps/dco
 
 Hardening (forks make every workflow run attacker-reachable):
 
-- **Every third-party action is SHA-pinned**, with the human-readable version in a trailing comment.
+- **Every third-party action is SHA-pinned**, with the human-readable version in a trailing comment (the `# vX.Y.Z` form is the one Dependabot's `github-actions` ecosystem reads to know which pin to rewrite on a version-update PR).
 - **Every workflow declares a top-level `permissions:` block** scoped to the minimum it needs (`contents: read` for the five CI workflows, `pull-requests: read` on `pr-title.yml`).
 - **No workflow uses `pull_request_target`** — fork-PR escalation vector. Stick to `pull_request`.
 
