@@ -56,6 +56,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 | Styles | **Tailwind CSS 4** (CSS-first config — `@theme` block in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css), no `tailwind.config.ts`) |
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), bridged via `FlatCompat` to `eslint-config-next`'s `next/core-web-vitals` preset). The `next lint` wrapper was deprecated in Next 15 and removed in Next 16 — `npm run lint` invokes `eslint` directly. |
+| Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. |
 
 MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
 
@@ -301,7 +302,7 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
 | `backend.yml` | Push (when `backend/` changes) | `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `alembic upgrade head` → `pytest` |
-| `frontend.yml` | Push (when `frontend/` changes) | `npm ci` → `eslint` → `tsc --noEmit` → `next build` |
+| `frontend.yml` | Push (when `frontend/` changes) | `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build` |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private` — code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the workflow file sits inert until the repo flips public, then lights up automatically. |
 | `docs-pairing.yml` | PR to `main` | Fails the PR when it doesn't touch *both* `docs/` (api / data-model / engineering / design / backups) AND `planning/` (`next.md` or `roadmap.md`). Friction-first guardrail: if the change genuinely needs neither, override with a justification in the PR description. Dependabot PRs are exempt (gated on `pull_request.user.login != 'dependabot[bot]'`) — routine version bumps don't carry doc impact and the friction outweighs the signal across the weekly Monday wave; if a Dependabot bump turns out to need a doc / planning note, the human handling the merge adds it via a follow-up commit on the branch. Renamed from the previous `doc-sync.yml` (which had ~5 granular path-pairing rules) because the workflow's GitHub registration got stuck after a large rewrite and only a rename forced a fresh record. |
 | `pr-title.yml` | PR opened / synchronized | Validates the PR title against Conventional Commits. |
