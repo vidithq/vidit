@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { AuthCard } from "@/components/auth/AuthCard";
 
 type State = "confirming" | "success" | "failed";
 
@@ -79,33 +80,26 @@ function ConfirmInner() {
     };
   }, [token, refresh, router]);
 
+  const title = {
+    confirming: "Confirming your account…",
+    success: "Account confirmed",
+    failed: "Link no longer valid",
+  }[state];
+
   return (
-    <div className="w-full max-w-sm space-y-5 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
+    <AuthCard title={title}>
       {state === "confirming" && (
-        <>
-          <h1 className="text-lg font-medium text-neutral-100">
-            Confirming your account…
-          </h1>
-          <p className="text-xs text-neutral-400">One moment.</p>
-        </>
+        <p className="text-xs text-neutral-400">One moment.</p>
       )}
 
       {state === "success" && (
-        <>
-          <h1 className="text-lg font-medium text-neutral-100">
-            Account confirmed
-          </h1>
-          <p className="text-xs text-neutral-400">
-            Welcome to Vidit. Taking you to the map…
-          </p>
-        </>
+        <p className="text-xs text-neutral-400">
+          Welcome to Vidit. Taking you to the map…
+        </p>
       )}
 
       {state === "failed" && (
         <>
-          <h1 className="text-lg font-medium text-neutral-100">
-            Link no longer valid
-          </h1>
           <p className="text-xs text-neutral-400">
             {errorMsg ??
               "This confirmation link is invalid or expired. Start the registration over to get a fresh one."}
@@ -117,7 +111,7 @@ function ConfirmInner() {
           </p>
         </>
       )}
-    </div>
+    </AuthCard>
   );
 }
 

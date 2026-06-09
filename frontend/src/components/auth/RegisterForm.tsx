@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import {
@@ -62,15 +63,18 @@ export default function RegisterForm({
   };
 
   return (
-    <div className="w-full max-w-sm space-y-6 bg-neutral-900 border border-neutral-800 rounded-lg p-6 shadow-2xl">
-      <div>
-        <h1 className="text-lg font-medium text-neutral-100">Join Vidit</h1>
-        <p className="text-neutral-400 text-xs mt-1">
-          Registration requires an invite code. We&apos;ll send a confirmation
-          link before creating your account.
-        </p>
-      </div>
-
+    <AuthCard
+      title="Join Vidit"
+      subtitle="Registration requires an invite code. We'll send a confirmation link before creating your account."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link href="/login" className="text-orange-400 hover:underline">
+            Sign in
+          </Link>
+        </>
+      }
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className={FORM_ERROR_BANNER_COMPACT}>
@@ -152,13 +156,6 @@ export default function RegisterForm({
           {submitting ? "Sending confirmation..." : "Continue"}
         </button>
       </form>
-
-      <p className="text-center text-xs text-neutral-400">
-        Already have an account?{" "}
-        <Link href="/login" className="text-orange-400 hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </AuthCard>
   );
 }

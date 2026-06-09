@@ -206,7 +206,9 @@ Every main-app page uses the shared [`<PageShell>`](../frontend/src/components/u
 | Subtitle (`subtitle`) | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
 | Back arrow (`back`) | `absolute right-full top-1.5 mr-3 text-neutral-400 hover:text-neutral-200` | Lives in the gutter so the title sits at the same column-edge x-coordinate whether back is present or not. |
 
-Loading / error / empty pre-data states use the sibling `<PageCenter>` (`min-h-screen flex items-center justify-center pl-14`). Pages that legitimately opt out: `/` (the public landing) and `/map` (the full-screen map), the `(auth)/*` route group (narrower centered cards, smaller `text-lg` H1s), and `app/error.tsx` (the React Error Boundary lives outside the page tree).
+Loading / error / empty pre-data states use the sibling `<PageCenter>` (`min-h-screen flex items-center justify-center pl-14`). Pages that legitimately opt out: `/` (the public landing) and `/map` (the full-screen map), the `(auth)/*` route group, and `app/error.tsx` (the React Error Boundary lives outside the page tree).
+
+The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) instead — the `max-w-sm` centered dark card owning the optional `icon` / `title` (`text-lg` H1) / `subtitle` / `footer` slots. The two single-email request pages (`/forgot-password`, `/resend-confirmation`) additionally share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), the idle → sending → sent | failed email form; its sent-state copy must stay anti-enumeration ("if X is registered…", never confirming the address exists).
 
 ### Buttons
 
