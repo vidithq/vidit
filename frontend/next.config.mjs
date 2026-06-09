@@ -46,31 +46,28 @@ const nextConfig = {
   // `ENOENT: Montserrat-700.ttf`. The 500 cascades into a Server
   // Components render error on any page that pulls the manifest (which is
   // every page), so this hint isn't optional.
-  experimental: {
-    // Required on Next.js 14.x to enable the top-level `instrumentation.ts`
-    // hook that boots the Sentry server / edge SDKs. Stable (no flag) from
-    // Next.js 15 onwards — drop this line on the upgrade.
-    instrumentationHook: true,
-    // Next.js bundles `app/icon.tsx` into EVERY page's bundle for the
-    // metadata-icon resolution pipeline (`d.metadata.icon`), not just
-    // into the `/icon/*` route bundles. Static pages resolve their
-    // metadata at build time (where the .ttf is on disk in the build
-    // container, so things work), but **dynamic** pages re-execute
-    // the icon module at request time on the Vercel function — which
-    // means every dynamic page that didn't have the .ttf traced into
-    // its bundle 500s with `ENOENT: ... Montserrat-700.ttf` from
-    // `readFileSync` at module load.
-    //
-    // The glob `**` matches every entry, so the font travels with
-    // every function bundle. ~30 KB per function — acceptable. The
-    // alternative (enumerating each dynamic route) is brittle: every
-    // new `[id]`-style page would have to remember to add itself
-    // here or quietly start 500'ing in prod while passing local
-    // tests (the bug stays local-invisible because `process.cwd()`
-    // resolves to the on-disk tree during `npm run dev`).
-    outputFileTracingIncludes: {
-      "**": ["./src/app/Montserrat-700.ttf"],
-    },
+  //
+  // Next.js bundles `app/icon.tsx` into EVERY page's bundle for the
+  // metadata-icon resolution pipeline (`d.metadata.icon`), not just
+  // into the `/icon/*` route bundles. Static pages resolve their
+  // metadata at build time (where the .ttf is on disk in the build
+  // container, so things work), but **dynamic** pages re-execute
+  // the icon module at request time on the Vercel function — which
+  // means every dynamic page that didn't have the .ttf traced into
+  // its bundle 500s with `ENOENT: ... Montserrat-700.ttf` from
+  // `readFileSync` at module load.
+  //
+  // The glob `**` matches every entry, so the font travels with every
+  // function bundle. ~30 KB per function — acceptable. The alternative
+  // (enumerating each dynamic route) is brittle: every new `[id]`-style
+  // page would have to remember to add itself here or quietly start
+  // 500'ing in prod while passing local tests (the bug stays local-
+  // invisible because `process.cwd()` resolves to the on-disk tree
+  // during `npm run dev`).
+  //
+  // Promoted out of `experimental` in Next.js 15.
+  outputFileTracingIncludes: {
+    "**": ["./src/app/Montserrat-700.ttf"],
   },
   // Tightly-scoped allowlist for `next/image`. Only the hosts we actually
   // serve media from belong here — third-party hosts (picsum, unpkg, user
