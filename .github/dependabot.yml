@@ -1,0 +1,95 @@
+# Dependabot configuration.
+#
+# Without this file, Dependabot only opens **security** PRs — the ones triggered
+# by a newly-published GHSA against a dep we resolve to. Routine version drift
+# (a minor / patch release that didn't ship a CVE) accumulates silently between
+# the security PRs and is only caught reactively when something does explode.
+#
+# This config enables three things on top:
+#
+#   1. Weekly **version-update PRs** on every ecosystem so the floor stays
+#      current and the next security PR rebases on a smaller delta.
+#   2. **Grouping** so a busy ecosystem doesn't open ten PRs in one morning:
+#      `@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, and the
+#      `next` family each consolidate into a single PR. Everything else
+#      groups into a `minor-and-patch` catch-all. Major bumps stay
+#      individual on purpose — those are the ones worth reviewing
+#      one-at-a-time.
+#   3. A `github-actions` ecosystem (Monday-batched, with a similar
+#      `minor-and-patch` group) so SHA-pinned action versions in
+#      `.github/workflows/*.yml` don't drift away from upstream patches.
+#
+# Schedule is Monday morning UTC across the board so the week's drift lands
+# in one PR storm rather than rolling through Tuesday-Friday standups.
+#
+# Reviewer / assignee fields are intentionally absent — the repo runs solo
+# right now (see `planning/roadmap.md` → *Behind Vidit*), and once
+# contributors join the assignment will flow through CODEOWNERS, not here.
+
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      sentry:
+        patterns:
+          - "@sentry/*"
+      tiptap:
+        patterns:
+          - "@tiptap/*"
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+      types:
+        patterns:
+          - "@types/*"
+      next:
+        patterns:
+          - "next"
+          - "@next/*"
+          - "eslint-config-next"
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
