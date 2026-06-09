@@ -4,6 +4,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import NoReturn
 from urllib.parse import urlparse
 
 import httpx
@@ -22,8 +23,6 @@ from fastapi import (
 from fastapi.responses import Response
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_X, ST_Y, ST_MakeEnvelope, ST_Within
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
 from slowapi import Limiter
 from sqlalchemy import ColumnElement, and_, cast, func, or_
 from sqlalchemy.orm import Query as SAQuery
@@ -32,9 +31,8 @@ from sqlalchemy.orm import Session, joinedload, subqueryload
 from app.cache import points_cache
 from app.config import settings
 from app.dependencies import get_current_user, get_db
-from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
+from app.models.bounty import Bounty
 from app.models.geolocation import Geolocation
-from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
@@ -49,15 +47,14 @@ from app.schemas.geolocation import (
     TweetImportResponse,
 )
 from app.schemas.media import MediaUploadResponse
+from app.services import geolocations as geolocations_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent, rate_limit_key
 from app.services.evidence_processing import EvidenceProcessingError
-from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc
 from app.services.storage import (
     get_storage,
     safe_original_filename,
     sweep_keys,
-    upload_file,
     upload_proof_image,
     validate_file,
 )
@@ -81,11 +78,31 @@ limiter = Limiter(key_func=rate_limit_key)
 # meta-character vectors before they reach the SQL builder.
 _AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
-# Re-export the per-submission file-count cap from settings so callers in
-# this module read it as a module-level constant (matches the existing
-# ``_AUTHOR_FILTER_PATTERN`` shape and avoids dotting through ``settings``
-# on every check). Source of truth lives in ``app/config.py``.
-MAX_FILES_PER_GEOLOCATION = settings.max_files_per_geolocation
+
+_GEOLOCATION_ERROR_STATUS: dict[str, int] = {
+    "invalid_coordinates": 400,
+    "too_many_files": 422,
+    "media_required": 400,
+    "invalid_proof": 400,
+    "tag_requirements_not_met": 400,
+    "invalid_file": 400,
+    "evidence_processing_failed": 400,
+    "bounty_not_found": 404,
+    "bounty_not_open": 409,
+}
+
+
+def _raise_geolocation_error(exc: geolocations_service.GeolocationError) -> NoReturn:
+    """Translate a typed geolocations-service error into an HTTP response.
+
+    Same ``{"code", "message"}`` shape as the registration + admin flows so
+    the frontend's generic error renderer treats every business-rule
+    failure identically.
+    """
+    raise HTTPException(
+        status_code=_GEOLOCATION_ERROR_STATUS.get(exc.code, 400),
+        detail={"code": exc.code, "message": str(exc)},
+    )
 
 
 def _build_points_cache_key(
@@ -970,33 +987,12 @@ async def create_geolocation(
 ):
     files = files or []
 
-    # Cap the per-submit file count. Each file triggers Pillow decode +
-    # EXIF strip + JPEG re-encode + 2 derivatives + 3 S3 PUTs in the
-    # upload loop below; an unbounded list lets a single multipart post
-    # consume ~N× the CPU / S3-IO budget of a normal submit on the
-    # single uvicorn worker. 12 is comfortably above any realistic
-    # OSINT submission (one source video + a handful of corroborating
-    # frames). Per-file size limits live in ``services/storage.py``.
-    if len(files) > MAX_FILES_PER_GEOLOCATION:
-        # 422 for consistency with the other malformed-input rejections
-        # on this router (event_date, _parse_bbox, _parse_filter_date).
-        raise HTTPException(
-            status_code=422,
-            detail=f"At most {MAX_FILES_PER_GEOLOCATION} files per submission",
-        )
+    # ── Parse HTTP-shape inputs. Business rules + IO live in the service.
 
-    # Validate coordinates first — cheap and triggers before any S3 IO.
-    if not -90 <= lat <= 90:
-        raise HTTPException(status_code=400, detail="Latitude must be between -90 and 90")
-    if not -180 <= lng <= 180:
-        raise HTTPException(status_code=400, detail="Longitude must be between -180 and 180")
-
-    # Parse the event date string up front. Form(str) doesn't validate
-    # date shape, and assigning the raw value to ``Geolocation.event_date``
-    # (a ``Mapped[date]``) would 500 at flush — AFTER the S3 round-trips.
-    # 422 matches the ``_parse_bbox`` / ``_parse_filter_date`` shape on the
-    # GET side so the same class of malformed-input error gets the same
-    # status code regardless of which endpoint surfaced it.
+    # event_date: Form(str) doesn't validate date shape, and feeding the raw
+    # value into ``Geolocation.event_date`` (a Mapped[date]) would 500 at
+    # flush — AFTER the S3 round-trips. 422 matches ``_parse_bbox`` /
+    # ``_parse_filter_date`` so all malformed-input rejections share a code.
     try:
         parsed_event_date = date.fromisoformat(event_date)
     except ValueError as exc:
@@ -1005,75 +1001,19 @@ async def create_geolocation(
             detail="event_date must be an ISO-8601 date (YYYY-MM-DD)",
         ) from exc
 
-    bounty: Bounty | None = None
+    parsed_bounty_id: uuid.UUID | None = None
     if bounty_id:
         try:
             parsed_bounty_id = uuid.UUID(bounty_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="bounty_id must be a UUID") from exc
-        # SELECT ... FOR UPDATE on the bounty row. Two concurrent fulfilment
-        # attempts against the same bounty serialise here: the first holds
-        # the lock until commit, the second wakes up to see status=fulfilled
-        # and 409s. Without this, both could observe status=open, both
-        # would attempt the UPDATE-to-fulfilled, and we'd silently end up
-        # with two geolocations pointing at the same bounty (the partial
-        # unique index on `originated_from_bounty_id` is the belt to this
-        # lock's suspenders). ``of=Bounty`` scopes the lock so the
-        # joinedload LEFT JOINs against media/tags aren't locked too.
-        bounty = (
-            db.query(Bounty)
-            .options(joinedload(Bounty.media), joinedload(Bounty.tags))
-            .filter(Bounty.id == parsed_bounty_id, Bounty.deleted_at.is_(None))
-            .with_for_update(of=Bounty)
-            .first()
-        )
-        if bounty is None:
-            raise HTTPException(status_code=404, detail="Bounty not found")
-        if bounty.status != STATUS_OPEN:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Cannot fulfill a bounty with status {bounty.status}",
-            )
 
-    # Every geolocation row must end up with at least one media. The
-    # caller can either upload a fresh batch, or fulfill a bounty whose
-    # existing media becomes the geolocation's media (transferred in
-    # place via UPDATE — no S3 round-trip).
-    if not files and not (bounty and bounty.media):
-        raise HTTPException(status_code=400, detail="At least one media file is required")
-
-    # Parse optional JSON fields
     try:
         proof_data = json.loads(proof) if proof else None
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in 'proof': {exc.msg}") from exc
     if proof_data is not None and not isinstance(proof_data, dict):
         raise HTTPException(status_code=400, detail="'proof' must be a JSON object")
-    if proof_data is not None:
-        try:
-            proof_data = sanitize_tiptap_doc(proof_data)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Resolve the title/source_url/tags applied to the new geolocation.
-    # When fulfilling a bounty:
-    #
-    # - ``source_url`` is **always** sourced from the bounty row, never
-    #   from the form. The bounty's source URL is the EVIDENCE LINK the
-    #   bounty was opened against — if a fulfilling analyst could swap
-    #   it, they could "fulfill" the bounty with proof from an unrelated
-    #   event. The frontend renders this field locked, and the API
-    #   enforces the same so a hostile caller can't bypass the UI lock.
-    # - ``title`` and ``tag_ids`` are taken from the form. The analyst
-    #   doing the geolocation knows more than the bounty author did at
-    #   posting time (place name resolved, conflict tag refined, etc.)
-    #   and the bounty's `title` / tags remain on the bounty row anyway,
-    #   so both pages stay accurate. Bad-faith edits surface visibly on
-    #   the bounty trace (`originated_from_bounty` row), so moderation
-    #   sees them without needing a server-side equality check.
-    effective_source_url = bounty.source_url if bounty is not None else source_url
-
-    effective_title = title
 
     try:
         parsed_tag_ids = json.loads(tag_ids) if tag_ids else []
@@ -1083,165 +1023,27 @@ async def create_geolocation(
         ) from exc
     if not isinstance(parsed_tag_ids, list):
         raise HTTPException(status_code=400, detail="'tag_ids' must be a JSON array")
-    effective_tags = (
-        db.query(Tag).filter(Tag.id.in_(parsed_tag_ids)).all() if parsed_tag_ids else []
-    )
 
-    # Required categories: every geolocation must carry at least one
-    # `conflict` tag and one `capture_source` tag. Both selectors are
-    # required on the submit form (each ships an escape value — "Other" /
-    # "Unknown" — so the rule is always satisfiable, including via the
-    # bounty-fulfilment path, which routes its tag picks through this
-    # same form field). Checked against the *resolved* tags' categories,
-    # so a bogus or free-tag-only `tag_ids` payload is rejected the same
-    # as an empty one. Runs before any S3 upload — we pay no storage
-    # round-trip for a request we already know we'll 400 on.
-    tag_categories = {t.category for t in effective_tags}
-    if "conflict" not in tag_categories:
-        raise HTTPException(status_code=400, detail="A conflict tag is required")
-    if "capture_source" not in tag_categories:
-        raise HTTPException(status_code=400, detail="A capture source tag is required")
-
-    # Create geolocation
-    geo = Geolocation(
-        author_id=current_user.id,
-        title=effective_title,
-        location=from_shape(Point(lng, lat), srid=4326),
-        source_url=effective_source_url,
-        proof=proof_data,
-        event_date=parsed_event_date,
-        originated_from_bounty_id=bounty.id if bounty else None,
-    )
-
-    if effective_tags:
-        geo.tags = effective_tags
-
-    db.add(geo)
-    db.flush()
-
-    # Transfer bounty media to the new geolocation in place — rewrite
-    # `bounty_id → NULL, geolocation_id → :geo` on the existing rows.
-    # The S3 keys stay where they are (`bounty_uploads/<bounty>/...`);
-    # rewriting the bucket would be a pointless cost line and the keys
-    # are opaque to readers. Same transaction flips the bounty's status
-    # to fulfilled so the lifecycle move is atomic with the geo insert.
-    if bounty is not None:
-        db.query(Media).filter(Media.bounty_id == bounty.id).update(
-            {Media.bounty_id: None, Media.geolocation_id: geo.id},
-            synchronize_session=False,
-        )
-        bounty.status = STATUS_FULFILLED
-        bounty.closed_at = datetime.now(UTC)
-
-    # Upload and attach any *additional* media supplied by the caller.
-    # If S3 / validation fails for any of these the whole transaction
-    # rolls back — the bounty stays open + its media untransferred, the
-    # proof image rows stay orphan (with NULL geolocation_id) so the
-    # user can retry without their inline images being half-claimed.
-    # Capture provenance once per request — same value for every file
-    # in the form post, which is the right semantics: "this analyst,
-    # from this IP, with this UA, submitted these N files".
-    uploaded_ip = extract_client_ip(request)
-    uploaded_user_agent = extract_user_agent(request)
-    # Validate every file before any upload — a 400 on file #3 shouldn't
-    # leave files #1 and #2 stranded in S3, and we'd rather pay no S3
-    # round-trip at all for a request we already know we'll 400 on.
-    # Matches the pre-validate-then-upload pattern in ``routers/bounties.py``.
-    media_types: list[str] = []
-    for file in files:
-        try:
-            media_types.append(validate_file(file))
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Track successfully-uploaded S3 keys so a mid-batch failure can
-    # sweep them on rollback. Without this, file #1 uploads, file #2
-    # throws (``EvidenceProcessingError``, S3 outage, anything), the
-    # transaction rolls back, and file #1 stays in S3 forever with no
-    # DB row pointing at it — a chronic orphan leak invisible to the
-    # admin. Matches the same pattern in ``routers/bounties.py``.
-    uploaded_keys: list[str] = []
     try:
-        for file, media_type in zip(files, media_types, strict=True):
-            try:
-                result = await upload_file(file, geo.id)
-            except EvidenceProcessingError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            media = Media(
-                geolocation_id=geo.id,
-                storage_url=result.url,
-                media_type=media_type,
-                sha256=result.sha256,
-                uploaded_ip=uploaded_ip,
-                uploaded_user_agent=uploaded_user_agent,
-                original_filename=safe_original_filename(file.filename),
-            )
-            db.add(media)
-            key = get_storage().key_from_url(result.url)
-            if key is not None:
-                uploaded_keys.append(key)
-                # Sweep JPEG hero + thumbnail derivatives alongside
-                # the original on row-side failure — see the
-                # equivalent block in ``routers/bounties.py``.
-                uploaded_keys.extend(result.derivative_keys)
-
-        # Link any inline proof images to this geolocation. We only adopt
-        # rows that (a) belong to the current user and (b) aren't already
-        # claimed by another geolocation — that prevents a malicious caller
-        # from re-using URLs from other users' proofs to seed their own.
-        # Stays *inside* the try so a UPDATE failure (FK race etc.) routes
-        # through the same orphan-cleanup path as an upload-loop failure.
-        if proof_data is not None:
-            srcs = extract_image_srcs(proof_data)
-            if srcs:
-                storage = get_storage()
-                keys = [k for k in (storage.key_from_url(s) for s in srcs) if k is not None]
-                if keys:
-                    db.query(ProofImage).filter(
-                        ProofImage.s3_key.in_(keys),
-                        ProofImage.user_id == current_user.id,
-                        ProofImage.geolocation_id.is_(None),
-                    ).update(
-                        {ProofImage.geolocation_id: geo.id},
-                        synchronize_session=False,
-                    )
-
-        # Commit inside the try block so a commit-time failure (FK
-        # violation, serialization conflict, network blip to PG) also
-        # routes through the orphan cleanup. The previous shape wrapped
-        # only the upload loop and let commit failures strand the just-
-        # uploaded S3 objects — defeats the whole point of the cleanup.
-        db.commit()
-    except Exception:
-        # Best-effort cleanup. Explicit ``db.rollback()`` mirrors the
-        # bounty router pattern (``routers/bounties.py``) — don't rely on
-        # ``get_db``'s ``finally`` to clean up, because partially-added
-        # ``Media`` rows could otherwise get autoflushed by any query a
-        # downstream error handler or metrics middleware happens to run.
-        # ``sweep_keys`` swallows per-key + transport-level failures so
-        # the original error reaches the client; leaked keys land in logs
-        # for the next admin pass. This also runs for benign 400s (e.g.
-        # a corrupt file later in the batch) — earlier files in the batch
-        # genuinely *did* land on S3 and need sweeping.
-        db.rollback()
-        sweep_keys(uploaded_keys, context="geolocation create rollback")
-        raise
-
-    db.refresh(geo)
-
-    points_cache.invalidate()
-
-    # If this geo was promoted from a bounty, reload the relationship so
-    # the response carries the trace without forcing the client to fetch
-    # the bounty separately.
-    originated_from_bounty = None
-    if geo.originated_from_bounty_id is not None:
-        originated_from_bounty = (
-            db.query(Bounty)
-            .options(joinedload(Bounty.author))
-            .filter(Bounty.id == geo.originated_from_bounty_id)
-            .first()
+        geo = await geolocations_service.create_with_evidence(
+            db,
+            current_user=current_user,
+            title=title,
+            lat=lat,
+            lng=lng,
+            source_url=source_url,
+            event_date=parsed_event_date,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            bounty_id=parsed_bounty_id,
+            files=files,
+            uploaded_ip=extract_client_ip(request),
+            uploaded_user_agent=extract_user_agent(request),
         )
+    except geolocations_service.GeolocationError as exc:
+        _raise_geolocation_error(exc)
+
+    originated_from_bounty = geolocations_service.load_originated_from_bounty(db, geo)
 
     return GeolocationRead(
         id=geo.id,

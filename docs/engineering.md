@@ -143,6 +143,7 @@ vidit/
 │   │       ├── auth_tokens.py      # Single-use password-reset tokens
 │   │       ├── email.py            # Resend / console-echo email transport
 │   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
+│   │       ├── geolocations.py     # create_with_evidence + typed GeolocationError hierarchy
 │   │       ├── maintenance.py      # Reapers: auth tokens, proof orphans, pending regs
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser

@@ -828,7 +828,9 @@ def test_create_rejects_invalid_latitude(author):
         files=files,
     )
     assert response.status_code == 400
-    assert "Latitude" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_coordinates"
+    assert "Latitude" in detail["message"]
 
 
 def test_create_rejects_invalid_event_date(author):
@@ -888,7 +890,9 @@ def test_create_rejects_too_many_files(author):
         files=files,
     )
     assert response.status_code == 422
-    assert "files per submission" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["code"] == "too_many_files"
+    assert "files per submission" in detail["message"]
 
 
 def test_create_rejects_invalid_proof_json(author):
@@ -930,7 +934,9 @@ def test_create_rejects_no_tags(author):
         files=files,
     )
     assert response.status_code == 400
-    assert "conflict" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "tag_requirements_not_met"
+    assert "conflict" in detail["message"].lower()
 
 
 def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
@@ -950,7 +956,9 @@ def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
         files=files,
     )
     assert response.status_code == 400
-    assert "conflict" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "tag_requirements_not_met"
+    assert "conflict" in detail["message"].lower()
 
 
 def test_create_rejects_missing_capture_source_tag(author, conflict_tag):
@@ -970,7 +978,9 @@ def test_create_rejects_missing_capture_source_tag(author, conflict_tag):
         files=files,
     )
     assert response.status_code == 400
-    assert "capture source" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "tag_requirements_not_met"
+    assert "capture source" in detail["message"].lower()
 
 
 def test_create_rejects_free_tag_only(author, free_tag):
