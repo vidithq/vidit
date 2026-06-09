@@ -311,6 +311,10 @@ def test_grant_trust_rejects_empty_reason(admin_user, regular_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
+    assert response.json()["detail"] == {
+        "code": "trust_reason_required",
+        "message": "trust_reason is required when granting trust",
+    }
 
 
 def test_revoke_trust_clears_reason(admin_user, regular_user, db):
@@ -352,6 +356,10 @@ def test_set_trust_404_for_unknown_user(admin_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == {
+        "code": "user_not_found",
+        "message": "User not found",
+    }
 
 
 @pytest.fixture
@@ -511,6 +519,10 @@ def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == {
+        "code": "geolocation_not_found",
+        "message": "Geolocation not found",
+    }
 
 
 def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
@@ -674,6 +686,10 @@ def test_admin_user_delete_404_for_unknown_id(admin_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == {
+        "code": "user_not_found",
+        "message": "User not found",
+    }
 
 
 def test_user_profile_carries_trust_fields(admin_user, regular_user):
