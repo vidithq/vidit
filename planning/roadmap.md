@@ -35,7 +35,7 @@ They need a single place to centralize geolocations, a structured format to pres
 
 **Closed-beta MVP.** Invite-only auth, interactive map with conflict/tag filters, geolocation submission (coordinates + source URL + media + Tiptap proof + tags), geolocation detail pages, analyst profiles.
 
-**Curated-platform consolidation.** Profile expansion (bio, external links, X identity anchor), admin panel (invite minting, soft/hard delete, trusted-contributor flag, report queue, demo seeding, reaper jobs), social graph (follow, timeline feed), full-text search across geolocations / analysts / bounties, bounties (open requests for geolocations to fulfil), UX polish.
+**Curated-platform consolidation.** Profile expansion (bio, external links, X identity anchor), admin panel (invite minting, soft/hard delete, trusted-contributor flag, demo seeding, reaper jobs), social graph (follow, timeline feed), full-text search across geolocations / analysts / bounties, bounties (open requests for geolocations to fulfil), UX polish.
 
 Per-PR detail in [`CHANGELOG.md`](../CHANGELOG.md).
 
