@@ -48,7 +48,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 
 | Component | Choice |
 |-----------|--------|
-| Framework | **Next.js 15** (App Router) |
+| Framework | **Next.js 16** (App Router) |
 | Language | **TypeScript** |
 | Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **CARTO Dark Matter** vector tiles |
 | Rich editor (proof) | **Tiptap** |
@@ -187,7 +187,7 @@ vidit/
 │   │   ├── hooks/                  # useAdmin, etc.
 │   │   ├── lib/                    # api.ts, auth.ts, mediaUrls.ts, format.ts, …
 │   │   ├── types/index.ts          # Shared types
-│   │   └── middleware.ts           # Host redirect + auth wall (Edge runtime)
+│   │   └── proxy.ts                # Host redirect + auth wall (Edge runtime)
 │   ├── public/
 │   ├── package.json
 │   ├── tsconfig.json
@@ -320,7 +320,7 @@ Hardening (forks make every workflow run attacker-reachable):
 |---------|----------|------------|--------|
 | Source | GitHub | [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit) — public, AGPL-3.0. Cross-linked from the landing roadmap card, the `/about` AGPL paragraph, and the sidebar header (next to the X + Discord shortcuts). | Direct push to feature branches; `main` is branch-protected, every change lands via PR. |
 | Backend | Railway | project `vidit` / service `backend` — public host `https://api.vidit.app` (Railway-internal `backend.railway.internal`) | Dockerfile build, deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`). Auto-deploy on push to `main` is **off**. `railway up` from `backend/` works as a manual fallback. |
-| Frontend | Vercel | team `vidithq` / project `vidit-frontend` — primary domain `https://vidit.app` (apex), `www.vidit.app` 308-redirects at the Vercel domain layer; `vidit-frontend.vercel.app` and any other non-canonical host 308-redirects at the Next.js middleware layer ([`frontend/src/middleware.ts`](../frontend/src/middleware.ts)) so the project alias doesn't accumulate duplicate-content surface in search. | Deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`) using `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`. `vercel --prod` from `frontend/` works as a manual fallback. Per-deployment hash URLs are SSO-walled; only the project alias is public. |
+| Frontend | Vercel | team `vidithq` / project `vidit-frontend` — primary domain `https://vidit.app` (apex), `www.vidit.app` 308-redirects at the Vercel domain layer; `vidit-frontend.vercel.app` and any other non-canonical host 308-redirects at the Next.js proxy layer ([`frontend/src/proxy.ts`](../frontend/src/proxy.ts) — the file convention `next@16` renamed from `middleware.ts`) so the project alias doesn't accumulate duplicate-content surface in search. | Deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`) using `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`. `vercel --prod` from `frontend/` works as a manual fallback. Per-deployment hash URLs are SSO-walled; only the project alias is public. |
 | DNS | Cloudflare | `vidit.app` zone, **DNS-only** (gray cloud) | Apex + `www` A → Vercel `76.76.21.21`; `api` CNAME → Railway. Proxy mode (orange cloud) breaks Let's Encrypt cert provisioning. |
 | Database | Railway | managed Postgres + PostGIS, service `postgres-db` (image `postgis/postgis:16-3.4`) | `DATABASE_URL` (with internal `*.railway.internal` host) is auto-injected onto the **`backend`** service when the DB is attached. New consumers wire it as `${{backend.DATABASE_URL}}`. Public networking is **off** — admin scripts run inside the backend container via `railway ssh --service backend`. |
 | Migrations | Railway | — | Pre-deploy hook: `uv run alembic upgrade head` (in [`backend/railway.json`](../backend/railway.json)). Runs *before* the new container takes traffic. |

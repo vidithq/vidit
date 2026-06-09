@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const CANONICAL_HOST = "vidit.app";
 
-// Mirrors `CSRF_COOKIE` in `lib/auth.ts`. Inlined here because middleware
+// Mirrors `CSRF_COOKIE` in `lib/auth.ts`. Inlined here because the proxy
 // runs on the edge runtime and importing `lib/auth.ts` pulls in a
 // `document.cookie` reference that doesn't exist there. The CSRF cookie
 // is the JS-visible proxy for the HttpOnly session cookie — set and
@@ -58,7 +58,7 @@ function redirectToLogin(request: NextRequest): NextResponse {
   return NextResponse.redirect(url);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = !!request.cookies.get(CSRF_COOKIE);
 
@@ -105,7 +105,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   // Run on every request except Next.js internals and well-known static
-  // assets. The middleware function decides per-path whether to apply the
+  // assets. The proxy function decides per-path whether to apply the
   // host redirect or the auth wall.
   //
   // Icon / Apple-touch-icon / manifest routes also stay public — the

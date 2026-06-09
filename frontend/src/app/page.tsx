@@ -5,7 +5,7 @@ import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
 
 // Public landing page — the storefront at `vidit.app`. Reachable without
-// an account (see `PUBLIC_EXACT` in `middleware.ts`): pitch + about video +
+// an account (see `PUBLIC_EXACT` in `proxy.ts`): pitch + about video +
 // public roadmap, so a skeptical analyst can evaluate Vidit before
 // committing to an invite. The app itself lives behind login at `/map`.
 //
