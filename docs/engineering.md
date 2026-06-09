@@ -179,6 +179,7 @@ vidit/
 │   │   │   ├── error.tsx           # Route-level error boundary
 │   │   │   └── global-error.tsx    # Root error boundary
 │   │   ├── components/
+│   │   │   ├── admin/              # Admin console panels (SeedWipePanel, etc.)
 │   │   │   ├── auth/               # LoginForm, RegisterForm, etc.
 │   │   │   ├── editor/             # Tiptap components
 │   │   │   ├── geolocation/        # GeolocationCard, etc.
