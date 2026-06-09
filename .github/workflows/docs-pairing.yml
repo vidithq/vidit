@@ -21,6 +21,12 @@ name: docs-pairing
 # If a rule fires legitimately for a PR that genuinely doesn't need
 # either touch, justify it in the PR description; the rule is a
 # friction-first guardrail, not a hard contract.
+#
+# Exempt from the rule: Dependabot PRs. Routine version-bump PRs
+# (security or version-update) don't carry reference-doc or tracker
+# impact — every Dependabot bump that would, gets its own human-
+# authored CHANGELOG entry on merge anyway. Forcing a doc/+planning/
+# touch on each weekly Dependabot wave is friction without signal.
 
 on:
   pull_request:
@@ -35,11 +41,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Note Dependabot exemption
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        run: |
+          echo "✓ Dependabot PR — docs-pairing check is exempt for routine version bumps."
+          echo "If this PR turns out to need a doc / planning note (e.g., a breaking-change migration), the human handling the merge adds it via a follow-up commit on the branch."
+
       - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         with:
           fetch-depth: 0
 
       - name: Enumerate changed files
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
@@ -49,6 +63,7 @@ jobs:
           cat /tmp/changed.txt
 
       - name: Check docs/ + planning/ touched
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
           set -e
           FILES=$(cat /tmp/changed.txt)
