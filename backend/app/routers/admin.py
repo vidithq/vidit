@@ -158,9 +158,7 @@ def delete_user_admin(
     paths invalidate the points cache."""
     try:
         if hard:
-            result = admin_service.hard_delete_user(
-                db, actor_id=current_user.id, user_id=user_id
-            )
+            result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
             points_cache.invalidate()
             return AdminUserDeleteResponse(
                 user_id=user_id,
