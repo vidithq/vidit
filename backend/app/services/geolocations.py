@@ -176,15 +176,6 @@ async def create_with_evidence(
         except ValueError as exc:
             raise InvalidProofError(str(exc)) from exc
 
-    # Bounty rewires:
-    # * ``source_url`` is **always** sourced from the bounty row, never
-    #   from the form. The bounty's source URL is the EVIDENCE LINK the
-    #   bounty was opened against — a fulfilling analyst can't swap it
-    #   to fulfill with proof from an unrelated event.
-    # * ``title`` and ``tag_ids`` stay form-sourced; the bounty's title
-    #   and tags remain on the bounty row so both pages stay accurate.
-    effective_source_url = bounty.source_url if bounty is not None else source_url
-
     effective_tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
 
     # Required categories: at least one ``conflict`` tag and one
@@ -199,11 +190,17 @@ async def create_with_evidence(
     if "capture_source" not in tag_categories:
         raise TagRequirementsError("A capture source tag is required")
 
+    # Bounty rewires `source_url` — it's always sourced from the bounty row,
+    # never the form. The bounty's source URL is the EVIDENCE LINK the bounty
+    # was opened against; a fulfilling analyst can't swap it to fulfill with
+    # proof from an unrelated event. ``title`` and ``tag_ids`` stay form-
+    # sourced (passed inline below) since the bounty's title + tags remain
+    # on the bounty row so both pages stay accurate.
     geo = Geolocation(
         author_id=current_user.id,
         title=title,
         location=from_shape(Point(lng, lat), srid=4326),
-        source_url=effective_source_url,
+        source_url=bounty.source_url if bounty is not None else source_url,
         proof=proof_data,
         event_date=event_date,
         originated_from_bounty_id=bounty.id if bounty else None,
@@ -301,20 +298,3 @@ async def create_with_evidence(
     db.refresh(geo)
     points_cache.invalidate()
     return geo
-
-
-def load_originated_from_bounty(db: Session, geo: Geolocation) -> Bounty | None:
-    """Reload the originating bounty for the API response.
-
-    Read-only DB query; lives in the service module so the router only
-    deals with response assembly. Returns ``None`` if this geolocation
-    wasn't promoted from a bounty.
-    """
-    if geo.originated_from_bounty_id is None:
-        return None
-    return (
-        db.query(Bounty)
-        .options(joinedload(Bounty.author))
-        .filter(Bounty.id == geo.originated_from_bounty_id)
-        .first()
-    )

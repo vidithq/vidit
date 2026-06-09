@@ -1043,7 +1043,17 @@ async def create_geolocation(
     except geolocations_service.GeolocationError as exc:
         _raise_geolocation_error(exc)
 
-    originated_from_bounty = geolocations_service.load_originated_from_bounty(db, geo)
+    # If this geo was promoted from a bounty, reload the relationship so the
+    # response carries the trace without forcing the client to fetch the
+    # bounty separately. Read-only response assembly — stays in the router.
+    originated_from_bounty = None
+    if geo.originated_from_bounty_id is not None:
+        originated_from_bounty = (
+            db.query(Bounty)
+            .options(joinedload(Bounty.author))
+            .filter(Bounty.id == geo.originated_from_bounty_id)
+            .first()
+        )
 
     return GeolocationRead(
         id=geo.id,

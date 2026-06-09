@@ -895,6 +895,31 @@ def test_create_rejects_too_many_files(author):
     assert "files per submission" in detail["message"]
 
 
+def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_source_tag):
+    """A file with a MIME type outside `ALLOWED_TYPES` is rejected with the
+    typed `invalid_file` envelope BEFORE any S3 IO. Passes the required
+    tags so the request reaches the file-validate loop in the service —
+    without them, the earlier tag-categories guard fires first and the
+    test exercises the wrong code path."""
+    response = client.post(
+        "/api/v1/geolocations",
+        headers=login_as(client, author),
+        data={
+            "title": "x",
+            "lat": "0.0",
+            "lng": "0.0",
+            "source_url": "https://example.com",
+            "event_date": "2026-05-01",
+            "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+        },
+        files={"files": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_file"
+    assert "not allowed" in detail["message"].lower()
+
+
 def test_create_rejects_invalid_proof_json(author):
     """Invalid Tiptap proof JSON → 400 before any S3 upload."""
     files = {"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")}
@@ -1128,8 +1153,11 @@ def test_create_geolocation_cleans_up_s3_on_mid_batch_failure(
             ("files", ("bad.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")),
         ],
     )
-    # The bad file fails EXIF-strip → 400 from the router.
+    # The bad file fails EXIF-strip → 400 typed-error envelope from the service.
     assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "evidence_processing_failed"
+    assert detail["message"]  # non-empty Pillow / strip_metadata message
 
     # Crucial invariant: no .jpg files were left behind on disk.
     uploads_dir = tmp_path / "uploads"
