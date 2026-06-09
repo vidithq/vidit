@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { createBounty } from "@/lib/bounties";
 import type { Tag } from "@/types";
@@ -25,11 +26,15 @@ export default function NewBountyPage() {
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  // Live tags stay useState (not useApiResource): TagPicker appends
+  // newly created tags via setTags, so the list is server-seeded but
+  // locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
   // Full curated taxonomy (conflict + capture_source) for the optional
   // selectors — fetched with `?curated=true` so the author can tag a
   // conflict / capture source even when no live geo references it yet.
-  const [curatedTags, setCuratedTags] = useState<Tag[]>([]);
+  const { data: curatedTagsData } = useApiResource<Tag[]>("/tags?curated=true");
+  const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -43,9 +48,6 @@ export default function NewBountyPage() {
   useEffect(() => {
     apiFetch<Tag[]>("/tags")
       .then(setTags)
-      .catch(() => {});
-    apiFetch<Tag[]>("/tags?curated=true")
-      .then(setCuratedTags)
       .catch(() => {});
   }, []);
 

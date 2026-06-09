@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ExternalLink, Clock, User, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { listBounties } from "@/lib/bounties";
+import { useApiResource } from "@/hooks/useApiResource";
+import { bountyListPath } from "@/lib/bounties";
 import { formatDate, safeHostname } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { BountyListItem, BountyStatus } from "@/types";
@@ -38,24 +39,18 @@ export default function BountiesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const [bounties, setBounties] = useState<BountyListItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<BountyStatus | "all">("open");
+  const { data: bounties, error } = useApiResource<BountyListItem[]>(
+    user
+      ? bountyListPath(statusFilter === "all" ? {} : { status: statusFilter })
+      : null
+  );
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [loading, user, router]);
-
-  useEffect(() => {
-    if (!user) return;
-    setBounties(null);
-    setError(null);
-    listBounties(statusFilter === "all" ? {} : { status: statusFilter })
-      .then(setBounties)
-      .catch((err: Error) => setError(err.message));
-  }, [user, statusFilter]);
 
   if (loading || !user) {
     return (

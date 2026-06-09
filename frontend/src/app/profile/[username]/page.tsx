@@ -19,7 +19,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetch } from "@/lib/api";
+import { useApiResource } from "@/hooks/useApiResource";
 import { formatDate } from "@/lib/format";
 import { resolveLinkHref, updateMyProfile, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
@@ -70,9 +70,21 @@ export default function ProfilePage() {
   const { user: currentUser, loading: authLoading, logout, refresh } = useAuth();
 
   const username = typeof params.username === "string" ? params.username : "";
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
-  const [submissions, setSubmissions] = useState<RecentSubmission[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: profile,
+    error,
+    refetch: refetchProfile,
+  } = useApiResource<PublicProfile>(
+    username && currentUser ? `/users/${username}` : null
+  );
+  // Error deliberately unread — a failed side list renders as empty
+  // rather than blocking the profile card.
+  const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
+    username && currentUser
+      ? `/users/${username}/geolocations?per_page=5`
+      : null
+  );
+  const submissions = submissionsData?.items ?? [];
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -119,39 +131,6 @@ export default function ProfilePage() {
     setEditing(false);
     setSaveError(null);
   }, [username]);
-
-  useEffect(() => {
-    if (!username || !currentUser) return;
-    setError(null);
-    const controller = new AbortController();
-
-    apiFetch<PublicProfile>(`/users/${username}`, {
-      signal: controller.signal,
-    })
-      .then((p) => {
-        if (controller.signal.aborted) return;
-        setProfile(p);
-      })
-      .catch((e) => {
-        if (controller.signal.aborted) return;
-        setError(e.message ?? "User not found");
-      });
-
-    apiFetch<PaginatedSubmissions>(
-      `/users/${username}/geolocations?per_page=5`,
-      { signal: controller.signal }
-    )
-      .then((p) => {
-        if (controller.signal.aborted) return;
-        setSubmissions(p.items);
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setSubmissions([]);
-      });
-
-    return () => controller.abort();
-  }, [username, currentUser]);
 
   if (authLoading || !currentUser) {
     return (
@@ -224,8 +203,7 @@ export default function ProfilePage() {
       // Refresh AuthContext so the sidebar / other surfaces pick up the
       // new avatar + bio without a hard reload.
       await refresh();
-      const updated = await apiFetch<PublicProfile>(`/users/${username}`);
-      setProfile(updated);
+      refetchProfile();
       setEditing(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");

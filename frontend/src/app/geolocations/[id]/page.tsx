@@ -1,12 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import type { GeolocationDetail } from "@/types";
-import { apiFetch } from "@/lib/api";
+import { useApiResource } from "@/hooks/useApiResource";
 import { formatDate } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
@@ -20,16 +19,9 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function GeolocationPage() {
   const params = useParams();
-  const [geo, setGeo] = useState<GeolocationDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (params.id) {
-      apiFetch<GeolocationDetail>(`/geolocations/${params.id}`)
-        .then(setGeo)
-        .catch((e) => setError(e.message));
-    }
-  }, [params.id]);
+  const { data: geo, error } = useApiResource<GeolocationDetail>(
+    typeof params.id === "string" ? `/geolocations/${params.id}` : null
+  );
 
   if (error)
     return (
