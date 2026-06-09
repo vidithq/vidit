@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiResource } from "@/hooks/useApiResource";
 import {
   claimBounty,
   closeBounty,
   deleteBounty,
-  getBounty,
   unclaimBounty,
 } from "@/lib/bounties";
 import { formatDate } from "@/lib/format";
@@ -31,16 +31,17 @@ export default function BountyDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const [bounty, setBounty] = useState<BountyDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: bounty,
+    error: loadError,
+    refetch,
+  } = useApiResource<BountyDetail>(
+    typeof params.id === "string" ? `/bounties/${params.id}` : null
+  );
+  const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
 
-  useEffect(() => {
-    if (typeof params.id !== "string") return;
-    getBounty(params.id)
-      .then(setBounty)
-      .catch((err: Error) => setError(err.message));
-  }, [params.id]);
+  const error = loadError ?? actionError;
 
   if (error) {
     return (
@@ -61,23 +62,18 @@ export default function BountyDetailPage() {
   const isClaimedByMe = !!user && bounty.claimers.some((c) => c.id === user.id);
   const canGeolocate = bounty.status === "open";
 
-  const refresh = async () => {
-    const fresh = await getBounty(bounty.id);
-    setBounty(fresh);
-  };
-
   const handleToggleClaim = async () => {
     setActionPending(true);
-    setError(null);
+    setActionError(null);
     try {
       if (isClaimedByMe) {
         await unclaimBounty(bounty.id);
       } else {
         await claimBounty(bounty.id);
       }
-      await refresh();
+      refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      setActionError(err instanceof Error ? err.message : "Action failed");
     } finally {
       setActionPending(false);
     }
@@ -88,12 +84,12 @@ export default function BountyDetailPage() {
       return;
     }
     setActionPending(true);
-    setError(null);
+    setActionError(null);
     try {
-      const updated = await closeBounty(bounty.id);
-      setBounty(updated);
+      await closeBounty(bounty.id);
+      refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Close failed");
+      setActionError(err instanceof Error ? err.message : "Close failed");
     } finally {
       setActionPending(false);
     }
@@ -102,12 +98,12 @@ export default function BountyDetailPage() {
   const handleDelete = async () => {
     if (!confirm("Delete this bounty? This cannot be undone.")) return;
     setActionPending(true);
-    setError(null);
+    setActionError(null);
     try {
       await deleteBounty(bounty.id);
       router.push("/bounties");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setActionError(err instanceof Error ? err.message : "Delete failed");
       setActionPending(false);
     }
   };

@@ -59,6 +59,8 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 
 MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
 
+Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)): GET on mount and on every `path` change, abort of the in-flight request on unmount / path change, skip while `path` is `null` (auth unresolved, route params not ready), `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render — 401 handling stays in the proxy. Lists the page mutates after seeding (e.g. `TagPicker` appending a newly created tag) stay `useState` + `apiFetch`.
+
 ### Hosting
 
 | Service | Platform | Estimated cost |

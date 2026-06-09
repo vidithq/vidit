@@ -8,16 +8,14 @@ export interface BountyListParams {
   limit?: number;
 }
 
-export function listBounties(
-  params: BountyListParams = {}
-): Promise<BountyListItem[]> {
+export function bountyListPath(params: BountyListParams = {}): string {
   const search = new URLSearchParams();
   if (params.status) search.set("status", params.status);
   if (params.tag) search.set("tag", params.tag);
   if (params.author) search.set("author", params.author);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
   const qs = search.toString();
-  return apiFetch<BountyListItem[]>(`/bounties${qs ? `?${qs}` : ""}`);
+  return `/bounties${qs ? `?${qs}` : ""}`;
 }
 
 export function getBounty(id: string): Promise<BountyDetail> {

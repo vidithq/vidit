@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { AlertTriangle, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { getBounty } from "@/lib/bounties";
 import { displayUrlsFor } from "@/lib/mediaUrls";
@@ -77,18 +78,25 @@ function NewGeolocationForm() {
   const [eventDate, setEventDate] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  // Live tags stay useState (not useApiResource): TagPicker appends
+  // newly created tags via setTags, so the list is server-seeded but
+  // locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
   // The two required, server-curated selectors (conflict + capture
   // source). Fetched with `?curated=true` so the full taxonomy is
   // present even for options no live geolocation references yet —
   // otherwise the first analyst to use a given conflict / capture source
   // couldn't pick it and the required field would be unsatisfiable.
-  const [curatedTags, setCuratedTags] = useState<Tag[]>([]);
-  // Whether the `?curated=true` fetch failed. The two selectors it feeds
-  // are required, so an empty `curatedTags` from a failed load (vs. a
-  // genuine "didn't pick one") must surface a different, recoverable
-  // message instead of a misleading "Select a conflict" with no chips.
-  const [curatedTagsError, setCuratedTagsError] = useState(false);
+  // The selectors it feeds are required, so an empty `curatedTags` from
+  // a failed load (vs. a genuine "didn't pick one") surfaces a
+  // different, recoverable message via `curatedTagsError` instead of a
+  // misleading "Select a conflict" with no chips.
+  const {
+    data: curatedTagsData,
+    error: curatedTagsError,
+    refetch: reloadCuratedTags,
+  } = useApiResource<Tag[]>("/tags?curated=true");
+  const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -150,19 +158,11 @@ function NewGeolocationForm() {
     };
   }, []);
 
-  const loadCuratedTags = useCallback(() => {
-    setCuratedTagsError(false);
-    apiFetch<Tag[]>("/tags?curated=true")
-      .then(setCuratedTags)
-      .catch(() => setCuratedTagsError(true));
-  }, []);
-
   useEffect(() => {
     apiFetch<Tag[]>("/tags")
       .then(setTags)
       .catch(() => {});
-    loadCuratedTags();
-  }, [loadCuratedTags]);
+  }, []);
 
   // Load the bounty being fulfilled — pre-fill + lock the inherited
   // fields. The server is authoritative on these (it ignores divergent
@@ -845,7 +845,7 @@ function NewGeolocationForm() {
               </span>
               <button
                 type="button"
-                onClick={loadCuratedTags}
+                onClick={reloadCuratedTags}
                 className="shrink-0 font-medium text-orange-400 hover:underline"
               >
                 Retry

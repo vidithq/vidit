@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { MapPoint, GeolocationDetail, Tag } from "@/types";
+import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { Filter, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { formatDate } from "@/lib/format";
@@ -49,7 +50,8 @@ export default function HomePage() {
 
   const [points, setPoints] = useState<MapPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const { data: tagsData } = useApiResource<Tag[]>("/tags");
+  const tags = tagsData ?? [];
   const [detail, setDetail] = useState<GeolocationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -58,10 +60,6 @@ export default function HomePage() {
   // network drop). Without this, a swallowed catch + finally would keep
   // re-triggering the effect because deps change but the condition holds.
   const hydratedIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<Tag[]>("/tags").then(setTags).catch(() => {});
-  }, []);
 
   const fetchPoints = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();

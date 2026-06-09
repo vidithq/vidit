@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetch } from "@/lib/api";
+import { useApiResource } from "@/hooks/useApiResource";
 import GeolocationCard from "@/components/geolocation/GeolocationCard";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -31,8 +31,10 @@ interface PaginatedTimeline {
 export default function TimelinePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [entries, setEntries] = useState<TimelineEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, error, loading } = useApiResource<PaginatedTimeline>(
+    user ? "/timeline" : null
+  );
+  const entries = data?.items ?? [];
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -40,17 +42,7 @@ export default function TimelinePage() {
     }
   }, [authLoading, user, router]);
 
-  useEffect(() => {
-    if (!user) return;
-    
-    setLoading(true);
-    apiFetch<PaginatedTimeline>("/timeline")
-      .then((res) => setEntries(res.items))
-      .catch((e) => console.error("Failed to fetch timeline", e))
-      .finally(() => setLoading(false));
-  }, [user]);
-
-  if (authLoading || (loading && entries.length === 0)) {
+  if (authLoading || loading) {
     return (
       <PageCenter>
         <span className="text-neutral-500">Loading timeline...</span>
@@ -59,6 +51,14 @@ export default function TimelinePage() {
   }
 
   if (!user) return null;
+
+  if (error) {
+    return (
+      <PageCenter>
+        <span className="text-red-400">{error}</span>
+      </PageCenter>
+    );
+  }
 
   return (
     <PageShell
