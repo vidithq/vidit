@@ -185,7 +185,7 @@ vidit/
 │   │   │   ├── geolocation/        # GeolocationCard, etc. (cross-page)
 │   │   │   ├── geolocations/new/   # Submit-form sections (LocationPicker, etc.)
 │   │   │   ├── map/                # MapLibre GL components
-│   │   │   ├── profile/            # TrustBadge, etc.
+│   │   │   ├── profile/            # TrustBadge, ProfileHeader, useProfileEdit, etc.
 │   │   │   ├── ui/                 # PageShell, styles.ts, WipBadge, etc.
 │   │   │   ├── ClosedBetaBanner.tsx
 │   │   │   ├── PathTracker.tsx
