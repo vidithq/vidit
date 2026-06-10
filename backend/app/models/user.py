@@ -70,6 +70,3 @@ class User(Base):
         back_populates="author",
         foreign_keys="Bounty.author_id",
     )
-    invite_codes_created = relationship(
-        "InviteCode", back_populates="creator", foreign_keys="InviteCode.created_by"
-    )

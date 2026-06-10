@@ -27,5 +27,4 @@ class InviteCode(Base):
         nullable=False,
     )
 
-    creator = relationship("User", back_populates="invite_codes_created", foreign_keys=[created_by])
     used_by_user = relationship("User", foreign_keys=[used_by])

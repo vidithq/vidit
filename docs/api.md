@@ -274,7 +274,7 @@ Rate-limited to 5/hour per IP.
 
 ### `POST /auth/reset-password`
 
-Anonymous. Consumes a reset token and sets a new password. Tokens are single-use, expire 15 minutes after mint, and become invalid the moment a fresh `forgot-password` is issued for the same user.
+Anonymous. Consumes a reset token and sets a new password. Tokens are single-use, expire `PASSWORD_RESET_TOKEN_MINUTES` after mint (default 15 — the reset email quotes the same value), and become invalid the moment a fresh `forgot-password` is issued for the same user.
 
 **Body:**
 ```json
