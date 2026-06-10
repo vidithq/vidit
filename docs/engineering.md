@@ -182,7 +182,8 @@ vidit/
 │   │   │   ├── admin/              # Admin console panels (SeedWipePanel, etc.)
 │   │   │   ├── auth/               # LoginForm, RegisterForm, etc.
 │   │   │   ├── editor/             # Tiptap components
-│   │   │   ├── geolocation/        # GeolocationCard, etc.
+│   │   │   ├── geolocation/        # GeolocationCard, etc. (cross-page)
+│   │   │   ├── geolocations/new/   # Submit-form sections (LocationPicker, etc.)
 │   │   │   ├── map/                # MapLibre GL components
 │   │   │   ├── profile/            # TrustBadge, etc.
 │   │   │   ├── ui/                 # PageShell, styles.ts, WipBadge, etc.
