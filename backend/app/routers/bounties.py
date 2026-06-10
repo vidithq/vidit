@@ -13,7 +13,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from slowapi import Limiter
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query as SAQuery
@@ -30,9 +29,10 @@ from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.bounty import BountyList, BountyRead
 from app.services import permissions
-from app.services.audit import extract_client_ip, extract_user_agent, rate_limit_key
+from app.services.audit import extract_client_ip, extract_user_agent
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import sanitize_tiptap_doc
 from app.services.storage import (
@@ -44,9 +44,6 @@ from app.services.storage import (
 )
 
 router = APIRouter()
-
-limiter = Limiter(key_func=rate_limit_key)
-
 # Detail page lists every claimer; the list endpoint card only needs a
 # few avatars + a count. Tune if the avatar strip grows.
 LIST_CLAIMER_SAMPLE_SIZE = 3
@@ -213,6 +210,7 @@ def get_bounty(request: Request, bounty_id: uuid.UUID, db: Session = Depends(get
 
 
 @router.post("", response_model=BountyRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_bounty(
     request: Request,
     title: str = Form(...),
@@ -338,7 +336,9 @@ async def create_bounty(
 
 
 @router.delete("/{bounty_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_bounty(
+    request: Request,
     bounty_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -389,7 +389,9 @@ def delete_bounty(
 
 
 @router.post("/{bounty_id}/claim", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 def claim_bounty(
+    request: Request,
     bounty_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -434,7 +436,9 @@ def claim_bounty(
 
 
 @router.delete("/{bounty_id}/claim", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 def unclaim_bounty(
+    request: Request,
     bounty_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -455,7 +459,9 @@ def unclaim_bounty(
 
 
 @router.post("/{bounty_id}/close", response_model=BountyRead)
+@limiter.limit("60/minute")
 def close_bounty(
+    request: Request,
     bounty_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

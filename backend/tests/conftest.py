@@ -1,9 +1,10 @@
 """Shared pytest fixtures and helpers.
 
 slowapi's in-memory limiter is process-level state, and TestClient uses
-``testclient`` as the remote address for every request, so without a reset the
-5-per-minute /login limit spills between tests and produces spurious 429s. The
-autouse fixture below resets it so rate-limit-sensitive tests stay deterministic.
+``testclient`` as the remote address for every request, so a per-router limit
+would spill between tests and produce spurious 429s. The autouse fixture below
+disables the single shared limiter so tests stay deterministic; the rate-limit
+tests re-enable it explicitly.
 """
 
 from __future__ import annotations
@@ -13,11 +14,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.user import User
-from app.routers import admin as admin_router
-from app.routers import auth as auth_router
-from app.routers import bounties as bounties_router
-from app.routers import geolocations as geolocations_router
-from app.routers import search as search_router
 from app.services.auth import create_access_token
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 
@@ -43,21 +39,10 @@ def login_as(client: TestClient, user: User) -> dict[str, str]:
 
 @pytest.fixture(autouse=True)
 def _disable_rate_limiter():
-    # Disable rate limiting wholesale (rationale in the module docstring). Each
-    # router carries its own Limiter instance (app default in main.py + the
-    # per-router ones), so disable them all.
-    limiters = [
-        getattr(app.state, "limiter", None),
-        auth_router.limiter,
-        admin_router.limiter,
-        bounties_router.limiter,
-        geolocations_router.limiter,
-        search_router.limiter,
-    ]
-    previous = [(lim, getattr(lim, "enabled", None)) for lim in limiters if lim]
-    for lim, _ in previous:
-        lim.enabled = False
+    # One shared limiter now (app.ratelimit, exposed as app.state.limiter), so
+    # disabling it covers every router. See the module docstring.
+    limiter = app.state.limiter
+    previous = limiter.enabled
+    limiter.enabled = False
     yield
-    for lim, prev in previous:
-        if prev is not None:
-            lim.enabled = prev
+    limiter.enabled = previous

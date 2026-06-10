@@ -23,7 +23,6 @@ from fastapi import (
 from fastapi.responses import Response
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_X, ST_Y, ST_MakeEnvelope, ST_Within
-from slowapi import Limiter
 from sqlalchemy import ColumnElement, and_, cast, func, or_
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, subqueryload
@@ -36,6 +35,7 @@ from app.models.geolocation import Geolocation
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.geolocation import (
     GeolocationList,
     GeolocationRead,
@@ -49,7 +49,7 @@ from app.schemas.geolocation import (
 from app.schemas.media import MediaUploadResponse
 from app.services import geolocations as geolocations_service
 from app.services import permissions
-from app.services.audit import extract_client_ip, extract_user_agent, rate_limit_key
+from app.services.audit import extract_client_ip, extract_user_agent
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
     get_storage,
@@ -69,9 +69,6 @@ from app.services.tweet_parsing import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-limiter = Limiter(key_func=rate_limit_key)
-
 # Reject LIKE-injection at the input boundary — the value flows into
 # `User.username.ilike(f"%{author}%")` in `_apply_filters`. Restricting to
 # characters real usernames carry kills `%` / `\` vectors before the SQL builder.
@@ -889,6 +886,7 @@ async def upload_proof_image_endpoint(
 
 
 @router.post("", response_model=GeolocationRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_geolocation(
     request: Request,
     # ``max_length`` ceilings match the DB columns (title String(255),
@@ -1003,7 +1001,9 @@ async def create_geolocation(
 
 
 @router.delete("/{geolocation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_geolocation(
+    request: Request,
     geolocation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

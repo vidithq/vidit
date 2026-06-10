@@ -43,9 +43,9 @@ EXPOSE 8000
 #
 # Without the proxy-headers flags at all, ``request.client.host`` would
 # be the Railway-edge proxy IP itself — every request keyed on the same
-# bucket, so /login (5/min), /register (10/hr), /forgot-password (5/hr)
-# and the global 60/min limit would collapse to one shared bucket and a
-# single attacker could lock every analyst out of /auth/login. Both
+# bucket, so /login (5/min), /register (10/hr), and /forgot-password (5/hr)
+# would all collapse to one shared bucket and a single attacker could lock
+# every analyst out of /auth/login. Both
 # failure modes are unacceptable; the combination of the flags plus
 # the right-most-aware ``rate_limit_key`` is what makes the per-IP
 # limits work as intended.

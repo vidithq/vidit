@@ -2,13 +2,12 @@ import uuid
 from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from slowapi import Limiter
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.config import settings
 from app.dependencies import get_db, require_admin
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.admin import (
     AdminGeolocationDeleteResponse,
     AdminInviteCodeCreate,
@@ -28,13 +27,8 @@ from app.schemas.admin import (
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import seed as seed_service
-from app.services.audit import rate_limit_key
 
 router = APIRouter()
-
-limiter = Limiter(key_func=rate_limit_key)
-limiter.enabled = settings.rate_limit_enabled
-
 
 _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,

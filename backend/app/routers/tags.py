@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -6,6 +6,7 @@ from app.dependencies import get_current_user, get_db
 from app.models.geolocation import Geolocation
 from app.models.tag import Tag, geolocation_tags
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.tag import TagCreate, TagRead
 
 router = APIRouter()
@@ -23,7 +24,9 @@ CURATED_CATEGORIES = ("conflict", "capture_source")
 
 
 @router.get("", response_model=list[TagRead])
+@limiter.limit("60/minute")
 def list_tags(
+    request: Request,
     category: str | None = None,
     curated: bool = False,
     db: Session = Depends(get_db),
@@ -60,7 +63,9 @@ def list_tags(
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_tag(
+    request: Request,
     body: TagCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
