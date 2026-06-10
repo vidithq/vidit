@@ -24,33 +24,29 @@ from shapely.geometry import Point
 from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
-from app.config import settings
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
 from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
-from app.services.evidence_processing import EvidenceProcessingError
-from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc
-from app.services.storage import (
-    get_storage,
-    safe_original_filename,
-    sweep_keys,
-    upload_file,
-    validate_file,
+from app.services.evidence_intake import (
+    EvidenceIntakeError,
+    MediaRequiredError,
+    attach_media_and_commit,
+    enforce_file_count,
 )
+from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc
+from app.services.storage import get_storage, upload_file
 
-MAX_FILES_PER_GEOLOCATION = settings.max_files_per_geolocation
 
+class GeolocationError(EvidenceIntakeError):
+    """Base for geolocation-specific friendly errors.
 
-class GeolocationError(Exception):
-    """Base for friendly errors raised by the geolocations service.
-
-    Carries a ``code`` so the router maps to an HTTP status without
-    string-matching exception text. Mirrors
-    :class:`app.services.admin.AdminError` and
-    :class:`app.services.registration.RegistrationError`.
+    Subclass of :class:`EvidenceIntakeError` so the router catches one base
+    for both shared file/media failures and the geolocation-specific rules
+    below. Carries a ``code`` the router maps to an HTTP status without
+    string-matching exception text.
     """
 
     code: str = "geolocation_error"
@@ -60,28 +56,12 @@ class InvalidCoordinatesError(GeolocationError):
     code = "invalid_coordinates"
 
 
-class TooManyFilesError(GeolocationError):
-    code = "too_many_files"
-
-
-class MediaRequiredError(GeolocationError):
-    code = "media_required"
-
-
 class InvalidProofError(GeolocationError):
     code = "invalid_proof"
 
 
 class TagRequirementsError(GeolocationError):
     code = "tag_requirements_not_met"
-
-
-class InvalidFileError(GeolocationError):
-    code = "invalid_file"
-
-
-class EvidenceProcessingFailedError(GeolocationError):
-    code = "evidence_processing_failed"
 
 
 class BountyNotFoundError(GeolocationError):
@@ -113,33 +93,32 @@ async def create_with_evidence(
     The router has already turned raw multipart fields into clean Python
     types; this deals only with business rules and IO.
 
-    Failure modes (all :class:`GeolocationError` subclasses):
+    Failure modes (:class:`EvidenceIntakeError` subclasses — geolocation
+    rules here, shared file/media rules from ``evidence_intake``):
 
     * Out-of-range lat/lng (:class:`InvalidCoordinatesError`)
-    * ``len(files) > MAX_FILES_PER_GEOLOCATION`` (:class:`TooManyFilesError`)
+    * ``len(files) > MAX_FILES_PER_SUBMISSION`` (``TooManyFilesError``)
     * No files and no bounty-media to inherit (:class:`MediaRequiredError`)
     * Tiptap proof fails sanitisation (:class:`InvalidProofError`)
     * Missing required `conflict` / `capture_source` tag
       (:class:`TagRequirementsError`)
-    * File type/size rejected by ``validate_file``
-      (:class:`InvalidFileError`)
-    * ``upload_file`` raises ``EvidenceProcessingError``
-      (:class:`EvidenceProcessingFailedError`)
+    * File type/size rejected, or the uploader raises
+      ``EvidenceProcessingError`` (``InvalidFileError`` /
+      ``EvidenceProcessingFailedError``)
     * Bounty id doesn't resolve or is soft-deleted
       (:class:`BountyNotFoundError`)
     * Bounty status != ``open`` (:class:`BountyNotOpenError`)
 
     Any failure rolls back the transaction and best-effort sweeps every S3
-    key that landed before it (:func:`sweep_keys`). Returns the persisted
-    ``Geolocation``, refreshed from the row.
+    key that landed before it. Returns the persisted ``Geolocation``,
+    refreshed from the row.
     """
     if not -90 <= lat <= 90:
         raise InvalidCoordinatesError("Latitude must be between -90 and 90")
     if not -180 <= lng <= 180:
         raise InvalidCoordinatesError("Longitude must be between -180 and 180")
 
-    if len(files) > MAX_FILES_PER_GEOLOCATION:
-        raise TooManyFilesError(f"At most {MAX_FILES_PER_GEOLOCATION} files per submission")
+    enforce_file_count(files)
 
     bounty: Bounty | None = None
     if bounty_id is not None:
@@ -215,73 +194,39 @@ async def create_with_evidence(
         bounty.status = STATUS_FULFILLED
         bounty.closed_at = datetime.now(UTC)
 
-    # Validate every file before any upload — a 400 on file #3 shouldn't
-    # strand files #1 and #2 in S3.
-    media_types: list[str] = []
-    for file in files:
-        try:
-            media_types.append(validate_file(file))
-        except ValueError as exc:
-            raise InvalidFileError(str(exc)) from exc
-
-    # Track uploaded S3 keys so a mid-batch failure can sweep them on
-    # rollback — otherwise file #1 lands, file #2 throws, the txn rolls
-    # back, and file #1 is a chronic S3 orphan.
-    uploaded_keys: list[str] = []
-    try:
-        for file, media_type in zip(files, media_types, strict=True):
-            try:
-                result = await upload_file(file, geo.id)
-            except EvidenceProcessingError as exc:
-                raise EvidenceProcessingFailedError(str(exc)) from exc
-            media = Media(
-                geolocation_id=geo.id,
-                storage_url=result.url,
-                media_type=media_type,
-                sha256=result.sha256,
-                uploaded_ip=uploaded_ip,
-                uploaded_user_agent=uploaded_user_agent,
-                original_filename=safe_original_filename(file.filename),
-            )
-            db.add(media)
-            key = get_storage().key_from_url(result.url)
-            if key is not None:
-                uploaded_keys.append(key)
-                # Sweep hero + thumbnail derivatives alongside the original
-                # on row-side failure — same shape as routers/bounties.py.
-                uploaded_keys.extend(result.derivative_keys)
-
+    def _adopt_inline_proof_images() -> None:
         # Adopt inline proof images owned by the current user and not yet
-        # claimed. Inside the try so an UPDATE failure routes through the
-        # same orphan-cleanup path.
-        if proof_data is not None:
-            srcs = extract_image_srcs(proof_data)
-            if srcs:
-                storage = get_storage()
-                keys = [k for k in (storage.key_from_url(s) for s in srcs) if k is not None]
-                if keys:
-                    db.query(ProofImage).filter(
-                        ProofImage.s3_key.in_(keys),
-                        ProofImage.user_id == current_user.id,
-                        ProofImage.geolocation_id.is_(None),
-                    ).update(
-                        {ProofImage.geolocation_id: geo.id},
-                        synchronize_session=False,
-                    )
+        # claimed. Runs inside ``attach_media_and_commit``'s try, before the
+        # commit, so an UPDATE failure routes through the same orphan sweep.
+        if proof_data is None:
+            return
+        srcs = extract_image_srcs(proof_data)
+        if not srcs:
+            return
+        storage = get_storage()
+        keys = [k for k in (storage.key_from_url(s) for s in srcs) if k is not None]
+        if not keys:
+            return
+        db.query(ProofImage).filter(
+            ProofImage.s3_key.in_(keys),
+            ProofImage.user_id == current_user.id,
+            ProofImage.geolocation_id.is_(None),
+        ).update(
+            {ProofImage.geolocation_id: geo.id},
+            synchronize_session=False,
+        )
 
-        # Commit inside the try so a commit-time failure (FK violation,
-        # serialization conflict, PG network blip) also routes through the
-        # orphan cleanup; wrapping only the upload loop stranded S3 objects
-        # on commit failure.
-        db.commit()
-    except Exception:
-        # Explicit rollback (mirrors routers/bounties.py): don't rely on
-        # ``get_db``'s ``finally``, since partially-added Media rows could
-        # be autoflushed by any query a downstream error handler / metrics
-        # middleware runs.
-        db.rollback()
-        sweep_keys(uploaded_keys, context="geolocation create rollback")
-        raise
+    await attach_media_and_commit(
+        db,
+        owner_id=geo.id,
+        fk_field="geolocation_id",
+        files=files,
+        upload=upload_file,
+        uploaded_ip=uploaded_ip,
+        uploaded_user_agent=uploaded_user_agent,
+        sweep_context="geolocation create rollback",
+        before_commit=_adopt_inline_proof_images,
+    )
 
     db.refresh(geo)
     points_cache.invalidate()

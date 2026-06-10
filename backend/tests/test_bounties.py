@@ -437,6 +437,65 @@ def test_create_rejects_invalid_description_json(author):
     assert "description" in response.json()["detail"].lower()
 
 
+def test_create_rejects_too_many_files(author):
+    """More than ``MAX_FILES_PER_SUBMISSION`` files is rejected before any
+    upload — the shared cap the geolocation service already enforced, now
+    applied to bounties via ``services/evidence_intake``."""
+    # 13 small jpegs > the cap of 12.
+    files = [("files", (f"tiny-{i}.jpg", TINY_JPEG, "image/jpeg")) for i in range(13)]
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={"title": "x", "source_url": "https://example.com/post/1"},
+        files=files,
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "too_many_files"
+
+
+def test_create_rejects_over_length_title(author):
+    """A title past the 255-char column width 422s at the Form boundary,
+    not at ``db.flush()`` after the files have already hit S3."""
+    files = {"files": _tiny_jpeg()}
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={"title": "a" * 256, "source_url": "https://example.com/post/1"},
+        files=files,
+    )
+    assert response.status_code == 422
+
+
+def test_create_rejects_over_length_source_url(author):
+    """source_url past the 2000-char API bound 422s at the Form boundary."""
+    files = {"files": _tiny_jpeg()}
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={"title": "ok", "source_url": "https://example.com/" + "a" * 2000},
+        files=files,
+    )
+    assert response.status_code == 422
+
+
+def test_create_rejects_unsanitisable_description(author):
+    """Valid JSON that isn't a Tiptap ``doc`` is rejected with the typed
+    ``invalid_description`` envelope, before any upload."""
+    files = {"files": _tiny_jpeg()}
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "ok",
+            "source_url": "https://example.com/post/1",
+            "description": '{"type": "not-doc"}',
+        },
+        files=files,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
+
+
 def test_create_happy_path(db, author, free_tag):
     files = {"files": _tiny_jpeg()}
     response = client.post(

@@ -144,9 +144,11 @@ vidit/
 │   │       ├── auth.py             # JWT, hashing, invite-code consume (atomic UPDATE)
 │   │       ├── auth_cookies.py     # Session + CSRF cookie issuance / clearing
 │   │       ├── auth_tokens.py      # Single-use password-reset tokens
+│   │       ├── bounties.py         # create_with_evidence (bounty side)
 │   │       ├── email.py            # Resend / console-echo email transport
+│   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
 │   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
-│   │       ├── geolocations.py     # create_with_evidence + typed GeolocationError hierarchy
+│   │       ├── geolocations.py     # create_with_evidence (geo side) + typed GeolocationError hierarchy
 │   │       ├── maintenance.py      # Reapers: auth tokens, proof orphans, pending regs
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
