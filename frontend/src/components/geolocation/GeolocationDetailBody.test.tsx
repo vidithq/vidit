@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { GeolocationDetailBody } from "./GeolocationDetailBody";
+import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { GeolocationDetail } from "@/types";
 
 function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDetail {
@@ -48,11 +49,19 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
 
 describe("GeolocationDetailBody", () => {
   it("panel variant: thumbnail media, no bounty/author rows, no section headings", () => {
-    render(<GeolocationDetailBody geo={geoFixture()} variant="panel" />);
+    const geo = geoFixture();
+    render(<GeolocationDetailBody geo={geo} variant="panel" />);
     const img = screen.getByRole("img");
-    expect(img.getAttribute("src")).toContain("thumb");
+    // Derive the expected URL from the same helper the component uses,
+    // decoded so the assertion survives next/image's loader encoding.
+    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
+      displayUrlsFor(geo.media[0]).thumbnail
+    );
     expect(screen.queryByText("Bounty")).not.toBeInTheDocument();
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
+    // Not just the row label — the author's username must not appear
+    // anywhere in the panel body (it lives in the panel header).
+    expect(screen.queryByText("ana")).not.toBeInTheDocument();
     expect(screen.queryByText("Media")).not.toBeInTheDocument();
     expect(screen.queryByText("Details")).not.toBeInTheDocument();
     // Shared fields + proof render
@@ -65,9 +74,12 @@ describe("GeolocationDetailBody", () => {
   });
 
   it("page variant: hero media, bounty-trace + author rows, section headings", () => {
-    render(<GeolocationDetailBody geo={geoFixture()} variant="page" />);
+    const geo = geoFixture();
+    render(<GeolocationDetailBody geo={geo} variant="page" />);
     const img = screen.getByRole("img");
-    expect(img.getAttribute("src")).toContain("hero");
+    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
+      displayUrlsFor(geo.media[0]).hero
+    );
     expect(screen.getByText("Media")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText("Bounty")).toBeInTheDocument();
@@ -99,7 +111,36 @@ describe("GeolocationDetailBody", () => {
         <div data-testid="location-map">map goes here</div>
       </GeolocationDetailBody>
     );
-    expect(screen.getByTestId("location-map")).toBeInTheDocument();
+    const slot = screen.getByTestId("location-map");
+    const media = screen.getByRole("img");
+    const details = screen.getByText("Details");
+    // Position is the contract, not mere presence: media → slot → details.
+    expect(
+      media.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      slot.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("renders video media as a controllable <video>, not an image", () => {
+    const { container } = render(
+      <GeolocationDetailBody
+        geo={geoFixture({
+          media: [
+            { id: "m1", storage_url: "/local-storage/evidence.jpg", media_type: "image" },
+            { id: "m2", storage_url: "/local-storage/clip.mp4", media_type: "video" },
+          ],
+        })}
+        variant="panel"
+      />
+    );
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("src", "/local-storage/clip.mp4");
+    expect(video).toHaveAttribute("controls");
+    // The image sibling still renders through next/image.
+    expect(screen.getByRole("img")).toBeInTheDocument();
   });
 
   it("falls back on empty media and missing proof", () => {

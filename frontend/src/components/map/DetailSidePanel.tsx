@@ -30,6 +30,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
     <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
       <button
         onClick={onClose}
+        aria-label="Close detail panel"
         className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-300 text-lg z-10"
       >
         &times;
