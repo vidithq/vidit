@@ -59,12 +59,12 @@ def test_negative_content_length_returns_413():
 
 def test_body_size_cap_admits_full_geolocation_batch():
     """The cap must admit the LARGEST legitimate submit: a full batch of
-    ``MAX_FILES_PER_GEOLOCATION`` images at ``max_image_size`` each.
+    ``max_files_per_geolocation`` images at ``max_image_size`` each.
     Previously the cap was ``max_video_size + 10 MB`` = 110 MB, which
     silently 413'd a legitimate 12-image submission totalling 120 MB +
     multipart framing (caught in PR #100 review). Locks in the bound
     so a future regression — e.g. lowering ``max_image_size`` then
-    raising ``MAX_FILES_PER_GEOLOCATION`` — doesn't reintroduce it.
+    raising ``max_files_per_geolocation`` — doesn't reintroduce it.
     """
     from app.config import settings
     from app.main import _MAX_REQUEST_BODY_BYTES

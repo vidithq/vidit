@@ -50,6 +50,7 @@ from app.schemas.media import MediaUploadResponse
 from app.services import geolocations as geolocations_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent
+from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
     get_storage,
@@ -76,19 +77,16 @@ _AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
 
 _GEOLOCATION_ERROR_STATUS: dict[str, int] = {
+    **EVIDENCE_INTAKE_ERROR_STATUS,
     "invalid_coordinates": 400,
-    "too_many_files": 422,
-    "media_required": 400,
     "invalid_proof": 400,
     "tag_requirements_not_met": 400,
-    "invalid_file": 400,
-    "evidence_processing_failed": 400,
     "bounty_not_found": 404,
     "bounty_not_open": 409,
 }
 
 
-def _raise_geolocation_error(exc: geolocations_service.GeolocationError) -> NoReturn:
+def _raise_geolocation_error(exc: EvidenceIntakeError) -> NoReturn:
     """Translate a typed geolocations-service error into an HTTP response.
 
     Same ``{"code", "message"}`` shape as the registration + admin flows so
@@ -963,7 +961,7 @@ async def create_geolocation(
             uploaded_ip=extract_client_ip(request),
             uploaded_user_agent=extract_user_agent(request),
         )
-    except geolocations_service.GeolocationError as exc:
+    except EvidenceIntakeError as exc:
         _raise_geolocation_error(exc)
 
     # If promoted from a bounty, reload the relationship so the response

@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import NoReturn
 
 from fastapi import (
     APIRouter,
@@ -31,19 +32,31 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.bounty import BountyList, BountyRead
+from app.services import bounties as bounties_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent
-from app.services.evidence_processing import EvidenceProcessingError
-from app.services.sanitize import sanitize_tiptap_doc
-from app.services.storage import (
-    get_storage,
-    safe_original_filename,
-    sweep_keys,
-    upload_bounty_file,
-    validate_file,
-)
+from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.storage import get_storage, sweep_keys
 
 router = APIRouter()
+
+# Bounty creation raises typed errors (shared file/media codes from
+# evidence_intake + the bounty-specific ones in services/bounties); map
+# each to an HTTP status and surface the same ``{code, message}`` envelope
+# as the geolocation + registration flows.
+_BOUNTY_ERROR_STATUS: dict[str, int] = {
+    **EVIDENCE_INTAKE_ERROR_STATUS,
+    "invalid_description": 400,
+}
+
+
+def _raise_bounty_error(exc: EvidenceIntakeError) -> NoReturn:
+    raise HTTPException(
+        status_code=_BOUNTY_ERROR_STATUS.get(exc.code, 400),
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
 # Detail page lists every claimer; the list endpoint card only needs a
 # few avatars + a count. Tune if the avatar strip grows.
 LIST_CLAIMER_SAMPLE_SIZE = 3
@@ -213,8 +226,12 @@ def get_bounty(request: Request, bounty_id: uuid.UUID, db: Session = Depends(get
 @limiter.limit("30/minute")
 async def create_bounty(
     request: Request,
-    title: str = Form(...),
-    source_url: str = Form(...),
+    # ``max_length`` ceilings mirror the geolocation form: title is the DB
+    # column width (String(255)), source_url a chosen API bound — so
+    # over-length input 422s at the boundary, not at flush time AFTER the
+    # attached files have already hit S3.
+    title: str = Form(..., min_length=1, max_length=255),
+    source_url: str = Form(..., max_length=2000),
     description: str | None = Form(None),
     tag_ids: str | None = Form(None),
     files: list[UploadFile] = File(...),
@@ -224,13 +241,14 @@ async def create_bounty(
     """Post a bounty. At least one media file is required — the platform
     treats bounties as "unfinished geolocations", so the evidence the
     poster has must be on the row from the start.
+
+    Parses the multipart form into clean Python types; business rules + IO
+    live in ``services/bounties.create_with_evidence``.
     """
     if not title.strip():
         raise HTTPException(status_code=400, detail="title is required")
     if not source_url.strip():
         raise HTTPException(status_code=400, detail="source_url is required")
-    if not files:
-        raise HTTPException(status_code=400, detail="At least one media file is required")
 
     try:
         description_data = json.loads(description) if description else None
@@ -240,11 +258,6 @@ async def create_bounty(
         ) from exc
     if description_data is not None and not isinstance(description_data, dict):
         raise HTTPException(status_code=400, detail="'description' must be a JSON object")
-    if description_data is not None:
-        try:
-            description_data = sanitize_tiptap_doc(description_data)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         parsed_tag_ids = json.loads(tag_ids) if tag_ids else []
@@ -255,70 +268,21 @@ async def create_bounty(
     if not isinstance(parsed_tag_ids, list):
         raise HTTPException(status_code=400, detail="'tag_ids' must be a JSON array")
 
-    bounty = Bounty(
-        author_id=current_user.id,
-        title=title,
-        source_url=source_url,
-        description=description_data,
-        status=STATUS_OPEN,
-    )
-
-    if parsed_tag_ids:
-        tags = db.query(Tag).filter(Tag.id.in_(parsed_tag_ids)).all()
-        bounty.tags = tags
-
-    db.add(bounty)
-    db.flush()
-
-    # Validate every file before any upload — a 400 on file #3 shouldn't
-    # leave files #1 and #2 stranded in S3 with no DB row.
-    media_types: list[str] = []
-    for file in files:
-        try:
-            media_types.append(validate_file(file))
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Same provenance triple as `/geolocations` — captured once and applied
-    # to every Media row, so a multi-file post shares one submitter signature.
-    uploaded_ip = extract_client_ip(request)
-    uploaded_user_agent = extract_user_agent(request)
-    uploaded_keys: list[str] = []
     try:
-        for file, media_type in zip(files, media_types, strict=True):
-            try:
-                result = await upload_bounty_file(file, bounty.id)
-            except EvidenceProcessingError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            db.add(
-                Media(
-                    bounty_id=bounty.id,
-                    storage_url=result.url,
-                    media_type=media_type,
-                    sha256=result.sha256,
-                    uploaded_ip=uploaded_ip,
-                    uploaded_user_agent=uploaded_user_agent,
-                    original_filename=safe_original_filename(file.filename),
-                )
-            )
-            key = get_storage().key_from_url(result.url)
-            if key is not None:
-                uploaded_keys.append(key)
-                # Sweep the JPEG hero + thumbnail derivatives alongside the
-                # original on row-side failure — an orphan derivative is the
-                # same bucket-leak, just at a smaller per-object cost.
-                uploaded_keys.extend(result.derivative_keys)
+        bounty = await bounties_service.create_with_evidence(
+            db,
+            current_user=current_user,
+            title=title,
+            source_url=source_url,
+            description_data=description_data,
+            tag_ids=parsed_tag_ids,
+            files=files,
+            uploaded_ip=extract_client_ip(request),
+            uploaded_user_agent=extract_user_agent(request),
+        )
+    except EvidenceIntakeError as exc:
+        _raise_bounty_error(exc)
 
-        db.commit()
-    except Exception:
-        # A mid-upload failure leaves S3 with orphan objects. The DB rolls
-        # back via session-scope teardown; sweep S3 best-effort so the
-        # bucket doesn't grow unbounded.
-        db.rollback()
-        sweep_keys(uploaded_keys, context="bounty create rollback")
-        raise
-
-    db.refresh(bounty)
     # Reload with the relationships the detail serializer reads.
     bounty = (
         db.query(Bounty)
