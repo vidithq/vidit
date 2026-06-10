@@ -1,19 +1,13 @@
 "use client";
 
-// React Error Boundary for runtime crashes inside the root layout.
-// Catches errors thrown during render of any `app/**/page.tsx` (and
-// nested layouts below the root). Errors in the root `app/layout.tsx`
-// itself escape this boundary and are caught by `app/global-error.tsx`.
+// Error boundary for crashes in any `app/**/page.tsx` and nested layouts
+// below the root. Errors in the root `app/layout.tsx` itself escape here
+// and are caught by `app/global-error.tsx`.
 //
-// Why we have this: the Next.js default error page reads
-// "Application error: a server-side exception has occurred (see the
-// server logs for more information). Digest: <hash>" — the same
-// generic message renders for server-side AND client-side crashes,
-// and it doesn't surface the digest at all in a copy-pasteable
-// form. That cost us ~2 hours during the v0.0.6 icon-route
-// bundling regression. This page brings the digest forward so the
-// first thing pasted to chat / Sentry is the breadcrumb that lets
-// us cross-reference the Vercel runtime log directly.
+// The Next.js default error page renders a generic message for both
+// server- and client-side crashes and never surfaces the digest in a
+// copy-pasteable form. This page brings the digest forward so it can be
+// cross-referenced against the Vercel runtime log.
 
 import { useEffect } from "react";
 
@@ -28,11 +22,9 @@ interface ErrorProps {
 
 export default function Error({ error, reset }: ErrorProps) {
   useEffect(() => {
-    // React error boundaries are NOT reported to Sentry automatically — the
-    // SDK only auto-captures unhandled rejections + window.onerror, not
-    // exceptions caught and rendered by `error.tsx`. So we explicitly forward
-    // them. `Sentry.captureException` is a no-op when no DSN is configured,
-    // so this stays safe in local dev and the bootstrap phase.
+    // The SDK only auto-captures unhandled rejections + window.onerror,
+    // not exceptions caught by an error boundary, so forward explicitly.
+    // No-op when no DSN is configured (safe in local dev / bootstrap).
     Sentry.captureException(error);
     console.error("Unhandled error:", error);
   }, [error]);

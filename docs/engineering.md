@@ -259,6 +259,12 @@ GeolocationList     → simplified output (map, lists)
 
 ---
 
+## Code comments
+
+Default to none. A comment earns its place only when it states something the code cannot: a hidden constraint or invariant, a bug it prevents, a security or performance rationale, why a `# type: ignore` / `@ts-expect-error` exists, a non-obvious decision, or surprising external behaviour. Delete comments that restate the adjacent line, docstrings that echo the signature, and `Usage:` blocks for trivial symbols. FastAPI route-handler docstrings are the exception — they surface as the OpenAPI description, so keep their first-line summary.
+
+---
+
 ## Local environment
 
 ### Docker Compose

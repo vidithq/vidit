@@ -6,10 +6,9 @@ interface Author {
 }
 
 /**
- * Linktree-style profile links. Each value is a free-form string —
- * handle (`@username`) or URL — the frontend decides whether to render
- * any given value as a clickable anchor by sniffing it for an http
- * scheme.
+ * Linktree-style profile links. Each value is free-form — handle
+ * (`@username`) or URL — and the frontend decides whether to render it as a
+ * clickable anchor by sniffing for an http scheme.
  */
 export interface ExternalLinks {
   x?: string | null;
@@ -53,10 +52,9 @@ interface GeolocationListItem {
 export type MapPoint = [string, number, number];
 
 /**
- * Pre-fill payload returned by POST /geolocations/import-from-tweet.
- * Best-effort shape: any field can be empty if the tweet doesn't carry
- * the matching signal (e.g. no coords in the text → ``parsed_coords``
- * is ``[]``).
+ * Pre-fill payload from POST /geolocations/import-from-tweet. Best-effort:
+ * any field can be empty if the tweet lacks the signal (e.g. no coords in
+ * the text → ``parsed_coords`` is ``[]``).
  */
 export interface TweetImportCoord {
   lat: number;
@@ -67,9 +65,8 @@ export interface TweetImportMedia {
   kind: "image" | "video";
   remote_url: string;
   content_type: string;
-  /** ``op`` = analyst's own attachment (becomes proof imagery on the
-   *  form), ``quote`` = the quoted-tweet attachment (becomes the
-   *  primary geolocation media). */
+  /** ``op`` = analyst's own attachment (→ proof imagery), ``quote`` = the
+   *  quoted-tweet attachment (→ primary geolocation media). */
   origin: "op" | "quote";
 }
 
@@ -100,10 +97,9 @@ export interface TweetImportResponse {
 }
 
 /**
- * One candidate returned by the submit-form duplicate probe
- * (GET /geolocations/possible-duplicates). Soft-warning shape — just
- * enough to recognise "yeah, this is the same event" and decide
- * whether to abandon the in-progress submission.
+ * One candidate from the submit-form duplicate probe
+ * (GET /geolocations/possible-duplicates). Soft-warning shape — just enough
+ * to recognise the same event and decide whether to abandon the submission.
  */
 export interface PossibleDuplicate {
   id: string;
@@ -135,8 +131,8 @@ export interface GeolocationDetail extends GeolocationListItem {
   created_at: string;
   updated_at: string;
   media: Media[];
-  /** Set when the geolocation was promoted from a bounty — the trace
-   *  that lets the detail page render "originally posted as a bounty by @x". */
+  /** Set when promoted from a bounty — lets the detail page render
+   *  "originally posted as a bounty by @x". */
   originated_from_bounty: {
     id: string;
     title: string;
@@ -152,11 +148,9 @@ export interface BountyListItem {
   source_url: string;
   status: BountyStatus;
   created_at: string;
-  /** TRUE iff seeded by the admin "Demo bounties" panel. The seeded
-   *  imagery and the always-attached `demo` tag are the visible
-   *  signals; the UI uses this flag to swap the synthetic source_url
-   *  for a "synthetic" label so beta testers don't click out to a 404.
-   *  Mirrors GeolocationListItem.is_demo. */
+  /** TRUE iff seeded by the admin "Demo bounties" panel. The UI swaps the
+   *  synthetic source_url for a "synthetic" label so beta testers don't
+   *  click out to a 404. Mirrors GeolocationListItem.is_demo. */
   is_demo: boolean;
   author: Author;
   media: Media[];
@@ -185,19 +179,15 @@ export interface BountyDetail {
   fulfilled_by: { id: string; title: string } | null;
 }
 
-// ── Search ───────────────────────────────────────────────────────────
-
 export type SearchType = "all" | "geolocation" | "bounty" | "user";
 
 /**
- * Each search hit carries a ``*_highlight`` field that's the original
- * text with STX / ETX bytes (U+0002 / U+0003) around matched fragments —
- * see ``lib/search.ts::splitHighlights`` for the parser. Control bytes
- * never appear in legitimate user text, so users can't forge marker
- * tokens to corrupt the highlight string's even/odd parity. The
- * frontend turns the wrapped fragments into ``<mark>`` elements
- * client-side; no raw HTML crosses the API boundary (XSS-safe by
- * construction).
+ * Each search hit's ``*_highlight`` field is the original text with STX /
+ * ETX bytes (U+0002 / U+0003) around matched fragments — see
+ * ``lib/search.ts::splitHighlights`` for the parser. Control bytes never
+ * appear in legitimate user text, so users can't forge markers to corrupt
+ * the even/odd parity. The frontend renders the fragments as ``<mark>``
+ * client-side; no raw HTML crosses the API boundary (XSS-safe).
  */
 export interface SearchGeolocationHit {
   id: string;
@@ -232,9 +222,8 @@ export interface SearchUserHit {
   username: string;
   username_highlight: string;
   bio: string | null;
-  /** Only populated when the bio actually matched (backend filters
-   *  the unmarked case to null) so the UI can hide the snippet block
-   *  cleanly. */
+  /** Populated only when the bio matched (backend nulls the unmarked case)
+   *  so the UI can hide the snippet block cleanly. */
   bio_highlight: string | null;
   is_trusted: boolean;
   trust_reason: string | null;
@@ -247,9 +236,8 @@ export interface SearchResponse {
   users: SearchUserHit[];
   /** Denormalised counts so the group headers don't re-sum the lists. */
   total: { geolocations: number; bounties: number; users: number };
-  /** Echoed inputs — the browser may have multiple requests in flight
-   *  while the user types; comparing ``query`` to the current input
-   *  lets the UI discard out-of-order responses. */
+  /** Echoed input — comparing ``query`` to the current input lets the UI
+   *  discard out-of-order responses while the user types. */
   query: string;
   type: SearchType;
 }

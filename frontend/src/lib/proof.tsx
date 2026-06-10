@@ -142,11 +142,10 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
       const alt = stringAttr(node.attrs?.alt) ?? "";
       const title = stringAttr(node.attrs?.title);
       return (
-        // Plain `<img>` on purpose — proof images are inline rich-text
-        // content with unknown natural dimensions; `next/image` requires
-        // explicit width/height or a sized parent, neither of which a
-        // Tiptap document can guarantee. The lazy + no-referrer hints
-        // already cover the load-discipline next/image would have given us.
+        // Plain `<img>` on purpose — proof images have unknown natural
+        // dimensions, but `next/image` requires explicit width/height or a
+        // sized parent, which a Tiptap document can't guarantee. The lazy +
+        // no-referrer hints cover the load-discipline next/image would add.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={key}

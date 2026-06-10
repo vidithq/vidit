@@ -470,11 +470,9 @@ def test_create_populates_sha256_on_media(db, author):
     given the API response, an auditor can prove the bytes on S3 still
     match what the analyst submitted.
     """
-    # We don't know the post-EXIF-strip sha256 ahead of time (the
-    # strip re-encodes), so the test compares the API response hash
-    # against the row hash for internal consistency. End-to-end
-    # auditor-replay (download URL, recompute) requires a real S3
-    # fetch and is out of scope for this unit-flavoured test.
+    # The EXIF strip re-encodes, so the post-strip sha256 isn't known ahead of
+    # time; assert API-response hash == row hash (internal consistency).
+    # End-to-end auditor-replay needs a real S3 fetch — out of scope here.
     payload = TINY_JPEG
 
     response = client.post(
@@ -492,11 +490,7 @@ def test_create_populates_sha256_on_media(db, author):
     media = body["media"][0]
     assert isinstance(media["sha256"], str)
     assert len(media["sha256"]) == 64
-    # The strip recompresses, so we can't predict the hash. What we
-    # CAN verify is internal consistency: the API response hash
-    # matches the row hash matches an independent re-hash of the
-    # response storage_url's content (skipped here — needs a real S3
-    # fetch). The row check below is the load-bearing assertion.
+    # Load-bearing assertion: API response hash matches the row hash.
     row = db.query(Media).filter(Media.id == uuid.UUID(media["id"])).one()
     assert row.sha256 == media["sha256"]
 
@@ -702,9 +696,8 @@ def test_close_rejected_on_terminal_state(db, author):
 def test_geolocate_from_bounty_transfers_media_and_fulfills(
     db, author, second_user, conflict_tag, capture_source_tag
 ):
-    """The end-to-end slice-2 promise: another analyst submits a
-    geolocation from a bounty, the bounty's media moves over to the
-    new row in place, and the bounty flips to fulfilled."""
+    """The end-to-end promise: another analyst submits a geolocation from a
+    bounty, the bounty's media moves over in place, and it flips to fulfilled."""
     bounty = _make_bounty(db, author=author)
     bounty_id = bounty.id
     media_id = db.query(Media.id).filter(Media.bounty_id == bounty_id).scalar()

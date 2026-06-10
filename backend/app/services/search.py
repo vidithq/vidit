@@ -1,19 +1,15 @@
 """Full-text search across geolocations, bounties, and users.
 
-Slice 1 of the search feature.
-
-Postgres FTS is the engine: ``plainto_tsquery`` parses user input
-(forgiving of spaces / punctuation, no operator surface to escape),
-the GIN indexes from migration ``o1j3k5l7m9n1`` back the lookups, and
-``ts_headline`` returns the matching fragment with sentinel delimiters
-that the frontend renders as ``<mark>`` (rather than passing HTML
-across the wire — XSS-safe by construction). Soft-deleted rows are
+Postgres FTS: ``plainto_tsquery`` parses user input (forgiving of spaces /
+punctuation, no operator surface to escape), the GIN indexes from migration
+``o1j3k5l7m9n1`` back the lookups, and ``ts_headline`` returns the matching
+fragment with sentinel delimiters the frontend renders as ``<mark>`` —
+XSS-safe by construction, no HTML across the wire. Soft-deleted rows are
 filtered at query time.
 
-The TSVECTOR expressions here must match the migration's
-``CREATE INDEX`` expressions byte-for-byte or Postgres will fall back
-to a sequential scan. Both live as module constants so the runtime
-query and the migration can't drift.
+The TSVECTOR expressions here must match the migration's ``CREATE INDEX``
+expressions byte-for-byte or Postgres falls back to a sequential scan; both
+live as module constants so the query and the migration can't drift.
 """
 
 from __future__ import annotations
@@ -27,23 +23,19 @@ from app.models.bounty import Bounty, BountyClaim
 from app.models.geolocation import Geolocation
 from app.models.user import User
 
-# Sentinel bytes that ``ts_headline`` wraps around matched fragments.
-# STX / ETX (U+0002 / U+0003) instead of an ASCII string like
-# ``[[HL]]``: an ASCII marker is forgeable — a user could type
-# ``"watch [[/HL]] this"`` into their bio and corrupt the highlight
-# parity for anyone searching their content. STX / ETX never appear
-# in legitimate text (no keyboard binding, no useful escape sequence
-# in JSON / HTML / Markdown forms), and on the off chance a hostile
-# client plants them via a raw-bytes PATCH, the SQL strips them from
-# the document before ``ts_headline`` runs — see ``_strip_sentinels``.
+# Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
+# (U+0002 / U+0003) not an ASCII string like ``[[HL]]``: an ASCII marker is
+# forgeable — a user typing ``"watch [[/HL]] this"`` into their bio would
+# corrupt highlight parity for searchers. STX / ETX never appear in
+# legitimate text, and a hostile client planting them via a raw-bytes PATCH
+# is stripped before ``ts_headline`` runs — see ``_strip_sentinels``.
 HIGHLIGHT_START = "\x02"
 HIGHLIGHT_STOP = "\x03"
 
-# ``ts_headline`` options strings, sent as bound parameters so the
-# pattern stays injection-proof if a future contributor makes them
-# dynamic. ``HighlightAll=TRUE`` skips fragment selection on short
-# titles (fragment splitting would just truncate); the fragment-mode
-# options apply to ``users.bio`` where the document is prose.
+# ``ts_headline`` options strings, sent as bound parameters so they stay
+# injection-proof if made dynamic later. ``HighlightAll=TRUE`` skips
+# fragment selection on short titles (splitting would truncate);
+# fragment-mode applies to the prose ``users.bio``.
 _HEADLINE_OPTS_FULL = f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, HighlightAll=TRUE"
 _HEADLINE_OPTS_FRAGMENT = (
     f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, MaxFragments=2, MaxWords=20, MinWords=5"
@@ -53,25 +45,21 @@ _HEADLINE_OPTS_FRAGMENT = (
 def _strip_sentinels(col: str) -> str:
     """SQL fragment: strip STX/ETX bytes from ``col`` before ts_headline.
 
-    Belt to the ``HIGHLIGHT_START`` / ``HIGHLIGHT_STOP`` choice's
-    suspenders: even if a hostile client plants the sentinel bytes via
-    a raw-bytes write to ``users.bio`` / a title field, the document
-    passed to ``ts_headline`` has them stripped, so the response's
-    highlight markup stays well-formed (well-balanced even/odd parity)
-    regardless of what's on disk. ``translate(col, chr(2)||chr(3), '')``
-    is the cheapest tool — removes both bytes in a single function call
-    with no regex engine cost.
+    Belt to the sentinel-choice suspenders: even if a hostile client plants
+    the sentinel bytes via a raw-bytes write, the document passed to
+    ``ts_headline`` has them stripped, so the response markup stays
+    well-balanced regardless of what's on disk. ``translate`` removes both
+    in one call with no regex cost.
     """
     return f"translate({col}, chr(2) || chr(3), '')"
 
 
-# TSVECTOR expressions — must match the migration index expressions.
-# Kept as raw SQL so the exact byte sequence Postgres planner sees on
-# write is the exact byte sequence we ask for on read.
+# TSVECTOR expressions — must match the migration index expressions. Raw
+# SQL so the byte sequence the planner sees on write equals what we ask for
+# on read.
 #
-# ``source_url`` is intentionally excluded — see the migration's
-# docstring for why URL substring matches don't survive the simple
-# parser's tokenization.
+# ``source_url`` is excluded — see the migration docstring for why URL
+# substring matches don't survive the simple parser's tokenization.
 _GEO_TSVECTOR = "to_tsvector('simple', coalesce(title, ''))"
 _BOUNTY_TSVECTOR = _GEO_TSVECTOR  # same expression on a different table
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
@@ -80,13 +68,11 @@ _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesc
 def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N geolocations matching ``query`` + the pre-LIMIT total.
 
-    Returns ``(hits, total)``: ``hits`` is a list of dicts ready to be
-    wrapped by the Pydantic schema in the router; ``total`` is the
-    matching-row count *before* ``LIMIT``, computed via a
-    ``COUNT(*) OVER ()`` window function on the same WHERE'd row set —
-    the UI uses this to render "3 of 142", not "3 of 3". Soft-deleted
-    rows are excluded; ranking is ``ts_rank`` descending then
-    ``created_at`` descending as a stable tie-breaker.
+    Returns ``(hits, total)``: ``hits`` are dicts ready for the router's
+    Pydantic schema; ``total`` is the pre-``LIMIT`` match count via
+    ``COUNT(*) OVER ()`` on the same WHERE'd set, so the UI renders "3 of
+    142", not "3 of 3". Soft-deleted rows excluded; ranking is ``ts_rank``
+    desc then ``created_at`` desc (stable tie-break).
     """
     sql = text(
         f"""
@@ -116,11 +102,9 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
     ids = [r.id for r in rows]
     highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in rows}
 
-    # Fetch the full geo objects + relationships in one round-trip,
-    # keyed off the FTS-ranked id list. We have to re-sort in Python
-    # because ``IN (...)`` doesn't preserve order — that's the cost of
-    # the two-step "rank then hydrate" pattern this file uses
-    # consistently with ``GET /geolocations``.
+    # Hydrate the full geo objects + relationships in one round-trip, keyed
+    # off the ranked id list. Re-sort in Python because ``IN (...)`` doesn't
+    # preserve order — the cost of the two-step "rank then hydrate" pattern.
     geos = (
         db.query(
             Geolocation,
@@ -161,10 +145,9 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
 def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N bounties matching ``query`` + the pre-LIMIT total.
 
-    Same two-step rank-then-hydrate as geolocations; same soft-delete
-    filter; same ``COUNT(*) OVER ()`` window for the true total. Carries
-    ``claimer_count`` so the search-result card can render the same
-    "N working" badge as the index.
+    Same rank-then-hydrate, soft-delete filter, and ``COUNT(*) OVER ()`` as
+    geolocations. Carries ``claimer_count`` so the result card renders the
+    same "N working" badge as the index.
     """
     sql = text(
         f"""
@@ -242,12 +225,11 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
 def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N analyst handles matching ``query`` + the pre-LIMIT total.
 
-    ``username_highlight`` always present (the username is always in
-    the index); ``bio_highlight`` only when the bio field carries text
-    AND contributed to the match — keeps the snippet block off the UI
-    when there's nothing meaningful to surface. Two separate ``:opts_*``
-    bound parameters because the username field gets the full-highlight
-    options (it's short) while bio gets fragment-mode (it's prose).
+    ``username_highlight`` always present (username is always indexed);
+    ``bio_highlight`` only when bio carries text AND contributed to the
+    match, keeping an empty snippet block off the UI. Two ``:opts_*``
+    params because username gets full-highlight (it's short) and bio gets
+    fragment-mode (it's prose).
     """
     sql = text(
         f"""
@@ -301,10 +283,9 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         if u is None:
             continue
         username_hl, bio_hl = highlights[hit_id]
-        # Only surface ``bio_highlight`` when the bio field actually
-        # contains a match marker — ts_headline returns the original
-        # text untouched on a no-match field, which would clutter the
-        # card with a snippet that isn't really highlighting anything.
+        # Surface ``bio_highlight`` only when bio actually contains a match
+        # marker — ts_headline returns the original text on a no-match
+        # field, which would clutter the card with a non-highlighting snippet.
         bio_highlight: str | None = None
         if bio_hl is not None and HIGHLIGHT_START in bio_hl:
             bio_highlight = bio_hl
@@ -332,17 +313,15 @@ def search_all(
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
-    ``types`` is a set drawn from ``{"geolocation", "bounty", "user"}``;
-    the router maps the public ``type=all`` shorthand to all three
-    before calling. An empty / whitespace-only query short-circuits to
-    an empty result — keeps the index visit cost off "type but didn't
+    ``types`` is a subset of ``{"geolocation", "bounty", "user"}`` (the
+    router expands ``type=all`` before calling). An empty / whitespace-only
+    query short-circuits to empty, keeping index cost off "typed but didn't
     submit" hits.
 
-    Returns ``{group: {"hits": [...], "total": int}}`` for every group —
-    ``hits`` is capped at ``limit``, ``total`` is the pre-LIMIT count
-    of matches so the UI can show "3 of 142". Unrequested groups get
-    empty hits and total=0; the JSON shape stays stable so the
-    frontend doesn't need conditional access.
+    Returns ``{group: {"hits": [...], "total": int}}`` for every group:
+    ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for
+    "3 of 142". Unrequested groups get empty hits / total=0 so the JSON
+    shape stays stable for the frontend.
     """
     result: dict[str, dict] = {
         "geolocations": {"hits": [], "total": 0},
@@ -364,17 +343,16 @@ def search_all(
     return result
 
 
-# Public set of allowed type parameter values. Re-exported by the
-# router for the 422 validation message — keeps the spec in one place.
+# Allowed ``type`` parameter values. Re-exported by the router for the 422
+# message so the spec stays in one place.
 ALLOWED_TYPES = {"all", "geolocation", "bounty", "user"}
 
 
 def types_from_param(param: str) -> set[str]:
     """Translate the ``type`` query parameter into the internal set.
 
-    ``"all"`` expands to the union; anything else is the singleton set
-    with that one value. The router validates ``param in ALLOWED_TYPES``
-    before calling here so this function trusts its input.
+    ``"all"`` expands to the union; anything else is a singleton. The router
+    validates ``param in ALLOWED_TYPES`` first, so this trusts its input.
     """
     if param == "all":
         return {"geolocation", "bounty", "user"}

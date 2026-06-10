@@ -202,14 +202,10 @@ def test_forgot_password_dispatches_work_to_background_task(client, user_factory
         json={"email": user.email},
     )
 
-    # By the time TestClient hands us the response, BackgroundTasks have
-    # already run, so `called_inline` should now be True — but it should
-    # have been False at the point the response was constructed. The
-    # presence of the call (post-response) is what proves dispatch worked;
-    # the absence of inline blocking is what we can't directly observe in
-    # TestClient. The strongest assertion we can make is that the handler
-    # uses the background-task dispatch path at all — verified by the
-    # patched function having been invoked.
+    # TestClient runs BackgroundTasks before handing back the response, so the
+    # post-response invocation proves the handler used the background-task
+    # dispatch path. The absence of inline blocking isn't directly observable in
+    # TestClient; this is the strongest assertion available.
     assert response.status_code == 204
     assert called_inline is True, "background task was not scheduled"
 

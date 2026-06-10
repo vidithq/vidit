@@ -11,9 +11,8 @@ from app.database import Base
 class AdminEvent(Base):
     """Append-only audit row for admin actions.
 
-    Sibling to the Tier 4 lite ``auth_events`` table that hasn't shipped
-    yet. When that table lands, the two may merge — the schemas overlap
-    enough that one row type can carry both event families.
+    Sibling to ``auth_events``; the schemas overlap enough that the two
+    could eventually merge into one row type.
     """
 
     __tablename__ = "admin_events"

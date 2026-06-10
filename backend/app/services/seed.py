@@ -1,12 +1,11 @@
 """Demo-data seeder for the admin "Demo data" panel.
 
-Creates synthetic geolocations attributed to a small fixed pool of demo
-authors (`is_demo=True`), with media + proof imagery referenced from a
-curated S3 prefix (`demo-pool/`) that an admin populates outside the
-codebase. No real analyst content ever has `is_demo=True`, so wipe is
-a single bulk DELETE on every flagged row.
+Creates synthetic geolocations attributed to a fixed pool of demo authors
+(`is_demo=True`), with media + proof imagery referenced from a curated S3
+prefix (`demo-pool/`) an admin populates outside the codebase. No real
+content ever has `is_demo=True`, so wipe is a single bulk DELETE.
 
-Pool layout the seeder expects (admin populates this once):
+Pool layout the seeder expects (admin populates once):
 
     demo-pool/
       geo-01/
@@ -16,10 +15,9 @@ Pool layout the seeder expects (admin populates this once):
         ...
       geo-N/
 
-Generated demo geos *reference* the pool keys via Storage.public_url —
-they do NOT copy bytes. So 1000 demo geos pointing at 10 templates
-costs 10 keys of S3 storage, and wiping is just a DB drop. The pool
-itself is a permanent admin-curated asset.
+Generated geos *reference* the pool keys via Storage.public_url — they
+don't copy bytes, so 1000 demo geos over 10 templates cost 10 S3 keys and
+wiping is just a DB drop.
 """
 
 from __future__ import annotations
@@ -68,9 +66,9 @@ logger = logging.getLogger(__name__)
 
 DEMO_POOL_PREFIX = "demo-pool/"
 
-# Five fixed demo accounts. Created on first seed call, reused thereafter.
-# Email domain `.invalid` (RFC 2606) is a guaranteed-non-deliverable TLD,
-# so even if `email.send` ever ran against one it would fail safely.
+# Five fixed demo accounts, created on first seed and reused. The
+# `.invalid` TLD (RFC 2606) is guaranteed non-deliverable, so even if
+# `email.send` ran against one it would fail safely.
 DEMO_AUTHORS: list[dict[str, Any]] = [
     {
         "username": "demo-analyst-1",
@@ -104,12 +102,10 @@ DEMO_AUTHORS: list[dict[str, Any]] = [
     },
 ]
 
-# Region bounding boxes. Ukraine + Middle East stay the bulk (the platform
-# is OSINT-aimed and those are the active conflict zones); the rest add
-# enough geographic variety that map clustering, search, and the timeline
-# read as a global product rather than a regional one. Weights are integer
-# percentages summing to 100 — Ukraine + Middle East = 70 %, the seven
-# other regions split the remaining 30 %.
+# Region bounding boxes. Ukraine + Middle East are the bulk (active
+# conflict zones for an OSINT platform); the rest add geographic variety so
+# map clustering, search, and the timeline read as global. Weights are
+# integer percentages summing to 100 (Ukraine + Middle East = 70).
 REGIONS: list[dict[str, Any]] = [
     {
         "name": "Ukraine",
@@ -167,20 +163,18 @@ REGIONS: list[dict[str, Any]] = [
     },
 ]
 
-# All demo geos share one generic title — the platform shouldn't have to
-# pretend a synthetic row knows anything about a real place. The "DEMO"
-# badge in the UI carries the only signal a viewer needs.
+# All demo geos share one generic title — a synthetic row shouldn't
+# pretend to know a real place; the UI's "DEMO" badge carries the signal.
 DEMO_TITLE = "Demo geolocation"
 DEMO_PROOF_TEXT = (
     "This is a synthetic demo entry. Imagery is sampled from a curated demo "
     "pool; coordinates, author, and event date are randomly generated."
 )
 
-# Hotspots = approximate city / area centres around which we cluster a
-# fraction of the seeded points so the map reads as conflict-shaped
-# rather than a uniform smear inside the region bbox. Jitter is the
-# spread radius in kilometres (rough — converted to lat/lon degrees on
-# the fly). Regions without hotspots fall back to bbox-uniform.
+# Hotspots = approximate city / area centres to cluster points around, so
+# the map reads conflict-shaped rather than a uniform bbox smear. Jitter is
+# the spread radius in km (converted to lat/lon degrees on the fly).
+# Regions without hotspots fall back to bbox-uniform.
 HOTSPOTS_BY_REGION: dict[str, list[tuple[str, float, float, float]]] = {
     "Ukraine": [
         ("Kyiv", 50.45, 30.52, 25),
@@ -253,28 +247,24 @@ HOTSPOTS_BY_REGION: dict[str, list[tuple[str, float, float, float]]] = {
     ],
 }
 
-# Probability that a generated point is anchored on a hotspot vs.
-# spread bbox-uniform. Higher = tighter clustering, more "conflict-
-# shaped"; lower = more even background coverage.
+# Probability a point anchors on a hotspot vs. bbox-uniform. Higher =
+# tighter clustering; lower = more even background coverage.
 HOTSPOT_PROBABILITY = 0.85
 
-# Conflict tags by region. Only set where a Vidit-curated `conflict`
-# tag exists for the area; other regions get no conflict tag (their
-# demo points are background-only). Names must match what's actually
-# in the `tags` table — the seeder will create them if absent.
+# Conflict tags by region. Set only where a curated `conflict` tag exists;
+# other regions get none (background-only points). Names must match the
+# `tags` table — the seeder creates them if absent.
 CONFLICT_TAG_BY_REGION: dict[str, str] = {
     "Ukraine": "Ukraine",
     "Middle East": "Israel Gaza",
 }
 
-# Always attached to every demo geo so a single filter-chip click in the
-# map UI scopes the view to (or excludes) the synthetic data set without
-# the viewer needing to know about an `is_demo` flag.
+# Attached to every demo geo so one filter-chip click scopes to (or
+# excludes) the synthetic set without the viewer knowing about `is_demo`.
 DEMO_TAG_NAME = "demo"
 
-# Free tags assigned to demo geos to demonstrate the filter UI's
-# capacity for combining categorical tags. Mix of OSINT-genre keywords
-# the analyst community would actually use.
+# Free tags on demo geos to exercise multi-tag filter combinations — a mix
+# of OSINT-genre keywords the analyst community uses.
 FREE_TAG_POOL: list[str] = [
     "armor",
     "artillery",
@@ -289,12 +279,11 @@ FREE_TAG_POOL: list[str] = [
     "checkpoint",
 ]
 
-# Capture-source ("original lens") taxonomy — the curated `capture_source`
-# tag category seeded in prod by migration `s5n7p9r1t3v5`. Mirrored here
-# so the demo seeder attaches one to every synthetic geo: the category is
-# a required selector on the submit form, and seeding it keeps the demo
-# set consistent with that invariant *and* makes the capture-source map
-# filter demoable on a fresh local DB. Keep in sync with the migration.
+# Capture-source taxonomy — the curated `capture_source` category seeded in
+# prod by migration `s5n7p9r1t3v5`. Mirrored so the seeder attaches one to
+# every geo (a required submit-form selector), which also makes the
+# capture-source map filter demoable on a fresh DB. Keep in sync with the
+# migration.
 CAPTURE_SOURCE_TAGS: list[str] = [
     "Smartphone",
     "Satellite",
@@ -306,30 +295,27 @@ CAPTURE_SOURCE_TAGS: list[str] = [
 ]
 
 # Conflict escape value (also seeded by `s5n7p9r1t3v5`). Demo geos in
-# regions without a curated conflict tag get this so every synthetic row
-# satisfies the "one conflict per geo" intent and the "Other" chip is
-# exercised in the filter UI.
+# regions with no curated conflict tag get this, so every row satisfies the
+# "one conflict per geo" intent and the "Other" chip is exercised.
 CONFLICT_OTHER_TAG = "Other"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-# Pinned at module import: a single bcrypt of a stable sentinel that can't
-# match any user-supplied password. Reused across every demo account so
-# we pay one bcrypt per process, not per seed call.
+# Pinned at import: one bcrypt of a sentinel that can't match any
+# user-supplied password. Reused across all demo accounts — one bcrypt per
+# process, not per seed call.
 _DEMO_UNLOGGABLE_HASH = hash_password("!demo-no-login!")
 
 
 def _ensure_demo_authors(db: Session) -> list[User]:
-    """Create the 5 demo accounts if they don't already exist; return all 5.
+    """Create the 5 demo accounts if absent; return all 5.
 
-    Race-safe: two admin clicks firing concurrently used to crash the
-    second one with `IntegrityError` on the `users.username` UNIQUE
-    constraint when both queried `existing` empty and both `INSERT`ed.
-    Now uses `INSERT ... ON CONFLICT (username) DO NOTHING` so the
-    losing call is a silent no-op; the follow-up SELECT picks up the
-    winner's row.
+    Race-safe via `INSERT ... ON CONFLICT (username) DO NOTHING`: two
+    concurrent admin clicks used to crash the loser on the
+    `users.username` UNIQUE; now the loser is a silent no-op and the
+    follow-up SELECT picks up the winner's row.
     """
     rows = [
         {
@@ -355,13 +341,11 @@ def _discover_templates() -> dict[str, dict[str, list[str]]]:
     Returns `{template_id: {"media": [keys], "proof": [keys]}}`. Templates
     without at least one media file are skipped — they wouldn't render.
 
-    Filters out derivative sidecar keys (``*_hero.jpg`` / ``*_thumb.jpg``)
-    that ``_prepare_pool_media`` writes alongside each original. They
-    live under the same ``media/`` prefix as their parent originals but
-    aren't templates themselves — letting them through would (a)
-    sample derivatives into Media rows as if they were originals, and
-    (b) recursively derive ``*_hero_hero.jpg`` /
-    ``*_hero_thumb.jpg`` chains on every subsequent seed.
+    Filters out derivative sidecars (``*_hero.jpg`` / ``*_thumb.jpg``) that
+    ``_prepare_pool_media`` writes alongside each original under the same
+    ``media/`` prefix. Letting them through would (a) sample derivatives
+    into Media rows as originals and (b) recursively derive
+    ``*_hero_hero.jpg`` chains on each subsequent seed.
     """
     storage = get_storage()
     keys = storage.list_keys(DEMO_POOL_PREFIX)
@@ -375,7 +359,7 @@ def _discover_templates() -> dict[str, dict[str, list[str]]]:
         template_id, bucket = parts[0], parts[1]
         if bucket not in ("media", "proof"):
             continue
-        # Drop derivative sidecars — see docstring.
+        # Drop derivative sidecars (see docstring).
         filename = parts[-1]
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         if stem.endswith("_hero") or stem.endswith("_thumb"):
@@ -405,19 +389,16 @@ def _hotspot_random_point(
 ) -> tuple[float, float]:
     """Jittered point around a city centre — 2D Gaussian, not uniform square.
 
-    Earlier this used `random.uniform(-spread, +spread)` which produces
-    visible square boundaries at hotspot edges once the dot count is high
-    (50 k+) — the density is uniform inside the box and zero outside.
-    A Gaussian with `sigma = jitter / 2.5` puts ~95 % of points inside
-    `±jitter` with a natural fade to the edges; tails of nearby hotspots
-    overlap so the corridor between two cities fills in organically
-    instead of looking like two disjoint blobs. Longitude is `cos(lat)`-
-    scaled so the same km-sigma produces a geometrically circular
-    footprint at any latitude.
+    `random.uniform(-spread, +spread)` produced visible square boundaries
+    at high dot counts. A Gaussian with `sigma = jitter / 2.5` puts ~95 % of
+    points inside `±jitter` with a natural edge fade; nearby hotspots' tails
+    overlap so the corridor between cities fills in organically. Longitude
+    is `cos(lat)`-scaled so the same km-sigma is geometrically circular at
+    any latitude.
     """
     _name, lat, lon, jitter_km = hotspot
     sigma_lat = (jitter_km / 2.5) / 111.0
-    # cos guard: protect against +/- 90° corner cases
+    # cos guard against +/- 90° corner cases
     cos_lat = max(0.05, math.cos(math.radians(lat)))
     sigma_lon = (jitter_km / 2.5) / (111.0 * cos_lat)
     return (
@@ -427,10 +408,9 @@ def _hotspot_random_point(
 
 
 def _pick_point_for(region: dict[str, Any]) -> tuple[float, float]:
-    """Pick a point inside `region` — clustered around hotspots when the
-    region has them, else bbox-uniform. The 15% bbox-uniform tail when
-    hotspots exist gives the map a believable background scatter so
-    every point isn't right on a city pin."""
+    """Pick a point inside `region` — clustered around hotspots when present,
+    else bbox-uniform. The 15% bbox-uniform tail (when hotspots exist) gives
+    the map a believable background scatter instead of every point on a pin."""
     hotspots = HOTSPOTS_BY_REGION.get(region["name"], [])
     if hotspots and random.random() < HOTSPOT_PROBABILITY:
         return _hotspot_random_point(random.choice(hotspots))
@@ -449,11 +429,10 @@ def _media_type_from_key(key: str) -> str:
     return "image"
 
 
-# Map a pool key's file extension to a content type for the
-# evidence-processing layer. ``make_jpeg_derivative`` only checks the
-# content type for the no-op gate (videos pass through unchanged), but
-# routing the right MIME keeps the helper composable with whatever
-# future logic the strip / derivative layer adds.
+# Map a pool key's extension to a content type for the evidence layer.
+# ``make_jpeg_derivative`` only checks it for the no-op gate (videos pass
+# through); the right MIME keeps the helper composable with future strip /
+# derivative logic.
 _IMAGE_CONTENT_TYPE_BY_EXT: dict[str, str] = {
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
@@ -475,54 +454,38 @@ def _prepare_pool_media(
 
     For each unique media key referenced by `templates`:
 
-    1. Download the original bytes from storage. **This runs once
-       per seed invocation, not once per pool lifetime** — the
-       sha256 hash isn't cached anywhere on the bucket, so every
-       call here re-downloads the full pool to recompute the hash.
-       For a pool of ~100s of keys this is ~100s of S3 GETs per
-       seed; for closed-beta scale it's seconds, acceptable. If the
-       pool grows or seeds get more frequent, cache the sha256 in a
-       sibling object next to the original.
-    2. Compute the sha256 hex digest so the demo-row constructor can
-       set ``Media.sha256`` — bringing demo data in line with the
-       evidence-integrity contract real uploads already honour.
-    3. For images, generate JPEG hero + thumbnail derivatives via
-       ``make_jpeg_derivative`` and upload them at the structural
-       sibling keys (``..._hero.jpg`` / ``..._thumb.jpg``) — unless
-       they already exist in the pool, in which case the upload is
-       skipped. Skipping is important: every re-seed would otherwise
-       rewrite identical bytes back to the same key, which the
-       bucket's Object Lock + versioning turns into a versioned
-       no-op (cheap but unbounded version churn over time).
+    1. Download the original bytes. **Runs once per seed invocation, not
+       once per pool lifetime** — the sha256 isn't cached on the bucket, so
+       every call re-downloads the pool to recompute it (~100s of S3 GETs,
+       seconds at current scale). If the pool grows, cache the sha256 in a
+       sibling object.
+    2. Compute the sha256 hex so the row constructor sets ``Media.sha256``,
+       matching the evidence-integrity contract real uploads honour.
+    3. For images, generate JPEG hero + thumbnail derivatives at the sibling
+       keys — skipped if already present. Skipping matters: a re-seed would
+       otherwise rewrite identical bytes, which the bucket's Object Lock +
+       versioning turns into unbounded version churn.
 
-    Videos: hashed for the row, no derivatives produced. First-frame
-    extraction is a separate slice.
+    Videos: hashed for the row, no derivatives (no first-frame extraction).
 
-    Returns ``{pool_key: sha256_hex}``. Proof-image keys (used for
-    inline Tiptap nodes only) are intentionally excluded — they don't
-    create Media rows and their display path is the editor, which
-    consumes the original URL.
+    Returns ``{pool_key: sha256_hex}``. Proof-image keys are excluded —
+    they create no Media rows and render through the editor via the
+    original URL.
 
-    Failure handling: a per-key ``get_bytes`` miss is logged and
-    skipped — the Media row for that key downstream will land with
-    ``sha256=NULL`` and a ``storage_url`` pointing at the missing
-    original (the detail page will 404 on that row's media). A
-    per-derivative ``put_bytes_sync`` failure (transient S3 5xx
-    mid-pool) is also logged and skipped — the row's sha256 still
-    lands (hash was computed pre-upload) but the derivative is
-    missing and the frontend will 404 on the hero/thumb until the
-    next seed retries. Both are partial-success modes; neither
-    aborts the whole seed.
+    Failure handling (both partial-success, neither aborts the seed): a
+    per-key ``get_bytes`` miss is logged + skipped (the row lands with
+    ``sha256=NULL`` and a ``storage_url`` pointing at the missing original,
+    404ing on the detail page); a per-derivative ``put_bytes_sync`` failure
+    is logged + skipped (sha256 still lands — computed pre-upload — but the
+    frontend 404s on the hero/thumb until the next seed).
     """
     unique_media_keys: set[str] = set()
     for template in templates.values():
         unique_media_keys.update(template["media"])
 
-    # One list_keys call up front. The seeder already paid this cost
-    # in ``_discover_templates``; we pay it again here to pick up any
-    # derivatives that landed on a prior seed run. List size is
-    # bounded by the pool itself (~100s of keys for a real-world
-    # demo pool) so an extra round-trip is cheap.
+    # One list_keys call up front to pick up derivatives from a prior seed
+    # run. (``_discover_templates`` already paid this once; the re-list is
+    # cheap — size is bounded by the pool, ~100s of keys.)
     existing_keys = set(storage.list_keys(DEMO_POOL_PREFIX))
 
     sha256_by_key: dict[str, str] = {}
@@ -531,16 +494,12 @@ def _prepare_pool_media(
         try:
             data = storage.get_bytes(key)
         except Exception:
-            # The pool list previously included this key, so a miss
-            # here is genuinely surprising — probably a partial-delete
-            # by an admin between list and get, or S3 eventual
-            # consistency in a fresh pool. The downstream Media row
-            # for this key will reference the missing original via
-            # its ``storage_url`` and the frontend will 404; we can't
-            # fix that here without filtering the templates dict
-            # (more invasive — would also need to filter empty
-            # templates) so we log loudly and move on. Re-seed after
-            # the pool stabilises to recover.
+            # The pool list included this key, so a miss is surprising —
+            # likely an admin partial-delete between list and get, or S3
+            # eventual consistency. Filtering the templates dict to fix it
+            # would be more invasive (also needs empty-template filtering);
+            # log loudly and move on. The downstream row references the
+            # missing original and 404s; re-seed to recover.
             logger.warning(
                 "Could not read pool key %s; row referencing this key "
                 "will have NULL sha256 and 404 on detail page until "
@@ -552,31 +511,24 @@ def _prepare_pool_media(
 
         content_type = _image_content_type_from_key(key)
         if content_type is None:
-            # Videos and any future non-image type — hash the row,
-            # skip derivatives (no first-frame extract in this slice).
+            # Videos — hash the row, skip derivatives (no first-frame extract).
             continue
 
         hero_key = derivative_key(key, "hero")
         thumb_key = derivative_key(key, "thumb")
         hero_present = hero_key in existing_keys
         thumb_present = thumb_key in existing_keys
-        # Re-seed shortcut: derivatives already in the pool stay put.
-        # The encoder is deterministic so we'd be rewriting identical
-        # bytes, which a versioned + Object-Locked bucket turns into
-        # noise. Single-pass write per derivative across the pool's
-        # lifetime is the intended cadence. Each derivative is checked
-        # independently so a half-completed prior seed (hero present,
-        # thumb missing) only re-derives the missing half — the
-        # already-present one stays at its prior mtime.
+        # Re-seed shortcut: present derivatives stay put. The encoder is
+        # deterministic, so rewriting identical bytes is noise on a
+        # versioned + Object-Locked bucket. Checked independently so a
+        # half-completed prior seed only re-derives the missing half.
         if hero_present and thumb_present:
             continue
 
         # Per-derivative try/except so a transient ``put_bytes_sync``
-        # failure on one key doesn't abort the whole prep pass. The
-        # sha256 already landed in ``sha256_by_key`` (computed
-        # pre-upload), so the Media row stays well-formed; only the
-        # derivative is missing and the next seed picks it up via the
-        # per-key existence check.
+        # failure on one key doesn't abort the prep pass. The sha256 already
+        # landed (pre-upload), so the row stays well-formed; the next seed
+        # picks up the missing derivative via the existence check.
         if not hero_present:
             try:
                 hero = make_jpeg_derivative(data, content_type, HERO_MAX_DIM)
@@ -612,11 +564,10 @@ def _prepare_pool_media(
 def _build_proof(image_keys: list[str]) -> dict[str, Any]:
     """Build a Tiptap JSON document with a generic body + image nodes.
 
-    Copy is deliberately content-free — no place names, no event details,
-    nothing that could be misread as a real claim if the row leaked
-    outside the `is_demo` filter. Image `src` values point at the
-    configured-CloudFront URL (or the local-storage URL in dev) so the
-    Tier-5 sanitiser allows them through unchanged.
+    Copy is content-free — no place names or event details that could read
+    as a real claim if the row leaked past the `is_demo` filter. Image
+    `src` values point at the CloudFront URL (or local-storage in dev) so
+    the sanitiser allows them through unchanged.
     """
     storage = get_storage()
     nodes: list[dict[str, Any]] = [
@@ -639,12 +590,11 @@ def _build_proof(image_keys: list[str]) -> dict[str, Any]:
 
 
 def _ensure_tags(db: Session) -> dict[str, Tag]:
-    """Create the conflict + free tag rows the seeder uses, if they don't
-    exist; return them keyed by name.
+    """Create the tag rows the seeder uses if absent; return them keyed by name.
 
     Race-safe via `INSERT ... ON CONFLICT (name) DO NOTHING` — concurrent
-    admin clicks racing on the `tags.name` UNIQUE constraint don't crash
-    the loser; the follow-up SELECT picks up whichever row landed.
+    admin clicks racing on the `tags.name` UNIQUE don't crash the loser;
+    the follow-up SELECT picks up whichever row landed.
     """
     needed: list[tuple[str, str]] = [
         (DEMO_TAG_NAME, "free"),
@@ -672,13 +622,11 @@ SEED_BATCH_SIZE = 1000
 def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     """Generate `count` demo geolocations.
 
-    Idempotent on the demo authors (they're created once, then reused).
-    Commits in batches of `SEED_BATCH_SIZE` so memory stays bounded for
-    large seeds (e.g. 50 000) and the SQLAlchemy identity map doesn't
-    grow unbounded — earlier in-batch geolocations are flushed and
-    detached as we move on. A failure mid-batch leaves earlier batches
-    in the DB; the wipe button is one click away if you want a clean
-    redo.
+    Idempotent on the demo authors (created once, reused). Commits in
+    batches of `SEED_BATCH_SIZE` so memory + the SQLAlchemy identity map
+    stay bounded on large seeds (e.g. 50 000) — earlier geos are flushed
+    and detached as we move on. A mid-batch failure leaves earlier batches
+    in the DB; the wipe button gives a clean redo.
     """
     if count < 1:
         raise ValueError("count must be at least 1")
@@ -695,33 +643,28 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     tags_by_name = _ensure_tags(db)
     db.commit()  # lock in demo authors + tags before the bulk loop
     author_ids = [a.id for a in authors]
-    # Memoise the tag IDs as plain UUIDs. Plain Python lookup, no DB hit
-    # per iteration — a big deal at 50 k+ scale where the previous
-    # implementation paid a `SELECT FROM tags` round-trip per geo.
+    # Memoise tag IDs as plain UUIDs — pure-Python lookup, no per-geo
+    # `SELECT FROM tags` round-trip (a big deal at 50 k+ scale).
     tag_ids_by_name: dict[str, uuid.UUID] = {n: t.id for n, t in tags_by_name.items()}
     template_ids = list(templates.keys())
     storage = get_storage()
 
-    # One pass over every unique pool media key: compute sha256
-    # (carried onto each Media row) and produce JPEG hero + thumbnail
-    # derivatives if they aren't already in the pool. Runs once per
-    # seed invocation regardless of `count`, because the demo media
-    # row created N times all reference the same N unique pool keys.
+    # One pass over every unique pool media key: compute sha256 and produce
+    # derivatives. Runs once per invocation regardless of `count`, since the
+    # N demo rows all reference the same unique pool keys.
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
-    # Buffer M2M link rows for the current batch. Flushed via a single
-    # Core `INSERT INTO geolocation_tags VALUES (...)` per batch — far
-    # cheaper than 1-4 ORM relationship writes per geo.
+    # Buffer M2M link rows per batch, flushed via one Core
+    # `INSERT INTO geolocation_tags` — far cheaper than 1-4 ORM
+    # relationship writes per geo.
     pending_links: list[dict[str, uuid.UUID]] = []
 
     def _flush_batch() -> None:
-        # Flush queued geos to the DB so the upcoming M2M insert can rely
-        # on the FK target rows existing — but DON'T commit yet. We want
-        # the geos and their tag links to live or die together: if the
-        # M2M insert fails (transient DB error, etc.), the rollback drops
-        # the just-flushed geos too and the next click retries cleanly.
-        # The previous shape (`commit() → insert links → commit()`) left
-        # geos committed and tagless on a mid-flush failure.
+        # Flush queued geos so the M2M insert's FK targets exist, but DON'T
+        # commit yet, so geos and their tag links live or die together: an
+        # M2M insert failure rolls back the geos too and the next click
+        # retries cleanly. `commit() → insert links → commit()` left geos
+        # committed and tagless on a mid-flush failure.
         db.flush()
         if pending_links:
             db.execute(insert(geolocation_tags), pending_links)
@@ -736,9 +679,8 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         template_id = random.choice(template_ids)
         template = templates[template_id]
 
-        # Generate the geo's UUID upfront so we can stage the M2M links
-        # before flushing — saves a per-geo fllush we'd otherwise need
-        # just to read the auto-assigned id.
+        # Generate the geo's UUID upfront to stage the M2M links before
+        # flushing — saves a per-geo flush just to read the auto-assigned id.
         geo_id = uuid.uuid4()
 
         geo = Geolocation(
@@ -760,12 +702,9 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
                 Media(
                     storage_url=storage.public_url(key),
                     media_type=_media_type_from_key(key),
-                    # ``sha256`` is populated for every pool key in
-                    # ``_prepare_pool_media``. ``get`` falls back to
-                    # ``None`` if the prep pass skipped a key (storage
-                    # miss between list + read) — still a usable Media
-                    # row, just one a future audit will flag as
-                    # hash-less alongside any legacy pre-column rows.
+                    # ``get`` → ``None`` if the prep pass skipped this key
+                    # (storage miss between list + read): still a usable row,
+                    # just one a future audit flags as hash-less.
                     sha256=pool_sha256_by_key.get(key),
                 )
             )
@@ -776,17 +715,14 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
                 template["proof"],
                 k=random.randint(1, min(3, len(template["proof"]))),
             )
-        # Run the demo proof through the same Tier-5 sanitiser real
-        # submissions go through. Today the contents are 100 % seeder-
-        # controlled so this is a no-op, but it makes the seed write
-        # path identical to the public submit path — any future drift
-        # in `_build_proof` (or in the sanitiser allowlist) gets caught
-        # immediately rather than silently bypassed.
+        # Run the demo proof through the same sanitiser as real submissions.
+        # A no-op today (contents are seeder-controlled), but it makes the
+        # seed write path identical to the public one so future drift in
+        # `_build_proof` or the allowlist is caught, not silently bypassed.
         geo.proof = sanitize_tiptap_doc(_build_proof(proof_keys))
 
-        # Pick tag IDs in pure Python from the memoised dict; stage the
-        # link rows for the bulk Core insert at batch flush. No DB hit,
-        # no ORM relationship traversal.
+        # Pick tag IDs from the memoised dict and stage the link rows for
+        # the bulk Core insert — no DB hit, no ORM traversal.
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
             pending_links.append({"geolocation_id": geo_id, "tag_id": tid})
 
@@ -797,9 +733,8 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
 
     _flush_batch()
 
-    # Wire a small synthetic social graph between demo authors so the
-    # timeline page has something to render right after `make seed`. Each
-    # demo analyst follows 1–3 peers — enough to make the feed feel
+    # Wire a small social graph between demo authors so the timeline has
+    # something to render after `make seed`. Each follows 1–3 peers —
     # populated without flattening into "everyone follows everyone."
     if len(authors) > 1:
         for follower in authors:
@@ -815,19 +750,16 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
 def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -> list[uuid.UUID]:
     """Pick the tag IDs to attach to a demo geo:
 
-    - Always the `demo` free tag — single filter chip in the map UI lets
-      a viewer scope to (or hide) every synthetic row in one click.
-    - Exactly one `conflict` tag: the region's curated one if configured
-      (Ukraine / Israel Gaza), else the "Other" escape — so every demo
-      geo satisfies the "one conflict per geo" invariant the submit form
-      now enforces.
-    - Exactly one random `capture_source` tag, so the synthetic set
-      exercises the required capture-source selector + its map filter.
-    - 1–3 random free tags from the OSINT pool to demonstrate the
-      multi-tag filter combinations.
+    - Always the `demo` free tag — one filter chip scopes to / hides every
+      synthetic row.
+    - Exactly one `conflict` tag: the region's curated one if configured,
+      else "Other" — satisfies the "one conflict per geo" invariant the
+      submit form enforces.
+    - Exactly one random `capture_source` tag, exercising the required
+      selector + its map filter.
+    - 1–3 random free tags from the OSINT pool for multi-tag combinations.
 
-    Pure Python — caller writes the IDs as M2M link rows directly via
-    Core SQL.
+    Pure Python — caller writes the IDs as M2M link rows via Core SQL.
     """
     ids: list[uuid.UUID] = []
     if DEMO_TAG_NAME in tag_ids_by_name:
@@ -849,25 +781,20 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
 
 # ── Bounty seeder ────────────────────────────────────────────────────────
 
-# Generic title shared by every demo bounty — same rationale as
-# DEMO_TITLE for geolocations. The "DEMO" badge in the UI carries the
-# signal; specific copy would imply factual claims about non-existent
-# events. Phrased to read like an unplaced bounty: "I saw this, can't
-# place it" is the bounty mental model.
+# Generic title for every demo bounty — same rationale as DEMO_TITLE;
+# specific copy would imply factual claims about non-existent events.
+# Phrased as an unplaced bounty ("I saw this, can't place it").
 DEMO_BOUNTY_TITLE = "Demo bounty — unplaced footage"
 DEMO_BOUNTY_SOURCE_URL = "https://vidit.app/demo-data"
 
-# Probability that a demo bounty gets at least one synthetic claim
-# attached — gives the index card's "N working" badge something to
-# render so the multi-claimer UI surfaces in the demo seed.
+# Probability a demo bounty gets ≥1 synthetic claim — gives the "N
+# working" badge something to render so the multi-claimer UI surfaces.
 DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
 
-# Status mix across the demo seed. Open dominates so the "open queue" UI
-# (the default view) feels populated; the other two are sprinkled in for
-# visual coverage of the status-filter chips and the trace banner on
-# both the bounty detail page (``Fulfilled by``) and the geolocation
-# detail page (``originally posted as a bounty by @x``). Weights sum to
-# 1.0; the seeder samples per-bounty.
+# Status mix. Open dominates so the default "open queue" view feels
+# populated; the others are sprinkled in for the status-filter chips and
+# the trace banner (bounty ``Fulfilled by`` + geo "originally posted as a
+# bounty"). Weights sum to 1.0; sampled per-bounty.
 DEMO_BOUNTY_STATUS_WEIGHTS = (
     (STATUS_OPEN, 0.70),
     (STATUS_FULFILLED, 0.15),
@@ -878,8 +805,8 @@ DEMO_BOUNTY_STATUS_WEIGHTS = (
 def _pick_demo_bounty_status() -> str:
     """Weighted draw from ``DEMO_BOUNTY_STATUS_WEIGHTS``.
 
-    ``random.choices`` would also work but the loop is explicit so the
-    weights stay readable as percentages.
+    Explicit loop rather than ``random.choices`` so the weights stay
+    readable as percentages.
     """
     roll = random.random()
     cumulative = 0.0
@@ -893,22 +820,19 @@ def _pick_demo_bounty_status() -> str:
 def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     """Generate ``count`` demo bounties with a representative status mix.
 
-    Reuses the existing demo-author pool and the curated ``demo-pool/``
-    S3 prefix — bounties just need media files (not coordinates), so the
-    same template imagery that backs demo geolocations is reused
-    verbatim. Each bounty gets a random subset of one template's
-    ``media/`` files; for *fulfilled* bounties the media lives on the
-    paired geolocation (mirroring real fulfilment, which UPDATEs the
-    rows in place), for *open* and *closed* bounties the media stays on
-    the bounty.
+    Reuses the demo-author pool and the ``demo-pool/`` prefix — bounties
+    need media but not coordinates, so the same template imagery is reused.
+    Each gets a random subset of one template's ``media/`` files; for
+    *fulfilled* bounties the media lives on the paired geolocation
+    (mirroring real fulfilment's in-place UPDATE), for *open* / *closed* it
+    stays on the bounty.
 
-    Status mix is drawn from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the
-    status-filter chips + the trace banner UIs all have data to render.
-    Fulfilled bounties get a paired demo geolocation
-    (``is_demo=True``, ``originated_from_bounty_id`` set) so the
-    detail-page "Fulfilled by" row + the geo's "originally posted as a
-    bounty" trace banner exercise. Open bounties may also get 1–3
-    synthetic claims (see ``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+    Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter
+    chips + trace-banner UIs have data. Fulfilled bounties get a paired
+    demo geo (``is_demo=True``, ``originated_from_bounty_id`` set) to
+    exercise the "Fulfilled by" row + the geo's "originally posted as a
+    bounty" banner. Open bounties may get 1–3 synthetic claims (see
+    ``DEMO_BOUNTY_CLAIM_PROBABILITY``).
 
     Idempotent on demo authors / tags; commits at the end.
     """
@@ -931,11 +855,9 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     template_ids = list(templates.keys())
     storage = get_storage()
 
-    # Same prep pass as ``seed_demo`` — hash every pool media key once
-    # and produce derivatives. ``_prepare_pool_media`` is idempotent on
-    # already-derived keys, so calling it from both seeders against
-    # the same pool is harmless (the second call is just a list_keys
-    # + per-key hash, no S3 writes).
+    # Same prep pass as ``seed_demo``. Idempotent on already-derived keys,
+    # so calling it from both seeders is harmless (second call is just
+    # list_keys + per-key hash, no S3 writes).
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
     pending_tag_links: list[dict[str, uuid.UUID]] = []
@@ -948,16 +870,14 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         author_id = random.choice(author_ids)
         template_id = random.choice(template_ids)
         template = templates[template_id]
-        # The region drives tag selection. For fulfilled bounties the
-        # paired geo also pulls a point from this region's bbox.
+        # Region drives tag selection; a fulfilled bounty's paired geo also
+        # pulls its point from this region's bbox.
         region = _pick_region()
 
         status = _pick_demo_bounty_status()
         counts[status] += 1
-        # closed_at is stamped for any terminal-state bounty so the
-        # detail page can show "Fulfilled YYYY-MM-DD" / "Closed YYYY-MM-DD".
-        # Pick a closed_at that's a bit after a synthetic creation
-        # window so the timeline reads naturally.
+        # closed_at stamped for any terminal-state bounty so the detail page
+        # can show "Fulfilled/Closed YYYY-MM-DD".
         closed_at = datetime.now(UTC) if status != STATUS_OPEN else None
 
         bounty_id = uuid.uuid4()
@@ -978,12 +898,9 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         )
 
         if status == STATUS_FULFILLED:
-            # The bounty was fulfilled: media transferred to the geo.
-            # Construct the paired demo geolocation; ``is_demo=True`` so
-            # the wipe path (which scans by is_demo on Geolocation) also
-            # sweeps these. The author of the geo is intentionally a
-            # *different* demo analyst so the "fulfilled by @other" line
-            # reads naturally.
+            # Media transferred to a paired geo. ``is_demo=True`` so the wipe
+            # path sweeps it too. A *different* demo analyst authors the geo
+            # so "fulfilled by @other" reads naturally.
             other_authors = [aid for aid in author_ids if aid != author_id]
             fulfiller_id = random.choice(other_authors) if other_authors else author_id
             lat, lon = _pick_point_for(region)
@@ -1008,8 +925,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                         sha256=pool_sha256_by_key.get(key),
                     )
                 )
-            # Tag the paired geo with the same demo + conflict tags so
-            # it shows up filtered alongside the rest of the demo set.
+            # Tag the paired geo so it filters alongside the rest of the set.
             for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
                 pending_geo_tag_links.append({"geolocation_id": geo_id, "tag_id": tid})
         else:
@@ -1028,8 +944,8 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             pending_tag_links.append({"bounty_id": bounty_id, "tag_id": tid})
 
         # Claims only make sense on the open queue — fulfilled / closed
-        # bounties past the lifecycle gate don't accept new claims, and
-        # backfilling stale claims would be misleading in the UI.
+        # bounties don't accept new claims, and stale backfilled claims
+        # would mislead the UI.
         if status == STATUS_OPEN and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
             other_authors = [aid for aid in author_ids if aid != author_id]
             if other_authors:
@@ -1050,10 +966,9 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     if pending_geo_tag_links:
         db.execute(insert(geolocation_tags), pending_geo_tag_links)
     if pending_claim_rows:
-        # mypy types ``__table__`` as ``FromClause`` (the abstract base) but
-        # at runtime it's a ``Table`` and ``insert()`` accepts it — same
-        # construct the existing ``insert(geolocation_tags)`` call above
-        # uses.
+        # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
+        # ``Table`` and ``insert()`` accepts it — same as the
+        # ``insert(geolocation_tags)`` calls above.
         db.execute(insert(BountyClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
     db.commit()
 
@@ -1071,11 +986,10 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 def wipe_demo_bounties(db: Session) -> dict[str, int]:
     """Delete every ``is_demo=True`` bounty.
 
-    Bulk Core DELETE for the same reasons as ``wipe_demo``: speed at
-    high volumes + correctness vs ORM cascade fighting the DB
-    ``ON DELETE CASCADE``. The ``demo-pool/`` S3 objects stay; the
-    keys are shared with the geo seeder. Demo users + demo geos are
-    NOT touched — those live behind the separate ``wipe_demo`` button.
+    Bulk Core DELETE for the same reasons as ``wipe_demo`` (speed +
+    avoiding ORM cascade fighting the DB ``ON DELETE CASCADE``). The
+    ``demo-pool/`` S3 objects stay (keys shared with the geo seeder). Demo
+    users + geos are untouched — those are behind ``wipe_demo``.
     """
     deleted = db.query(Bounty).filter(Bounty.is_demo.is_(True)).delete(synchronize_session=False)
     db.commit()
@@ -1091,16 +1005,15 @@ def wipe_demo(db: Session) -> dict[str, int]:
        autoflush of M2M-secondary cascades is orders of magnitude slower
        than a single `DELETE FROM geolocations WHERE is_demo = true`.
 
-    2. Correctness — the M2M relationship `Geolocation.tags` makes the
-       ORM try to manage `geolocation_tags` row deletes itself, which
-       *fights* the DB-level `ON DELETE CASCADE` on the FK. When the
-       cascade drops the secondary rows first, the ORM's queued explicit
-       DELETE finds zero rows and raises `StaleDataError`. Bulk Core
-       DELETE bypasses ORM cascade entirely; the DB FK cascade handles
-       `geolocation_tags`, `media`, and `proof_images` correctly.
+    2. Correctness — the M2M `Geolocation.tags` makes the ORM manage
+       `geolocation_tags` deletes itself, *fighting* the DB
+       `ON DELETE CASCADE`: when the cascade drops the secondary rows
+       first, the ORM's queued DELETE finds zero rows and raises
+       `StaleDataError`. Bulk Core DELETE bypasses ORM cascade; the DB FK
+       cascade handles `geolocation_tags`, `media`, `proof_images`.
 
-    The `demo-pool/` S3 objects are NOT touched — they're shared assets
-    for re-seeding, not per-geo media.
+    The `demo-pool/` S3 objects are NOT touched — shared re-seeding assets,
+    not per-geo media.
     """
     geo_count = (
         db.query(Geolocation)

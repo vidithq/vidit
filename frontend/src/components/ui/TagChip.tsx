@@ -4,10 +4,8 @@ import type { Tag } from "@/types";
 import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "@/components/ui/styles";
 
 /**
- * Selectable tag pill used across the submit forms (geolocation + bounty)
- * and anywhere a toggleable tag chip is needed. Orange when active per the
- * palette rule (clickable ⇒ orange); neutral when inactive. Shape lives
- * here, colour comes from the shared palette constants.
+ * Selectable tag pill for the submit forms. Orange when active per the palette
+ * rule (clickable ⇒ orange), neutral when inactive.
  */
 export function TagChip({
   tag,

@@ -15,12 +15,10 @@ import { TAG_CHIP } from "@/components/ui/styles";
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
   /**
-   * ``panel`` — the map's 380px side overlay: stacked media at
-   * ``thumbnail`` resolution, bare key-value rows, no bounty-trace or
-   * author rows (the author sits in the panel header).
-   * ``page`` — the full detail page: 2-up media grid at ``hero``
-   * resolution, card-chrome key-value rows plus the bounty-trace and
-   * author rows, and a section heading over each block.
+   * ``panel`` — map's 380px overlay: stacked ``thumbnail`` media, bare rows,
+   * no bounty-trace/author rows (the author sits in the panel header).
+   * ``page`` — full detail page: 2-up ``hero`` media grid, card-chrome rows
+   * plus bounty-trace + author rows, section headings.
    */
   variant: "panel" | "page";
   /** Rendered between the media block and the key-value rows — the
@@ -29,11 +27,9 @@ interface GeolocationDetailBodyProps {
 }
 
 /**
- * The geolocation markup shared by the map's detail side-panel and
- * `geolocations/[id]` — media, key-value fields, and the proof body.
- * The two surfaces deliberately differ in density (overlay vs full
- * page); the `variant` prop owns those differences so the field set
- * itself can never drift between them again.
+ * Geolocation markup shared by the map's detail side-panel and
+ * `geolocations/[id]`. The `variant` prop owns the density differences so the
+ * field set can't drift between the two surfaces.
  */
 export function GeolocationDetailBody({
   geo,
@@ -61,13 +57,11 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       }`}
     >
       {m.media_type === "image" ? (
-        // Resolution per surface: the panel renders at ~380 CSS px on
-        // the most-fetched surface in the app (every popup open on
-        // every map session), so ``thumbnail`` (max-dim 400) is the
-        // intentional fit — ``hero`` there would bleed bandwidth. The
-        // detail-page gallery cards render at ~384 CSS px inside
-        // max-w-4xl; ``hero`` (max-dim 1280) covers a 2x-DPI fetch
-        // sharply without the original's multi-megabyte payload.
+        // Resolution per surface. The panel (~380 CSS px) is the most-fetched
+        // surface — every map popup — so ``thumbnail`` (max-dim 400) avoids
+        // bleeding bandwidth. Detail-page cards (~384 CSS px) use ``hero``
+        // (max-dim 1280) to stay sharp at 2x DPI without the original's
+        // multi-megabyte payload.
         <Image
           src={compact ? displayUrlsFor(m).thumbnail : displayUrlsFor(m).hero}
           alt={geo.title}
@@ -165,9 +159,8 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={label}>Submitted</span>
         <span className={value}>{formatDate(geo.created_at)}</span>
       </div>
-      {/* The compact panel deliberately omits the bounty-trace and
-          author rows: the author already sits in the panel header, and
-          the trace belongs to the full page. */}
+      {/* Compact panel omits bounty-trace + author rows: the author is in
+          the panel header, the trace belongs to the full page. */}
       {!compact && geo.originated_from_bounty && (
         <div className={row}>
           <span className={label}>Bounty</span>

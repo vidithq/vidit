@@ -9,23 +9,16 @@ import type { TweetImportResponse } from "@/types";
 
 
 /**
- * Normalise an X handle for case-insensitive comparison. The analyst's
- * ``external_links.x`` is free-form (we never verified it) — accept
- * ``@kalush``, ``kalush``, ``x.com/kalush``, ``https://x.com/kalush``,
- * and ``https://twitter.com/kalush`` so a soft match still works. Returns
- * the lowercase handle or ``null`` if the input doesn't carry one we
- * can extract.
+ * Normalise a free-form X handle to a lowercase comparison key, or ``null``.
+ * Accepts ``@kalush``, ``kalush``, ``x.com/kalush``, the ``https://`` form, and
+ * the ``twitter.com`` host, so a soft match still works.
  */
 function normaliseHandle(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let s = raw.trim();
-  // Strip protocol + host so the URL forms collapse to a path.
   s = s.replace(/^https?:\/\/(?:www\.)?(?:x|twitter)\.com\//i, "");
-  // Strip leading @ and trailing slashes / spaces.
   s = s.replace(/^@/, "").replace(/\/+$/, "").trim();
-  // Take the first path segment — anything after a slash is not the
-  // handle (e.g. ``kalush/status/123`` if the analyst pasted a full
-  // tweet URL into the profile field).
+  // First path segment only — drops a pasted ``kalush/status/123`` tail.
   s = s.split("/")[0];
   if (!s) return null;
   return s.toLowerCase();
@@ -34,13 +27,10 @@ function normaliseHandle(raw: string | null | undefined): string | null {
 export type AuthorshipState = "match" | "no_link" | "different";
 
 /**
- * Compare the parsed tweet's author handle to the analyst's
- * ``external_links.x``. Returns ``no_link`` when the analyst hasn't
- * linked an X account at all, ``different`` when they have but it
- * doesn't match the tweet author, and ``match`` otherwise. This is a
- * soft warning surface — never blocks the import. The analyst's link
- * isn't verified, so this is anti-honest-mistake rather than
- * anti-work-stealing on its own; the visible warning is the deterrent.
+ * Compare the parsed tweet's author to the analyst's ``external_links.x``:
+ * ``no_link`` (no X linked), ``different`` (linked but mismatched), ``match``.
+ * Never blocks the import. The link is unverified, so this is anti-honest-
+ * mistake, not anti-theft — the visible warning is the deterrent.
  */
 export function authorshipState(
   linkedX: string | null | undefined,
@@ -54,17 +44,13 @@ export function authorshipState(
 }
 
 /**
- * Single-input banner that front-loads typing on the submit form: paste
- * a tweet URL, the parent populates title / source / event date / media
- * / best-effort coordinates. The analyst still reviews and submits — this
- * is a shortcut, not an authority.
+ * Single-input banner that front-loads the submit form: paste a tweet URL, the
+ * parent populates title / source / event date / media / coordinates. A
+ * shortcut, not an authority — the analyst still reviews and submits.
  *
- * Hidden when the parent form is in bounty-fulfilment mode (source URL +
- * media are locked to the bounty in that case, so a tweet pre-fill has
- * nothing to land in).
- *
- * The actual fetch / state population lives in the parent so the form
- * keeps a single source of truth for every field — see
+ * Hidden in bounty-fulfilment mode (source URL + media are locked to the
+ * bounty, so a pre-fill has nothing to land in). The fetch + state population
+ * live in the parent so the form keeps one source of truth per field — see
  * ``frontend/src/app/geolocations/new/page.tsx``.
  */
 export function TweetImportBanner({
@@ -81,12 +67,9 @@ export function TweetImportBanner({
   /** Author handle on the most recent successful import, or null when
    *  the banner is in its initial state. */
   importedFrom: string | null;
-  /** The analyst's currently-linked X handle (``external_links.x``).
-   *  Used to render a soft authorship guardrail on import: if the
-   *  tweet author doesn't match — or the analyst hasn't linked any X
-   *  account — we surface a heads-up note. Never blocks the import,
-   *  because the link itself is unverified; this is a friction signal,
-   *  not a gate. */
+  /** The analyst's linked X handle (``external_links.x``), for the soft
+   *  authorship guardrail: a mismatch or missing link surfaces a heads-up.
+   *  A friction signal, not a gate — the link is unverified. */
   linkedX: string | null;
 }) {
   const [url, setUrl] = useState("");
@@ -103,14 +86,10 @@ export function TweetImportBanner({
         { method: "POST", body: JSON.stringify({ url }) }
       );
       await onImported(parsed);
-      // Keep ``url`` populated so the post-import view shows the
-      // imported URL in-place rather than collapsing the input.
+      // Keep ``url`` populated so the post-import view shows it in-place.
     } catch (err) {
-      // ``ApiError`` carries the server's ``detail`` text — render it
-      // verbatim. For 400 / 404 / 502 the backend already speaks
-      // analyst-friendly English ("Not a tweet URL", "Tweet not
-      // accessible", "Couldn't read tweet — fill the form manually"),
-      // so we don't translate here.
+      // Render ``ApiError.detail`` verbatim — the backend already speaks
+      // analyst-friendly English for 400 / 404 / 502.
       const message =
         err instanceof ApiError ? err.message : "Couldn't import tweet";
       setError(message);
@@ -119,11 +98,9 @@ export function TweetImportBanner({
     }
   };
 
-  // Enter-key triggers Import without a form element — the banner
-  // lives inside the page's outer <form>, and nested forms are
-  // invalid HTML: the browser treats the inner submit button as
-  // belonging to the outer form, so a real <form onSubmit> here
-  // would submit the geolocation form by accident.
+  // Enter triggers Import without a <form>: this banner sits inside the page's
+  // outer <form>, and a nested <form> is invalid HTML — the browser binds the
+  // inner submit to the outer form, submitting the geolocation by accident.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -131,11 +108,9 @@ export function TweetImportBanner({
     }
   };
 
-  // Single-shape banner across the import boundary: same layout pre and
-  // post import, just the button label + the input's disabled state
-  // change. The earlier swap-to-a-different-section approach read as a
-  // visible layout flicker on the recorded screen capture even with
-  // matching height.
+  // Same layout pre and post import (only the button label + input disabled
+  // state change). An earlier swap-to-a-different-section approach flickered
+  // visibly on the recorded screen capture even at matching height.
   const imported = importedFrom !== null;
   const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (
@@ -150,11 +125,8 @@ export function TweetImportBanner({
         </p>
       </header>
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-      {/* Pre-import nudge surfaces the no-linked-X signal *before* the
-          analyst pastes anything. Once an import has succeeded the
-          post-import ``AuthorshipWarning`` (no-link or different
-          account) covers the same failure mode with a more pointed
-          message. */}
+      {/* Pre-import nudge surfaces the no-linked-X signal before the analyst
+          pastes; post-import, ``AuthorshipWarning`` covers it more pointedly. */}
       {!imported && !linkedX && <AuthorshipNudgeNoLink />}
       {imported && state !== "match" && (
         <AuthorshipWarning
@@ -187,22 +159,11 @@ export function TweetImportBanner({
 }
 
 /**
- * Soft authorship warning rendered after a successful import. Two
- * shapes, one component:
- *
- * * ``no_link`` — analyst hasn't filled in ``external_links.x`` on
- *   their profile, so we can't compare at all. Reminds them that
- *   importing somebody else's tweet is OK if it's their own work or
- *   they have permission, and points at the settings page.
- * * ``different`` — analyst has an X handle linked but the tweet was
- *   posted by someone else. Mentions both handles by name so the
- *   nature of the mismatch is obvious; the most common honest case
- *   (analyst pasted a colleague's URL by accident) self-corrects on
- *   sight.
- *
- * Amber palette mirrors the duplicate-warning card on the same form:
- * caution, not error — the import already succeeded and submission is
- * not blocked.
+ * Soft authorship warning after a successful import. Two shapes:
+ * ``no_link`` (no linked X — can't compare) and ``different`` (linked handle
+ * ≠ tweet author; names both so an accidental colleague-URL paste self-
+ * corrects on sight). Amber = caution, not error: the import succeeded and
+ * submission isn't blocked.
  */
 function AuthorshipWarning({
   state,
@@ -244,11 +205,9 @@ function AuthorshipWarning({
 }
 
 /**
- * Tighter version of ``AuthorshipWarning`` shown *before* import, on
- * the empty banner, when the analyst has no linked X handle. The
- * post-import warning is more informative when the mismatch is real;
- * this one nudges the analyst to link their handle (or accept they
- * won't get the friction-removing match check on their own work).
+ * Tighter ``AuthorshipWarning`` shown before import, on the empty banner, when
+ * no X handle is linked. Nudges the analyst to link one (or accept they won't
+ * get the match check on their own work).
  */
 function AuthorshipNudgeNoLink() {
   return (

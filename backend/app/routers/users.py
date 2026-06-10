@@ -16,10 +16,9 @@ router = APIRouter()
 def _get_live_user_or_404(db: Session, username: str) -> User:
     """Resolve ``username`` to a live (non-soft-deleted) ``User`` or 404.
 
-    Four endpoints in this file want the same lookup, with the same
-    "404 + ``User not found``" failure mode for both unknown and
-    soft-deleted analysts — letting the two collapse keeps the URL space
-    from being a soft-delete oracle.
+    Four endpoints share this lookup. Unknown and soft-deleted analysts
+    both 404 with ``User not found`` — collapsing the two keeps the URL
+    space from being a soft-delete oracle.
     """
     user = db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
     if user is None:
@@ -59,11 +58,10 @@ def update_my_profile(
     """Edit your own profile.
 
     Distinguishes "field omitted" from "field set to null" via
-    ``exclude_unset`` — omitting leaves the column alone, explicit null
-    (or empty string, which the schema normalises to ``None``) clears it.
-    ``external_links`` replaces the whole JSONB blob; the edit form
-    submits the entire panel at once so wholesale replace is what the
-    UI wants anyway.
+    ``exclude_unset``: omitting leaves the column alone, explicit null (or
+    empty string, normalised to ``None`` by the schema) clears it.
+    ``external_links`` replaces the whole JSONB blob — the edit form
+    submits the entire panel at once, so wholesale replace fits the UI.
     """
     update_data = body.model_dump(exclude_unset=True)
     if "bio" in update_data:
@@ -72,11 +70,10 @@ def update_my_profile(
         current_user.avatar_url = update_data["avatar_url"]
     if "external_links" in update_data:
         links = update_data["external_links"]
-        # ``None`` for the whole payload clears every platform; a partial
-        # dict (e.g. only ``{x: "..."}``) drops every other platform too —
-        # that's the documented "wholesale replace" semantics. Per-platform
-        # ``None`` values are also stripped so the stored JSONB stays
-        # sparse.
+        # ``None`` clears every platform; a partial dict (e.g. ``{x:...}``)
+        # drops every other platform too — the "wholesale replace"
+        # semantics. Per-platform ``None`` values are stripped so the
+        # stored JSONB stays sparse.
         if links is None:
             current_user.external_links = {}
         else:
@@ -170,7 +167,7 @@ def get_user_geolocations(
             ST_Y(Geolocation.location).label("lat"),
             ST_X(Geolocation.location).label("lng"),
         )
-        # ``selectinload`` for tags — many-to-many ``joinedload`` would
+        # ``selectinload`` for tags — a many-to-many ``joinedload`` would
         # row-multiply against ``LIMIT`` and silently truncate the page.
         .options(joinedload(Geolocation.author), selectinload(Geolocation.tags))
         .filter(Geolocation.author_id == user.id, Geolocation.deleted_at.is_(None))

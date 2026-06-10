@@ -131,10 +131,9 @@ def test_strip_metadata_passes_through_video_bytes():
 def test_strip_metadata_raises_on_corrupt_image():
     """A 4-byte JPEG stub (SOI + EOI only) isn't decodable.
 
-    Critical contract: Pillow's ``UnidentifiedImageError`` /
-    ``OSError`` must surface as ``EvidenceProcessingError`` so the
-    router's ``ValueError`` → 400 path picks it up before any
-    storage write.
+    Pillow's ``UnidentifiedImageError`` / ``OSError`` must surface as
+    ``EvidenceProcessingError`` so the router's ``ValueError`` → 400 path picks
+    it up before any storage write.
     """
     with pytest.raises(EvidenceProcessingError, match="decode"):
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")

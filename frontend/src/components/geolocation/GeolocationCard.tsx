@@ -103,13 +103,10 @@ export default function GeolocationCard({
     );
   }
 
-  // Feed variant is **not** a single click target — the byline (profile),
-  // the title + image block (geolocation detail), and the bottom "View
-  // detail" link are three separate click regions, with dead gutter
-  // between them (tags row). Don't apply `TAPPABLE_HOVER` on the outer
-  // article — the orange-border-on-hover signal says "click anywhere on
-  // me," which would be a lie here. The inner title-link already carries
-  // `group-hover:text-orange-400` to telegraph its own affordance.
+  // Feed variant has three separate click regions (byline, title+image,
+  // "View detail"), so no `TAPPABLE_HOVER` on the outer article — its
+  // click-anywhere hover signal would be a lie. The inner title-link
+  // carries its own `group-hover:text-orange-400`.
   return (
     <article className="bg-neutral-900 rounded-lg border border-neutral-800 p-4 space-y-3">
       {showAuthor && (

@@ -4,23 +4,22 @@ import { apiFetch } from "@/lib/api";
 interface FetchResult<T> {
   data: T | null;
   error: string | null;
-  // Which path this result answers — a result kept across a path change
-  // is stale and must not leak into the new page state.
+  // Which path this result answers — a result kept across a path change is
+  // stale and must not leak into the new page state.
   path: string | null;
 }
 
 /**
- * Declarative GET for page data: fetches `path` on mount and whenever it
- * changes, aborts the in-flight request on unmount / path change, and
- * skips entirely while `path` is `null` (auth not resolved yet, route
- * params not ready). Errors propagate as messages for the caller to
- * render — 401 handling stays in the proxy, don't redirect from here.
+ * Declarative GET for page data: fetches `path` on mount and on change,
+ * aborts the in-flight request on unmount / path change, and skips while
+ * `path` is `null` (auth not resolved, route params not ready). Errors
+ * propagate as messages for the caller — 401 handling stays in the proxy,
+ * don't redirect from here.
  *
- * `refetch` re-runs the current path. After an error it resets to the
- * loading state (retry buttons); after a success the stale data stays
- * rendered while the request is in flight (post-mutation refresh). A
- * refetch that fails replaces that stale data with the error — the
- * previous body is not kept as a fallback.
+ * `refetch` re-runs the current path. After an error it resets to loading
+ * (retry buttons); after a success the stale data stays rendered while the
+ * request is in flight (post-mutation refresh). A failed refetch replaces
+ * that stale data with the error — the previous body is not kept.
  */
 export function useApiResource<T>(path: string | null): {
   data: T | null;

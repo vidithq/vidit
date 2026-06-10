@@ -18,10 +18,8 @@ export default function FollowButton({
 }: FollowButtonProps) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
-  // Inline error string — surfaces under the button when a follow / unfollow
-  // call fails (network, CSRF, 5xx, etc). Without this the button silently
-  // re-enables in its old state and the user has no idea their click
-  // didn't land. Cleared on the next attempt.
+  // Surfaced under the button on a failed follow/unfollow — otherwise the
+  // button silently re-enables in its old state and the click looks lost.
   const [error, setError] = useState<string | null>(null);
 
   const toggleFollow = async () => {

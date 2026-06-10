@@ -1,9 +1,9 @@
 """Make a user follow every demo analyst so their /timeline page has content.
 
-The timeline endpoint (`GET /api/v1/timeline`) returns geolocations from users
-the caller follows. After `make seed`, demo geolocations exist but the local
-admin's follow set is empty, so /timeline is blank. This script wires the
-admin (or a chosen username) up to the demo analysts created by the seed.
+`GET /api/v1/timeline` returns geolocations from followed users. After
+`make seed`, demo geolocations exist but the admin's follow set is empty, so
+/timeline is blank; this wires the admin (or a chosen username) up to the seeded
+demo analysts.
 
 Usage:
     uv run python scripts/seed_timeline.py            # follows for `admin`

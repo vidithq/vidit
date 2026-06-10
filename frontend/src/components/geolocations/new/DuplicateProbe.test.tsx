@@ -17,9 +17,8 @@ vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
 }));
 
-// Each apiFetch call is captured with its abort signal and manual
-// resolve/reject handles so tests control exactly when and how every
-// probe settles. Same harness shape as useApiResource.test.tsx.
+// Capture each apiFetch call with its abort signal and manual
+// resolve/reject handles so tests control when and how every probe settles.
 interface CapturedCall {
   path: string;
   signal: AbortSignal;

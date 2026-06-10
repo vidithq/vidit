@@ -46,9 +46,8 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
 def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
     """Translate a typed admin error into a structured HTTP response.
 
-    Same ``{"code", "message"}`` shape as the registration-error
-    mapping in routers/auth.py so the frontend's generic error
-    renderer treats both flows identically.
+    Same ``{"code", "message"}`` shape as the registration-error mapping
+    in routers/auth.py so the frontend's error renderer treats both alike.
     """
     raise HTTPException(
         status_code=_ADMIN_ERROR_STATUS.get(exc.code, 400),

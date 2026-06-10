@@ -52,9 +52,8 @@ limiter = Limiter(key_func=rate_limit_key)
 LIST_CLAIMER_SAMPLE_SIZE = 3
 
 # Reject LIKE-injection at the input boundary — the value flows into
-# `User.username.ilike(f"%{author}%")` in `_apply_filters`. Constraining
-# the input to characters real usernames can carry kills `%` / `\`
-# meta-character vectors before they reach the SQL builder.
+# `User.username.ilike(f"%{author}%")` in `_apply_filters`. Restricting to
+# characters real usernames carry kills `%` / `\` vectors before the SQL builder.
 _AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
 
@@ -68,8 +67,7 @@ def _apply_filters(
     """Filter set shared by list + detail-adjacent queries.
 
     Always excludes soft-deleted rows so public reads never see them;
-    admin paths that need to act on soft-deleted bounties query the
-    model directly.
+    admin paths query the model directly to act on them.
     """
     query = query.filter(Bounty.deleted_at.is_(None))
 
@@ -88,9 +86,8 @@ def _apply_filters(
 def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
     """Attach claimer aggregates to each bounty without N+1.
 
-    The detail endpoint can afford a `joinedload(claims)` since it's
-    one row; the list endpoint runs two grouped queries — one for the
-    total count per bounty, one for the small sample.
+    Detail can afford `joinedload(claims)` on its one row; the list runs
+    two grouped queries — one for the per-bounty count, one for the sample.
     """
     if not bounties:
         return []
@@ -105,10 +102,8 @@ def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
     }
 
     # Newest claimer per bounty up to LIST_CLAIMER_SAMPLE_SIZE. Single
-    # query — Postgres window function would be tidier but joined
-    # order_by + Python-side cap is simpler and the working set is
-    # small (per-bounty fan-out is bounded by the sample size by
-    # design — we don't paginate the entire claim graph for the index).
+    # query — a Postgres window function would be tidier, but joined
+    # order_by + Python-side cap is simpler and the working set is small.
     sample: dict[uuid.UUID, list[User]] = {}
     claims = (
         db.query(BountyClaim)
@@ -134,10 +129,9 @@ def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
             media=b.media,
             tags=b.tags,
             claimer_count=counts.get(b.id, 0),
-            # Pydantic's ``from_attributes=True`` coerces each SQLAlchemy
-            # ``User`` row into ``AuthorRef`` at runtime; mypy doesn't
-            # follow the conversion. Same idiom as ``originated_from_bounty``
-            # in the geolocation router.
+            # Pydantic ``from_attributes`` coerces each SQLAlchemy ``User``
+            # into ``AuthorRef`` at runtime; mypy doesn't follow it. Same
+            # idiom as ``originated_from_bounty`` in the geolocation router.
             claimer_sample=sample.get(b.id, []),  # type: ignore[arg-type]
         )
         for b in bounties
@@ -287,9 +281,8 @@ async def create_bounty(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Same provenance triple as `/geolocations` — captured once and
-    # applied to every Media row, so a multi-file form post records
-    # the same submitter signature across all of them.
+    # Same provenance triple as `/geolocations` — captured once and applied
+    # to every Media row, so a multi-file post shares one submitter signature.
     uploaded_ip = extract_client_ip(request)
     uploaded_user_agent = extract_user_agent(request)
     uploaded_keys: list[str] = []
@@ -313,17 +306,16 @@ async def create_bounty(
             key = get_storage().key_from_url(result.url)
             if key is not None:
                 uploaded_keys.append(key)
-                # Sweep the JPEG hero + thumbnail derivatives alongside
-                # the original on any row-side failure — an orphan
-                # derivative without its original is the same
-                # bucket-leak shape, just at a smaller per-object cost.
+                # Sweep the JPEG hero + thumbnail derivatives alongside the
+                # original on row-side failure — an orphan derivative is the
+                # same bucket-leak, just at a smaller per-object cost.
                 uploaded_keys.extend(result.derivative_keys)
 
         db.commit()
     except Exception:
-        # Anything that failed mid-upload leaves S3 with orphan objects.
-        # The DB transaction will roll back via the session-scope teardown;
-        # sweep S3 best-effort so the bucket doesn't grow unbounded.
+        # A mid-upload failure leaves S3 with orphan objects. The DB rolls
+        # back via session-scope teardown; sweep S3 best-effort so the
+        # bucket doesn't grow unbounded.
         db.rollback()
         sweep_keys(uploaded_keys, context="bounty create rollback")
         raise
@@ -358,11 +350,9 @@ def delete_bounty(
     """
     # SELECT ... FOR UPDATE to serialise against a concurrent
     # ``POST /geolocations bounty_id=…`` fulfilling this bounty. Without
-    # the lock, both transactions could read status=open simultaneously,
-    # the delete would race the fulfilment, and we'd either lose the
-    # bounty mid-fulfilment or end up with a fulfilled-but-deleted bounty
-    # row depending on who commits last. With the lock, whoever holds it
-    # commits first; the loser observes the new state and 409s.
+    # the lock both transactions read status=open at once and we'd end up
+    # with a lost or fulfilled-but-deleted bounty depending on commit order;
+    # with it, the loser observes the new state and 409s.
     bounty = (
         db.query(Bounty)
         .filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
@@ -373,12 +363,10 @@ def delete_bounty(
         raise HTTPException(status_code=404, detail="Bounty not found")
     permissions.ensure_author(bounty, current_user)
 
-    # We don't filter ``Geolocation.deleted_at.is_(None)`` here on
-    # purpose: a soft-deleted geolocation still carries the audit trail
-    # to its source bounty, and deleting the bounty would strand that
-    # provenance link (the FK would flip to NULL via SET NULL). If the
-    # author wants the bounty gone, the path is to hard-delete the
-    # geolocation first.
+    # Deliberately no ``deleted_at.is_(None)`` filter: a soft-deleted
+    # geolocation still carries the audit trail to its source bounty, and
+    # deleting the bounty would strand that link (FK flips to NULL via SET
+    # NULL). Hard-delete the geolocation first to get the bounty gone.
     fulfilled = (
         db.query(Geolocation.id).filter(Geolocation.originated_from_bounty_id == bounty.id).first()
     )
@@ -432,17 +420,15 @@ def claim_bounty(
 
     # The SELECT above is the friendly-path read; the ``BountyClaim``
     # composite-PK ``(bounty_id, user_id)`` is the actual race backstop.
-    # A double-click or two browser tabs both pass the SELECT, only one
-    # wins the INSERT — without this SAVEPOINT the loser sees a 500 from
-    # the unhandled ``IntegrityError`` instead of the idempotent 204 the
-    # docstring promises. Mirrors the pattern in
+    # A double-click or two tabs both pass the SELECT, only one wins the
+    # INSERT — without this SAVEPOINT the loser sees a 500 from the
+    # unhandled ``IntegrityError`` instead of the idempotent 204. Mirrors
     # ``services/social.follow_user``.
     try:
         with db.begin_nested():
             db.add(BountyClaim(bounty_id=bounty.id, user_id=current_user.id))
     except IntegrityError:
-        # Loser of the race — the row exists, which IS the post-condition
-        # the caller asked for.
+        # Loser of the race — the row exists, which IS the post-condition.
         pass
     db.commit()
 

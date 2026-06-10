@@ -20,25 +20,23 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-# Pre-computed at import time so /login always pays one bcrypt regardless of
-# whether the email matched a live user. Without this, the unknown-email and
-# soft-deleted-user branches return faster than the wrong-password branch and
-# leak account state via response time. If `bcrypt.gensalt()` cost ever bumps,
-# this constant inherits the new cost on next deploy and stays in sync with
-# fresh user hashes — but legacy hashes minted at the old cost will be
-# verified faster, so plan a re-hash-on-login migration when bumping cost.
+# Pre-computed at import so /login always pays one bcrypt regardless of
+# whether the email matched a live user — otherwise the unknown-email and
+# soft-deleted branches return faster than wrong-password and leak account
+# state via timing. Inherits a bumped ``gensalt()`` cost on next deploy,
+# but legacy hashes verify faster at the old cost, so plan a re-hash-on-
+# login migration when bumping cost.
 DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-equalisation")
 
 
 def create_access_token(user: User) -> str:
     """Mint a session JWT for ``user``.
 
-    Embeds the user's ``token_version`` as a ``tv`` claim alongside the
-    standard ``sub`` + ``exp``. ``get_current_user`` compares the
-    decoded ``tv`` against the row at request time and 401s on
-    mismatch — so bumping ``token_version`` (logout, password change,
-    password reset, soft-delete) invalidates every outstanding session
-    for the user at once.
+    Embeds ``token_version`` as a ``tv`` claim alongside ``sub`` + ``exp``.
+    ``get_current_user`` compares decoded ``tv`` against the row and 401s
+    on mismatch, so bumping ``token_version`` (logout, password change,
+    password reset, soft-delete) invalidates every outstanding session at
+    once.
     """
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": str(user.id), "exp": expire, "tv": user.token_version}
@@ -48,23 +46,19 @@ def create_access_token(user: User) -> str:
 def bump_token_version(user: User) -> None:
     """Invalidate every outstanding session for ``user``.
 
-    Increments the row's ``token_version`` — every JWT previously
-    minted (which carried the old value in its ``tv`` claim) now
-    mismatches the row and 401s at ``get_current_user``. Caller is
-    responsible for committing the surrounding transaction; this
-    function mutates the in-session row only.
+    Increments ``token_version`` so every previously-minted JWT (carrying
+    the old ``tv``) now 401s at ``get_current_user``. Mutates the
+    in-session row only; caller commits.
 
-    Called at the four session-mint-side mutation points: logout,
-    password change, password reset, soft-delete. Re-issuing a fresh
-    cookie for the current device after a bump (the change-password
-    flow) keeps that one device live while the others get logged out.
+    Called at logout, password change, password reset, soft-delete.
+    Re-issuing a fresh cookie for the current device after a bump
+    (change-password) keeps that device live while the others log out.
     """
     user.token_version = user.token_version + 1
 
 
 def validate_invite_code(db: Session, code: str) -> InviteCode | None:
-    """Return the row iff the code is currently usable (not exhausted, not
-    revoked, not expired)."""
+    """Return the row iff usable: not revoked, not expired, not exhausted."""
     invite = db.query(InviteCode).filter(InviteCode.code == code).first()
     if invite is None:
         return None
@@ -80,18 +74,16 @@ def validate_invite_code(db: Session, code: str) -> InviteCode | None:
 def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> bool:
     """Atomically bump ``use_count`` iff the code is still consumable.
 
-    Returns ``True`` on success, ``False`` if another path already
-    consumed the last available slot since validation. The atomic
-    ``UPDATE ... WHERE use_count < max_uses ... RETURNING`` is what
-    makes this race-safe: a previous read-modify-write implementation
-    let two concurrent confirmations both observe ``use_count=0`` under
-    READ COMMITTED, both bump to 1, and create two users against an
-    invite with ``max_uses=1``. Mirrors the
-    ``auth_tokens.consume`` pattern introduced in PR #41.
+    Returns ``True`` on success, ``False`` if another path consumed the
+    last slot since validation. The atomic
+    ``UPDATE ... WHERE use_count < max_uses ... RETURNING`` is the
+    race-safety: a prior read-modify-write let two concurrent confirms both
+    observe ``use_count=0`` under READ COMMITTED, both bump to 1, and create
+    two users against a ``max_uses=1`` invite. Mirrors
+    ``auth_tokens.consume`` (PR #41).
 
-    Caller is responsible for committing the surrounding transaction;
-    this function does not commit so the user insert and the count
-    bump land atomically with registration.
+    Doesn't commit, so the user insert and the count bump land atomically
+    with registration.
     """
     now = datetime.now(UTC)
     stmt = (
@@ -103,9 +95,8 @@ def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> 
         )
         .values(
             use_count=InviteCode.use_count + 1,
-            # First-consumer audit columns: only set if NULL — leaving
-            # them sticky on first use so multi-use codes still record
-            # who unlocked them.
+            # First-consumer audit columns: set only if NULL, so multi-use
+            # codes keep recording who unlocked them first.
             used_by=case(
                 (InviteCode.used_by.is_(None), user_id),
                 else_=InviteCode.used_by,
@@ -119,8 +110,8 @@ def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> 
     )
     if db.execute(stmt).scalar_one_or_none() is None:
         return False
-    # Refresh the ORM-cached instance so subsequent reads in the same
-    # transaction see the bumped count and audit fields.
+    # Refresh so later reads in this transaction see the bumped count +
+    # audit fields.
     db.refresh(invite)
     return True
 
@@ -132,10 +123,10 @@ def generate_invite_code() -> str:
 def maybe_promote_admin(user: User) -> bool:
     """Flip ``is_admin`` to True if the user's email matches ADMIN_EMAILS.
 
-    Idempotent: returns True only when a write actually happened, so callers
-    can decide whether to commit. No-op if already admin or if the address
-    isn't on the list. Called from both /register (after the row exists) and
-    /login (in case the env var changed since the user registered).
+    Returns True only when a write happened, so callers decide whether to
+    commit. No-op if already admin or off the list. Called from /register
+    (after the row exists) and /login (in case the env var changed since
+    registration).
     """
     if user.is_admin:
         return False

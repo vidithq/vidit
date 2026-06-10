@@ -30,10 +30,8 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
 
   return (
     <>
-      {/* Identity card: avatar + (username + trust + email) + action.
-          Page title above stays generic; the user-specific identity
-          lives here so the layout works for own profile and others'
-          with the same chrome. */}
+      {/* Identity card. The user-specific identity lives here (not the page
+          title) so own and others' profiles share the same chrome. */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 min-w-0">
           <div className="w-16 h-16 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
@@ -49,10 +47,8 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
             )}
           </div>
           <div className="min-w-0">
-            {/* Username is the semantically most important content on the
-                page — render it as an h2 under PageShell's generic
-                "Profile" h1 so screen readers and the document outline
-                expose it. Visual style stays the same. */}
+            {/* h2 under PageShell's generic "Profile" h1 so the username is
+                exposed to screen readers and the document outline. */}
             <h2 className="text-base font-medium text-neutral-100 inline-flex items-center gap-2">
               {profile.username}
               <TrustBadge
@@ -108,8 +104,8 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
         </div>
       </div>
 
-      {/* Avatar URL input — only when editing. Sits below the avatar
-          row so the input it edits is visually adjacent. */}
+      {/* Avatar URL input — below the avatar row so it sits next to what it
+          edits. */}
       {edit.editing && (
         <div className="max-w-sm">
           <label className={FORM_LABEL} htmlFor="avatar-url">

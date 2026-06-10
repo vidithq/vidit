@@ -37,13 +37,10 @@ export function ProofEditorPanel({
         </p>
       </header>
 
-      {/* Re-mount the editor on every import (and on Clear, which
-          resets ``importedFrom`` to null). The generation
-          counter changes even when the imported author handle is
-          the same as the previous import — necessary because a
-          same-author re-import would otherwise leave the
-          ``key`` unchanged and Tiptap would keep its existing
-          content despite the new ``initialContent`` prop. */}
+      {/* Re-mount the editor on every import. ``importGen`` changes even
+          on same-author re-import, where the handle alone would leave the
+          ``key`` unchanged and Tiptap would keep its old content despite
+          the new ``initialContent``. */}
       <ProofEditor
         key={importedFrom !== null ? `import-${importGen}` : "blank"}
         initialContent={importedFrom ? proof : null}

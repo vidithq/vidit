@@ -43,14 +43,11 @@ export default function RegisterForm({
       const result = await register(username, email, password, inviteCode);
       onSuccess(result.email);
     } catch (err) {
-      // Live pending registration for this email → recoverable: the
-      // user already registered but closed the tab / lost the email.
-      // Route them to the pending screen where they can hit Resend
-      // rather than show a dead-end error. The backend tags the
-      // exception with ``email_pending_confirmation`` (see
-      // ``RegistrationError`` in ``backend/app/services/registration.py``)
-      // so the frontend branches on the stable code rather than
-      // English prose.
+      // Already registered but unconfirmed (closed the tab / lost the email):
+      // recoverable, so route to the pending screen's Resend rather than a
+      // dead-end error. Branch on the backend's stable ``code`` (see
+      // ``RegistrationError`` in ``backend/app/services/registration.py``),
+      // not English prose.
       if (err instanceof ApiError && err.code === "email_pending_confirmation") {
         onSuccess(email);
         return;

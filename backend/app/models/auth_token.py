@@ -6,15 +6,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# Single source of truth for the `purpose` column values. Mirrored in the
-# CHECK constraint installed by the migration.
+# Single source of truth for `purpose` values. Mirrored in the migration's CHECK.
 PURPOSE_PASSWORD_RESET = "password_reset"
-# Legacy soft-verify purpose, no longer minted by any production code path.
-# Pre-creation email confirmation (see services/registration.py) holds the
-# token directly on `pending_registrations.token_hash` and bypasses this
-# table entirely. The constant + CHECK value are retained for the
-# cross-purpose rejection regression test in test_auth_recovery.py — the
-# DB CHECK is the test's "non-`password_reset`" anchor.
+# Legacy soft-verify purpose, no longer minted by any production path:
+# pre-creation email confirmation holds the token on
+# `pending_registrations.token_hash` and bypasses this table. Constant + CHECK
+# value retained as the "non-`password_reset`" anchor for the cross-purpose
+# rejection regression test in test_auth_recovery.py.
 PURPOSE_EMAIL_VERIFICATION = "email_verification"
 ALL_PURPOSES = (PURPOSE_PASSWORD_RESET, PURPOSE_EMAIL_VERIFICATION)
 
@@ -23,12 +21,11 @@ class AuthToken(Base):
     """One row per outstanding password-reset / email-verification token.
 
     The raw secret is never stored — only `sha256(secret)` lands in
-    `token_hash`. A DB read therefore reveals which users have outstanding
-    tokens and when they expire, but not the live values that would let a
-    reader log in or reset a password.
+    `token_hash`. A DB read reveals which users have outstanding tokens and
+    when they expire, but not the live values needed to log in or reset.
 
-    Single-use: `consume` flips `consumed_at`. The router refuses any
-    token whose row already has a non-null `consumed_at`.
+    Single-use: `consume` flips `consumed_at`; the router refuses any token
+    whose row already has a non-null `consumed_at`.
     """
 
     __tablename__ = "auth_tokens"

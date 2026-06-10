@@ -133,11 +133,9 @@ export interface SeedDemoBountiesResponse {
   templates: number;
   authors: number;
   with_claims: number;
-  // Per-status breakdown from the seeder so the admin can confirm the
-  // mix actually used. Drives the lifecycle UI coverage (status chips +
-  // trace banner). Always present on a fresh backend; typed as required
-  // because the schema bump landed in the same release as the panel
-  // update — no compat window to preserve.
+  // Per-status breakdown so the admin can confirm the mix used; drives the
+  // lifecycle UI (status chips + trace banner). Typed as required — the
+  // schema bump shipped with the panel update, no compat window.
   open: number;
   fulfilled: number;
   closed: number;

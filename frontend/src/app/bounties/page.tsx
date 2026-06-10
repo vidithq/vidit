@@ -24,10 +24,8 @@ import {
   TAPPABLE_HOVER,
 } from "@/components/ui/styles";
 
-// Default filter is "open" — the actionable subset. Status pills no longer
-// render on cards, so a non-"open" default would leave the user unable to
-// tell at a glance which entries are still actionable. "Open" makes the
-// list "things you can pick up today" by default.
+// Default filter "open": status pills no longer render on cards, so a
+// non-"open" default would hide which entries are still actionable.
 const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
   { value: "open", label: "Open" },
   { value: "fulfilled", label: "Fulfilled" },
@@ -72,10 +70,8 @@ export default function BountiesPage() {
       title="Bounties"
       subtitle="A queue of events someone has spotted but couldn't geolocate — title, media, source and tags, but no coordinates and no proof yet. Anyone with an account can post one; analysts pick them up, do the geolocation work, and promote the result into a full geolocation."
     >
-        {/* Filter chips + new-bounty CTA share one header row. The previous
-            "Post a bounty" pane explained the feature in two paragraphs —
-            the page subtitle above already does that. Single button is
-            enough. */}
+        {/* Filter chips + new-bounty CTA share one header row; the subtitle
+            already explains the feature, so a single button suffices. */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             {STATUS_FILTERS.map((opt) => (
@@ -155,8 +151,8 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
       <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
         {hero ? (
           hero.media_type === "image" ? (
-            // ``w-28 aspect-video`` ≈ 112 CSS px wide — thumbnail is
-            // the right fit for the dense bounty index.
+            // `w-28 aspect-video` ≈ 112 CSS px; thumbnail variant fits
+            // the dense index.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={displayUrlsFor(hero).thumbnail}
@@ -164,12 +160,10 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
               className="w-full h-full object-cover"
             />
           ) : (
-            // `#t=0.1` is an HTML media-fragment URI that tells the
-            // browser to seek to t=0.1s on metadata load — combined
-            // with `preload="metadata"`, this forces the first frame
-            // to paint as a poster-equivalent so the thumbnail isn't a
-            // black box. Cheap fix that sidesteps generating + storing
-            // a real poster image per bounty.
+            // `#t=0.1` media-fragment URI seeks to t=0.1s on metadata
+            // load; with `preload="metadata"` this paints the first frame
+            // as a poster so the thumbnail isn't a black box — no
+            // per-bounty poster needed.
             <video
               src={`${hero.storage_url}#t=0.1`}
               className="w-full h-full object-cover"
@@ -183,10 +177,9 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
           </div>
         )}
       </div>
-      {/* Status + "N working" sit beside the whole text column (title +
-          meta + tags), not inside the title row. If they sat in the title
-          row the row's height would be max(title, stack) — short titles
-          would leave a visible gap between title and meta on the left. */}
+      {/* Status + "N working" sit beside the whole text column, not in
+          the title row: in the title row, short titles would leave a
+          visible gap between title and meta. */}
       <div className="flex-1 min-w-0 flex items-start gap-2">
         <div className="flex-1 min-w-0 space-y-1.5">
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
@@ -200,9 +193,9 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
               <Clock size={11} />
               {formatDate(bounty.created_at)}
             </span>
-            {/* Demo bounties carry a sentinel source_url that doesn't resolve
-                to a real page — show "synthetic" instead of an out-link a
-                beta tester would 404 on. Mirrors the geolocation detail page. */}
+            {/* Demo bounties carry a sentinel source_url that doesn't
+                resolve — show "synthetic" instead of an out-link that 404s.
+                Mirrors the geolocation detail page. */}
             {bounty.is_demo ? (
               <span className="italic text-neutral-500">synthetic</span>
             ) : (

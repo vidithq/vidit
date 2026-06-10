@@ -1,4 +1,4 @@
-"""Tests for the Tier 4 lite forensics primitive.
+"""Tests for the auth-events forensics primitive.
 
 Two unrelated pieces covered:
 
@@ -6,8 +6,8 @@ Two unrelated pieces covered:
 2. `auth_events` audit log — each auth-path side-effect lands one row
    with the expected shape (event name, user_id when known, IP/UA).
 
-The audit helper is deliberately best-effort (swallows its own
-exceptions); we assert this directly by patching ``db.add`` to raise.
+The audit helper is deliberately best-effort (swallows its own exceptions),
+asserted directly by patching ``db.add`` to raise.
 """
 
 from __future__ import annotations

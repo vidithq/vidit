@@ -55,10 +55,9 @@ def admin_user(db):
     db.commit()
     user_id = user.id
     yield user
-    # Reap any admin events tied to this actor and any invite codes they
-    # created so the test row can be deleted without FK violations. The
-    # invite_codes FKs are now ON DELETE SET NULL (migration f1a3b5c7d9e0)
-    # but we drop them explicitly so the test data stays clean.
+    # Reap this actor's admin events + invite codes so the row deletes without
+    # FK violations. invite_codes FKs are ON DELETE SET NULL (migration
+    # f1a3b5c7d9e0); dropped explicitly anyway to keep test data clean.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
     db.query(InviteCode).filter(InviteCode.created_by == user_id).delete()
@@ -77,15 +76,10 @@ def regular_user(db):
     db.commit()
     user_id = user.id
     yield user
-    # Tests may have hard-deleted the user row already; use a bulk
-    # delete-by-id rather than db.delete(instance), which would refresh
-    # an already-vanished row and raise ObjectDeletedError.
-    #
-    # Drop the user's bounties first so the FK to users.id doesn't
-    # block the user delete. Soft-delete tests stamp the bounty's
-    # deleted_at but leave the row in place; this teardown reaps it
-    # regardless. ``Media.bounty_id`` and ``bounty_claims.bounty_id``
-    # cascade-drop on the bounty delete.
+    # Tests may have hard-deleted the row; bulk delete-by-id rather than
+    # db.delete(instance), which would refresh a vanished row → ObjectDeletedError.
+    # Drop bounties first so the users.id FK doesn't block the user delete
+    # (soft-delete tests leave the row in place; Media/bounty_claims cascade).
     db.expire_all()
     db.query(Bounty).filter(Bounty.author_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
@@ -149,8 +143,8 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
 
 
 def test_create_invite_code_ignores_max_uses_in_body(admin_user, db):
-    # The schema doesn't accept ``max_uses``; silently ignored / pydantic
-    # extra-allow defaults mean the service still hardcodes 1.
+    # The schema doesn't accept ``max_uses``; it's silently ignored and the
+    # service still hardcodes 1.
     response = client.post(
         "/api/v1/admin/invite-codes",
         json={"max_uses": 50},
@@ -376,9 +370,8 @@ def geolocation(db, regular_user):
     db.commit()
     geo_id = geo.id
     yield geo
-    # Tests may have hard-deleted the row already; expire the session and
-    # use a bulk DELETE-by-id rather than db.delete(instance), which would
-    # try to refresh an already-vanished row and raise ObjectDeletedError.
+    # Tests may have hard-deleted the row; bulk DELETE-by-id rather than
+    # db.delete(instance), which would refresh a vanished row → ObjectDeletedError.
     db.expire_all()
     db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
     db.commit()
@@ -475,9 +468,8 @@ def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geo
 
 
 def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
-    # Capture before the API removes the row — accessing instance attrs
-    # after the parallel session deletes the row would trigger a refresh
-    # and raise ObjectDeletedError.
+    # Capture before the API removes the row — reading instance attrs after the
+    # parallel session deletes it would refresh → ObjectDeletedError.
     geo_id = geolocation.id
     geo_title = geolocation.title
 
@@ -752,11 +744,10 @@ def test_set_trust_404_for_soft_deleted_user(admin_user, regular_user, db):
 
 
 def test_login_runs_bcrypt_for_unknown_email(monkeypatch):
-    # The unknown-email branch must still pay one bcrypt — without the
-    # dummy verify, a missing user returns measurably faster than a
-    # wrong-password attempt against a live one (timing oracle). Asserting
-    # 401 alone wouldn't catch a regression that removed the dummy hash;
-    # we monkeypatch verify_password and assert it was actually called.
+    # The unknown-email branch must still pay one bcrypt: without the dummy
+    # verify, a missing user returns measurably faster than a wrong-password
+    # attempt (timing oracle). A 401 assertion alone wouldn't catch a regression
+    # that dropped the dummy hash, so assert verify_password was called.
     calls: list[tuple[str, str]] = []
 
     from app.routers import auth as auth_router
@@ -822,9 +813,6 @@ def test_create_unguarded_invite_code_route_is_gone(regular_user):
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 404
-
-
-# ── User soft/hard delete cascade to bounties ─────────────────────────────
 
 
 def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:

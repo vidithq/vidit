@@ -43,16 +43,13 @@ const TYPE_FILTERS: { value: SearchType; label: string }[] = [
   { value: "user", label: "Analysts" },
 ];
 
-// Debounce window — short enough that the results feel reactive, long
-// enough that we don't hammer the endpoint on every keystroke during
-// a long phrase. The backend short-circuits empty queries so the cost
-// of an over-eager call is small but non-zero.
+// Debounce window: reactive enough to feel live, long enough not to fire
+// on every keystroke of a long phrase.
 const DEBOUNCE_MS = 300;
 
 export default function SearchPage() {
-  // ``useSearchParams`` opts out of static prerender, so the
-  // component lives under a Suspense boundary (Next.js 14 requirement,
-  // same shape used by ``/geolocations/new``).
+  // `useSearchParams` opts out of static prerender, so the body lives
+  // under a Suspense boundary (Next 14 requirement).
   return (
     <Suspense
       fallback={
@@ -71,9 +68,8 @@ function SearchPageBody() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Mirror the URL into local state. The URL is the source of truth so
-  // shared links land in the same view; the input value is bound to
-  // local state so typing isn't gated on URL-update round-trips.
+  // URL is the source of truth so shared links land in the same view;
+  // the input binds to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const initialType = (searchParams.get("type") as SearchType) || "all";
 
@@ -84,14 +80,10 @@ function SearchPageBody() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Monotonic request token. Each new fetch increments it; late
-  // responses check that their captured token matches the latest
-  // before applying. An earlier rev compared on ``response.query``
-  // alone, which missed the type-filter race: toggling chips quickly
-  // with the same ``q`` could land an older response on top of a
-  // newer one (same ``q``, different ``type``). Counter beats tuple
-  // comparison because we never need to inspect the prior request —
-  // we only care whether *this* fetch is still the latest.
+  // Monotonic request token: each fetch increments it, late responses
+  // apply only if their token is still latest. Comparing on `response.query`
+  // alone missed the type-filter race — same `q`, different `type` could
+  // land an older response over a newer one.
   const latestRequestId = useRef<number>(0);
 
   useEffect(() => {
@@ -100,9 +92,8 @@ function SearchPageBody() {
     }
   }, [authLoading, user, router]);
 
-  // Debounced commit: input → activeQuery + URL. We update the URL
-  // (with `replace`, not `push`) so the back button doesn't fill up
-  // with intermediate query states.
+  // Debounced commit: input → activeQuery + URL via `replace` (not `push`)
+  // so the back button doesn't fill with intermediate query states.
   useEffect(() => {
     const t = setTimeout(() => {
       setActiveQuery(queryInput);
@@ -130,9 +121,8 @@ function SearchPageBody() {
     setError(null);
     search({ q, type: typeFilter })
       .then((response) => {
-        // Stale response (newer request started after we issued this
-        // one) — drop without touching state so the in-flight fetch
-        // gets the final word.
+        // Stale response (a newer request started since) — drop so the
+        // in-flight fetch gets the final word.
         if (requestId !== latestRequestId.current) return;
         setResults(response);
         setLoading(false);
@@ -201,7 +191,6 @@ function SearchPageBody() {
           ))}
         </div>
 
-        {/* Status row: counts + loading + error */}
         {activeQuery.trim() && (
           <div className="flex items-center justify-between text-[11px] text-neutral-500 min-h-[16px]">
             <span>
@@ -285,10 +274,9 @@ function SearchPageBody() {
 }
 
 /**
- * Render a sentinel-wrapped highlight string as inline text + ``<mark>``
- * elements. The backend produces well-formed pairs so the even/odd
- * index parity from ``splitHighlights`` is safe — no need for a
- * stateful parser.
+ * Render a sentinel-wrapped highlight string as text + `<mark>` elements.
+ * The backend emits well-formed pairs, so `splitHighlights`' even/odd
+ * index parity is safe without a stateful parser.
  */
 function Highlighted({ value }: { value: string }) {
   const segments = splitHighlights(value);
@@ -330,8 +318,7 @@ function ResultGroup({
 }
 
 function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
-  // Tags are visually uniform (decorative chip) regardless of category —
-  // conflict + free in one render pass.
+  // Tags render as one uniform chip regardless of category.
   return (
     <Link
       href={`/geolocations/${hit.id}`}
@@ -386,9 +373,8 @@ function BountyResult({ hit }: { hit: SearchBountyHit }) {
       <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
         {hero ? (
           hero.media_type === "image" ? (
-            // ``w-28 aspect-video`` ≈ 112 CSS px wide — thumbnail is
-            // the obvious fit. Search results are dense and this is
-            // re-fetched on every results page render.
+            // `w-28 aspect-video` ≈ 112 CSS px; thumbnail variant fits
+            // the dense results, re-fetched on every render.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={displayUrlsFor(hero).thumbnail}

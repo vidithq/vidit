@@ -6,9 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PageCenter } from "@/components/ui/PageShell";
 
 /**
- * /profile redirects to the canonical /profile/[username] for the current
- * user. This way every "view profile" link in the app uses the same shape
- * (`/profile/<username>`) regardless of whether it's yours or someone else's.
+ * Redirects to the canonical /profile/[username] for the current user, so
+ * every "view profile" link uses one shape whether it's yours or not.
  */
 export default function ProfileRedirect() {
   const router = useRouter();

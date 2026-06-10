@@ -7,14 +7,9 @@ import { SingleEmailFlow } from "@/components/auth/SingleEmailFlow";
 
 /**
  * Standalone "resend confirmation" surface for users who closed the
- * tab on `/registration-pending` and can't easily get back. Always
- * returns the same UX regardless of whether the address matched a
- * pending row, so the page cannot be used to enumerate addresses with
- * live pending registrations.
- *
- * Discoverability: linked from `/login` as "Didn't receive your
- * confirmation email?" — the standard pattern for hard-pre-creation
- * verification flows (Mailchimp, Substack, Linear waitlist, AWS).
+ * `/registration-pending` tab. Returns the same UX regardless of whether
+ * the address matched a pending row, so it can't enumerate addresses with
+ * live pending registrations. Linked from `/login`.
  */
 export default function ResendConfirmationPage() {
   return (

@@ -70,16 +70,14 @@ function DiscordGlyph({ size = 14 }: { size?: number }) {
   );
 }
 
-// Fixed-height row used by every nav item, sign-in/out, and the toggle.
-// Keeps icons at the same y position whether the sidebar is collapsed or
-// expanded — text appearing/disappearing must not change the row height.
+// Fixed-height row for every nav item, sign-in/out, and the toggle, so icons
+// stay at the same y position whether collapsed or expanded.
 const ROW_CLASS =
   "flex items-center gap-2.5 h-9 rounded-md px-2.5 text-sm transition-colors";
 
-// Must match the `duration-200` on the aside's width transition. Labels
-// render only once the expand animation has finished, otherwise they
-// overflow the still-narrow sidebar mid-animation and create a flicker
-// (especially noticeable next to the "Soon" pills).
+// Must match the aside's `duration-200` width transition. Labels render only
+// after the expand finishes, else they overflow the still-narrow sidebar mid-
+// animation and flicker (notably next to the "Soon" pills).
 const EXPAND_TRANSITION_MS = 200;
 
 interface NavItem {
@@ -87,26 +85,19 @@ interface NavItem {
   icon: typeof Globe;
   label: string;
   auth?: boolean;
-  // `wip` shows a "Soon" pill in expanded mode (signals planned-but-not-built).
-  // `notify` shows a small dot at the icon corner in both modes (signals new
-  // content awaits — today static; later it'll bind to actual unread state).
-  // Independent on purpose: Timeline is both (it's a feed AND not built yet);
-  // a "search-only" placeholder before the real endpoint shipped would have
-  // had `wip` without `notify` — no feed, so no notification semantic.
+  // `wip` shows a "Soon" pill (planned-but-not-built). `notify` shows a dot at
+  // the icon corner (new content awaits; static today). Independent on purpose:
+  // Timeline is both, a search-only placeholder would be `wip` without `notify`.
   wip?: boolean;
   notify?: boolean;
-  // Optional custom matcher for the active state — lets deep pages inherit
-  // their conceptual section's highlight (e.g. /geolocations/[id] keeps Map
-  // highlighted). Defaults to exact match on `href`.
+  // Custom active-state matcher so deep pages inherit their section's highlight
+  // (e.g. /geolocations/[id] keeps Map lit). Defaults to exact match on `href`.
   activeFor?: (pathname: string) => boolean;
 }
 
-// Single primary nav. Home (the landing) and About are public — visible to
-// everyone; the rest carry `auth: true` and are filtered out when logged
-// out (see the render below) so a signed-out visitor only sees nav items
-// they can actually use. Profile/Settings/Sign-in/Sign-out are NOT nav
-// items: they're rendered as a separate identity-and-control block at the
-// bottom.
+// Home and About are public; the rest carry `auth: true` and are filtered out
+// when logged out (see the render below). Profile/Settings/Sign-in/Sign-out are
+// not here — they're a separate identity block at the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/", icon: Home, label: "Home" },
   {
@@ -114,12 +105,9 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Globe,
     label: "Map",
     auth: true,
-    // Event detail pages live conceptually on the map. Match exactly
-    // /geolocations/<id> (one path segment, no trailing slash) so future
-    // sub-routes like /geolocations/list or /geolocations/<id>/edit don't
-    // silently inherit the Map highlight. ``/new`` is a sibling nav item
-    // (Submit) that exact-matches the same shape, so it must be excluded
-    // here too — otherwise both rows highlight on the submission screen.
+    // Match exactly /geolocations/<id> (one segment) so sub-routes like
+    // /geolocations/<id>/edit don't inherit the Map highlight. ``/new`` is the
+    // Submit row's path and matches this shape, so exclude it or both light up.
     activeFor: (p) =>
       p === "/map" ||
       (/^\/geolocations\/[^/]+$/.test(p) && p !== "/geolocations/new"),
@@ -131,10 +119,8 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Target,
     label: "Bounties",
     auth: true,
-    // Bounty detail and creation pages belong conceptually to Bounties.
-    // Unlike Map (which has to exclude /geolocations/new because Submit
-    // lives there), Submit owns /geolocations/new — not /bounties/new —
-    // so no exclusion is needed here.
+    // No exclusion needed (unlike Map): Submit owns /geolocations/new, not
+    // /bounties/new, so every /bounties/* path is genuinely a Bounties page.
     activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
   },
   { href: "/geolocations/new", icon: Plus, label: "Submit", auth: true },
@@ -147,10 +133,8 @@ function isActive(item: NavItem, pathname: string): boolean {
 
 export default function Sidebar() {
   const [expanded, setExpanded] = useState(false);
-  // Lags behind `expanded` when growing (so labels appear *after* the width
-  // has finished animating) and leads it when shrinking (so labels disappear
-  // *before* width starts collapsing). Avoids the mid-animation overflow
-  // flicker on the "Soon" pills.
+  // Lags `expanded` when growing (labels appear after width animates) and leads
+  // it when shrinking, avoiding the mid-animation overflow flicker.
   const [labelsVisible, setLabelsVisible] = useState(false);
   const pathname = usePathname() ?? "";
   const { user, loading } = useAuth();
@@ -161,25 +145,18 @@ export default function Sidebar() {
       const t = setTimeout(() => setLabelsVisible(true), EXPAND_TRANSITION_MS);
       return () => clearTimeout(t);
     }
-    // Collapsing: hide labels in the same render that starts the width
-    // transition, so they're gone before the bar visually narrows.
+    // Collapsing: hide labels in the same render that starts the transition,
+    // so they're gone before the bar narrows.
     setLabelsVisible(false);
   }, [expanded]);
 
-  // Sidebar is the one persistent chrome — it renders on every page
-  // (the landing, public pages, the app, and the auth screens) so
-  // navigation is consistent and a logged-out visitor never dead-ends.
-  // It adapts to auth state: `auth`-flagged nav items are filtered out
-  // when signed out (see the nav render below), and the bottom identity
-  // block swaps to a Sign-in row when there's no user. Only suppressed
-  // during the initial auth load to avoid flashing the signed-out nav
-  // before `useAuth` resolves.
+  // Suppressed only during the initial auth load, to avoid flashing the
+  // signed-out nav before `useAuth` resolves. (The sidebar otherwise renders on
+  // every page and adapts to auth state.)
   if (loading) return null;
 
-  // The user block highlights only on /profile (which redirects to {me}) and
-  // on /profile/{me.username}. Visiting another analyst's profile leaves the
-  // block unhighlighted — that's a deep destination reached via Search or a
-  // link, not "your" account.
+  // Highlights only on /profile (redirects to {me}) and /profile/{me.username}.
+  // Another analyst's profile is a deep destination, not "your" account.
   const profileActive =
     !!user &&
     (pathname === "/profile" || pathname === `/profile/${user.username}`);
@@ -230,11 +207,9 @@ export default function Sidebar() {
         expanded ? "w-48" : "w-14"
       }`}
     >
-      {/* Logo + community shortcuts. Logo paddings mirror the nav rows below
-          so the V sits in the same x column as every nav icon (8px nav + 10px
-          row = 18px), centered inside an 18px-wide slot like the icons. The
-          X and Discord glyphs only render when expanded — there's no room
-          for them in the 56px collapsed bar. */}
+      {/* Logo + community shortcuts. Paddings mirror the nav rows so the V sits
+          in the same x column as every nav icon. The glyphs render only when
+          expanded — no room in the 56px collapsed bar. */}
       <div className="flex items-center h-14 px-2 border-b border-neutral-800 overflow-hidden">
         <Link
           href="/"
@@ -285,14 +260,14 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Primary nav — site features. flex-1 pushes the bottom block down,
-          so the gap between the two is visual (not a border). */}
+      {/* flex-1 pushes the bottom block down, so the gap is visual, not a
+          border. */}
       <nav className="flex-1 flex flex-col gap-1 px-2 py-3">
         {NAV_ITEMS.filter((item) => !item.auth || user).map(renderNavItem)}
       </nav>
 
-      {/* Bottom block: identity (user block or Sign-in) + Settings + Collapse.
-          One visual group, no border-t — just the flex-1 spacer above. */}
+      {/* Bottom block — one visual group, no border-t: the flex-1 spacer above
+          separates it. */}
       <div className="flex flex-col gap-1 px-2 pb-3">
         {isAdmin && (
           <Link
@@ -364,9 +339,8 @@ export default function Sidebar() {
           </Link>
         )}
 
-        {/* Toggle expand — sidebar control, lives at the very bottom. Icon
-            tracks `expanded` (intent) so it flips immediately on click;
-            label tracks `labelsVisible` so it doesn't flicker mid-animation. */}
+        {/* Icon tracks `expanded` (flips immediately on click); label tracks
+            `labelsVisible` so it doesn't flicker mid-animation. */}
         <button
           onClick={() => setExpanded((e) => !e)}
           aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}

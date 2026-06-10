@@ -7,18 +7,14 @@ import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { Tag } from "@/types";
 
-// Inline "create a free tag" affordance for the submit forms. Calls
-// `POST /tags` with `category: "free"` and hands the resulting tag back
-// to the parent so the form can both render the new chip and pre-select
-// it. Free is the only category any analyst can create — `conflict` is
-// admin-curated (see `backend/app/routers/tags.py::USER_CREATABLE_CATEGORIES`).
+// Inline "create a free tag" affordance for the submit forms. `free` is the
+// only category an analyst can create — `conflict` is admin-curated (see
+// `backend/app/routers/tags.py::USER_CREATABLE_CATEGORIES`).
 //
-// On 409 the backend says the name already exists at the database level
-// (case-sensitive). We surface that as a non-blocking inline message;
-// the analyst either typed a different casing of an existing tag, or
-// the tag exists but is hidden from /tags because it currently has zero
-// live geolocations (the orphan filter). Closed-beta edge case — not
-// worth a special path until it bites.
+// 409 = name already exists in the DB (case-sensitive). Surfaced as a
+// non-blocking message; the existing tag may be hidden from /tags because it
+// has zero live geolocations (the orphan filter), but that's not worth a
+// special path until it bites.
 
 interface Props {
   existingTags: Tag[];
@@ -39,10 +35,9 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
     setBusy(true);
     setError(null);
 
-    // If the analyst typed a name that's already in the local list,
-    // skip the round-trip and just auto-select it. Matches the backend
-    // uniqueness rule (exact, case-sensitive) so we don't accidentally
-    // mask a real "create" intent on a near-match.
+    // Already in the local list: skip the round-trip and auto-select. Matched
+    // exact + case-sensitive (the backend uniqueness rule) so a near-match
+    // casing isn't masked as an existing tag.
     const local = existingTags.find(
       (t) => t.name === trimmed && t.category === "free",
     );

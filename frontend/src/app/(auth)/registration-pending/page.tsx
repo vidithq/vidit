@@ -10,14 +10,11 @@ import { AuthCard } from "@/components/auth/AuthCard";
 type ResendState = "idle" | "sending" | "sent" | "failed";
 
 /**
- * Landing page after `POST /auth/register`. The backend has accepted
- * the registration and queued a confirmation email; no `users` row
- * exists yet. We tell the user to check their inbox and offer a
- * resend button.
+ * Landing after `POST /auth/register`: registration accepted and a
+ * confirmation email queued, but no `users` row exists yet.
  *
- * Resend is rate-limited server-side (5/hour per IP). We don't try
- * to mirror that limit on the client — the worst case is that the
- * user gets a 429 we surface as a generic failure, which is fine.
+ * Resend is rate-limited server-side (5/hour per IP); not mirrored on the
+ * client — worst case is a 429 surfaced as a generic failure.
  */
 function PendingInner() {
   const params = useSearchParams();

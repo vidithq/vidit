@@ -10,16 +10,15 @@ from app.schemas.tag import TagCreate, TagRead
 
 router = APIRouter()
 
-# Categories that authenticated users may create via the API.
-# `conflict` and `capture_source` are curated — `conflict` by direct DB
-# access, `capture_source` by the seeding migration — since both are
-# required, filterable dimensions on the map and must stay clean. Only
-# `free` is open to user creation.
+# Categories authenticated users may create via the API. `conflict` and
+# `capture_source` are curated (by direct DB access / the seeding
+# migration) since both are required, filterable map dimensions that must
+# stay clean; only `free` is open to user creation.
 USER_CREATABLE_CATEGORIES = {"free"}
 
-# Server-managed taxonomies: every new geolocation must carry at least
-# one tag from each (enforced in `routers/geolocations.py`). Surfaced as
-# the two required selectors on the submit form via `?curated=true`.
+# Server-managed taxonomies: every new geolocation must carry at least one
+# tag from each (enforced in `routers/geolocations.py`). Surfaced as the
+# two required selectors on the submit form via `?curated=true`.
 CURATED_CATEGORIES = ("conflict", "capture_source")
 
 
@@ -31,19 +30,16 @@ def list_tags(
 ):
     """Return tags that are referenced by at least one *live* geolocation.
 
-    Filters out orphan tags (created at some point but no live row uses
-    them right now) so the map filter UI doesn't surface chips that match
-    zero results — that's a confusing dead-end for the analyst. Soft-
-    deleted geos don't count toward the live set; if every geo using a
-    tag has been removed, the tag falls off the filter.
+    Filters out orphan tags (no live row currently uses them) so the map
+    filter UI doesn't surface chips that match zero results. Soft-deleted
+    geos don't count toward the live set, so a tag falls off the filter
+    once every geo using it is removed.
 
-    ``curated=true`` flips to the opposite default: it returns the full
-    curated taxonomy (``conflict`` + ``capture_source``) regardless of
-    live usage. The submit form needs *every* option in these two
-    required buckets up front — including zero-usage ones — so the
-    analyst can pick the right conflict / capture source even when
-    they're the first to tag it. (The usage filter that's right for the
-    map is exactly wrong for a submission selector.)
+    ``curated=true`` flips the default: it returns the full curated
+    taxonomy (``conflict`` + ``capture_source``) regardless of live usage.
+    The submit form needs *every* option in these two required buckets up
+    front so the analyst can pick the right one even when they're first to
+    tag it — the usage filter that's right for the map is wrong here.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))
@@ -77,12 +73,11 @@ def create_tag(
 
     existing = db.query(Tag).filter(Tag.name == body.name).first()
     if existing:
-        # Idempotent create: same name + same category → just hand the
-        # row back. ``GET /tags`` filters orphan tags (refs == 0), so an
-        # analyst typing the exact name of an existing-but-orphaned free
-        # tag previously hit a 409 with no way out from the form. Returns
-        # ``200 OK`` (not the ``201 Created`` default) to surface "no new
-        # row created" to API consumers that care about it.
+        # Idempotent create: same name + same category → hand the row
+        # back. ``GET /tags`` filters orphan tags (refs == 0), so typing
+        # the exact name of an orphaned free tag previously 409'd with no
+        # way out of the form. Returns ``200 OK`` (not the ``201`` default)
+        # to surface "no new row created" to consumers that care.
         if existing.category == body.category:
             return Response(
                 content=TagRead.model_validate(existing, from_attributes=True).model_dump_json(),
@@ -98,12 +93,10 @@ def create_tag(
         )
 
     # The SELECT above gives the friendly-error path; the UNIQUE on
-    # ``tags.name`` is the actual race backstop. Two concurrent POSTs
-    # with the same name (two analysts both typing a trending conflict
-    # into the picker at the same moment) both pass the SELECT, only
-    # one wins the INSERT — without this SAVEPOINT, the loser gets a
-    # 500 from the unhandled ``IntegrityError`` instead of the 409 the
-    # caller is built to retry on. Mirrors the pattern in
+    # ``tags.name`` is the actual race backstop. Two concurrent POSTs with
+    # the same name both pass the SELECT, only one wins the INSERT —
+    # without this SAVEPOINT the loser gets a 500 from the unhandled
+    # ``IntegrityError`` instead of the 409 the caller retries on. Mirrors
     # ``services/social.follow_user``.
     tag = Tag(name=body.name, category=body.category)
     try:

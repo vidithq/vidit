@@ -8,10 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Lifecycle values. Plain strings (mirrors `auth_events.event`) so adding
-# a new state doesn't require a migration. Only `open` is set on insert;
-# `fulfilled` is set as a side-effect of `POST /geolocations bounty_id=…`;
-# `closed` is set by `POST /bounties/{id}/close` (author-only).
+# Lifecycle values. Plain strings (mirrors `auth_events.event`) so a new state
+# needs no migration. `open` set on insert; `fulfilled` as a side-effect of
+# `POST /geolocations bounty_id=…`; `closed` by `POST /bounties/{id}/close`
+# (author-only).
 STATUS_OPEN = "open"
 STATUS_FULFILLED = "fulfilled"
 STATUS_CLOSED = "closed"
@@ -29,12 +29,10 @@ class BountyClaim(Base):
     """Soft, public "I'm working on this" signal.
 
     Multi-claimer by design — geolocation is collaborative and partly
-    competitive, several analysts may pull at the same media in
-    parallel. Each row is an analyst signaling presence; the composite
-    PK makes duplicate claims idempotent. Claims live alongside the
-    bounty's lifecycle, never gating it: the bounty can be fulfilled
-    by an analyst who never claimed, and the row's `bounty_id` cascade
-    drops claims when the bounty is hard-deleted.
+    competitive, several analysts may pull at the same media in parallel. The
+    composite PK makes duplicate claims idempotent. Claims never gate the
+    bounty's lifecycle: it can be fulfilled by an analyst who never claimed,
+    and the `bounty_id` cascade drops claims on hard-delete.
     """
 
     __tablename__ = "bounty_claims"
@@ -55,8 +53,7 @@ class BountyClaim(Base):
     user = relationship("User")
 
     __table_args__ = (
-        # "Who's working on bounty X right now?" — the dominant query
-        # the detail page issues.
+        # "Who's working on bounty X right now?" — the detail page's query.
         Index("ix_bounty_claims_bounty_id_created_at", "bounty_id", "created_at"),
         # "What is this user working on?" — profile / dashboard view.
         Index("ix_bounty_claims_user_id", "user_id"),
@@ -66,16 +63,15 @@ class BountyClaim(Base):
 class Bounty(Base):
     """An unfinished geolocation: media + source the author couldn't place.
 
-    Lifecycle (see also docs/api.md → Bounties):
-    ``open`` → ``fulfilled`` (a geolocation was submitted from it) or
-    ``closed`` (author withdrew). "Claimed" is not a state — it's a
-    parallel multi-analyst signal via the ``bounty_claims`` junction.
+    Lifecycle (see also docs/api.md → Bounties): ``open`` → ``fulfilled`` (a
+    geolocation was submitted from it) or ``closed`` (author withdrew).
+    "Claimed" is not a state — it's a parallel multi-analyst signal via the
+    ``bounty_claims`` junction.
 
-    Media lives in the shared ``media`` table via a nullable
-    ``media.bounty_id`` column (XOR with ``media.geolocation_id``).
-    Fulfilment rewrites those rows in place — S3 objects stay where
-    they are. The pointer from a fulfilled bounty back to the
-    resulting geolocation lives on ``Geolocation.originated_from_bounty_id``.
+    Media lives in the shared ``media`` table via a nullable ``media.bounty_id``
+    column (XOR with ``media.geolocation_id``). Fulfilment rewrites those rows
+    in place — S3 objects stay put. The pointer back to the resulting
+    geolocation lives on ``Geolocation.originated_from_bounty_id``.
     """
 
     __tablename__ = "bounties"
@@ -103,11 +99,10 @@ class Bounty(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Soft-delete parity with Geolocation — same admin tooling applies.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Demo flag — TRUE iff created by the admin "Demo bounties" seeder.
-    # The seeded imagery + the always-attached `demo` tag are the visible
-    # signal; the UI also uses this flag to swap the synthetic source_url
-    # for a "synthetic" label so testers don't click out to a 404. Dropped
-    # en masse by the wipe button. Real analyst submissions never set this.
+    # TRUE iff created by the admin "Demo bounties" seeder. The UI uses it to
+    # swap the synthetic source_url for a "synthetic" label so testers don't
+    # click out to a 404. Dropped en masse by the wipe button; real submissions
+    # never set this.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     author = relationship("User", foreign_keys=[author_id], back_populates="bounties")
@@ -126,13 +121,11 @@ class Bounty(Base):
     )
     fulfilled_by = relationship(
         "Geolocation",
-        # Filter out soft-deleted geolocations from this relationship —
-        # otherwise a fulfilled bounty whose geolocation was later admin-
-        # deleted would still surface that geo through the API, leaking a
-        # row meant to be hidden. The partial unique index guarantees at
-        # most one live geo can claim a given bounty, so ``uselist=False``
-        # stays safe. ``viewonly=True`` because the link is owned by the
-        # geolocation's column, not the bounty.
+        # Filter out soft-deleted geolocations: otherwise a fulfilled bounty
+        # whose geo was later admin-deleted would still surface it through the
+        # API, leaking a hidden row. The partial unique index guarantees at most
+        # one live geo per bounty, so ``uselist=False`` is safe. ``viewonly``
+        # because the link is owned by the geolocation's column, not the bounty.
         primaryjoin=(
             "and_(Bounty.id == Geolocation.originated_from_bounty_id, "
             "Geolocation.deleted_at.is_(None))"
@@ -142,9 +135,9 @@ class Bounty(Base):
     )
 
     __table_args__ = (
-        # "Open bounties, newest first" — the dominant index query.
+        # "Open bounties, newest first" — the dominant query.
         Index("ix_bounties_status_created_at", "status", "created_at"),
         Index("ix_bounties_author_id", "author_id"),
-        # Filter out soft-deleted rows cheaply on every public read.
+        # Cheap soft-delete filter on every public read.
         Index("ix_bounties_deleted_at", "deleted_at"),
     )

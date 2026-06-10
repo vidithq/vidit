@@ -5,22 +5,17 @@ import { useEffect, useRef } from "react";
 import { setPreviousInternalPath } from "@/lib/navigation";
 
 /**
- * Records the previous same-origin pathname into sessionStorage on
- * every Next.js route change, so `smartBack` (in `lib/navigation.ts`)
- * can land the user back on it. Mounted once at the root via
- * `Providers`.
- *
- * Renders nothing — this is purely a side-effect.
+ * Records the previous same-origin pathname into sessionStorage on each route
+ * change, so `smartBack` (in `lib/navigation.ts`) can land the user back on it.
+ * Mounted once at the root via `Providers`. Side-effect only — renders nothing.
  */
 export default function PathTracker() {
   const pathname = usePathname();
   const previousRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // First render: nothing to remember yet. Subsequent renders: the
-    // *previous* pathname (still in the ref) is the one we want to
-    // stamp, because by the time `smartBack` is invoked the current
-    // pathname is the page the user wants to leave.
+    // Stamp the *previous* pathname (still in the ref), not the current one:
+    // by the time `smartBack` fires, the current path is the page being left.
     if (previousRef.current && previousRef.current !== pathname) {
       setPreviousInternalPath(previousRef.current);
     }

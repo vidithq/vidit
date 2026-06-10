@@ -1,22 +1,16 @@
 """Audit-log writes for auth-relevant events.
 
-Single entry-point `log_auth_event` called from the auth router on each
-event of interest. The helper is intentionally tiny: it inserts one row
-inside a SAVEPOINT, and swallows its own exceptions. A failure to log
-must never bubble up and break the auth flow itself — a logging-failure
-blind spot is bad, but a login outage caused by a poisoned transaction
-is worse.
+`log_auth_event` inserts one row inside a SAVEPOINT and swallows its own
+exceptions: a logging blind spot beats a login outage from a poisoned
+transaction. Without the SAVEPOINT, a failed INSERT (FK violation, disk
+full, INET-coercion error from a hostile X-Forwarded-For) leaves psycopg
+in an error state and the caller's subsequent ``db.commit()`` raises
+``PendingRollbackError``. ``begin_nested()`` rolls back only the savepoint;
+the outer transaction stays usable.
 
-The SAVEPOINT matters: without it, a failed INSERT (FK violation, disk
-full, INET-coercion error from a hostile X-Forwarded-For) leaves
-psycopg in an error state, and the caller's subsequent ``db.commit()``
-raises ``PendingRollbackError``. Wrapping in ``begin_nested()`` means
-only the savepoint rolls back; the outer transaction stays usable.
-
-The router is responsible for extracting `ip` and `user_agent` from the
-`Request`. We don't reach for `Request` here because parts of the auth
-flow (forgot-password background task) run off the request thread and
-do not have a live Request handle.
+`ip` / `user_agent` are extracted from the `Request` by the caller, not
+here, because parts of the auth flow (forgot-password background task) run
+off the request thread with no live Request handle.
 """
 
 from __future__ import annotations
@@ -44,10 +38,9 @@ def log_auth_event(
 ) -> None:
     """Insert one audit row inside a savepoint. Best-effort — never raises.
 
-    Caller commits the surrounding transaction. The savepoint is
-    released on success and rolled back on failure, so the caller's
-    next ``db.flush()`` / ``db.commit()`` always sees a usable
-    transaction.
+    Caller commits the surrounding transaction. The savepoint is released
+    on success and rolled back on failure, so the caller's next flush /
+    commit always sees a usable transaction.
     """
     try:
         with db.begin_nested():
@@ -72,11 +65,9 @@ def log_auth_event_from_request(
 ) -> None:
     """Convenience wrapper for request-bound paths.
 
-    Extracts ``ip`` and ``user_agent`` from the ``Request`` and delegates
-    to ``log_auth_event``. Use the low-level form from any code path that
-    runs off the request thread (e.g. a FastAPI background task with no
-    live ``Request`` handle); reach for this wrapper in every auth
-    handler to drop the four-line ip/user-agent boilerplate.
+    Extracts ``ip`` / ``user_agent`` and delegates to ``log_auth_event``.
+    Use the low-level form from any path that runs off the request thread
+    (e.g. a background task with no live ``Request``).
     """
     log_auth_event(
         db,
@@ -90,30 +81,23 @@ def log_auth_event_from_request(
 def rate_limit_key(request: Request) -> str:
     """Per-IP rate-limit key for ``slowapi.Limiter``.
 
-    ``slowapi``'s default ``get_remote_address`` returns ``request.client.host``,
-    which ``uvicorn``'s ``ProxyHeadersMiddleware`` populates from the
-    **left-most** entry of ``X-Forwarded-For`` when launched with
-    ``--forwarded-allow-ips=*`` (verified in the live uvicorn source:
-    ``always_trust=True`` short-circuits to ``x_forwarded_for_hosts[0]``).
-    Railway's edge proxy *appends* to ``X-Forwarded-For`` rather than
-    overwriting it, so the left-most entry is whatever the client sent —
-    fully attacker-controlled. Rotating ``X-Forwarded-For: <random>`` per
-    request mints a fresh bucket every time and defeats every per-IP
-    limit (``/login`` 5/min, ``/register`` 10/hr, ``/forgot-password``
-    5/hr, the global 60/min); sending ``X-Forwarded-For: <victim_ip>``
-    pins a chosen victim's bucket and locks them out.
+    ``slowapi``'s default ``get_remote_address`` returns
+    ``request.client.host``, which ``uvicorn``'s ``ProxyHeadersMiddleware``
+    populates from the **left-most** ``X-Forwarded-For`` entry under
+    ``--forwarded-allow-ips=*`` (``always_trust=True`` short-circuits to
+    ``x_forwarded_for_hosts[0]``). Railway's edge proxy *appends* to
+    ``X-Forwarded-For``, so the left-most entry is attacker-controlled:
+    rotating ``X-Forwarded-For: <random>`` mints a fresh bucket per request
+    and defeats every per-IP limit; ``X-Forwarded-For: <victim_ip>`` pins
+    and locks out a chosen victim.
 
-    The audit-log path already uses :func:`extract_client_ip` to pick the
-    **right-most** entry (the one the immediate trusted proxy wrote);
-    routing slowapi through the same parser restores per-IP semantics
-    and closes the spoof. We never want slowapi keys to read
-    ``request.client.host`` directly while uvicorn is in always-trust
-    mode.
+    :func:`extract_client_ip` picks the **right-most** entry (what the
+    immediate trusted proxy wrote), restoring per-IP semantics. Never read
+    ``request.client.host`` directly while uvicorn is in always-trust mode.
 
-    Fallback: when no XFF and no client peer are available (extremely
-    unusual — test client edge cases), return a stable sentinel so all
+    Fallback: with no XFF and no client peer (test-client edge cases),
+    return a stable sentinel that can't collide with a parseable IP, so all
     such requests share one bucket rather than crashing the limiter.
-    The sentinel intentionally cannot collide with a parseable IP.
     """
     ip = extract_client_ip(request)
     return ip if ip is not None else "rate-limit:no-client"
@@ -122,46 +106,37 @@ def rate_limit_key(request: Request) -> str:
 def extract_client_ip(request: Request) -> str | None:
     """Pick the most accurate client IP available, validated.
 
-    Take the RIGHT-most entry of ``X-Forwarded-For``, not the left-most.
+    Take the RIGHT-most ``X-Forwarded-For`` entry, not the left-most.
     Trusted proxies (Railway, Vercel, Cloudflare) *append* the observed
-    client IP when they forward, so the chain reads ``client, hop1,
-    hop2 ... immediate_trusted_proxy_observation``. A malicious client
-    can prepend anything to the header — taking the left-most entry
-    therefore means trusting attacker-controlled input, which would
-    let an attacker freely spoof the audit log. The right-most entry
-    is the one the immediate trusted proxy wrote and is the value we
-    can actually defend.
+    client IP, so the chain reads ``client, hop1, ...
+    immediate_trusted_proxy_observation``. A malicious client can prepend
+    anything, so the left-most entry is attacker-controlled; the right-most
+    is what the immediate trusted proxy wrote and the only value we can
+    defend.
 
-    Defaults to ONE trusted hop (Railway → backend, current prod
-    topology). When a second trusted proxy lands in front of Railway
-    (e.g. Cloudflare), bump ``TRUSTED_PROXY_HOPS`` to 2 so we peel the
-    extra append and pick the entry the first trusted proxy actually
-    saw. The audit log is forensics, not access control, so a one-off
-    miscount only blurs the chosen entry — it doesn't open a
-    vulnerability.
+    Defaults to ONE trusted hop (Railway → backend). When a second trusted
+    proxy lands in front (e.g. Cloudflare), bump ``TRUSTED_PROXY_HOPS`` to 2
+    to peel the extra append. The audit log is forensics, not access
+    control, so a miscount only blurs the chosen entry — no vulnerability.
 
-    Whatever we pick is fed into a Postgres ``INET`` column, which
-    strict-rejects anything that isn't a parseable IPv4 / IPv6, so we
-    validate via ``ipaddress.ip_address`` and return None on a bad
-    value (the row goes in with ``ip = NULL`` rather than poisoning
-    the savepoint).
+    The value feeds a Postgres ``INET`` column, which rejects non-IPs, so
+    validate via ``ipaddress.ip_address`` and return None on a bad value
+    (row goes in with ``ip = NULL`` rather than poisoning the savepoint).
     """
     candidates: list[str] = []
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         entries = [e.strip() for e in forwarded.split(",") if e.strip()]
         if entries:
-            # Pick the Nth-from-the-right entry, where N == trusted hops.
-            # Each trusted proxy appends its observation when forwarding,
-            # so position ``-N`` is what the *first* trusted proxy saw.
-            # If the chain is shorter than N (misconfig or a header sent
-            # by a single-hop client), clamp to the left-most entry —
-            # better forensics than dropping the value.
+            # Position ``-N`` (N == trusted hops) is what the first trusted
+            # proxy saw. If the chain is shorter than N (misconfig /
+            # single-hop client), clamp to the left-most — better forensics
+            # than dropping the value.
             hops = max(1, settings.trusted_proxy_hops)
             index = max(-len(entries), -hops)
             candidates.append(entries[index])
-    # Fallback: when no proxy header is present (local dev, direct
-    # backend hit) ``request.client.host`` is the real client.
+    # No proxy header (local dev, direct hit): ``request.client.host`` is
+    # the real client.
     client = getattr(request, "client", None)
     host = getattr(client, "host", None) if client else None
     if host:
@@ -177,9 +152,8 @@ def extract_client_ip(request: Request) -> str | None:
 
 def extract_user_agent(request: Request) -> str | None:
     ua = request.headers.get("user-agent")
-    # Postgres TEXT is unbounded but absurdly-long UA strings (>2 KB) are
-    # almost always garbage from a malformed scraper — cap so one row
-    # can't pollute the table.
+    # Postgres TEXT is unbounded, but absurdly-long UA strings are almost
+    # always scraper garbage — cap so one row can't pollute the table.
     if ua and len(ua) > 1024:
         return ua[:1024]
     return ua

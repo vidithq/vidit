@@ -1,4 +1,4 @@
-"""End-to-end tests for the social-graph slice 1 endpoints.
+"""End-to-end tests for the social-graph endpoints.
 
 Coverage matrix:
 
