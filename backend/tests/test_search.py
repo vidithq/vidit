@@ -1,9 +1,8 @@
 """End-to-end tests for ``GET /search``.
 
-Scope: the slice-1 search surface — three FTS-backed result groups
-(geolocations, bounties, users), the highlight-marker contract, the
-``type`` filter, soft-delete invariants, auth, and the empty-query
-short-circuit.
+Scope: the search surface — three FTS-backed result groups (geolocations,
+bounties, users), the highlight-marker contract, the ``type`` filter,
+soft-delete invariants, auth, and the empty-query short-circuit.
 
 We seed fresh rows per test with unique-suffix titles / usernames so
 matches are bounded to this test's data — the dev DB carries the demo
@@ -56,11 +55,9 @@ def db():
 
 @pytest.fixture
 def caller(db):
-    """Authenticated user used to hit the search endpoint.
+    """Authenticated request originator for the search endpoint (auth-required).
 
-    The endpoint requires auth (matches the rest of the closed-beta
-    read surface); this fixture is the request originator. Unique
-    username so it doesn't accidentally show up as a result.
+    Unique username so it doesn't accidentally show up as a result.
     """
     user = User(
         username=f"caller{uuid.uuid4().hex[:8]}",

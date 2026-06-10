@@ -16,14 +16,10 @@ interface DetailSidePanelProps {
 }
 
 /**
- * The map's detail overlay. `max-h-[calc(100vh-4.5rem)]` instead of a
- * pinned `bottom-14` so the panel shrinks to its content for small
- * submissions (no empty grey filler below the last row) but is still
- * capped — when content is long, it scrolls within the same envelope
- * it had before. 4.5rem = top-4 (1rem) + the 3.5rem clearance for the
- * closed-beta pill at the bottom (pill is `bottom-3` + ~28px tall +
- * ~6px border, so ~56px keeps the report link off the panel even on
- * hover).
+ * The map's detail overlay. `max-h-[calc(100vh-4.5rem)]` rather than a
+ * pinned `bottom-14` so the panel shrinks to its content (no grey filler)
+ * yet still caps and scrolls when content is long. 4.5rem = top-4 (1rem)
+ * + 3.5rem clearance to keep the bottom pill off the panel even on hover.
  */
 export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelProps) {
   return (
@@ -42,7 +38,6 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
         </div>
       ) : (
         <div className="p-4 space-y-4">
-          {/* Title + Author + Report */}
           <div className="pr-6 space-y-2">
             <h2 className="text-lg font-medium text-neutral-100">
               {detail.title}
@@ -67,10 +62,8 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
 
           <GeolocationDetailBody geo={detail} variant="panel" />
 
-          {/* Footer — share affordances on the left, Full-page anchor on
-              the right. Same ShareButtons component as the detail page so
-              the tweet text / clipboard output stay in sync between the
-              two share surfaces. */}
+          {/* Same ShareButtons as the detail page so tweet/clipboard
+              output stays in sync across both share surfaces. */}
           <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-800">
             <ShareButtons
               id={detail.id}

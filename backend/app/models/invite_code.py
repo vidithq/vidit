@@ -13,9 +13,8 @@ class InviteCode(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    # Audit-only after the multi-use migration: tracks the *first* user who
-    # consumed the code. Validity is governed by use_count / max_uses /
-    # revoked_at, not by used_by.
+    # Audit-only after the multi-use migration: the *first* consumer. Validity
+    # is governed by use_count / max_uses / revoked_at, not by used_by.
     used_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

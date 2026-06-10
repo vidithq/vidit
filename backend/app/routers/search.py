@@ -1,10 +1,8 @@
 """``GET /search`` — full-text search across geolocations, bounties, users.
 
-Slice 1 of the search feature. Single endpoint, single query box,
-grouped response. See ``services/search.py`` for the FTS plumbing.
-
-Auth: matches the rest of the read surface for the closed beta —
-requires a logged-in user. Public reads are a likely future direction.
+Single endpoint, single query box, grouped response. See
+``services/search.py`` for the FTS plumbing. Auth matches the rest of the
+read surface (logged-in user required); public reads are a likely future.
 """
 
 from __future__ import annotations

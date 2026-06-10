@@ -12,11 +12,10 @@ import { useMapState } from "@/contexts/MapStateContext";
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function HomePage() {
-  // Persistent state (survives navigation away and back) lives in
-  // MapStateContext at the root layout. Local useState below is for things
-  // that can be re-fetched cheaply (points, tags, the detail panel body).
-  // The page only reads the filter *values* (for the points URL); the
-  // setters live with FilterPanel, which consumes the same context.
+  // State that must survive navigation lives in MapStateContext; local
+  // useState below is for cheaply re-fetched data (points, tags, detail).
+  // The page reads only filter values (for the points URL); the setters
+  // live with FilterPanel, which shares the same context.
   const {
     viewState,
     setViewState,
@@ -39,10 +38,9 @@ export default function HomePage() {
   const [detail, setDetail] = useState<GeolocationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  // Tracks which selectedId we've already issued a fetch for, so the
-  // re-hydration effect below doesn't loop on persistent errors (404,
-  // network drop). Without this, a swallowed catch + finally would keep
-  // re-triggering the effect because deps change but the condition holds.
+  // Which selectedId we've already fetched, so the re-hydration effect
+  // doesn't loop on persistent errors (404, network drop): a swallowed
+  // catch would otherwise keep re-triggering it as deps change.
   const hydratedIdRef = useRef<string | null>(null);
 
   const fetchPoints = useCallback(() => {
@@ -51,9 +49,8 @@ export default function HomePage() {
     abortRef.current = controller;
 
     const params = new URLSearchParams();
-    // Both buckets append independently so the URL carries every chip
-    // the analyst lit up. The backend applies OR within a bucket and
-    // AND across buckets (see `routers/geolocations.py::_apply_filters`).
+    // Append each chip independently. The backend applies OR within a
+    // bucket and AND across buckets (`routers/geolocations.py::_apply_filters`).
     selectedConflicts.forEach((c) => params.append("conflict", c));
     selectedCaptureSources.forEach((s) => params.append("capture_source", s));
     selectedTags.forEach((t) => params.append("tag", t));
@@ -61,12 +58,9 @@ export default function HomePage() {
     if (eventDateTo) params.set("event_date_to", eventDateTo);
     if (submittedFrom) params.set("submitted_from", submittedFrom);
     if (submittedTo) params.set("submitted_to", submittedTo);
-    // Strip any character outside the backend's whitelist
-    // (`[A-Za-z0-9_-]{1,50}`) so a stray `%` or space — common in
-    // free-typed filter input — doesn't trip the 422 that
-    // `routers/geolocations.py` raises on the LIKE-injection guard.
-    // If everything was filtered out, drop the param entirely instead
-    // of sending an empty value (which would also 422).
+    // Strip chars outside the backend whitelist (`[A-Za-z0-9_-]{1,50}`) so
+    // a stray `%` or space doesn't trip the LIKE-injection guard's 422.
+    // Drop the param entirely if nothing's left (an empty value also 422s).
     const cleanAuthor = authorFilter.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
     if (cleanAuthor) params.set("author", cleanAuthor);
 
@@ -105,9 +99,9 @@ export default function HomePage() {
     [setSelectedId]
   );
 
-  // Re-hydrate the detail panel after a navigation round-trip: if the
-  // context has selectedId but local detail is empty, fetch it again.
-  // Guarded by hydratedIdRef so a persistently failing id doesn't loop.
+  // Re-hydrate the detail panel after a navigation round-trip: context
+  // has selectedId but local detail is empty. Guarded by hydratedIdRef so
+  // a persistently failing id doesn't loop.
   useEffect(() => {
     if (
       selectedId &&
@@ -142,10 +136,8 @@ export default function HomePage() {
         onViewChange={setViewState}
       />
 
-      {/* Left panel — filters */}
       <FilterPanel tags={tags} pointCount={points.length} loading={loading} />
 
-      {/* Right panel — detail overlay */}
       {selectedId && (
         <DetailSidePanel
           detail={detail}

@@ -23,10 +23,8 @@ interface SeedWipePanelProps<S, W> {
 }
 
 /**
- * Shared seed/wipe admin panel: count input + generate button + a wipe
- * button guarded by a click-twice confirm that auto-expires after 3s.
- * The demo-data and demo-bounties panels are this component with
- * different endpoint helpers and summary renderers.
+ * Shared seed/wipe panel. The wipe button is guarded by a click-twice
+ * confirm that auto-expires after 3s.
  */
 export function SeedWipePanel<S, W>({
   title,

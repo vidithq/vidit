@@ -1,15 +1,12 @@
-// Self-hosted, fetch-free stand-in rendered by `GeolocationCard` when a
-// card has no media to show. We can't load picsum.photos / pravatar /
-// similar third-party generators from a signed-in analyst's browser
-// without leaking IP + UA, which would contradict the /about Privacy
-// section's "operational security matters" claim. Cut in PR #40 — see
-// CHANGELOG (Unreleased / v0.0.4 era).
+// Self-hosted, fetch-free stand-in for cards with no media. Third-party
+// generators (picsum.photos, pravatar, etc.) would leak the signed-in
+// analyst's IP + UA, contradicting the /about operational-security claim.
 
 import type { CSSProperties } from "react";
 
 interface MediaPlaceholderProps {
-  // Deterministic seed: same seed always renders the same shade so a
-  // re-rendered list looks stable across navigations.
+  // Deterministic seed: same seed → same shade, so a re-rendered list is
+  // stable across navigations.
   seed: string;
   className?: string;
 }

@@ -5,12 +5,10 @@ import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 
-// Hero call-to-action island for the landing page. Swaps on auth state so
-// a signed-in analyst sees "Open the map" instead of the invite CTA they
-// don't need. While auth is resolving on a hard load of `/`, `user` is null
-// and the signed-out CTA renders — which is also the correct SSR default
-// for the anonymous majority. On client-side nav from the sidebar the
-// AuthContext is already populated, so there's no flash.
+// Hero CTA island that swaps on auth state (signed-in sees "Open the map").
+// While auth resolves on a hard load of `/`, `user` is null and the signed-out
+// CTA renders — the correct SSR default for the anonymous majority. Client nav
+// from the sidebar already has AuthContext populated, so there's no flash.
 export default function HeroCtas() {
   const { user } = useAuth();
 

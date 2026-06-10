@@ -8,16 +8,13 @@ import { apiFetch } from "@/lib/api";
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
-  // Surfaced to the parent so the form can block submit while an upload
-  // is in flight — otherwise a user clicking Submit during an image
-  // upload sends a proof JSON whose <image> src is still empty/stale,
-  // the sanitizer drops the node, and the freshly-uploaded file becomes
-  // an unlinked orphan until the reaper sweeps it.
+  // Lets the parent block submit while an upload is in flight: submitting mid-
+  // upload sends a proof JSON whose <image> src is still empty, the sanitizer
+  // drops the node, and the uploaded file orphans until the reaper sweeps it.
   onUploadStateChange?: (uploading: boolean) => void;
-  // Optional initial Tiptap doc — used by the tweet-import flow to seed
-  // a "Source: tweet by @handle — <text>" line into the editor on
-  // import. Tiptap reads this once at editor construction; pair with a
-  // ``key`` on the parent if you need to re-seed after mount.
+  // Optional initial Tiptap doc (the tweet-import flow seeds a source line).
+  // Tiptap reads it once at construction — pair with a ``key`` on the parent to
+  // re-seed after mount.
   initialContent?: Record<string, unknown> | null;
 }
 
@@ -81,7 +78,6 @@ export default function ProofEditor({
 
   return (
     <div className="border border-neutral-700 rounded-sm bg-neutral-800">
-      {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-700 flex-wrap">
         <button
           type="button"
@@ -137,7 +133,6 @@ export default function ProofEditor({
         />
       </div>
 
-      {/* Editor */}
       <EditorContent editor={editor} />
 
       {uploadError && (

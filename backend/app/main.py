@@ -24,8 +24,7 @@ from app.routers import (
 from app.services.audit import rate_limit_key
 from app.services.storage import LOCAL_STORAGE_MOUNT_PATH
 
-# Optional error tracking. Boots only when SENTRY_DSN is set in the env;
-# safe to leave unset for local dev or owner-only self-test.
+# Error tracking. Boots only when SENTRY_DSN is set; safe to leave unset.
 if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
@@ -56,26 +55,21 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
-# Body-size cap (HTTP layer). Without this, Starlette buffers the entire
-# multipart body to a SpooledTemporaryFile BEFORE the route function ever
-# runs — only then does ``services.storage.validate_file`` check the size
-# and raise. An attacker uploading a multi-GB body would pin worker memory
-# / tmp-disk long before the per-file cap fires. We pre-check
-# ``Content-Length`` for a clean 413 on the announced-too-large path; the
-# absent / chunked path still falls through to ``validate_file`` per file,
-# but that's bounded by the worker's stream-reader and is no worse than
-# the per-file cap.
+# Body-size cap (HTTP layer). Without this, Starlette buffers the whole
+# multipart body to a SpooledTemporaryFile BEFORE the route runs, and only
+# then does ``services.storage.validate_file`` check size — so a multi-GB
+# body pins worker memory / tmp-disk long before the per-file cap fires.
+# Pre-checking ``Content-Length`` gives a clean 413 on the announced-too-large
+# path; the absent/chunked path still falls through to ``validate_file`` per
+# file (bounded by the stream-reader, no worse than the per-file cap).
 #
-# Ceiling sized to admit the LARGEST legitimate request:
-#   * one ``max_video_size``-sized video (100 MB), OR
-#   * a full batch of ``max_files_per_geolocation`` images at
-#     ``max_image_size`` each (12 × 10 MB = 120 MB today).
-# Take the max + 10 MB headroom for multipart envelope and form fields.
-# Reviewing PR #100 caught the previous shape (``max_video_size + 10 MB``,
-# = 110 MB) silently rejecting a legitimate 12-image submission. All three
-# caps now read from ``settings`` so this module never imports a router —
-# the previous shape's ``from app.routers.geolocations import …`` formed
-# a fragile ``main → routers`` import edge.
+# Ceiling admits the largest legitimate request — one ``max_video_size`` video
+# (100 MB) OR a full ``max_files_per_geolocation`` batch at ``max_image_size``
+# (12 × 10 MB = 120 MB) — plus 10 MB for multipart envelope and form fields.
+# PR #100 caught the previous shape (``max_video_size + 10 MB`` = 110 MB)
+# silently rejecting a 12-image submission. All three caps read from
+# ``settings`` so this module never imports a router (the old shape's
+# ``from app.routers.geolocations import …`` formed a fragile import edge).
 _MAX_REQUEST_BODY_BYTES = max(
     settings.max_video_size,
     settings.max_files_per_geolocation * settings.max_image_size,
@@ -90,10 +84,8 @@ async def enforce_request_body_size(request: Request, call_next):
             announced = int(content_length)
         except ValueError:
             announced = None
-        # Reject negatives (``int("-1")`` parses cleanly but ``-1 >
-        # _MAX_REQUEST_BODY_BYTES`` is False, so a negative header would
-        # otherwise slip past this gate and defer rejection to Starlette's
-        # downstream parsing) and any positive value above the cap.
+        # Reject negatives too: ``int("-1")`` parses cleanly but ``-1 > cap``
+        # is False, so a negative header would otherwise slip past this gate.
         if announced is not None and (announced < 0 or announced > _MAX_REQUEST_BODY_BYTES):
             return JSONResponse(
                 status_code=413,
@@ -105,18 +97,15 @@ async def enforce_request_body_size(request: Request, call_next):
 
 
 # Order matters: middlewares added later run earlier on the incoming request.
-# The effective incoming chain (outer → inner) is:
-#   HSTS → CORS → CSRF → BodySizeLimit → GZip → app
-# CORS sits outside BodySizeLimit so the 413 short-circuit response gets the
-# ``Access-Control-Allow-Origin`` header stamped on its way back out — without
-# this, a cross-origin browser POST that trips the body cap shows up as a
-# CORS error in DevTools instead of a clean 413 (caught in the PR #100 review
-# pass). CSRF stays just outside BodySize: it doesn't read the request body
-# (double-submit cookie + header only), so it's safe to run on a request
-# whose body we'd otherwise reject; running it first means a forged-CSRF +
-# oversized body gets the 403 the cheap path would have given anyway. HSTS
-# is outermost so it stamps every response — including CORS-preflight 200s
-# and CSRF rejections — which never reach the app.
+# Effective chain (outer → inner): HSTS → CORS → CSRF → BodySizeLimit → GZip → app.
+# CORS sits outside BodySizeLimit so the 413 short-circuit gets an
+# ``Access-Control-Allow-Origin`` header on the way out — otherwise a
+# cross-origin POST tripping the body cap surfaces as a CORS error in DevTools
+# instead of a clean 413 (PR #100). CSRF stays outside BodySize: it reads only
+# the double-submit cookie + header (not the body), so a forged-CSRF +
+# oversized body gets the 403 the cheap path would give anyway. HSTS is
+# outermost so it stamps every response, including CORS-preflight 200s and CSRF
+# rejections that never reach the app.
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -128,17 +117,13 @@ app.add_middleware(
 )
 
 
-# HSTS — tells browsers "for the next 6 months, never speak HTTP to this
-# origin." 15768000 s = 6 months. No `includeSubDomains` and no
-# `preload`: subdomain coverage is
-# a future-coupling commitment we can't unwind for months, and preload
-# submission belongs to the public-launch checklist, not closed beta.
-# Pin is per-origin: this header on `api.vidit.app` protects API calls;
-# Vercel sets its own HSTS on `vidit.app`.
-#
-# Registered LAST so it sits outermost in the middleware stack — that
-# way it stamps responses produced by inner middleware short-circuits
-# (CORS preflight, CSRF rejection) as well as ones produced by the app.
+# HSTS: "for the next 6 months, never speak HTTP to this origin."
+# 15768000 s = 6 months. No `includeSubDomains`/`preload` — subdomain coverage
+# is a future-coupling commitment we can't unwind for months, and preload
+# submission belongs to the public-launch checklist. Pin is per-origin: this
+# header on `api.vidit.app` protects API calls; Vercel sets its own on
+# `vidit.app`. Registered LAST so it sits outermost and stamps responses from
+# inner-middleware short-circuits (CORS preflight, CSRF rejection) too.
 @app.middleware("http")
 async def add_hsts_header(request: Request, call_next):
     response = await call_next(request)
@@ -167,15 +152,12 @@ def health():
     return {"status": "ok"}
 
 
-# HEAD lives next to GET because most uptime monitors (UptimeRobot,
-# BetterStack, Hyperping) default to HEAD for the cheap probe — a bare
-# @app.get(...) would return 405 on every check and the dashboard would
-# read "down" while the endpoint is actually healthy on GET. Kept out of
-# the OpenAPI schema (it's an ops-only method on an ops-only endpoint)
-# and registered as its own handler rather than via @app.api_route(
-# methods=["GET","HEAD"]) — the latter shape emits a duplicate-
-# operation-id warning at startup because FastAPI generates one operation
-# id per (function, path) pair.
+# HEAD next to GET because most uptime monitors (UptimeRobot, BetterStack,
+# Hyperping) default to HEAD — a bare @app.get would 405 every check and the
+# dashboard would read "down" while GET is healthy. Out of the OpenAPI schema
+# (ops-only), and its own handler rather than @app.api_route(methods=["GET",
+# "HEAD"]): that shape emits a duplicate-operation-id warning at startup
+# (FastAPI generates one operation id per (function, path) pair).
 @app.head("/health", include_in_schema=False)
 def health_head() -> Response:
     return Response(status_code=200)

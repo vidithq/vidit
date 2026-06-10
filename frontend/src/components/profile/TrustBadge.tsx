@@ -5,32 +5,21 @@ import { BadgeCheck } from "lucide-react";
 
 interface TrustBadgeProps {
   isTrusted: boolean;
-  /**
-   * Substantiation note. Surfaces in the popover so the badge isn't
-   * an opaque "trust me bro" mark — readers can see *why* this analyst
-   * was vetted (track record, credentials, established X handle, etc.).
-   */
+  /** Substantiation note shown in the popover, so the badge isn't an opaque
+   *  mark — readers can see why the analyst was vetted. */
   trustReason?: string | null;
   size?: number;
   className?: string;
 }
 
 /**
- * Small orange checkmark next to a vetted analyst's handle, with a
- * popover that surfaces the substantiation note.
+ * Orange checkmark next to a vetted analyst's handle with a popover.
  *
- * The badge is a `<button>`: design.md's "orange = clickable" rule
- * applies, and clicking pins the popover open — useful on touch
- * devices where hover doesn't fire. Hover / focus still surface the
- * popover passively on desktop. Outside click and Escape both close.
- *
- * We deliberately don't add a "View profile" link inside the popover
- * — every callsite renders the badge adjacent to a handle that
- * already links to the profile, so the in-popover link would be
- * redundant.
- *
- * Renders nothing when `isTrusted` is false — the *absence* of the
- * badge is itself the signal for "not vetted".
+ * A `<button>` per the "orange = clickable" rule: clicking pins the popover
+ * (touch devices don't hover); hover/focus surface it passively, outside-click
+ * and Escape close it. No "View profile" link inside — every callsite already
+ * renders the badge next to a handle that links to the profile. Renders
+ * nothing when not trusted: the badge's absence is the "not vetted" signal.
  */
 export default function TrustBadge({
   isTrusted,
@@ -73,8 +62,8 @@ export default function TrustBadge({
         aria-label={aria}
         aria-expanded={pinned}
         onClick={(e) => {
-          // The badge often sits inside a clickable card / link — don't
-          // let the click bubble up to that parent navigation.
+          // The badge often sits inside a clickable card — don't let the
+          // click bubble up to the parent navigation.
           e.preventDefault();
           e.stopPropagation();
           setPinned((p) => !p);
@@ -83,10 +72,8 @@ export default function TrustBadge({
       >
         <BadgeCheck size={size} strokeWidth={1.8} />
       </button>
-      {/* Anchored below the badge (`top-full`) — there's almost always
-          more room below the badge than above, and long trust reasons
-          would otherwise clip off the top of the viewport when the
-          badge sits in a page header. */}
+      {/* Anchored below (`top-full`): more room there, and long reasons would
+          clip off the top of the viewport when the badge is in a page header. */}
       <span
         role="tooltip"
         className={`absolute left-1/2 top-full mt-1.5 -translate-x-1/2 z-20 w-max max-w-sm px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-200 shadow-lg transition-opacity duration-150 ${

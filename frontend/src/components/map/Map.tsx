@@ -19,9 +19,8 @@ interface MapProps {
   className?: string;
   center?: { lat: number; lng: number };
   zoom?: number;
-  // Reports the map's pan/zoom state on every move-end so the parent can
-  // persist it across navigation. Only used for state preservation, not
-  // controlled rendering — the map remains uncontrolled internally.
+  // Reports pan/zoom on every move-end so the parent can persist it across
+  // navigation. State preservation only — the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
 }
 
@@ -96,13 +95,11 @@ export default function Map({
   onViewChange,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
-  // MapLibre needs WebGL; Tor Browser disables it (Safer/Safest) or makes
-  // it click-to-play (Standard), which would leave the user staring at a
-  // black canvas. Detect on mount so we can swap in a useful message.
+  // MapLibre needs WebGL, which Tor Browser disables or gates; without
+  // this the user gets a black canvas. Detect on mount to swap a message in.
   const [webglMissing, setWebglMissing] = useState(false);
-  // Skip the first onMoveEnd MapLibre fires during initial layout — that
-  // emission carries the same values we just seeded, so reporting it back
-  // would be a no-op write that just adds noise.
+  // Skip the first onMoveEnd MapLibre fires during initial layout: it
+  // carries the values we just seeded, so reporting it back is no-op noise.
   const firstMoveEndRef = useRef(true);
 
   useEffect(() => {
@@ -184,7 +181,7 @@ export default function Map({
         clusterMaxZoom={14}
         clusterRadius={50}
       >
-        {/* Cluster circles — radius scales with point count */}
+        {/* Radius scales with point count */}
         <Layer
           id="clusters"
           type="circle"
@@ -211,7 +208,6 @@ export default function Map({
           }}
         />
 
-        {/* Cluster count label */}
         <Layer
           id="cluster-count"
           type="symbol"
@@ -232,7 +228,6 @@ export default function Map({
           }}
         />
 
-        {/* Selected point */}
         <Layer
           id="points-selected"
           type="circle"
@@ -250,7 +245,6 @@ export default function Map({
           }}
         />
 
-        {/* Regular points */}
         <Layer
           id="points-circle"
           type="circle"

@@ -295,9 +295,7 @@ export function TrustPanel() {
   };
 
   const onDeleted = (userId: string, response: AdminUserDeleteResponse) => {
-    // Drop the row from the result list — the user is gone (hard) or
-    // hidden from public reads (soft); either way the admin shouldn't see
-    // them in subsequent searches without explicitly re-querying.
+    // Drop the row: the user is now gone (hard) or hidden from reads (soft).
     setResults((prev) => (prev ? prev.filter((r) => r.id !== userId) : prev));
     setLastDelete(response);
   };

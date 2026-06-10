@@ -1,10 +1,8 @@
 import type { MetadataRoute } from "next";
 
-// PWA / Android home-screen manifest. Next.js's app-router convention
-// auto-emits <link rel="manifest" href="/manifest.webmanifest"> in the
-// HTML head. The 192 / 512 icons below come from `app/icon.tsx`'s
-// generateImageMetadata — same source of truth as the favicon, so the
-// brand mark stays in lockstep across surfaces.
+// PWA / Android home-screen manifest. The 192 / 512 icons come from
+// `app/icon.tsx`'s generateImageMetadata — same source of truth as the
+// favicon, so the brand mark stays in lockstep across surfaces.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Vidit",
@@ -26,12 +24,9 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "512x512",
         type: "image/png",
       },
-      // No `purpose: maskable` variant — maskable expects a solid
-      // safe-zone background, and the brand mark ships transparent. A
-      // maskable PNG on a transparent canvas would let the launcher
-      // wallpaper bleed through and look broken on light home screens.
-      // If we add a tile-backgrounded variant later, layer it as a
-      // separate entry instead of reusing this one.
+      // No `purpose: maskable` variant: maskable expects a solid safe-zone
+      // background, but the brand mark ships transparent, so the launcher
+      // wallpaper would bleed through and look broken on light home screens.
     ],
   };
 }

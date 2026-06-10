@@ -141,10 +141,8 @@ export default function BountyDetailPage() {
                   className="rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900"
                 >
                   {m.media_type === "image" ? (
-                    // 2-up grid inside max-w-4xl ≈ 384 CSS px wide.
-                    // Same fit as the geolocation detail gallery —
-                    // ``hero`` renders sharply at 2x DPI without the
-                    // original's full payload.
+                    // 2-up grid ≈ 384 CSS px wide; `hero` renders sharply
+                    // at 2x DPI without the original's full payload.
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={displayUrlsFor(m).hero}
@@ -152,14 +150,10 @@ export default function BountyDetailPage() {
                       className="w-full h-48 object-cover"
                     />
                   ) : (
-                    // `#t=0.1` is an HTML media-fragment URI that
-                    // tells the browser to seek to t=0.1s on metadata
-                    // load — combined with `preload="metadata"`, this
-                    // forces the first frame to paint as a
-                    // poster-equivalent so the tile isn't a black box
-                    // until the user clicks play. Cheap fix that
-                    // sidesteps generating + storing a real poster
-                    // image per bounty.
+                    // `#t=0.1` media-fragment URI seeks to t=0.1s on
+                    // metadata load; with `preload="metadata"` this paints
+                    // the first frame as a poster, so the tile isn't a
+                    // black box before play — no per-bounty poster needed.
                     <video
                       src={`${m.storage_url}#t=0.1`}
                       controls
@@ -274,10 +268,9 @@ export default function BountyDetailPage() {
           </div>
         )}
 
-        {/* Primary actions row — Submit-form-style: at the bottom after the
-            user has read the bounty. Geolocate this is the page's purpose;
-            "I'm working on this" is a quieter interest toggle and uses a
-            neutral treatment so it doesn't compete with the primary CTA. */}
+        {/* Actions at the bottom, after the user has read the bounty.
+            "I'm working on this" gets a neutral treatment so it doesn't
+            compete with the "Geolocate this" CTA. */}
         {canGeolocate && (
           <div className="pt-4 border-t border-neutral-800 flex items-center gap-3 flex-wrap">
             <Link

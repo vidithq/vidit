@@ -1,16 +1,12 @@
 "use client";
 
-// Last-resort error boundary for crashes that escape `app/error.tsx`.
-// Specifically: errors thrown by the **root layout itself**
-// (`app/layout.tsx`) or by Next.js's metadata pipeline (which runs
-// above the page tree and can fail before `error.tsx` has a chance
-// to mount — that's exactly the failure mode that triggered the
-// v0.0.6 icon-route regression).
+// Last-resort boundary for crashes that escape `app/error.tsx`: errors in
+// the root layout itself (`app/layout.tsx`) or in Next's metadata pipeline,
+// which runs above the page tree and can fail before `error.tsx` mounts.
 //
-// Because the root layout is gone by the time this renders, this
-// component is required to emit its own `<html>` / `<body>`. Keep
-// the markup self-contained — no Tailwind class plumbing from the
-// shared layout, no Providers context.
+// The root layout is gone by the time this renders, so this component must
+// emit its own `<html>` / `<body>` and stay self-contained — no Tailwind
+// plumbing from the shared layout, no Providers context.
 
 import { useEffect } from "react";
 
@@ -23,9 +19,8 @@ interface GlobalErrorProps {
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
-    // Mirror `app/error.tsx`: forward to Sentry explicitly because the SDK
-    // doesn't auto-capture errors caught by a React error boundary. No-op
-    // until `NEXT_PUBLIC_SENTRY_DSN` is set on Vercel.
+    // Mirror `app/error.tsx`: forward explicitly since the SDK doesn't
+    // auto-capture error-boundary errors. No-op until the DSN is set.
     Sentry.captureException(error);
   }, [error]);
 

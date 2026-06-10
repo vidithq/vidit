@@ -3,13 +3,10 @@ import { join } from "node:path";
 
 import { ImageResponse } from "next/og";
 
-// iOS home-screen icon. Next.js's app-router convention emits this as
-// <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon">.
-//
-// Renders a literal "V" in Montserrat-700 (the same font + weight as
-// the sidebar mark) so the home-screen icon matches the in-app brand
-// exactly. See `icon.tsx` for the rationale on the `process.cwd()`
-// pattern + `outputFileTracingIncludes` in `next.config.mjs`.
+// iOS home-screen icon (app-router convention emits the apple-touch-icon
+// link). Renders a literal "V" in Montserrat-700 to match the sidebar mark.
+// See `icon.tsx` for the `process.cwd()` + `outputFileTracingIncludes`
+// rationale.
 
 const MONTSERRAT_700 = readFileSync(
   join(process.cwd(), "src/app/Montserrat-700.ttf"),

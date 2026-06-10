@@ -1,9 +1,9 @@
 """Tweet ingestion helpers — URL normalisation, syndication fetch, content parsing.
 
-Backs the ``POST /geolocations/import-from-tweet`` route. The contract is:
-"paste a tweet URL, get back enough structured data to pre-fill the submit
-form (title, source, posted-at, media, best-effort coordinates)". The
-analyst always reviews and submits — nothing here auto-publishes.
+Backs ``POST /geolocations/import-from-tweet``: paste a tweet URL, get back
+structured data to pre-fill the submit form (title, source, posted-at,
+media, best-effort coordinates). The analyst always reviews and submits —
+nothing auto-publishes.
 
 Data source
 -----------
@@ -12,38 +12,35 @@ X's public *syndication* endpoint:
 
     https://cdn.syndication.twimg.com/tweet-result?id=<id>&token=<token>&lang=en
 
-This is the same backend the embeddable ``<blockquote class="twitter-tweet">``
-widget uses; it's unauthenticated and unofficial — there's no documented
-contract and X can change the schema or move the endpoint at any time.
-Our route surfaces those failures as a `502` so the frontend renders a
-"fill the form manually" banner; the form remains usable end-to-end even
-when this service is completely broken. The ``token`` algorithm is copied
-verbatim from Vercel's `react-tweet` (MIT-licensed) — a deterministic
-hash X requires on every request.
+The same backend the embeddable ``<blockquote class="twitter-tweet">``
+widget uses — unauthenticated, unofficial, no documented contract; X can
+change the schema or move it anytime. The route surfaces failures as `502`
+so the frontend shows a "fill the form manually" banner and stays usable
+even when this service is fully broken. The ``token`` algorithm is copied
+verbatim from Vercel's `react-tweet` (MIT) — a deterministic hash X
+requires on every request.
 
 Caching
 -------
 
-In-memory TTL cache keyed by tweet ID, 1h. Analysts commonly click
-"Import" twice in a row (paste URL, realise they want to start over,
-re-paste). X is rate-sensitive and we'd rather not pay the network round
-trip for the second click. Process-local; restarts wipe it — fine, we're
+In-memory TTL cache keyed by tweet ID, 1h. Analysts commonly click "Import"
+twice (paste, restart, re-paste); X is rate-sensitive so the second click
+shouldn't pay the round trip. Process-local; restarts wipe it — fine, we're
 not authoritative storage for tweets.
 
 Coordinate parsing
 ------------------
 
-Three extractors run over the full tweet text, results de-duped:
+Three extractors run over the full text, de-duped:
 
 1. Decimal pairs (``48.012345, 37.802411``)
 2. DMS (``48°00'45"N 37°48'08"E``)
 3. Google Maps ``@lat,lng,zoom`` links
 
-The first by default lands in the form; any extras are surfaced as
-"other candidates" chips the analyst can click to swap. The decimal
-extractor requires ≥3 decimal places to avoid matching dates / version
-strings (`1.2.3`, `2025-11-12`); DMS uses the directional letters as
-the discriminator; Maps URLs are unambiguous on their own.
+The first lands in the form by default; extras become "other candidates"
+chips. The decimal extractor requires ≥3 decimal places to avoid matching
+dates / version strings (`1.2.3`, `2025-11-12`); DMS uses the directional
+letters as the discriminator; Maps URLs are unambiguous.
 """
 
 from __future__ import annotations
@@ -88,10 +85,9 @@ class TweetNotAccessible(TweetImportError):
 class TweetFetchFailed(TweetImportError):
     """The syndication endpoint was unreachable / 5xx / schema drift.
 
-    Routes turn this into a ``502`` so the frontend can render a
-    graceful "fill the form manually" banner without distinguishing
-    transport blips from schema-drift bugs (operationally identical:
-    "retry later, or do it by hand").
+    Routes turn this into a ``502``: the frontend's "fill the form
+    manually" banner doesn't distinguish transport blips from schema drift
+    (operationally identical — "retry later or do it by hand").
     """
 
 
@@ -110,14 +106,13 @@ class NormalisedTweetUrl:
 
 
 def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
-    """Validate the input is a tweet URL and return canonical form + extracted parts.
+    """Validate a tweet URL and return canonical form + extracted parts.
 
-    Accepts ``x.com`` and ``twitter.com`` (with or without ``www.``), strips
-    query string and fragment, and reduces the path to ``/<handle>/status/<id>``.
-    Anything that isn't a status URL — profiles, lists, search, the home
-    feed, an unrelated host — raises ``InvalidTweetUrl``. The handle is
-    not validated for "this account exists"; that's the syndication
-    endpoint's job to surface as 404 → ``TweetNotAccessible``.
+    Accepts ``x.com`` / ``twitter.com`` (± ``www.``), strips query +
+    fragment, reduces the path to ``/<handle>/status/<id>``. Anything else
+    (profiles, lists, search, home feed, unrelated host) raises
+    ``InvalidTweetUrl``. The handle isn't validated for existence — that's
+    the syndication endpoint's 404 → ``TweetNotAccessible``.
     """
     parsed = urlparse(raw.strip())
     if parsed.scheme not in ("http", "https"):
@@ -127,8 +122,7 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
         raise InvalidTweetUrl("Not a tweet URL")
 
     # Path shape: /<handle>/status/<id> — also tolerate the older
-    # /i/web/status/<id> form some clients emit on shares with no
-    # handle context.
+    # /i/web/status/<id> form some clients emit with no handle context.
     parts = [p for p in parsed.path.split("/") if p]
     tweet_id: str | None = None
     handle: str | None = None
@@ -136,12 +130,10 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
         handle = parts[0]
         tweet_id = parts[2]
     elif len(parts) >= 4 and parts[0] == "i" and parts[1] == "web" and parts[2] == "status":
-        # /i/web/status/<id> — handle is unknown from the URL alone.
-        # We mark it as the literal "i" sentinel so the caller knows to
-        # source the real handle from the syndication response; the
-        # canonical URL preserves the ``/i/web/status/`` path so a
-        # round-trip to the input form still lands on a valid tweet
-        # page (``x.com/i/status/<id>`` returns 404).
+        # /i/web/status/<id> — no handle in the URL. Mark it with the "i"
+        # sentinel so the caller sources the real handle from the response;
+        # the canonical URL keeps the ``/i/web/status/`` path so a
+        # round-trip stays a valid tweet page (``x.com/i/status/<id>`` 404s).
         handle = "i"
         tweet_id = parts[3]
     if tweet_id is None or handle is None:
@@ -160,16 +152,15 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
 
 
 # Copied verbatim from Vercel's `react-tweet` (MIT). The syndication
-# endpoint demands this token in addition to the tweet id; without it
-# the API responds 404 even for public tweets. It's a deterministic
-# hash so we can compute it locally without an extra round trip.
+# endpoint 404s even for public tweets without this token; it's a
+# deterministic hash we can compute locally without an extra round trip.
 _TOKEN_MULTIPLIER = math.pi**6
 
 
 def _syndication_token(tweet_id: str) -> str:
     value = int(tweet_id) * _TOKEN_MULTIPLIER
-    # base-36 representation; strip leading zeros and any decimal point
-    # — the JS reference replaces `/(0+|\.)/g` which is exactly that.
+    # base-36; strip zeros and the decimal point — the JS reference's
+    # `/(0+|\.)/g` replace is exactly this.
     encoded = _to_base36(value)
     return re.sub(r"(0+|\.)", "", encoded)
 
@@ -177,13 +168,11 @@ def _syndication_token(tweet_id: str) -> str:
 def _to_base36(value: float) -> str:
     """Match JavaScript's ``Number.prototype.toString(36)``.
 
-    JS toString(36) on a float emits the integer part in base36, then a
-    `.`, then digits derived from the fractional part. Python's
-    ``int.__format__`` only handles the integer side; we hand-roll the
-    fractional side to keep the output byte-identical with
-    `react-tweet`'s reference token. The fractional emission stops at
-    52 digits (the IEEE-754 mantissa bit count); that matches the JS
-    engine's natural truncation point.
+    JS toString(36) on a float emits the integer part in base36, a `.`, then
+    fractional digits. Python only handles the integer side, so we hand-roll
+    the fractional side to keep the token byte-identical with `react-tweet`.
+    Fractional emission stops at 52 digits (IEEE-754 mantissa bits), matching
+    the JS engine's truncation.
     """
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
     if value == 0:
@@ -227,13 +216,10 @@ _USER_AGENT = "vidit-tweet-import/1.0"
 
 
 _CACHE_TTL_S = 3600.0  # 1h
-# Hard upper bound on cache occupancy. The TTL alone would only prune
-# on access of the same key — a scraper hammering varied tweet IDs
-# through the 30/min/IP rate limit could accumulate ~10k entries in a
-# few hours before any natural eviction. 256 is more than enough for
-# the analyst-pattern hot set (single analyst clicking Import twice in
-# a row, the common case the cache exists for) and keeps the worst
-# case memory bounded.
+# Hard cap on cache occupancy. TTL alone only prunes on re-access of the
+# same key — a scraper hammering varied IDs through the 30/min/IP limit
+# could accumulate ~10k entries before any eviction. 256 covers the
+# analyst hot set (clicking Import twice) and bounds worst-case memory.
 _CACHE_MAX_ENTRIES = 256
 
 
@@ -243,9 +229,8 @@ class _CacheEntry:
     expires_at: float
 
 
-# ``OrderedDict`` so the LRU eviction is a constant-time
-# ``popitem(last=False)``. Move-to-end on every hit and on every
-# insertion makes the front of the dict the least-recently-used.
+# ``OrderedDict`` so LRU eviction is constant-time ``popitem(last=False)``.
+# Move-to-end on every hit + insertion keeps the front least-recently-used.
 _cache: OrderedDict[str, _CacheEntry] = OrderedDict()
 _cache_lock = threading.Lock()
 
@@ -280,9 +265,8 @@ def _cache_clear() -> None:
 def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> dict[str, Any]:
     """Fetch the syndication JSON for ``tweet_id``.
 
-    The optional ``client`` knob is used by tests to substitute a
-    `MockTransport` — production code never passes it. Returns the
-    parsed JSON body on success. Raises:
+    The optional ``client`` is for tests (a `MockTransport`); production
+    never passes it. Returns the parsed JSON body. Raises:
 
     * ``TweetNotAccessible`` on 404 / deleted / protected tweets.
     * ``TweetFetchFailed`` on timeout, 5xx, or unparseable response.
@@ -332,10 +316,9 @@ class ParsedCoord:
     lng: float
 
 
-# Decimal pairs. The `.\d{3,}` floor on both sides is what keeps us from
-# matching dates (`2025-11-12`), version strings (`1.2.3`), and reply
-# counts ("1.1k replies, 12, 4 retweets") — none of those carry three or
-# more decimals on both numbers simultaneously.
+# Decimal pairs. The `.\d{3,}` floor on both sides keeps us off dates
+# (`2025-11-12`), version strings (`1.2.3`), and reply counts — none carry
+# 3+ decimals on both numbers at once.
 _DECIMAL_PAIR_RE = re.compile(
     r"(?<![\d.])"
     r"([-+]?\d{1,3}\.\d{3,})"
@@ -377,17 +360,14 @@ def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:
 
 
 def extract_coords(text: str) -> list[ParsedCoord]:
-    """Run all extractors over ``text`` and return a de-duped list of candidates.
+    """Run all extractors over ``text`` and return a de-duped candidate list.
 
-    Order: decimal pairs first (most common in OSINT posts), then DMS
-    (older intel + RA reports), then Google Maps URLs (when the analyst
-    embeds a Street View / Satellite link). Capped at ``_MAX_CANDIDATES``
-    so a malicious / accidental flood of coordinate-shaped strings can't
-    blow up the response payload.
+    Order: decimal pairs (most common in OSINT posts), DMS (older intel),
+    then Google Maps URLs. Capped at ``_MAX_CANDIDATES`` so a flood of
+    coordinate-shaped strings can't blow up the payload.
 
-    De-duplication is by rounded-to-6-decimals key — finer than that
-    just gives us float-equality artefacts; coarser would conflate
-    candidates the analyst would want to distinguish in the chips.
+    Dedup by rounded-to-6-decimals key — finer gives float-equality
+    artefacts, coarser conflates candidates the analyst wants distinct.
     """
     candidates: list[ParsedCoord] = []
     seen: set[tuple[float, float]] = set()
@@ -444,17 +424,14 @@ _TITLE_MAX_LEN = 120
 def derive_title(text: str) -> str:
     """Best-effort title from the tweet body.
 
-    First non-empty line, leading hashtags + URLs stripped, collapsed
-    whitespace, truncated to ``_TITLE_MAX_LEN`` on a word boundary. If
-    nothing usable remains (empty tweet, all-hashtags, all-URLs), return
-    ``""`` so the form leaves the title input empty and the analyst types
-    one — that's the right fallback, since the wrong title in the field
-    is worse than no title.
+    First non-empty line, hashtags + URLs stripped, whitespace collapsed,
+    truncated to ``_TITLE_MAX_LEN`` on a word boundary. If nothing usable
+    remains (empty / all-hashtags / all-URLs), return ``""`` so the analyst
+    types one — a wrong title in the field is worse than none.
 
-    Truncation: prefer the last space-boundary inside the limit; if none
-    found (one very long token, e.g. a paste of an arabic / cyrillic
-    address with no spaces), hard-cut at the limit so we never emit a
-    title longer than the form's column.
+    Truncation: prefer the last space inside the limit; with none (one long
+    token, e.g. a no-space cyrillic address) hard-cut so the title never
+    exceeds the form's column.
     """
     for raw_line in text.splitlines():
         line = _HASHTAG_RE.sub("", raw_line)
@@ -464,9 +441,8 @@ def derive_title(text: str) -> str:
             continue
         if len(line) <= _TITLE_MAX_LEN:
             return line
-        # Word-boundary cut. ``rsplit`` would split on the last space
-        # in the entire string; we want the last space within the
-        # truncation window, so slice first then look back.
+        # Last space within the truncation window — slice first then look
+        # back (``rsplit`` would find the last space in the whole string).
         clipped = line[:_TITLE_MAX_LEN]
         cut_at = clipped.rfind(" ")
         if cut_at >= 40:  # don't cut so aggressively the title becomes a stub
@@ -478,10 +454,10 @@ def derive_title(text: str) -> str:
 # ── Media extraction ──────────────────────────────────────────────────────
 
 
-# Allowlist of the only hosts our backend will fetch media from. The
-# media-proxy route uses the same list — keep them aligned so a hostile
-# tweet payload (or a future schema change at X) can't trick the proxy
-# into making an arbitrary outbound request.
+# Allowlist of hosts the backend will fetch media from. The media-proxy
+# route uses the same list — keep them aligned so a hostile tweet payload
+# (or X schema change) can't trick the proxy into an arbitrary outbound
+# request (SSRF).
 TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 
 
@@ -490,24 +466,21 @@ class ParsedMedia:
     kind: Literal["image", "video"]
     remote_url: str
     content_type: str
-    # Where this media came from inside the syndication payload. The
-    # frontend's actual primary-vs-proof split is by ``kind`` — videos
-    # are the source footage, images are the analyst's annotated
-    # screenshots — so ``origin`` is informational only (used in the
-    # proof-body attribution, for debugging, and so a future smarter
-    # split can read it without a re-fetch). Don't introduce new
+    # Where this media came from in the payload. The frontend's
+    # primary-vs-proof split is by ``kind`` (videos = source footage,
+    # images = annotated screenshots), so ``origin`` is informational only
+    # (proof-body attribution, debugging, a future smarter split). Don't add
     # consumers that assume one origin maps to one bucket.
     origin: Literal["op", "quote"] = "op"
 
 
 def is_trusted_media_url(url: str) -> bool:
-    """Whitelist check used by both the response builder and the proxy.
+    """Allowlist check used by both the response builder and the proxy.
 
-    Single source of truth — both ``parse_tweet`` (filtering what we
-    advertise to the caller) and the media-proxy route (validating
-    the ``u=`` query before opening an outbound socket) call this.
-    Drift here would either silently drop legitimate media or open
-    the proxy to SSRF.
+    Single source of truth — ``parse_tweet`` (filtering what we advertise)
+    and the media-proxy route (validating ``u=`` before opening a socket)
+    both call this. Drift would silently drop legitimate media or open the
+    proxy to SSRF.
     """
     try:
         parsed = urlparse(url)
@@ -525,10 +498,9 @@ def _extract_media(
 ) -> list[ParsedMedia]:
     media: list[ParsedMedia] = []
 
-    # Image attachments live under ``mediaDetails`` (and the older
-    # ``photos`` field on some response shapes). We treat ``mediaDetails``
-    # as primary — it carries video entries too — and fall back to
-    # ``photos`` for image-only tweets.
+    # Images live under ``mediaDetails`` (and the older ``photos`` on some
+    # shapes). ``mediaDetails`` is primary — it carries videos too — with
+    # ``photos`` as the image-only fallback.
     details = syndication.get("mediaDetails")
     if isinstance(details, list):
         for entry in details:
@@ -547,9 +519,8 @@ def _extract_media(
                         )
                     )
             elif etype in ("video", "animated_gif"):
-                # Pick the highest-bitrate mp4 variant — that's the
-                # quality the embed widget surfaces, which is also the
-                # one the analyst expects to see in the form's preview.
+                # Highest-bitrate mp4 variant — the quality the embed widget
+                # surfaces, which is what the analyst expects in the preview.
                 variants = entry.get("video_info", {}).get("variants", [])
                 best: dict[str, Any] | None = None
                 if isinstance(variants, list):
@@ -598,14 +569,11 @@ def _extract_media(
 class ParsedQuotedTweet:
     """The tweet quoted by the OP, when present.
 
-    In OSINT workflows, when an analyst geolocates someone else's
-    footage they typically quote-tweet the original, attach annotated
-    screenshots, and tag credibility accounts. From the platform's
-    point of view, the quoted tweet is the actual *source* of the
-    evidence — the OP is just the analyst's commentary. So when we
-    detect a quote, the route surfaces it separately and the frontend
-    treats the quote URL as the geolocation's ``source_url`` rather
-    than the OP's URL (which would credit the analyst, not the source).
+    In OSINT workflows an analyst geolocating someone else's footage
+    quote-tweets the original and attaches annotated screenshots, so the
+    quoted tweet is the actual *source* and the OP is just commentary. When
+    a quote is detected, the frontend uses the quote URL as ``source_url``
+    rather than the OP's (which would credit the analyst, not the source).
     """
 
     source_url: str
@@ -620,18 +588,14 @@ _T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
 def _extract_external_source_url(syndication: dict[str, Any]) -> str | None:
     """First non-X URL from ``entities.urls``, when present.
 
-    OSINT posts commonly include the *real* source as a plain link in
-    the body — ``Source: https://t.me/<channel>/<id>``, or a YouTube /
-    Telegram / Mastodon URL. The X embed serialiser expands these via
-    ``entities.urls[].expanded_url``, which we trust over the wrapped
-    ``t.co`` shortlink. Skips ``x.com`` / ``twitter.com`` / ``t.co``
-    hosts so a tagged-account profile link or self-reference doesn't
-    masquerade as a source.
+    OSINT posts commonly put the *real* source as a body link
+    (``Source: https://t.me/...``, YouTube / Telegram / Mastodon). We trust
+    the embed serialiser's ``expanded_url`` over the wrapped ``t.co``
+    shortlink, skipping ``x.com`` / ``twitter.com`` / ``t.co`` so a tagged
+    profile or self-reference can't masquerade as a source.
 
-    Returns the first URL the analyst typed that points off-platform;
-    ``None`` if every URL in the tweet stays on X. The 'first' choice
-    matches the OSINT convention of "Source: <link>" being the
-    first non-cosmetic URL in the body.
+    Returns the first off-platform URL, or ``None`` if all stay on X.
+    'First' matches the "Source: <link>" convention.
     """
     entities = syndication.get("entities")
     if not isinstance(entities, dict):
@@ -661,11 +625,10 @@ def _extract_external_source_url(syndication: dict[str, Any]) -> str | None:
 def _extract_quoted_tweet(syndication: dict[str, Any]) -> ParsedQuotedTweet | None:
     """Pull out the quoted-tweet attribution, when the OP quote-retweets.
 
-    Returns ``None`` for a top-level original tweet or any shape we
-    don't recognise — never raises. Defensive against schema drift on
-    the unofficial endpoint: anything the upstream stops emitting
-    quietly degrades to "no quote detected" and the form falls back
-    to the OP URL as the source.
+    Returns ``None`` for a top-level tweet or any unrecognised shape —
+    never raises. Defensive against schema drift on the unofficial
+    endpoint: anything upstream stops emitting degrades to "no quote" and
+    the form falls back to the OP URL.
     """
     qt = syndication.get("quoted_tweet")
     if not isinstance(qt, dict):
@@ -691,24 +654,21 @@ def _extract_quoted_tweet(syndication: dict[str, Any]) -> ParsedQuotedTweet | No
 
 @dataclass(frozen=True)
 class ParsedTweet:
-    # ``source_url`` is the SOURCE — the quoted tweet's URL when the OP
-    # quote-retweets, otherwise the OP's own URL. The OP URL is rarely
-    # the real source in OSINT workflows (the analyst is the messenger,
-    # not the source of the footage), so the frontend uses this directly
-    # as the ``source_url`` form field.
+    # The SOURCE — the quoted tweet's URL when the OP quote-retweets, else
+    # the OP's own. The OP is rarely the real source in OSINT (messenger,
+    # not footage source), so the frontend uses this as the ``source_url``
+    # form field.
     source_url: str
-    # ``original_tweet_url`` is the OP's URL — kept so the frontend can
-    # cite the analyst in the proof body even when ``source_url`` points
-    # at the quoted source.
+    # The OP's URL — kept so the frontend can cite the analyst in the proof
+    # body even when ``source_url`` points at the quoted source.
     original_tweet_url: str
     posted_at: str  # ISO 8601 UTC
     author_handle: str
     tweet_text: str
     suggested_title: str
     parsed_coords: list[ParsedCoord]
-    # All media from both the OP and the quoted tweet. The ``origin``
-    # field on each entry tells the frontend whether it's primary
-    # (``quote``) or proof (``op``). See ``ParsedMedia.origin``.
+    # All media from the OP + the quoted tweet; each entry's ``origin`` tells
+    # the frontend primary (``quote``) vs proof (``op``). See ``ParsedMedia``.
     media: list[ParsedMedia]
     quoted_tweet: ParsedQuotedTweet | None
 
@@ -716,17 +676,15 @@ class ParsedTweet:
 def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
     """Top-level helper used by the route.
 
-    Walks normalise → fetch → extract and returns a fully-populated
-    ``ParsedTweet``. The optional ``client`` parameter is for the test
-    suite (passes an ``httpx.Client`` wired to a ``MockTransport``).
+    Walks normalise → fetch → extract into a ``ParsedTweet``. The optional
+    ``client`` is for tests (an ``httpx.Client`` on a ``MockTransport``).
     """
     normalised = normalise_tweet_url(url)
     body = fetch_syndication(normalised.tweet_id, client=client)
 
-    # Author handle — prefer the screen name from the response over the
-    # one we parsed from the URL, since `/i/web/status/<id>` URLs have
-    # no handle context. Fall back to the URL handle if the response
-    # is missing the field (defensive against schema drift).
+    # Author handle — prefer the response's screen name over the URL's,
+    # since `/i/web/status/<id>` has no handle. Fall back to the URL handle
+    # if the field is missing (schema-drift defensive).
     user = body.get("user")
     author_handle = normalised.handle
     if isinstance(user, dict):
@@ -734,9 +692,8 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
         if isinstance(screen_name, str) and screen_name:
             author_handle = screen_name
     if author_handle == "i":
-        # ``/i/web/status/...`` couldn't yield a handle, and the
-        # response didn't either — emit empty and let the caller
-        # render "@unknown" if they need to.
+        # Neither the ``/i/web/status/...`` URL nor the response yielded a
+        # handle — emit empty; the caller can render "@unknown".
         author_handle = ""
 
     posted_at_raw = body.get("created_at")
@@ -749,19 +706,16 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
 
     quoted = _extract_quoted_tweet(body)
 
-    # Try coordinate extraction on the OP text first; fall back to the
-    # quoted tweet's text if the OP has no recognised coords. Real
-    # OSINT posts most commonly carry the coordinates in the analyst's
-    # commentary (the OP), but a fair number just say "here ↓" and let
-    # the quoted source carry them.
+    # Coords from the OP text first, falling back to the quoted tweet.
+    # Analyst commentary (the OP) usually carries them, but some posts just
+    # say "here ↓" and let the quoted source carry them.
     coords = extract_coords(tweet_text)
     if not coords and quoted is not None and quoted.tweet_text:
         coords = extract_coords(quoted.tweet_text)
 
-    # Media split: OP's media tagged ``op``, quoted tweet's tagged
-    # ``quote``. The frontend uses ``origin`` to decide which goes into
-    # ``files[]`` (primary) vs the proof body (analyst-annotated
-    # screenshots).
+    # Media split: OP tagged ``op``, quoted tweet tagged ``quote``; the
+    # frontend uses ``origin`` for ``files[]`` (primary) vs proof body
+    # (annotated screenshots).
     media = list(_extract_media(body, origin="op"))
     if quoted is not None:
         qt_body = body.get("quoted_tweet")
@@ -771,13 +725,11 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
     # ``source_url`` resolution, in priority order:
     #
     # 1. Quoted tweet's URL — OP quote-retweeted the source.
-    # 2. First non-X URL in ``entities.urls`` — analyst typed the source
-    #    explicitly in the body ("Source: https://t.me/...").
-    # 3. OP's own URL as fallback. This is the wrong attribution often
-    #    enough (analysts post their geolocation work as the source of
-    #    the analysis, not the source of the footage) that the
-    #    frontend banner reminds them to override; but it's a strict
-    #    improvement over leaving the form blank.
+    # 2. First non-X URL in ``entities.urls`` — analyst typed it
+    #    ("Source: https://t.me/...").
+    # 3. OP's own URL — wrong attribution often enough (analysts post their
+    #    analysis, not the footage source) that the frontend banner reminds
+    #    them to override, but better than a blank form.
     if quoted is not None:
         source_url = quoted.source_url
     else:

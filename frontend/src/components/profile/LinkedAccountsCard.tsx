@@ -87,11 +87,9 @@ export function LinkedAccountsCard({
         {presentLinks.map((p) => {
           const value = profile.external_links[p.key] ?? "";
           const href = resolveLinkHref(p.key, value);
-          // Orange-value rule: clickable rows (where the string
-          // sniffs as an http URL) read as clickable; plain handles
-          // (e.g. a Discord username) keep neutral text. Stays
-          // consistent with the "if it's orange, it's clickable"
-          // design rule.
+          // Orange only when `href` resolves (the value sniffs as an http
+          // URL), per the "if it's orange, it's clickable" rule; plain handles
+          // (e.g. a Discord username) stay neutral.
           const valueClass = href
             ? "text-sm text-orange-400 truncate"
             : "text-sm text-neutral-200 truncate";

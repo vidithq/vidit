@@ -10,19 +10,15 @@ from app.database import Base
 class Follow(Base):
     """One directed edge of the social graph — ``follower`` follows ``followed``.
 
-    Primary key is the pair ``(follower_id, followed_id)`` so duplicate rows
-    can't exist and the forward-direction lookup ("who is X following?") is
-    indexed by the PK's leading column. A separate index on ``followed_id``
-    covers the reverse-direction lookup ("who follows X?"). A ``CHECK``
-    constraint blocks self-follow at the DB layer — the router rejects it
-    with a 400 too, but the constraint is the durable invariant.
+    PK is the pair ``(follower_id, followed_id)`` so duplicates can't exist and
+    the forward lookup ("who is X following?") rides the PK's leading column. A
+    separate index on ``followed_id`` covers the reverse ("who follows X?"). The
+    ``CHECK`` blocks self-follow at the DB layer — the router 400s it too, but
+    the constraint is the durable invariant.
 
-    No ORM ``relationship`` is declared on this model: slice-1 queries hit
-    ``follower_id`` / ``followed_id`` directly (``followers_count``,
-    ``following_count``, the ``Follow.follower_id == ...`` filters), so
-    convenience backrefs would only bloat the ``User`` mapper without
-    serving any read path. Add them back when slice 2 introduces
-    follower-list pages and the join is genuinely useful.
+    No ORM ``relationship`` is declared: current queries hit ``follower_id`` /
+    ``followed_id`` directly (counts, the ``Follow.follower_id == ...`` filters),
+    so backrefs would only bloat the ``User`` mapper without serving a read path.
     """
 
     __tablename__ = "follows"

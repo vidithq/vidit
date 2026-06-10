@@ -92,12 +92,10 @@ def test_change_password_happy_path(client, user_factory):
     )
     assert response.status_code == 204
 
-    # The new password works; the old one doesn't. Clearing the jar
-    # between each /login is defensive — the session cookie from
-    # ``login_as`` would otherwise carry into the second request and
-    # mask a regression where ``/login`` started caring about prior
-    # session state (it doesn't today, but the assertion target is
-    # password-acceptance, not session-handoff).
+    # New password works, old one doesn't. Clear the jar between each /login so
+    # the ``login_as`` session cookie can't carry into the next request and mask
+    # a regression where /login started caring about prior session state — the
+    # assertion target is password-acceptance, not session-handoff.
     client.cookies.clear()
     ok = client.post(
         "/api/v1/auth/login",
@@ -158,12 +156,10 @@ def test_change_password_requires_authentication(client):
 
 
 def test_change_password_writes_audit_event(client, user_factory, db, email_recorder):
-    # ``email_recorder`` is here to absorb the heads-up background task
-    # the endpoint now dispatches — without it, ``email.send`` would
-    # follow the live ``EMAIL_PROVIDER`` setting and could either pad
-    # the test wall time or attempt a real Resend round-trip. The
-    # assertion target is the audit row, not the email itself; the
-    # dedicated email test lives below.
+    # ``email_recorder`` absorbs the heads-up background task — without it,
+    # ``email.send`` follows the live ``EMAIL_PROVIDER`` and could pad wall time
+    # or attempt a real Resend round-trip. Assertion target is the audit row,
+    # not the email (the dedicated email test is below).
     user, current = user_factory()
     response = client.post(
         "/api/v1/auth/change-password",

@@ -25,11 +25,10 @@ class BountyRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None
-    # Mirrors ``GeolocationRead.is_demo`` — TRUE iff seeded by the admin
-    # "Demo bounties" panel. The frontend uses this to swap the
-    # synthetic source_url for an inert label so testers don't click
-    # out to a 404; the visible signal that a bounty is demo is the
-    # always-attached `demo` tag, not a dedicated badge.
+    # Mirrors ``GeolocationRead.is_demo`` — TRUE iff seeded by the admin "Demo
+    # bounties" panel. The frontend swaps the synthetic source_url for an inert
+    # label so testers don't click out to a 404; the visible demo signal is the
+    # always-attached `demo` tag, not a badge.
     is_demo: bool
     author: AuthorRef
     media: list[MediaRead]
@@ -50,10 +49,9 @@ class BountyList(BaseModel):
     author: AuthorRef
     media: list[MediaRead]
     tags: list[TagRead]
-    # Denormalised so the index card doesn't N+1 — the list endpoint
-    # supplies the full count plus a small avatar-sized sample
-    # (newest claimers first, capped). Detail page fetches the full
-    # claimers list via ``GET /bounties/{id}``.
+    # Denormalised so the index card doesn't N+1: full count plus a small,
+    # capped sample (newest claimers first). The detail page fetches the full
+    # list via ``GET /bounties/{id}``.
     claimer_count: int
     claimer_sample: list[AuthorRef]
 

@@ -6,10 +6,9 @@ import { createContext, useContext, useMemo, useState, ReactNode } from "react";
  * Persistent map-page state that survives navigation away and back.
  *
  * The home page lives at /; navigating to /profile/<x> or /geolocations/<x>
- * unmounts /page.tsx and would lose its useState. By lifting state into a
- * context provider that lives in the root layout (Providers), the state
- * survives. Coming back from a deep page restores the previous view, the
- * selected point, and the filter set.
+ * unmounts /page.tsx and would lose its useState. Lifting state into a
+ * context provider in the root layout (Providers) keeps it, so returning
+ * from a deep page restores the view, selected point, and filter set.
  */
 
 export interface ViewState {
@@ -25,17 +24,15 @@ const DEFAULT_VIEW_STATE: ViewState = {
 };
 
 interface MapState {
-  // Map view (pan + zoom). Updated whenever the user pans or zooms.
   viewState: ViewState;
   setViewState: (v: ViewState) => void;
 
-  // Selected geolocation (controls the detail panel).
   selectedId: string | null;
   setSelectedId: (v: string | null) => void;
 
-  // Filters — every tag bucket is multi-select. Within a bucket the
-  // server applies OR (any-of); across buckets it applies AND (a geo
-  // must satisfy each bucket independently). See `routers/geolocations.py::_apply_filters`.
+  // Filters — every tag bucket is multi-select. Within a bucket the server
+  // applies OR (any-of); across buckets AND (a geo must satisfy each bucket
+  // independently). See `routers/geolocations.py::_apply_filters`.
   selectedConflicts: string[];
   setSelectedConflicts: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedCaptureSources: string[];
@@ -53,7 +50,6 @@ interface MapState {
   authorFilter: string;
   setAuthorFilter: (v: string) => void;
 
-  // UI state
   filtersOpen: boolean;
   setFiltersOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
@@ -73,10 +69,10 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [authorFilter, setAuthorFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
 
-  // Memoised so the value object is referentially stable across renders that
-  // don't actually change any state slot. React re-runs every consumer when
-  // the value identity changes, so unmemoised this would re-render every
-  // useContext consumer on every keystroke even if nothing they read moved.
+  // Memoised for a referentially-stable value across renders that don't
+  // change any state slot. React re-runs every consumer on value-identity
+  // change, so unmemoised this would re-render every consumer on every
+  // keystroke even if nothing they read moved.
   const value = useMemo<MapState>(
     () => ({
       viewState,

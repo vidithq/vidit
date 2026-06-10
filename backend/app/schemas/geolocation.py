@@ -12,9 +12,8 @@ from app.schemas.user import AuthorRef
 class _OriginatedFromBountyNested(BaseModel):
     """Compact bounty trace surfaced on the geolocation detail.
 
-    Just enough to render "originally posted as a bounty by @x" with a
-    click-through link; the full bounty row is one extra fetch on the
-    detail page when the reader wants it.
+    Enough to render "originally posted as a bounty by @x" with a click-through;
+    the full bounty row is one extra fetch when the reader wants it.
     """
 
     id: uuid.UUID
@@ -66,10 +65,9 @@ class PaginatedGeolocations(BaseModel):
 class PossibleDuplicateRead(BaseModel):
     """Soft-warning hit on the submit form's possible-duplicate probe.
 
-    Compact shape — just the bits the analyst needs to recognise
-    "yeah, that's the same event" and decide whether to abandon their
-    in-progress submission. The full detail page is one click away if
-    they want the proof body / media.
+    Just the bits the analyst needs to recognise "that's the same event" and
+    decide whether to abandon their in-progress submission. The full detail page
+    is one click away for the proof body / media.
     """
 
     id: uuid.UUID
@@ -78,9 +76,9 @@ class PossibleDuplicateRead(BaseModel):
     lng: float
     event_date: date
     source_url: str
-    # Geodesic distance in metres from the caller-supplied (lat, lng).
-    # Float (not int) so the frontend can render "120 m" vs "0.4 km"
-    # at small distances without rounding artefacts.
+    # Geodesic distance in metres from the caller-supplied (lat, lng). Float
+    # (not int) so the frontend renders "120 m" vs "0.4 km" without rounding
+    # artefacts at small distances.
     distance_m: float
     author: AuthorRef
 
@@ -100,23 +98,21 @@ class TweetImportCoord(BaseModel):
 
 class TweetImportMedia(BaseModel):
     kind: Literal["image", "video"]
-    # ``remote_url`` is the upstream X CDN URL the frontend either
-    # fetches directly (when CORS permits — usually it doesn't) or
-    # proxies via ``GET /geolocations/import-from-tweet/media``.
+    # Upstream X CDN URL — the frontend fetches it directly when CORS permits
+    # (usually it doesn't) or proxies via ``GET /geolocations/import-from-tweet/media``.
     remote_url: str
     content_type: str
-    # Where the media came from inside the OP/quote pair. Informational
-    # only — the primary-vs-proof split on the frontend is by ``kind``
-    # (videos → primary, images → proof), see api.md.
+    # Where the media came from in the OP/quote pair. Informational only — the
+    # primary-vs-proof split is by ``kind`` (videos → primary, images → proof),
+    # see api.md.
     origin: Literal["op", "quote"] = "op"
 
 
 class TweetImportQuotedTweet(BaseModel):
     """The tweet quoted by the OP, when present.
 
-    Surfaced so the frontend can credit the original author in the
-    proof body even though the geolocation's ``source_url`` already
-    points at this quoted tweet.
+    Surfaced so the frontend can credit the original author in the proof body
+    even though ``source_url`` already points at this quoted tweet.
     """
 
     source_url: str
@@ -127,17 +123,14 @@ class TweetImportQuotedTweet(BaseModel):
 class TweetImportResponse(BaseModel):
     """Pre-fill payload for the submit form.
 
-    All fields are best-effort. ``suggested_title`` is empty when the
-    tweet text yields nothing usable; ``parsed_coords`` is empty when
-    the text carries no recognised coordinate format; ``media`` is
-    empty when the tweet has no attached image / video. The analyst
-    reviews everything before clicking submit — this is a typing
-    shortcut, not an authority on the event.
+    All fields best-effort: ``suggested_title`` empty when the text yields
+    nothing usable, ``parsed_coords`` empty when no recognised coordinate
+    format, ``media`` empty when no attached image / video. The analyst reviews
+    everything before submitting — a typing shortcut, not an authority.
 
-    When the OP quote-retweets, ``source_url`` is the quoted tweet's
-    URL (the OSINT-correct attribution); ``original_tweet_url`` is
-    always the OP's URL and ``quoted_tweet`` carries the quote's
-    metadata so the frontend can render both in the proof body.
+    When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
+    OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
+    ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
     """
 
     source_url: str

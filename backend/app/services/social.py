@@ -11,20 +11,16 @@ from app.models.user import User
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Insert a follow row. Idempotent: returns ``False`` if the edge already exists.
+    """Insert a follow row. Idempotent: returns ``False`` if the edge exists.
 
     The router resolves the target user (and enforces ``follower_id !=
-    followed_user.id`` + the soft-delete filter) before calling this — keeps
-    the service free of cross-cutting validation and avoids a redundant DB
-    lookup that the old shape paid on every call.
+    followed_user.id`` + the soft-delete filter) before calling.
 
-    Two requests can race past the existence check (or hammer the endpoint
-    from two browser tabs) — only one INSERT wins, the loser hits the
-    composite-PK violation on flush. We stage the INSERT inside a SAVEPOINT
-    so the ``IntegrityError`` rolls that one statement back without
-    poisoning the outer transaction, and the loser sees the same idempotent
-    ``False`` return that they'd get from the existence check on a slower
-    box. The endpoint advertises idempotency; a 500 here would break it.
+    Two requests can race past the existence check; only one INSERT wins,
+    the loser hits the composite-PK violation on flush. Staging the INSERT
+    in a SAVEPOINT lets that ``IntegrityError`` roll back without poisoning
+    the outer transaction, so the loser sees the same idempotent ``False``
+    instead of a 500 that would break advertised idempotency.
     """
     existing = (
         db.query(Follow)
@@ -66,11 +62,10 @@ def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID)
 def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: int = 20) -> dict:
     """Page through geolocations authored by users that ``user_id`` follows.
 
-    Returns ``{"items": [(geo, lat, lng), ...], "total": int}``. Ordered by
-    event date (then created_at as a tiebreaker for entries sharing the same
-    calendar date), newest first — matches the rest of the read surface (map,
-    profile, search). Coordinates land in the same SELECT via ``ST_X / ST_Y``
-    so the router doesn't fall into an N+1 fetching them per row.
+    Returns ``{"items": [(geo, lat, lng), ...], "total": int}``, ordered by
+    event date (then created_at as tiebreaker), newest first — matching the
+    rest of the read surface. Coordinates land in the same SELECT via
+    ``ST_X / ST_Y`` so the router avoids an N+1 fetching them per row.
     """
     followed_ids_stmt = select(Follow.followed_id).where(Follow.follower_id == user_id)
     followed_ids = list(db.execute(followed_ids_stmt).scalars().all())
@@ -90,9 +85,8 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
             ST_X(Geolocation.location).label("lng"),
         )
         # ``selectinload`` for tags — a many-to-many ``joinedload`` would
-        # row-multiply against ``LIMIT`` and silently truncate the page when
-        # geos carry multiple tags. ``joinedload`` is safe for the author
-        # (many-to-one, no inflation).
+        # row-multiply against ``LIMIT`` and silently truncate the page.
+        # ``joinedload`` is safe for the author (many-to-one, no inflation).
         .options(joinedload(Geolocation.author), selectinload(Geolocation.tags))
         .filter(where_clause)
         .order_by(Geolocation.event_date.desc(), Geolocation.created_at.desc())

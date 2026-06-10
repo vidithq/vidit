@@ -63,7 +63,6 @@ export default function GeolocationPage() {
       }
     >
         <GeolocationDetailBody geo={geo} variant="page">
-          {/* Map */}
           <div>
             <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
               Location

@@ -14,12 +14,10 @@ import {
 
 
 /**
- * Reset-password landing — opened from the email link.
- *
- * The token is taken straight from the query string. Backend treats every
- * failure mode (unknown / expired / already-consumed / wrong-purpose) as
- * the same opaque 400 to avoid leaking which step rejected; the UI mirrors
- * that — one "invalid or expired link" path for any error.
+ * Reset-password landing, opened from the email link; token comes from the
+ * query string. Backend returns the same opaque 400 for every failure mode
+ * (unknown / expired / consumed / wrong-purpose) to avoid leaking which
+ * step rejected; the UI mirrors that with one "invalid link" path.
  */
 function ResetPasswordInner() {
   const params = useSearchParams();

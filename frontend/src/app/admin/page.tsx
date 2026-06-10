@@ -18,8 +18,8 @@ export default function AdminPage() {
   const { isAdmin, loading: adminLoading } = useAdmin();
   const router = useRouter();
 
-  // While the auth/admin probes resolve, don't decide anything — otherwise
-  // an admin would see "Loading… → 404" on first paint as the probes race.
+  // Decide nothing until both probes resolve, else an admin sees
+  // "Loading… → 404" on first paint as the probes race.
   const probing = authLoading || adminLoading;
 
   useEffect(() => {

@@ -56,12 +56,9 @@ export function RecentSubmissions({
           ))}
         </div>
       ) : isOwn ? (
-        // First-impression surface for the freshly-invited analyst:
-        // own profile with nothing submitted yet. The standalone
-        // "Submit your first geolocation →" link gives the page a
-        // clear next action instead of dead-ending on an italic
-        // sentence. Visually centered + a touch of vertical air so
-        // the CTA actually reads as a thing to do, not a caption.
+        // Own profile, nothing submitted yet — give the freshly-invited
+        // analyst a clear next action instead of dead-ending on an italic
+        // sentence.
         <div className="py-4 text-center space-y-3">
           <p className="text-sm text-neutral-400">
             No geolocations submitted yet.

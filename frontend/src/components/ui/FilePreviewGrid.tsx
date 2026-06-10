@@ -3,15 +3,10 @@
 import { useEffect, useState } from "react";
 
 /**
- * Thumbnail strip for files queued in a submit form, before upload.
- * Renders each `File` as a `<video>` / `<img>` preview from an object URL,
- * revoked on unmount and whenever the file list changes (so a
- * "clear → re-pick" cycle — e.g. the tweet-import flow — doesn't leak
- * blob URLs across rounds).
- *
- * Shared by the geolocation + bounty submit forms so both show the same
- * preview for analyst-picked or imported source media — the contract is
- * just `File[]`; the origin doesn't matter here.
+ * Thumbnail strip for files queued in a submit form, before upload. Object URLs
+ * are revoked on unmount and whenever the file list changes, so a
+ * "clear → re-pick" cycle (e.g. tweet-import) doesn't leak blob URLs.
+ * Shared by the geolocation + bounty forms; contract is just `File[]`.
  */
 export function FilePreviewGrid({ files }: { files: File[] }) {
   const [urls, setUrls] = useState<string[]>([]);
@@ -43,9 +38,8 @@ export function FilePreviewGrid({ files }: { files: File[] }) {
                 preload="metadata"
               />
             ) : (
-              // Local file preview — object-URL bytes never round-trip
-              // through Next's image optimiser, so the plain <img> tag
-              // is the right primitive here.
+              // Object-URL bytes can't round-trip through Next's image
+              // optimiser, so a plain <img> is required here.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={urls[i]}

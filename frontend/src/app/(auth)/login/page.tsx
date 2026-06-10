@@ -10,20 +10,17 @@ function LoginPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
-  // Already signed in (e.g. landed here by typing the URL or an old
-  // bookmark)? Bounce to the app instead of showing a login form.
-  // Render nothing while AuthContext is still resolving /auth/me —
-  // otherwise a signed-in visitor sees an empty form flash for
-  // 50–200ms before the redirect fires, which reads as "session
-  // expired" and can prompt them to retype credentials.
+  // Already signed in? Bounce to the app. Render nothing while
+  // AuthContext resolves /auth/me, else a signed-in visitor sees a form
+  // flash that reads as "session expired" and prompts a re-login.
   const { user, loading } = useRedirectIfAuthenticated(next);
   if (loading || user) return null;
   return <LoginForm onSuccess={() => router.push(next)} />;
 }
 
 export default function LoginPage() {
-  // LoginForm calls useSearchParams() to surface the post-reset toast,
-  // which forces a Suspense boundary in Next 14+. Tiny wrapper.
+  // LoginForm's useSearchParams() (for the post-reset toast) forces a
+  // Suspense boundary in Next 14+.
   return (
     <Suspense
       fallback={<span className="text-neutral-500 text-sm">Loading…</span>}

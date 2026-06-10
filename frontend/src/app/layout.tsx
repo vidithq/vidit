@@ -11,15 +11,12 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  // Anchors every page-level metadata URL (og:image, og:url, twitter:image,
-  // canonical, etc.) to the production hostname. Without this Next.js
-  // falls back to `https://${VERCEL_PROJECT_PRODUCTION_URL}` — which is
-  // the per-project Vercel alias (`vidit-frontend.vercel.app`), NOT the
-  // canonical `vidit.app` the rest of the site advertises. Social
-  // crawlers (X, LinkedIn, Slack) then publish the Vercel-alias URL
-  // for the og:image, undercutting the rebrand the rest of the PR is
-  // about. Also silences the "metadata.metadataBase is not set" build
-  // warning that fires on every Vercel build.
+  // Anchors every page-level metadata URL (og:image, og:url, canonical,
+  // etc.) to the production hostname. Without it Next falls back to
+  // `https://${VERCEL_PROJECT_PRODUCTION_URL}` — the per-project Vercel
+  // alias, not canonical `vidit.app` — so social crawlers publish the
+  // alias URL. Also silences the "metadata.metadataBase is not set" build
+  // warning.
   metadataBase: new URL("https://vidit.app"),
   title: "Vidit — OSINT/GEOINT Platform",
   description:

@@ -5,15 +5,13 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
- * Probe `/admin/me` once per signed-in session to learn whether the
- * current user is an admin. Lives separate from `AuthContext` on purpose:
- * `is_admin` is not on the public `/auth/me` shape — it's only exposed via
- * the admin-only probe so the public OpenAPI / `UserRead` schema doesn't
- * leak the role.
+ * Probe `/admin/me` once per signed-in session for admin status. Separate
+ * from `AuthContext` on purpose: `is_admin` is not on the public `/auth/me`
+ * shape — only the admin-only probe exposes it, so the public OpenAPI /
+ * `UserRead` schema doesn't leak the role.
  *
- * Returns `loading: true` until the probe resolves; the sidebar and the
- * page guard both wait on `loading` before deciding what to render, so
- * an admin doesn't see a "not allowed" flash before the probe lands.
+ * Returns `loading: true` until the probe resolves; the sidebar and page
+ * guard wait on it so an admin doesn't see a "not allowed" flash first.
  */
 export function useAdmin(): { isAdmin: boolean; loading: boolean } {
   const { user, loading: authLoading } = useAuth();
@@ -35,8 +33,8 @@ export function useAdmin(): { isAdmin: boolean; loading: boolean } {
       })
       .catch(() => {
         if (cancelled) return;
-        // 401/403/anything else → not an admin. The page guard treats this
-        // as a 404 (sword icon hidden, /admin renders not-found).
+        // 401/403/anything else → not an admin. The page guard treats it as
+        // a 404 (sword icon hidden, /admin renders not-found).
         setIsAdmin(false);
       })
       .finally(() => {

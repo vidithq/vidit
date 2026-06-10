@@ -56,5 +56,4 @@ class TTLCache:
                     del self._store[k]
 
 
-# Singleton — shared across the application
 points_cache = TTLCache(default_ttl=60, max_size=512)

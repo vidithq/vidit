@@ -105,11 +105,9 @@ export default function SettingsPage() {
               </div>
             )}
             {success && (
-              // Success banners reuse the orange-tinted shape from
-              // LoginForm's "reset successful" banner. Emerald is
-              // deliberately out — design.md's palette recipe explains why: "success"
-              // celebrations next to red destructive actions read wrong,
-              // and the rest of the app stays in the orange family.
+              // Orange, not emerald (see design.md's palette): "success"
+              // green next to red destructive actions reads wrong, and the
+              // app stays in the orange family.
               <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
                 Password updated.
               </div>

@@ -10,16 +10,14 @@ import { AuthCard } from "@/components/auth/AuthCard";
 type State = "confirming" | "success" | "failed";
 
 /**
- * Landing page for the link in the registration confirmation email.
+ * Landing page for the registration confirmation email link.
  *
- * Auto-consumes the token on mount. The user already clicked the link;
- * making them push a second button just guarantees a chunk of them
- * abandon the flow. The hook runs exactly once even under React 18
- * Strict Mode by gating on a ref, so we don't double-consume the
- * (single-use!) token.
+ * Auto-consumes the token on mount (a second button drops users from the
+ * flow). Gated on a ref so it runs once under Strict Mode and doesn't
+ * double-consume the single-use token.
  *
- * On success the backend sets the session + CSRF cookies in the same
- * response, so we refresh /me and route to the map already signed in.
+ * On success the backend sets session + CSRF cookies in the same response,
+ * so we refresh /me and route to the map already signed in.
  */
 function ConfirmInner() {
   const params = useSearchParams();
@@ -30,10 +28,9 @@ function ConfirmInner() {
   const ranRef = useRef(false);
   const { refresh } = useAuth();
 
-  // Refs survive Strict Mode's mount→cleanup→remount. We use a ref
-  // (rather than a captured closure var) so the cleanup function
-  // doesn't accidentally cancel a state update from a still-relevant
-  // fetch that was issued by the previous mount.
+  // Ref (not a closure var) so it survives Strict Mode's
+  // mount→cleanup→remount and cleanup can't cancel a still-relevant
+  // fetch's state update from the previous mount.
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,10 +54,8 @@ function ConfirmInner() {
           /* non-fatal — the next page load will catch up */
         }
         setState("success");
-        // Short delay so the user reads the success message before
-        // the hard navigate. Tracked on a ref so unmount can cancel a
-        // stale push without blocking the success state in Strict-
-        // Mode's mount→cleanup→remount cycle.
+        // Delay so the user reads the success message before the hard
+        // navigate; on a ref so unmount can cancel a stale push.
         redirectTimerRef.current = setTimeout(() => router.push("/map"), 800);
       })
       .catch((err) => {

@@ -69,13 +69,11 @@ limiter.enabled = settings.rate_limit_enabled
 def _session_or_ip_key(request: Request) -> str:
     """Rate-limit key for cookie-authenticated endpoints.
 
-    For endpoints reachable only with a valid session cookie, keying on
-    the session itself (rather than the source IP) avoids two-analysts-
-    behind-the-same-NAT collisions. We don't log the raw JWT — we hash
-    it so the rate-limiter store sees only a stable opaque key. Falls
-    back to :func:`rate_limit_key` (right-most-XFF aware) when no
-    session cookie is present, so the fallback path can't be spoofed
-    via ``X-Forwarded-For`` rotation either.
+    Keying on the session (not source IP) avoids two-analysts-behind-one-
+    NAT collisions. The cookie is hashed so the rate-limiter store holds
+    only a stable opaque key, never the raw JWT. Falls back to
+    :func:`rate_limit_key` (right-most-XFF aware, so unspoofable via
+    ``X-Forwarded-For`` rotation) when no session cookie is present.
     """
     cookie = request.cookies.get(SESSION_COOKIE)
     if cookie:
@@ -91,17 +89,12 @@ def _build_link(path: str, token: str) -> str:
 def _send_password_changed_notification_best_effort(*, user_id: uuid.UUID, to: str) -> None:
     """Send the change-password heads-up email but never raise.
 
-    A Resend outage must not fail the rotation — the credential has
-    already been written by the time this runs, and the email is an
-    informational heads-up, not a gate. Same swallow-and-log shape as
-    the other recovery-adjacent sends.
-
-    The send failure log records ``user_id`` rather than the address.
-    Resend logs already echo the recipient on every send (see the
-    same-policy comment on ``_send_resend``); doubling that into our
-    application logs would needlessly widen the surface where the
-    user→address mapping leaks. The mapping is in ``users`` and
-    ``auth_events`` for anyone who legitimately needs it.
+    A Resend outage must not fail the rotation — the credential is
+    already written by the time this runs; the email is a heads-up, not
+    a gate. Logs ``user_id`` not the address: Resend already echoes the
+    recipient on every send, so duplicating it here would needlessly
+    widen where the user→address mapping leaks (it lives in ``users`` /
+    ``auth_events`` for anyone who needs it).
     """
     try:
         email.send(email.password_changed_email(to=to))
@@ -117,8 +110,8 @@ def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> N
     """Send the confirmation email but never raise.
 
     A Resend outage during /register would otherwise fail the request
-    after the pending row already exists. The user can hit "resend
-    confirmation" once they realise the email never arrived.
+    after the pending row already exists; the user can hit "resend
+    confirmation" if the email never arrives.
     """
     try:
         link = _build_link("/confirm-registration", raw_token)
@@ -143,11 +136,9 @@ _REGISTRATION_ERROR_STATUS: dict[str, int] = {
 def _raise_registration_error(exc: registration.RegistrationError) -> NoReturn:
     """Translate a typed registration error into a structured HTTP response.
 
-    ``detail`` is a ``{"code", "message"}`` dict so the frontend can
-    branch on the stable identifier without English-prose substring
-    matching. The ``message`` field preserves the user-facing prose so
-    a generic error renderer can display it verbatim when no code-aware
-    handler is wired.
+    ``detail`` is a ``{"code", "message"}`` dict so the frontend branches
+    on the stable ``code`` without prose substring-matching; ``message``
+    preserves the user-facing text for a generic renderer to show verbatim.
     """
     raise HTTPException(
         status_code=_REGISTRATION_ERROR_STATUS.get(exc.code, 400),
@@ -192,10 +183,9 @@ def register(
     )
     db.commit()
 
-    # Dispatch the email send off the request thread, matching the
-    # /forgot-password timing-equalisation pattern. The Resend round-
-    # trip is hundreds of ms; keeping it on the request thread would
-    # make the success branch run much slower than the
+    # Dispatch the send off-thread (same timing-equalisation as
+    # /forgot-password): the Resend round-trip is hundreds of ms, so
+    # keeping it inline would make the success branch slower than the
     # already-registered / already-pending branches and leak state via
     # response time.
     background_tasks.add_task(
@@ -262,10 +252,9 @@ def resend_confirmation(
         _raise_registration_error(exc)
 
     # Audit on BOTH branches — same discipline as ``/forgot-password``.
-    # ``user_id`` stays NULL on either branch (no ``users`` row exists
-    # for a pending registration yet), so the row records "a resend
-    # was attempted from this IP" without leaking which addresses
-    # have a live pending row.
+    # ``user_id`` stays NULL (no ``users`` row exists for a pending
+    # registration yet), so the row records "a resend was attempted from
+    # this IP" without leaking which addresses have a live pending row.
     audit.log_auth_event_from_request(
         db,
         request,
@@ -305,11 +294,10 @@ def login(
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == body.email).first()
-    # Always run bcrypt — against the real hash if we found a live user,
-    # against a dummy hash otherwise — so the unknown-email and
-    # soft-deleted branches take the same time as the wrong-password
-    # branch. Without the dummy verify, response time is a free oracle
-    # for "is this email a known-but-deleted user?".
+    # Always run bcrypt — real hash for a live user, dummy hash otherwise —
+    # so the unknown-email and soft-deleted branches take the same time as
+    # the wrong-password branch. Without the dummy verify, response time is
+    # a free oracle for "is this email a known-but-deleted user?".
     password_hash = (
         user.password_hash if user is not None and user.deleted_at is None else DUMMY_PASSWORD_HASH
     )
@@ -350,14 +338,14 @@ def logout(
     response: Response,
     db: Session = Depends(get_db),
 ) -> None:
-    # Idempotent: works whether or not a session cookie was present. Mutating
-    # the injected ``response`` (rather than returning a new one) is what makes
-    # FastAPI actually send the Set-Cookie clear headers.
+    # Idempotent: works with or without a session cookie. Mutating the
+    # injected ``response`` (not returning a new one) is what makes FastAPI
+    # send the Set-Cookie clear headers.
     #
     # Decode the cookie best-effort to attach a user_id to the audit row.
-    # A malformed / expired / missing cookie still gets a row (with
-    # user_id NULL) so "any logout-shaped request from this IP" is still
-    # queryable; we just can't tell who it claimed to be.
+    # A malformed / expired / missing cookie still gets a row (user_id
+    # NULL) so "any logout-shaped request from this IP" stays queryable;
+    # we just can't tell who it claimed to be.
     cookie = request.cookies.get(SESSION_COOKIE)
     user_id: uuid.UUID | None = None
     if cookie:
@@ -374,19 +362,17 @@ def logout(
                 except ValueError:
                     user_id = None
         except jwt.InvalidTokenError as exc:
-            # Tampered / expired / malformed cookie. Still log the
-            # logout (with user_id NULL) so the request is queryable,
-            # but emit a WARN so the line is greppable when
-            # investigating — silent NULLs for legitimate-no-cookie and
-            # forged-cookie cases look identical otherwise.
+            # Tampered / expired / malformed cookie. Still log the logout
+            # (user_id NULL) so the request is queryable, but WARN so the
+            # line is greppable — legitimate-no-cookie and forged-cookie
+            # cases produce identical silent NULLs otherwise.
             logger.warning("logout: rejected session cookie: %s", exc)
 
     # Invalidate every outstanding session for this user, not just the
-    # cookie on this device. The full Tier-3 refresh-token system in the
-    # open-beta milestone supersedes this; the interim Tier-2 mechanism
-    # is bumping `token_version` so older JWTs 401 at `get_current_user`.
-    # Skip on a malformed / missing / unknown-user cookie — we don't want
-    # an attacker spamming /logout with a guessed sub to bump arbitrary
+    # cookie on this device, by bumping `token_version` so older JWTs 401
+    # at `get_current_user` (interim until a refresh-token system lands).
+    # Skip on a malformed / missing / unknown-user cookie — otherwise an
+    # attacker could spam /logout with a guessed sub to bump arbitrary
     # users' counters, and there's nothing to invalidate anyway.
     if user_id is not None:
         user = db.query(User).filter(User.id == user_id).first()
@@ -414,14 +400,12 @@ def me(current_user: User = Depends(get_current_user)):
 def _process_forgot_password(user_id, email_address: str) -> None:
     """Mint + send the reset email out-of-band.
 
-    Runs as a FastAPI background task *after* the 204 has gone out, so the
-    no-user branch and the live-user branch return at the same point in
-    time. The work itself (DB UPDATE, token mint, Resend round-trip) is
-    hundreds of milliseconds — keeping it on the request thread is what
-    leaks user existence via response time, regardless of any rate limit.
-
-    Owns its own DB session because the request-scoped one in `forgot_password`
-    is closed by the time this runs.
+    Runs as a background task *after* the 204 ships, so the no-user and
+    live-user branches return at the same time. The work (DB UPDATE,
+    token mint, Resend round-trip) is hundreds of ms — keeping it on the
+    request thread is what leaks user existence via response time,
+    regardless of any rate limit. Owns its own DB session because the
+    request-scoped one in `forgot_password` is already closed.
     """
     from app.database import SessionLocal
 
@@ -462,20 +446,19 @@ def forgot_password(
     """Always 204, regardless of input — and at the same time on every branch.
 
     Any difference (status code, body, **response time**) leaks user
-    existence and turns this into a free enumeration oracle. The DB
-    lookup + audit commit run synchronously on both branches (matched
-    and unmatched), so they don't differentiate timing. The expensive
-    work — token revoke, mint, Resend round-trip — is dispatched to a
-    background task so the wire response timing is identical whether
-    the email matched or not. The rate limit slows enumeration; the
-    timing fix kills the oracle.
+    existence and turns this into a free enumeration oracle. The DB lookup
+    + audit commit run synchronously on both branches, so timing doesn't
+    differentiate them; the expensive work (token revoke, mint, Resend
+    round-trip) is dispatched to a background task so wire timing is
+    identical whether or not the email matched. The rate limit slows
+    enumeration; the timing fix kills the oracle.
     """
 
     user = db.query(User).filter(User.email == body.email).first()
-    # Audit on BOTH branches — keeps the wire-response timing identical
-    # and makes "any /forgot-password request from this IP" queryable
-    # whether or not the email matched. user_id is NULL on the no-op
-    # branch so we don't leak existence by writing a probe-able mapping.
+    # Audit on BOTH branches — keeps wire timing identical and makes "any
+    # /forgot-password request from this IP" queryable regardless of match.
+    # user_id is NULL on the no-op branch so we don't leak existence via a
+    # probe-able mapping.
     audit.log_auth_event_from_request(
         db,
         request,
@@ -485,9 +468,8 @@ def forgot_password(
     db.commit()
 
     if user is None or user.deleted_at is not None:
-        # No-op branch: still returns 204, in roughly the same time as the
-        # live-user branch (which only schedules the background task before
-        # returning).
+        # No-op branch: 204 in roughly the same time as the live-user
+        # branch, which only schedules the background task before returning.
         return
 
     background_tasks.add_task(_process_forgot_password, user.id, user.email)
@@ -508,26 +490,21 @@ def reset_password(
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user = db.query(User).filter(User.id == row.user_id).first()
-    # Mirror the mint-side guards: `_process_forgot_password` only mints a
-    # token for an account that is live + active, and `/login` rejects
-    # both soft-deleted and deactivated accounts. Without this parity,
-    # an attacker holding a reset token captured before the account was
-    # disabled could still rotate the password. Soft-delete also FK
-    # cascades the token row away, so this branch is rare in practice —
-    # but the explicit guard prevents the deactivation case (which has
-    # no cascade) from sneaking through.
+    # Mirror the mint-side guards (live + active account): without this
+    # parity an attacker holding a token captured before the account was
+    # disabled could still rotate the password. Soft-delete FK-cascades
+    # the token row away so that case is rare, but deactivation has no
+    # cascade and would otherwise sneak through.
     if user is None or user.deleted_at is not None or not user.is_active:
-        # ``consume`` above already flipped ``consumed_at``. Roll back so
-        # the burned token isn't persisted without a matching password
-        # change, then return the same opaque error.
+        # ``consume`` already flipped ``consumed_at``. Roll back so the
+        # burned token isn't persisted without a matching password change.
         db.rollback()
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user.password_hash = hash_password(body.new_password)
-    # Invalidate every outstanding session for this user. A reset means
-    # the user has lost control of (or never had control of) the
-    # currently-logged-in devices — every existing JWT must stop working
-    # now, not at its `exp`. Re-login on the new password mints a fresh
+    # Invalidate every outstanding session: a reset means the user may
+    # never have controlled the logged-in devices, so every existing JWT
+    # must stop working now, not at its `exp`. Re-login mints a fresh
     # cookie with the bumped `tv`.
     bump_token_version(user)
     audit.log_auth_event_from_request(
@@ -551,37 +528,33 @@ def change_password(
 ) -> None:
     """Authenticated password change. Requires the current password.
 
-    The cookie-only auth means a stolen session is enough to act as the
-    user — re-asserting knowledge of the current password is what keeps
-    a thief from rotating the credential and locking the owner out.
-    Same hash + audit shape as ``/auth/reset-password`` so an attacker
-    can't tell the two flows apart in the timing or audit columns. Same
-    opaque error as wrong-current-password regardless of failure mode.
+    Cookie-only auth means a stolen session can act as the user —
+    re-asserting the current password keeps a thief from rotating the
+    credential and locking the owner out. Same hash + audit shape as
+    ``/auth/reset-password`` so an attacker can't tell the flows apart in
+    timing or audit columns.
 
-    Out-of-band heads-up email fires after the DB commit. Dispatched as
-    a background task so a slow Resend round-trip doesn't pad the wire
-    response, and wrapped in a best-effort send so an email-provider
-    outage doesn't fail a rotation the user has already paid for.
+    The heads-up email fires after the commit, dispatched as a background
+    task so a slow Resend round-trip doesn't pad the wire response and
+    best-effort so a provider outage doesn't fail a completed rotation.
     """
     if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    # Capture the address *before* the commit. ``expire_on_commit=True``
-    # is the SQLAlchemy default and we don't override it on
-    # ``SessionLocal``; reading ``current_user.email`` after the commit
-    # would trigger a lazy reload that happens to work today (the
-    # request-scoped session is still alive) but would break the moment
-    # the commit moved out of the handler. Pulling the string out first
-    # also keeps the background-task closure free of ORM state.
+    # Capture the address *before* the commit. ``expire_on_commit`` (the
+    # SQLAlchemy default, not overridden on ``SessionLocal``) means reading
+    # ``current_user.email`` after the commit triggers a lazy reload that
+    # works today only because the request-scoped session is still alive —
+    # it would break the moment the commit moved out of the handler.
+    # Pulling the string out also keeps the task closure free of ORM state.
     user_id = current_user.id
     notify_to = current_user.email
 
     current_user.password_hash = hash_password(body.new_password)
-    # Invalidate every other session this user has open. Bumping
-    # `token_version` 401s every JWT minted before this point —
-    # including the one this request used. Re-issuing a fresh cookie on
-    # the same response (below) keeps the device the user is on now
-    # logged in; the others lose access at the next request.
+    # Invalidate every other open session: bumping `token_version` 401s
+    # every JWT minted before now, including this request's. Re-issuing a
+    # fresh cookie on the same response (below) keeps the current device
+    # logged in; the others lose access at their next request.
     bump_token_version(current_user)
     audit.log_auth_event_from_request(
         db,

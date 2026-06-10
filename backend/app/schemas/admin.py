@@ -10,11 +10,10 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    The service hardcodes ``max_uses=1`` — the policy decision is "every code
-    maps to exactly one analyst" so the audit trail (`used_by`, `used_at`) is
-    unambiguous. The column on `invite_codes` keeps `max_uses INT` for
-    forward-compat with a possible future bulk-invite feature, but the API
-    surface doesn't expose it today.
+    The service hardcodes ``max_uses=1`` so each code maps to exactly one
+    analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
+    `invite_codes.max_uses INT` column stays for forward-compat with bulk
+    invites, but the API doesn't expose it today.
     """
 
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
@@ -23,10 +22,9 @@ class AdminInviteCodeCreate(BaseModel):
 class AdminInviteCodeRead(BaseModel):
     """Response shape for the admin invite-code list + create endpoints.
 
-    ``status`` is computed at read time from the underlying columns — it's
-    never persisted, so a code's status reflects current reality (e.g. an
-    expired code stops showing as active the moment ``expires_at`` passes,
-    no bookkeeping job needed).
+    ``status`` is computed at read time from the columns, never persisted, so it
+    reflects current reality (an expired code stops showing active the moment
+    ``expires_at`` passes, no bookkeeping job needed).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -39,10 +37,9 @@ class AdminInviteCodeRead(BaseModel):
     revoked_at: datetime | None
     created_at: datetime
     status: InviteCodeStatus
-    # Username of the *first* analyst who consumed this code, if any. For
-    # single-use codes (the closed-beta default) this is also the only
-    # consumer. Multi-use codes still only surface the first one — a full
-    # per-use audit would need an `invite_code_uses` junction table.
+    # Username of the *first* consumer, if any. For single-use codes (the
+    # default) it's the only one; multi-use codes still surface only the first
+    # — a full per-use audit would need an `invite_code_uses` junction table.
     used_by_username: str | None
     used_at: datetime | None
 
@@ -50,10 +47,9 @@ class AdminInviteCodeRead(BaseModel):
 class AdminMeResponse(BaseModel):
     """Tiny response for the frontend route guard.
 
-    Lives separately from `UserRead` on purpose: hitting `/auth/me` and
-    branching on a public ``is_admin`` field would leak the admin role to
-    the public schema (and to anyone scraping the OpenAPI spec). The guard
-    only needs a 200/403 signal.
+    Separate from `UserRead` on purpose: a public ``is_admin`` field on
+    `/auth/me` would leak the admin role to the public schema (and to anyone
+    scraping the OpenAPI spec). The guard only needs a 200/403 signal.
     """
 
     is_admin: bool
@@ -62,9 +58,8 @@ class AdminMeResponse(BaseModel):
 class AdminUserRead(BaseModel):
     """User shape returned by the admin search endpoint.
 
-    Carries the bits the admin needs to decide whether to act on the row
-    (`is_trusted` + `trust_reason`) plus identity (`email`) which is not
-    on the public `UserProfile`.
+    Carries the bits the admin acts on (`is_trusted` + `trust_reason`) plus
+    `email`, which the public `UserProfile` omits.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -81,9 +76,8 @@ class AdminUserRead(BaseModel):
 class AdminUserDeleteResponse(BaseModel):
     """Response for `DELETE /admin/users/{id}`.
 
-    Carries the cascade summary so the admin sees what was actually swept
-    — useful both as a sanity check and as a copy-pasteable record of an
-    irreversible action.
+    Carries the cascade summary so the admin sees what was swept — a sanity
+    check and a copy-pasteable record of an irreversible action.
     """
 
     user_id: uuid.UUID
@@ -99,8 +93,8 @@ class AdminUserDeleteResponse(BaseModel):
 class AdminGeolocationDeleteResponse(BaseModel):
     """Response for `DELETE /admin/geolocations/{id}`.
 
-    Carries enough to confirm to the admin what just happened (which row,
-    soft vs hard, what was swept) without re-querying the DB on the client.
+    Confirms what happened (which row, soft vs hard, what was swept) without a
+    client re-query.
     """
 
     geolocation_id: uuid.UUID
@@ -114,11 +108,10 @@ class AdminGeolocationDeleteResponse(BaseModel):
 class AdminTrustUpdate(BaseModel):
     """Body for `PATCH /admin/users/{id}/trust`.
 
-    When granting trust, ``trust_reason`` is mandatory at the application
-    layer (a checkmark with no public-facing rationale is opaque
-    favouritism, per the spec). When revoking, the API ignores any reason
-    in the body and clears the column server-side — keeping ``trust_reason``
-    populated on a non-trusted row would be a stale-data bug.
+    On grant, ``trust_reason`` is mandatory at the app layer (a checkmark with
+    no public rationale is opaque favouritism). On revoke, the API ignores any
+    body reason and clears the column server-side — a populated ``trust_reason``
+    on a non-trusted row would be a stale-data bug.
     """
 
     is_trusted: bool
@@ -136,11 +129,9 @@ class AdminTrustUpdate(BaseModel):
 class AdminSeedDemoRequest(BaseModel):
     """Body for `POST /admin/seed-demo`.
 
-    Capped at 50 000 per click. The seeder commits in batches internally
-    so memory stays bounded; large seeds take time (rough rule of thumb:
-    ~1 minute per 10 k locally) but don't blow up. Re-running is additive
-    on geos and idempotent on the demo authors, so split into multiple
-    clicks if you'd rather keep each request short.
+    Capped at 50 000 per click. The seeder commits in batches so memory stays
+    bounded; large seeds take time (~1 min per 10 k locally) but don't blow up.
+    Re-running is additive on geos and idempotent on the demo authors.
     """
 
     count: int = Field(default=100, ge=1, le=50000)
@@ -160,9 +151,8 @@ class AdminWipeDemoResponse(BaseModel):
 class AdminSeedDemoBountiesRequest(BaseModel):
     """Body for ``POST /admin/seed-demo-bounties``.
 
-    Capped lower than the geolocation seeder — bounties are an inbox, not
-    a catalog. 5000 is plenty for showing off the queue UI; if a demo
-    needs more, click again.
+    Capped lower than the geolocation seeder — bounties are an inbox, not a
+    catalog, and 5000 covers the queue UI.
     """
 
     count: int = Field(default=20, ge=1, le=5000)
@@ -173,9 +163,8 @@ class AdminSeedDemoBountiesResponse(BaseModel):
     templates: int
     authors: int
     with_claims: int
-    # Per-status breakdown so the admin can see the mix at a glance —
-    # mirrors the lifecycle the seeder spreads across (open / fulfilled
-    # / closed) and proves the status-filter chips have data to render.
+    # Per-status breakdown — mirrors the lifecycle the seeder spreads across
+    # and proves the status-filter chips have data to render.
     open: int
     fulfilled: int
     closed: int
@@ -188,9 +177,8 @@ class AdminWipeDemoBountiesResponse(BaseModel):
 class AdminMaintenanceResponse(BaseModel):
     """Single shape for both reaper endpoints.
 
-    Different ops fill different fields — every key is optional so the
-    same schema serves both reapers; the UI renders only the keys
-    present in the response.
+    Every key is optional so one schema serves both reapers; the UI renders
+    only the keys present in the response.
     """
 
     expired: int | None = None

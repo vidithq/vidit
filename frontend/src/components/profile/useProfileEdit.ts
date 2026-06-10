@@ -41,10 +41,9 @@ export interface ProfileEditState {
 }
 
 /**
- * Inline-edit state machine for the own-profile page. Drafts are seeded
- * from the live profile when entering edit mode and discarded on
- * cancel; saving PATCHes /users/me and re-fetches to keep view-mode
- * in sync without trusting the local drafts as canonical.
+ * Inline-edit state machine for the own-profile page. Drafts are seeded from
+ * the live profile on entering edit mode, discarded on cancel; saving PATCHes
+ * /users/me and re-fetches rather than treating local drafts as canonical.
  */
 export function useProfileEdit({
   username,
@@ -59,17 +58,16 @@ export function useProfileEdit({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Drop edit mode whenever the visible profile switches usernames —
-  // editing is always "this user, right now"; navigating away without
-  // saving should not silently leak drafts into another profile.
+  // Drop edit mode when the profile switches usernames, so unsaved drafts
+  // don't leak into another profile.
   useEffect(() => {
     setEditing(false);
     setSaveError(null);
   }, [username]);
 
   const startEditing = () => {
-    // The edit affordance only renders once the profile has loaded;
-    // the guard keeps the seed read type-safe.
+    // The edit affordance renders only once the profile loads; guard keeps the
+    // seed read type-safe.
     if (!profile) return;
     setDraftBio(profile.bio ?? "");
     setDraftAvatarUrl(profile.avatar_url ?? "");
@@ -87,9 +85,8 @@ export function useProfileEdit({
     setSaving(true);
     setSaveError(null);
     try {
-      // Backend treats `external_links` as wholesale-replace. Sending each
-      // platform explicitly (with null for empty) drops cleared platforms
-      // instead of leaving stale values in the JSONB.
+      // Backend wholesale-replaces `external_links`. Send every platform
+      // explicitly (null for empty) so cleared ones aren't left stale in JSONB.
       await updateMyProfile({
         bio: draftBio,
         avatar_url: draftAvatarUrl,

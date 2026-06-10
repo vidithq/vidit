@@ -20,9 +20,8 @@ interface FilterPanelProps {
 
 /**
  * The map's collapsible filter overlay. Filter state lives in
- * MapStateContext (it survives navigation away and back), so the
- * panel reads and writes the context directly — the page only feeds
- * it the data the filters act on.
+ * MapStateContext so it survives navigation away and back; the panel
+ * reads and writes the context directly.
  */
 export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
   const {
@@ -57,9 +56,8 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
     setAuthorFilter("");
   };
 
-  // Toggle helpers for the chip handlers below — clicking a chip adds
-  // it to the bucket if absent, removes if present. Same handler on
-  // both buckets; the bucket-specific setter is captured at call site.
+  // Chip toggle: add to the bucket if absent, remove if present. The
+  // bucket-specific setter is captured at the call site.
   const toggleInBucket = (
     name: string,
     set: (v: string[] | ((prev: string[]) => string[])) => void,
@@ -85,7 +83,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
 
   return (
     <div className="absolute top-4 left-[72px] z-1000 w-60">
-      {/* Compact header — always visible */}
       <button
         onClick={() => setFiltersOpen((o) => !o)}
         className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors"
@@ -114,10 +111,8 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
         </div>
       </button>
 
-      {/* Expanded filters */}
       {filtersOpen && (
         <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 p-3 space-y-3">
-          {/* Conflict filters */}
           {conflictTags.length > 0 && (
             <div>
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
@@ -141,7 +136,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             </div>
           )}
 
-          {/* Capture-source filters */}
           {captureSourceTags.length > 0 && (
             <div>
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
@@ -165,7 +159,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             </div>
           )}
 
-          {/* Free tag filters */}
           {freeTags.length > 0 && (
             <div>
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
@@ -189,7 +182,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             </div>
           )}
 
-          {/* Event date range */}
           <div>
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
               Event date
@@ -210,7 +202,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             </div>
           </div>
 
-          {/* Submitted date range */}
           <div>
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
               Submitted
@@ -231,7 +222,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             </div>
           </div>
 
-          {/* Author filter */}
           <div>
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
               Author
@@ -245,7 +235,6 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
             />
           </div>
 
-          {/* Clear filters */}
           {hasActiveFilters && (
             <button
               onClick={clearFilters}

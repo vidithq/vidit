@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 
-// Landing about-video. Muted-autoplays on load with NO visible player chrome
-// (clean storefront look); the native controls — play/pause, seek, unmute,
-// fullscreen — reveal on hover/focus so a visitor can still drive it, then
-// hide again on leave. Desktop-only target, so hover/focus is the right
-// reveal trigger. A client island because page.tsx is a server component.
+// Landing about-video. Muted-autoplays with no player chrome (clean storefront
+// look); native controls reveal on hover/focus so a visitor can still drive it.
+// Desktop-only target, so hover/focus is the right reveal trigger. A client
+// island because page.tsx is a server component.
 export default function DemoVideo({ src }: { src: string }) {
   const [showControls, setShowControls] = useState(false);
   return (

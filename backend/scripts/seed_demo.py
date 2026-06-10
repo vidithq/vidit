@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-# Add app to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.config import settings
@@ -16,7 +15,6 @@ def main():
         if len(sys.argv) > 1:
             count = int(sys.argv[1])
 
-        # Ensure a dummy template exists if local storage is used and empty
         if settings.storage_backend == "local":
             pool_dir = Path(settings.local_storage_dir) / "demo-pool" / "geo-01" / "media"
             if not pool_dir.exists():

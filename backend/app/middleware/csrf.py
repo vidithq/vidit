@@ -1,9 +1,8 @@
 """Double-submit-cookie CSRF protection.
 
-Only requests that carry the ``vidit_session`` cookie are checked: a request
-without the cookie is anonymous (the cookie is the only authenticated channel),
-so a CSRF check would have nothing to protect — the downstream auth dependency
-will 401 the request anyway when the route is protected.
+Only requests carrying the ``vidit_session`` cookie are checked: without it a
+request is anonymous (the cookie is the only authenticated channel), so there's
+nothing to protect — downstream auth 401s it anyway on protected routes.
 """
 
 from __future__ import annotations
@@ -22,22 +21,19 @@ from app.services.auth_cookies import (
     SESSION_COOKIE,
 )
 
-# Endpoints that issue or replace a session cookie, or are intended to be
-# called by a user who *can't* present a valid session/CSRF pair. Exempt
-# because (a) there is nothing to forge yet — the attacker has no
-# authenticated state to abuse, and (b) requiring CSRF here would lock
-# out a user whose session went stale (server restart, secret rotation):
-# the browser still holds an HTTPOnly ``vidit_session`` it cannot clear
-# from JS, the middleware would see it and demand a token, and the user
-# could never log back in.
+# Endpoints that issue/replace a session cookie or are called by a user who
+# *can't* present a valid session/CSRF pair. Exempt because (a) there's nothing
+# to forge yet, and (b) requiring CSRF would lock out a user whose session went
+# stale (server restart, secret rotation): the browser still holds an HTTPOnly
+# ``vidit_session`` it can't clear from JS, so the middleware would demand a
+# token the user can never supply, and they could never log back in.
 #
 # /forgot-password, /reset-password, /confirm-registration, /resend-
-# confirmation follow the same logic: the whole point is that the user
-# is locked out / not yet signed in, so any session/CSRF pair on the
-# wire is presumed stale. Forcing CSRF on them would turn the recovery
-# / registration flow into the very lockout it is meant to resolve.
-# They have their own anti-abuse story (per-IP rate limits, single-use
-# tokens, no-op-on-unknown-email) that doesn't depend on CSRF.
+# confirmation follow the same logic — the user is locked out / not yet signed
+# in, so any session/CSRF pair on the wire is presumed stale; forcing CSRF
+# would turn recovery/registration into the lockout it resolves. They carry
+# their own anti-abuse (per-IP rate limits, single-use tokens,
+# no-op-on-unknown-email).
 CSRF_EXEMPT_PATHS = frozenset(
     {
         "/api/v1/auth/login",

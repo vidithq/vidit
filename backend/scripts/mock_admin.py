@@ -3,7 +3,6 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-# Add app to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.database import SessionLocal

@@ -56,8 +56,7 @@ function InviteCodeRow({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard API can fail on insecure contexts — silently no-op; the
-      // code is visible on screen so the admin can still copy by hand.
+      // Clipboard API fails on insecure contexts; code is on screen to copy by hand.
     }
   };
 

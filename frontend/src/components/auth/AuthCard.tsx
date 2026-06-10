@@ -13,9 +13,8 @@ interface AuthCardProps {
 }
 
 /**
- * Card shell shared by every `(auth)` surface — the standalone pages
- * plus LoginForm / RegisterForm. One home for the max-w-sm dark-card
- * treatment so a theme tweak doesn't chase nine hand-rolled copies.
+ * Card shell shared by every `(auth)` surface. One home for the max-w-sm
+ * dark-card treatment so a theme tweak doesn't chase nine hand-rolled copies.
  */
 export function AuthCard({
   icon: Icon,

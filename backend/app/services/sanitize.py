@@ -1,19 +1,17 @@
 """Server-side validation for Tiptap (ProseMirror) JSON documents.
 
-Tiptap stores rich-text content as a tree of typed nodes. The frontend
-trusts this tree; if an attacker bypasses the editor and submits raw
-JSON via the API, malicious content (e.g. javascript: URLs in images,
-tracking-pixel image hosts, off-domain link marks) could be stored and
-rendered back to other viewers.
+Tiptap stores rich text as a tree of typed nodes. If an attacker bypasses
+the editor and POSTs raw JSON, malicious content (javascript: URLs in
+images, tracking-pixel image hosts, off-domain link marks) could be stored
+and rendered to other viewers.
 
 `sanitize_tiptap_doc` walks the tree against an allowlist of node types,
-marks, and attributes; anything outside the allowlist is dropped.
-URL-bearing attrs are constrained:
-  - image.src: relative paths or the configured CloudFront/CDN host (or
-    any https:// when no CDN is configured, e.g. local dev).
+marks, and attributes; anything outside is dropped. URL-bearing attrs are
+constrained:
+  - image.src: relative paths or the configured CloudFront/CDN host (or any
+    https:// when no CDN is configured, e.g. local dev).
   - link.href (mark): http(s)://… only.
-The walker also enforces depth and node-count caps to bound recursion
-and storage cost.
+Depth and node-count caps bound recursion and storage cost.
 """
 
 from typing import Any
@@ -42,9 +40,9 @@ _ALLOWED_NODES: dict[str, set[str]] = {
 # Tiptap StarterKit marks + link (with href validation in _sanitize_mark).
 _ALLOWED_MARKS: set[str] = {"bold", "italic", "strike", "code", "link"}
 
-# DoS guards. Tuned generously for legitimate analyses (a long writeup
-# with ~20 images and bullet lists is comfortably under both bounds);
-# tight enough to refuse pathological payloads.
+# DoS guards. Generous for legitimate analyses (a long writeup with ~20
+# images and bullet lists is well under both), tight against pathological
+# payloads.
 _MAX_DEPTH = 32
 _MAX_NODES = 5_000
 
@@ -52,22 +50,19 @@ _MAX_NODES = 5_000
 def _safe_image_src(value: Any) -> str | None:
     """Image src must be relative or point at the configured CDN.
 
-    Locally (no CloudFront configured) any https:// passes so dev media
-    URLs work; in prod with `cloudfront_domain` set, only that host is
-    allowed. As a dev escape hatch, http://localhost local-storage URLs
-    are also accepted — but only when both `cloudfront_domain` is unset
-    AND `storage_backend == "local"`, so a misconfigured staging env
-    (CDN-less but pointed at an S3 backend, say) doesn't accidentally
+    With no CloudFront configured, any https:// passes (dev media URLs); in
+    prod with `cloudfront_domain` set, only that host. http://localhost
+    local-storage URLs pass only when `cloudfront_domain` is unset AND
+    `storage_backend == "local"`, so a CDN-less-but-S3 staging env doesn't
     accept loopback URLs.
     """
     if not isinstance(value, str):
         return None
-    # Reject protocol-relative URLs (``//evil.com/x``) BEFORE the relative-
-    # path early-return below: the browser resolves them against the page's
-    # scheme, so a persisted ``//attacker.example/pixel.gif`` would exfiltrate
-    # every viewer's IP / UA / Referer when another analyst opens the
-    # geolocation page. That defeats the central anti-tracking-pixel claim
-    # of this sanitiser.
+    # Reject protocol-relative URLs (``//evil.com/x``) BEFORE the
+    # relative-path early-return below: the browser resolves them against
+    # the page scheme, so a persisted ``//attacker.example/pixel.gif`` would
+    # exfiltrate every viewer's IP / UA / Referer, defeating the
+    # anti-tracking-pixel guarantee.
     if value.startswith("//"):
         return None
     if value.startswith("/"):
@@ -104,9 +99,9 @@ def _safe_link_href(value: Any) -> str | None:
 def extract_image_srcs(doc: Any) -> list[str]:
     """Collect image src URLs from a Tiptap document (sanitized or not).
 
-    Used after sanitization to link `proof_images` rows to the geolocation
-    that referenced them. Returns srcs in tree order; deduped here so the
-    caller can pass the result straight to a SQL `IN (...)`.
+    Used after sanitization to link `proof_images` rows to the referencing
+    geolocation. Returns srcs in tree order, deduped so the caller can pass
+    the result straight to a SQL `IN (...)`.
     """
     seen: set[str] = set()
     srcs: list[str] = []

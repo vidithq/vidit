@@ -25,12 +25,9 @@ export function PageShell({
       <div className="max-w-4xl mx-auto px-6 pt-10 pb-16 space-y-6">
         <header className="relative">
           {back && (
-            // Anchored to the left edge of the header — `right-full` puts the
-            // button's right side flush with the header's left side, `mr-3`
-            // adds a 12px gap. The header is `relative` so this absolute
-            // positioning is local. Means the title and subtitle sit at the
-            // same column-edge x-coordinate whether the back arrow is shown
-            // or not.
+            // `right-full` parks the button outside the header's left edge
+            // (header is `relative`), so the title's x-coordinate is the same
+            // whether or not the back arrow renders.
             <button
               type="button"
               onClick={handleBack}
@@ -56,9 +53,8 @@ export function PageShell({
   );
 }
 
-// Centered loading / error / empty state — used by every page's
-// pre-data branches. Sibling to PageShell so the sidebar offset (`pl-14`)
-// stays in one place.
+// Centered loading / error / empty state. Sibling to PageShell so the sidebar
+// offset (`pl-14`) stays in one place.
 export function PageCenter({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center pl-14">

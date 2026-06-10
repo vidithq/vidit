@@ -4,21 +4,15 @@ import { BETA_PILL, FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
 
-// Public landing page — the storefront at `vidit.app`. Reachable without
-// an account (see `PUBLIC_EXACT` in `proxy.ts`): pitch + about video +
-// public roadmap, so a skeptical analyst can evaluate Vidit before
-// committing to an invite. The app itself lives behind login at `/map`.
-//
-// Opts out of `PageShell` (in-app chrome) but keeps the shared sidebar
-// rail (content offset by `pl-14`). A server component (no "use client")
-// for SEO; the hero CTAs are a small `<HeroCtas>` client island that swaps
-// Sign-in / invite for "Open the map" once the visitor is signed in.
+// Public landing at `vidit.app`, reachable without an account (see
+// `PUBLIC_EXACT` in `proxy.ts`); the app lives behind login at `/map`.
+// Server component for SEO (no "use client"); the hero CTAs are a small
+// `<HeroCtas>` client island that swaps sign-in for "Open the map" once
+// signed in. Offset by `pl-14` to keep the shared sidebar rail.
 
-// `openGraph` + `twitter` blocks make the pinned X tweet render a
-// summary_large_image card (rich) instead of the bland text card a
-// title+description-only metadata produces. The image itself is the
-// sibling `opengraph-image.tsx` + `twitter-image.tsx` route files —
-// Next.js auto-attaches them to every page that doesn't override.
+// `openGraph` + `twitter` blocks render a rich summary_large_image card
+// instead of a bare text card. The image comes from the sibling
+// `opengraph-image.tsx` / `twitter-image.tsx` route files.
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
@@ -42,19 +36,17 @@ export const metadata: Metadata = {
   },
 };
 
-// Set NEXT_PUBLIC_DEMO_VIDEO_URL to a YouTube/Vimeo *embed* URL (or a
-// direct .mp4) to light up the demo player; until then the slot renders a
-// placeholder. Lets the about video ship without a code change.
+// Set NEXT_PUBLIC_DEMO_VIDEO_URL to an embed URL or a direct .mp4 to light
+// up the player (placeholder until then), so the video ships without a
+// code change.
 const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL;
-// A self-hosted file (our CloudFront .mp4) plays in a native <video>; a
-// YouTube/Vimeo *embed* URL needs an <iframe>. Pick the element by file
-// extension so both keep working.
+// A self-hosted file plays in a native <video>; an embed URL needs an
+// <iframe>. Pick the element by file extension.
 const DEMO_VIDEO_IS_FILE =
   !!DEMO_VIDEO_URL && /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(DEMO_VIDEO_URL);
 
-// The six features worth pushing, on a uniform 2×3 grid. Icons reuse the
-// product's own vocabulary: `Globe`/`Target`/`Filter` echo Map, Bounties,
-// and the trust mark elsewhere in the app.
+// Icons reuse the product's vocabulary: `Globe`/`Target`/`Filter` echo
+// Map, Bounties, and the trust mark elsewhere in the app.
 const FEATURES: {
   icon: typeof Globe;
   title: string;
@@ -94,10 +86,8 @@ const FEATURES: {
 
 const GITHUB_URL = "https://github.com/vidithq/vidit";
 
-// Reader-facing roadmap. Kept deliberately honest and high-level. Keep
-// the `status` current as milestones land. Optional `link` surfaces an
-// orange in-card link — used by the current milestone to point at the
-// concrete artifact (the repo for "Open source launch", etc.).
+// Reader-facing roadmap. Optional `link` surfaces an in-card link to a
+// concrete artifact (e.g. the repo for "Open source launch").
 const ROADMAP: {
   tag: string;
   current: boolean;
@@ -129,7 +119,6 @@ const ROADMAP: {
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-neutral-100 pl-14">
-      {/* Hero */}
       <section className="mx-auto max-w-3xl px-5 pt-16 pb-12 text-center">
         <div
           className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight ${BETA_PILL}`}
@@ -148,7 +137,6 @@ export default function LandingPage() {
         <HeroCtas />
       </section>
 
-      {/* About video */}
       <section className="mx-auto max-w-4xl px-5 pb-20">
         <div className="aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
           {DEMO_VIDEO_URL ? (
@@ -178,7 +166,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features */}
       <section className="mx-auto max-w-4xl px-5 pb-20">
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map(({ icon: Icon, title, body }) => (
@@ -200,7 +187,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Public roadmap */}
       <section className="mx-auto max-w-3xl px-5 pb-20">
         <div className="text-center">
           <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">

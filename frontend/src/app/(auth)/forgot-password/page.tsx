@@ -5,12 +5,10 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { SingleEmailFlow } from "@/components/auth/SingleEmailFlow";
 
 /**
- * Forgot-password landing.
- *
- * The backend deliberately responds 204 whether or not the email matches
- * a real account (anti-enumeration). The UI mirrors that contract: on
- * success we always show the same "if that address exists, we've sent a
- * reset link" message — never confirm or deny that the email was found.
+ * The backend responds 204 whether or not the email matches an account
+ * (anti-enumeration). The UI mirrors that: success always shows the same
+ * "if that address exists, we've sent a link" message, never confirming
+ * or denying the email was found.
  */
 export default function ForgotPasswordPage() {
   return (

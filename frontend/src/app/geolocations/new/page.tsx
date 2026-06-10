@@ -20,11 +20,9 @@ import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
 export default function NewGeolocationPage() {
-  // ``useSearchParams`` opts the page out of static prerender; Next.js
-  // 14 requires the bailing component to live under a Suspense boundary
-  // so the static-export pass has something to render while the client
-  // hydrates. The fallback is intentionally minimal — the inner form
-  // shows its own "Loading…" state once auth resolves.
+  // `useSearchParams` opts out of static prerender; Next 14 requires the
+  // bailing component under a Suspense boundary. Fallback is minimal — the
+  // inner form shows its own "Loading…" once auth resolves.
   return (
     <Suspense
       fallback={
@@ -54,18 +52,14 @@ function NewGeolocationForm() {
   const [eventDate, setEventDate] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  // Live tags stay useState (not useApiResource): TagPicker appends
-  // newly created tags via setTags, so the list is server-seeded but
-  // locally mutable.
+  // useState, not useApiResource: TagPicker appends newly created tags
+  // via setTags, so the list is server-seeded but locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
-  // The two required, server-curated selectors (conflict + capture
-  // source). Fetched with `?curated=true` so the full taxonomy is
-  // present even for options no live geolocation references yet —
-  // otherwise the first analyst to use a given conflict / capture source
-  // couldn't pick it and the required field would be unsatisfiable.
-  // The selectors it feeds are required, so an empty `curatedTags` from
-  // a failed load (vs. a genuine "didn't pick one") surfaces a
-  // different, recoverable message via `curatedTagsError` instead of a
+  // Required curated selectors (conflict + capture source). `?curated=true`
+  // includes the full taxonomy even for options no live geolocation
+  // references yet, else the first analyst to use one couldn't pick it and
+  // the required field would be unsatisfiable. A failed load (empty
+  // `curatedTags`) surfaces a recoverable `curatedTagsError` rather than a
   // misleading "Select a conflict" with no chips.
   const {
     data: curatedTagsData,
@@ -109,9 +103,9 @@ function NewGeolocationForm() {
       .catch(() => {});
   }, []);
 
-  // Load the bounty being fulfilled — pre-fill + lock the inherited
-  // fields. The server is authoritative on these (it ignores divergent
-  // values when bounty_id is present), but locking is the UX cue.
+  // Load the bounty being fulfilled to pre-fill + lock inherited fields.
+  // The server is authoritative (ignores divergent values when bounty_id
+  // is present); locking is just the UX cue.
   useEffect(() => {
     if (!bountyIdParam) return;
     getBounty(bountyIdParam)
@@ -147,9 +141,8 @@ function NewGeolocationForm() {
       setError("Longitude must be a number between -180 and 180");
       return;
     }
-    // When fulfilling a bounty, the bounty's media transfers in — caller
-    // doesn't have to add new files. Otherwise at least one file is
-    // required (same contract as before).
+    // When fulfilling a bounty, its media transfers in, so no new files
+    // are required; otherwise at least one file is required.
     if (!lockedFromBounty && files.length === 0) {
       setError("At least one media file is required");
       return;
@@ -162,14 +155,10 @@ function NewGeolocationForm() {
       setError("An image is still uploading — please wait before submitting.");
       return;
     }
-    // Required curated categories — mirrors the server-side check in
-    // `routers/geolocations.py::create_geolocation`, surfaced here so the
-    // analyst gets the message inline instead of as a 400 after upload.
-    //
-    // If the curated taxonomy never loaded, the two required selectors
-    // render empty — distinguish that from "didn't pick one" so the
-    // analyst gets a recoverable message, not a dead-end "Select a
-    // conflict" with no chips to click.
+    // Mirrors the server check in
+    // `routers/geolocations.py::create_geolocation`, inline so the analyst
+    // sees it before upload instead of as a 400. Empty taxonomy (failed
+    // load) gets a recoverable message, distinct from "didn't pick one".
     if (curatedTags.length === 0) {
       setError(
         curatedTagsError
@@ -247,8 +236,8 @@ function NewGeolocationForm() {
     );
   }
 
-  // Bounty referenced but still loading — block the form until we
-  // know the title / source / tags to pre-fill.
+  // Bounty referenced but still loading — block the form until the
+  // title / source / tags are known to pre-fill.
   if (bountyIdParam && !bounty) {
     return (
       <PageCenter>
@@ -283,9 +272,8 @@ function NewGeolocationForm() {
       }
     >
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Tweet-import shortcut. Hidden in bounty-fulfilment mode —
-              the bounty's source URL + media are locked there, so the
-              pre-fill has nothing to land in. */}
+          {/* Hidden in bounty-fulfilment mode: source URL + media are
+              locked there, so the import pre-fill has nowhere to land. */}
           {!lockedFromBounty && (
             <TweetImportBanner
               onImported={applyTweetImport}
@@ -363,10 +351,9 @@ function NewGeolocationForm() {
             skip={lockedFromBounty}
           />
 
-          {/* Submit-validation errors render next to the button — not at
-              the top of this long form — so a failed submit is visible
-              without scrolling back up. Every `error` on this form is set
-              by handleSubmit, so the button is the right anchor. */}
+          {/* Errors render next to the button, not atop this long form, so
+              a failed submit is visible without scrolling up. Every `error`
+              here is set by handleSubmit, so the button is the right anchor. */}
           {error && (
             <div className={FORM_ERROR_BANNER} role="alert">
               {error}

@@ -1,19 +1,16 @@
-"""Create (or refresh) the three non-admin users the promo-video pipeline
-relies on.
+"""Create (or refresh) the three non-admin users the promo-video pipeline needs.
 
-The promo records a community analyst clicking "I'm working on this"
-on a bounty, which only renders when the viewer is NOT the bounty's
-author. Three distinct identities are needed:
+The promo records a community analyst clicking "I'm working on this" on a
+bounty, which only renders when the viewer is NOT the bounty's author — hence
+three distinct identities:
 
-- ``analyst@vidit.app`` — the recording viewer. The promo runs as
-  this user so the recorded sidebar / profile shows a realistic
-  community handle, not the admin badge.
-- ``demo-analyst@vidit.app`` — the bounty author. Owns the seeded
-  bounties so the viewer sees the participant view.
-- ``analyst-helper@vidit.app`` — pre-seeds the "1 working" social
-  proof on one bounty in the list view; never the recording viewer
-  (that would surface "You're working on this" instead of the
-  desired "I'm working on this" beat).
+- ``analyst@vidit.app`` — the recording viewer, so the recorded sidebar /
+  profile shows a community handle, not the admin badge.
+- ``demo-analyst@vidit.app`` — the bounty author, so the viewer sees the
+  participant view.
+- ``analyst-helper@vidit.app`` — pre-seeds the "1 working" social proof on one
+  list-view bounty; never the recording viewer (that would surface "You're
+  working on this" instead of the "I'm working on this" beat).
 
 Each gets a stable email + password the JS scripts authenticate with.
 """
@@ -29,28 +26,22 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.services.auth import hash_password
 
-# ``external_links`` is per-user; the promo recorder needs ``x``
-# pre-linked to the same handle as the seeded tweets so the
-# import-from-tweet authorship check returns ``match`` and the form
-# doesn't render the amber "no X account linked" / "different account"
-# heads-up during the recording. The other two users don't import
-# tweets in any scene, so they keep ``{}``.
+# The promo recorder needs ``x`` pre-linked to the same handle as the seeded
+# tweets so the import-from-tweet authorship check returns ``match`` and the
+# form doesn't render the amber "no X account linked" / "different account"
+# heads-up during recording. The other two users don't import tweets, so ``{}``.
 RECORDER_X_HANDLE = "geo27752"
 
 USERS = [
-    # The recording viewer — the promo logs in as this user so the
-    # recorded UI shows a realistic community handle, not the admin
-    # badge. Must be neither the bounty author nor the pre-seeded
-    # claimer (otherwise the "I'm working on this" beat collapses).
+    # Recording viewer. Must be neither the bounty author nor the pre-seeded
+    # claimer, or the "I'm working on this" beat collapses.
     ("analyst@vidit.app", "analyst", "analyst", {"x": RECORDER_X_HANDLE}),
-    # The bounty author — bounties owned by someone other than the
-    # recording viewer keep the viewer in the participant view
-    # ("I'm working on this") on the detail page.
+    # Bounty author — owning the bounties keeps the viewer in the participant
+    # view ("I'm working on this") on the detail page.
     ("demo-analyst@vidit.app", "demo-analyst", "demo-analyst", {}),
-    # A second analyst whose "I'm working on this" click pre-seeds the
-    # "1 working" indicator on one bounty in the list view.
-    # `demo-analyst-1..5` already exist (created by the seed-demo
-    # geolocation flow). Pick a username outside that namespace.
+    # Second analyst whose claim pre-seeds the "1 working" indicator on one
+    # list-view bounty. `demo-analyst-1..5` already exist (seed-demo geolocation
+    # flow), so this username stays outside that namespace.
     ("analyst-helper@vidit.app", "analyst-helper", "analyst-helper", {}),
 ]
 
@@ -61,11 +52,10 @@ def main() -> None:
         for email, username, password, external_links in USERS:
             user = db.query(User).filter(User.email == email).first()
             if user:
-                # Re-hash the password on every run so the script keeps a
-                # fixed contract — if the row was created earlier with a
-                # different password (older version of this script, manual
-                # tinkering), the JS pipeline's `mintAuth(..., password)`
-                # would otherwise 401 with no obvious cause. Cheap.
+                # Re-hash every run so the password is a fixed contract: a row
+                # created earlier with a different password (old script version,
+                # manual tinkering) would 401 the JS pipeline's
+                # `mintAuth(..., password)` with no obvious cause.
                 print(f"User {email} exists — refreshing password.")
                 user.password_hash = hash_password(password)
                 user.is_active = True

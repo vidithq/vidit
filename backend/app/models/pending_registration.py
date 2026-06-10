@@ -8,23 +8,21 @@ from app.database import Base
 
 
 class PendingRegistration(Base):
-    """A registration that has been submitted but not yet email-confirmed.
+    """A registration submitted but not yet email-confirmed.
 
-    Pre-creation email verification: ``/auth/register`` puts the
-    submitted identity here and emails a confirmation link. The ``users``
-    row is only created when the user clicks the link and we re-validate
-    the invite + uniqueness in the same transaction.
+    Pre-creation email verification: ``/auth/register`` parks the identity here
+    and emails a confirmation link. The ``users`` row is created only when the
+    user clicks the link and we re-validate invite + uniqueness in one transaction.
 
-    The raw confirmation token is never stored — only ``sha256(secret)``
-    lands in ``token_hash``. Same hash-at-rest pattern as
-    ``auth_tokens`` so a read-only DB leak cannot mint accounts.
+    The raw token is never stored — only ``sha256(secret)`` lands in
+    ``token_hash`` (hash-at-rest like ``auth_tokens``), so a read-only DB leak
+    cannot mint accounts.
 
-    Uniqueness on ``email`` and ``username`` is a plain UNIQUE
-    constraint, not a partial index, because Postgres requires partial-
-    index predicates to be IMMUTABLE and ``expires_at > now()`` is
-    STABLE. The create path deletes expired rows before inserting, and
-    the reaper sweeps the rest, so a recently-expired pending
-    registration does not permanently pin its address.
+    Uniqueness on ``email``/``username`` is a plain UNIQUE constraint, not a
+    partial index, because Postgres requires partial-index predicates to be
+    IMMUTABLE and ``expires_at > now()`` is STABLE. The create path deletes
+    expired rows before inserting and the reaper sweeps the rest, so a
+    recently-expired row doesn't permanently pin its address.
     """
 
     __tablename__ = "pending_registrations"

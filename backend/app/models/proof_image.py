@@ -11,15 +11,15 @@ from app.database import Base
 class ProofImage(Base):
     """One row per inline image embedded in a Tiptap proof body.
 
-    Inserted when the editor uploads an image; `geolocation_id` is set
-    later, when the geolocation form is submitted and the URL survives
-    sanitization. Rows where `geolocation_id IS NULL` past a grace period
-    are orphans (form was abandoned) and reaped via the admin
-    Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`).
+    Inserted when the editor uploads an image; `geolocation_id` is set later,
+    when the form is submitted and the URL survives sanitization. Rows with
+    `geolocation_id IS NULL` past a grace period are orphans (abandoned form),
+    reaped via the admin Maintenance panel
+    (`services/maintenance.py::reap_proof_image_orphans`).
 
-    Storing s3_key (canonical, stripped of CDN host) rather than the full
-    URL means CloudFront rotations don't strand rows, and the same column
-    drives both linking-on-submit and S3 deletion-on-delete.
+    Storing s3_key (canonical, CDN-host-stripped) rather than the full URL means
+    CloudFront rotations don't strand rows, and the same column drives both
+    linking-on-submit and S3 deletion-on-delete.
     """
 
     __tablename__ = "proof_images"
@@ -50,8 +50,8 @@ class ProofImage(Base):
     __table_args__ = (
         Index("ix_proof_images_user_id", "user_id"),
         Index("ix_proof_images_geolocation_id", "geolocation_id"),
-        # Janitor scans orphans (geolocation_id IS NULL) by created_at; the
-        # partial index keeps the reaper cheap even as linked rows accumulate.
+        # Reaper scans orphans (geolocation_id IS NULL) by created_at; the
+        # partial index keeps it cheap as linked rows accumulate.
         Index(
             "ix_proof_images_orphans_created_at",
             "created_at",

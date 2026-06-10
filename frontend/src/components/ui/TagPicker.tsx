@@ -6,11 +6,7 @@ import { NewTagInput } from "@/components/ui/NewTagInput";
 import { TagChip } from "@/components/ui/TagChip";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 
-/**
- * Muted "required" marker. Deliberately neutral, not orange: the palette
- * rule reserves orange for clickable affordances, and a label hint isn't
- * one.
- */
+/** Muted "required" marker. Neutral, not orange: a label hint isn't clickable. */
 function RequiredHint() {
   return (
     <span className="ml-1 text-[10px] normal-case tracking-normal text-neutral-500">
@@ -30,8 +26,7 @@ interface TagPickerProps {
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   subtitle: ReactNode;
-  /** Show the "required" hint on the conflict / capture-source group.
-   *  The selectors always render; enforcement (if any) lives in the
+  /** Show the "required" hint. Hint only — enforcement lives in the
    *  parent's submit handler. */
   requireConflict?: boolean;
   requireCaptureSource?: boolean;
@@ -39,14 +34,11 @@ interface TagPickerProps {
 
 /**
  * Shared tag-selection section for the geolocation + bounty submit forms.
- *
- * Conflict (multi-select) and capture source (single-select — one original
- * lens per piece of media) come from the curated taxonomy; free tags + the
- * create-new input come from the live list. Both forms render *this* so
- * they can't drift apart — only `subtitle` and the `require*` flags differ.
- * The capture-source group simply doesn't render when no `capture_source`
- * tags exist, so a form that doesn't want it just passes curated tags
- * without that category.
+ * Both render *this* so they can't drift apart — only `subtitle` and the
+ * `require*` flags differ. Conflict is multi-select, capture source single-
+ * select (one lens per piece of media); both come from the curated taxonomy,
+ * free tags from the live list. The capture-source group doesn't render when
+ * no `capture_source` tags are passed.
  */
 export function TagPicker({
   tags,

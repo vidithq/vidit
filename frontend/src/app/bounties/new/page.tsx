@@ -26,13 +26,11 @@ export default function NewBountyPage() {
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  // Live tags stay useState (not useApiResource): TagPicker appends
-  // newly created tags via setTags, so the list is server-seeded but
-  // locally mutable.
+  // useState, not useApiResource: TagPicker appends newly created tags
+  // via setTags, so the list is server-seeded but locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
-  // Full curated taxonomy (conflict + capture_source) for the optional
-  // selectors — fetched with `?curated=true` so the author can tag a
-  // conflict / capture source even when no live geo references it yet.
+  // Curated taxonomy (conflict + capture_source) via `?curated=true` so
+  // the author can tag one even when no live geo references it yet.
   const { data: curatedTagsData } = useApiResource<Tag[]>("/tags?curated=true");
   const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);

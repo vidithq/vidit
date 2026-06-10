@@ -4,14 +4,13 @@ import { usePathname } from "next/navigation";
 import { isAuthRoute } from "@/lib/auth-routes";
 import { BETA_PILL } from "@/components/ui/styles";
 
-// Baked into the bundle by next.config.mjs — resolves to the deploy ref's
-// `git describe --tags --always --dirty`, or "dev" if no git history is
-// available at build time. See next.config.mjs > resolveBuildVersion.
+// Baked into the bundle by next.config.mjs — the deploy ref's
+// `git describe --tags --always --dirty`, or "dev" with no git history. See
+// next.config.mjs > resolveBuildVersion.
 const BUILD_VERSION = process.env.NEXT_PUBLIC_BUILD_VERSION || "dev";
 
-// Tag-derived versions start with a digit (e.g. "0.0.1", "0.0.1-28-gabc123");
-// prefix those with "v" for display. The "dev" fallback and bare commit
-// SHAs render verbatim — they aren't versions.
+// Tag-derived versions start with a digit — prefix those with "v". The "dev"
+// fallback and bare commit SHAs render verbatim; they aren't versions.
 const displayVersion = /^\d/.test(BUILD_VERSION)
   ? `v${BUILD_VERSION}`
   : BUILD_VERSION;
@@ -22,9 +21,8 @@ export default function ClosedBetaBanner() {
   const pathname = usePathname() ?? "";
   if (isAuthRoute(pathname)) return null;
   return (
-    // Wrapper is `pointer-events-none` so the badge never eats map drags
-    // or clicks. Only the report link inside opts back into pointer events,
-    // since it actually needs to be clickable.
+    // `pointer-events-none` so the badge never eats map drags; only the report
+    // link inside opts back in.
     <div
       role="status"
       aria-label="Closed beta"

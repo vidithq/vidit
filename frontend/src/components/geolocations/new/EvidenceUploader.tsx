@@ -9,9 +9,8 @@ import type { BountyDetail } from "@/types";
 import { LockedHint } from "./LockedHint";
 
 interface EvidenceUploaderProps {
-  /** Non-null in bounty-fulfilment mode: the bounty's media renders as
-   *  a read-only preview grid instead of the file input (it transfers
-   *  to the geolocation server-side on submit). */
+  /** Non-null in bounty-fulfilment mode: renders a read-only preview grid
+   *  instead of the file input; the media transfers server-side on submit. */
   lockedMedia: BountyDetail["media"] | null;
   files: File[];
   setFiles: (files: File[]) => void;
@@ -51,10 +50,8 @@ export function EvidenceUploader({
               className="relative aspect-video rounded-md overflow-hidden bg-neutral-800 border border-neutral-800"
             >
               {m.media_type === "image" ? (
-                // 3-up grid inside max-w-4xl ≈ 250 CSS px wide.
-                // ``thumbnail`` is the right fit and keeps the
-                // submit-form preview cheap (re-fetched on every
-                // bounty-fulfilment landing).
+                // 3-up grid ≈ 250 CSS px wide, so ``thumbnail`` fits and
+                // keeps this preview (re-fetched on every landing) cheap.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={displayUrlsFor(m).thumbnail}

@@ -1,12 +1,12 @@
 """Shared upload-path test fixtures.
 
-Real (non-stub) image bytes. The previous ``b"\\xff\\xd8\\xff\\xd9"``
-4-byte JPEG stub satisfied content-type sniffing but Pillow rejects
-it as ``UnidentifiedImageError``, which broke every upload test once
-the EXIF-strip pass landed (since the strip pre-decodes via PIL).
+Real (non-stub) image bytes. The previous ``b"\\xff\\xd8\\xff\\xd9"`` 4-byte
+JPEG stub passed content-type sniffing but Pillow rejects it as
+``UnidentifiedImageError``, which broke every upload test once the EXIF-strip
+pass landed (the strip pre-decodes via PIL).
 
-We embed the bytes as hex so the test module doesn't need Pillow at
-collection time — generated once via:
+Embedded as hex so the test module doesn't need Pillow at collection time —
+generated once via:
 
     img = Image.new("RGB", (1, 1), color="red")
     img.save(buf, format="JPEG", quality=95)

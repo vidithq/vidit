@@ -14,11 +14,10 @@ import {
 import { PageShell } from "@/components/ui/PageShell";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
 
-// Server component (no interactive state — all sections are static markup
-// + icons), so we can export `metadata` directly. Same openGraph + twitter
-// shape as the landing so a shared link reads as Vidit, not a bare title.
-// The shared `opengraph-image.tsx` / `twitter-image.tsx` at the app root
-// fills in the image without per-page binary assets.
+// Same openGraph + twitter shape as the landing so a shared link reads as
+// Vidit, not a bare title. The shared `opengraph-image.tsx` /
+// `twitter-image.tsx` at the app root supply the image without per-page
+// binary assets.
 export const metadata: Metadata = {
   title: "About Vidit",
   description:
@@ -102,12 +101,9 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
   },
 ];
 
-// Lucide dropped the brand-mark icons (Github, X, Discord) — the
-// sidebar handles those via hand-rolled SVG glyphs. The contact panel
-// here keeps the lucide vocabulary for the channels lucide still
-// covers; the GitHub link is surfaced as a footer line at the bottom
-// of the page so /about still cross-links the source repo without
-// dragging a brand-icon dependency into this file.
+// Lucide dropped the brand-mark icons (Github, X, Discord), so this panel
+// only uses lucide for channels it still covers; GitHub is a footer link
+// instead of pulling in a brand-icon dependency here.
 const CONTACT = [
   {
     icon: AtSign,

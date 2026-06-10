@@ -14,9 +14,8 @@ interface ShareButtonsProps {
   lng: number;
 }
 
-// Inline X logo — lucide v1.14 doesn't ship one, and the legacy Twitter
-// bird reads dated next to a current "Share on X" label. SVG is ~200B
-// so a dedicated dependency would be heavier than keeping it here.
+// Inline X logo — lucide doesn't ship one, and the legacy Twitter bird reads
+// dated next to "Share on X". ~200B, so a dependency would be heavier.
 function XLogo({ size = 13 }: { size?: number }) {
   return (
     <svg
@@ -40,9 +39,8 @@ export default function ShareButtons({
   lng,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
-  // Track the reset timer so a second click within the 1.5s window
-  // doesn't queue a duplicate timer that flips a fresh "Link copied" back
-  // early, and so unmount during the window doesn't leak the setTimeout.
+  // Tracked so a second click within the 1.5s window doesn't queue a duplicate
+  // timer (flipping "Link copied" back early), and unmount clears it.
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -51,9 +49,8 @@ export default function ShareButtons({
     };
   }, []);
 
-  // window is undefined during SSR; this component is "use client" so the
-  // handlers only ever fire in the browser, but the function shape keeps
-  // it safe to call from any render-time path.
+  // window is undefined during SSR; the function shape keeps this safe to call
+  // from any render-time path even though handlers only fire in the browser.
   const url = () =>
     typeof window === "undefined"
       ? `/geolocations/${id}`
@@ -73,16 +70,14 @@ export default function ShareButtons({
       if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
       copyResetTimer.current = setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard API can fail on insecure contexts (http://, embedded
-      // webviews); silent no-op rather than a scary error toast — the URL
-      // is still in the address bar.
+      // Clipboard API fails on insecure contexts (http://, embedded webviews).
+      // Silent no-op — the URL is still in the address bar.
     }
   };
 
   const onShareX = () => {
-    // twitter.com/intent/tweet still serves the share composer after the
-    // X rebrand — x.com/intent/tweet also works but the older domain is
-    // documented and won't be redirected away from any time soon.
+    // twitter.com/intent/tweet still serves the composer post-rebrand and is
+    // the documented domain, so it won't be redirected away.
     const intent = new URL("https://twitter.com/intent/tweet");
     intent.searchParams.set("text", tweetText());
     intent.searchParams.set("url", url());
@@ -97,8 +92,7 @@ export default function ShareButtons({
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md ${PRIMARY_BUTTON}`}
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
-        {/* aria-live so screen readers announce the "Link copied" state
-            flip — a bare button label change isn't picked up reliably. */}
+        {/* aria-live: a bare button-label change isn't announced reliably. */}
         <span aria-live="polite">{copied ? "Link copied" : "Copy link"}</span>
       </button>
       <button

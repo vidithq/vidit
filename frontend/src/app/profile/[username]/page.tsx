@@ -31,7 +31,7 @@ export default function ProfilePage() {
   } = useApiResource<PublicProfile>(
     username && currentUser ? `/users/${username}` : null
   );
-  // Error deliberately unread — a failed side list renders as empty
+  // Error deliberately unread: a failed submissions list renders empty
   // rather than blocking the profile card.
   const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
     username && currentUser
@@ -128,8 +128,8 @@ export default function ProfilePage() {
 
         {isOwn && (
           <>
-            {/* Sign out — only on your own profile. Two-click confirm so an
-                accidental tap doesn't end the session; auto-reverts after 3s. */}
+            {/* Two-click confirm so an accidental tap doesn't end the
+                session; auto-reverts after 3s. */}
             <div className="pt-4 border-t border-neutral-800 flex justify-center">
               <button
                 type="button"

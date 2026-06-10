@@ -1,32 +1,27 @@
 """Transactional email — Resend in prod, console echo in dev/test.
 
-We deliberately avoid the official ``resend`` SDK: the API surface we
-need is one ``POST /emails`` call with a JSON body, and pulling in a
-synchronous third-party HTTP client when ``httpx`` is already in the
-deps is more risk than reward. This module is therefore ~40 lines of
-real code — easy to audit, easy to mock in tests.
+Avoids the official ``resend`` SDK: we need one ``POST /emails`` JSON call,
+and pulling in a third-party HTTP client when ``httpx`` is already a dep is
+more risk than reward.
 
 Configuration
 -------------
 
-* ``EMAIL_PROVIDER=console`` (default in dev) prints the email to stdout
-  and returns. Lets the owner iterate on flows without burning Resend
-  quota or chasing DKIM during local dev.
+* ``EMAIL_PROVIDER=console`` (dev default) prints the email to stdout and
+  returns — iterate on flows without burning Resend quota or chasing DKIM.
 * ``EMAIL_PROVIDER=resend`` POSTs to api.resend.com. Requires
   ``RESEND_API_KEY`` and ``EMAIL_FROM``.
 
 Failure handling
 ----------------
 
-``send`` raises ``EmailSendError`` on any non-2xx response or transport
-error. Callers decide whether the failure is fatal:
+``send`` raises ``EmailSendError`` on any non-2xx or transport error.
+Callers decide whether it's fatal:
 
-* ``/auth/forgot-password``: swallow + log. We respond 204 either way
-  to avoid disclosing user existence; an email-send blip mustn't leak it
-  via a 500.
-* ``/auth/register``: swallow + log. We do NOT want a Resend outage to
-  block the pending-registration row insert — the user can hit
-  "resend confirmation" later to retry the send.
+* ``/auth/forgot-password``: swallow + log. Responds 204 either way to
+  avoid disclosing user existence; a send blip mustn't leak it via a 500.
+* ``/auth/register``: swallow + log. A Resend outage mustn't block the
+  pending-registration insert — the user can "resend confirmation" later.
 """
 
 from __future__ import annotations
@@ -100,7 +95,7 @@ def _send_resend(email: Email) -> None:
 
     if resp.status_code >= 300:
         # Don't log the full body — Resend echoes the recipient address;
-        # logging it would defeat the "200 always" anti-enumeration play.
+        # logging it would defeat the anti-enumeration play.
         raise EmailSendError(f"Resend returned {resp.status_code} (see Resend dashboard for body)")
 
 
@@ -117,9 +112,8 @@ def send(email: Email) -> None:
 
 
 # ── Templates ───────────────────────────────────────────────────────────────
-# Kept inline rather than in a templating engine. There are two messages,
-# both short, and the strings are easier to review next to the code that
-# sends them than separated by an indirection.
+# Inline rather than a templating engine: two short messages, easier to
+# review next to the code that sends them than behind an indirection.
 
 
 def password_reset_email(*, to: str, link: str) -> Email:
@@ -145,18 +139,15 @@ def password_reset_email(*, to: str, link: str) -> Email:
 def password_changed_email(*, to: str) -> Email:
     """Out-of-band heads-up that the password was just rotated.
 
-    The endpoint enforces re-asserting the current password, so a stolen
-    cookie alone can't trigger this — but an attacker who has *also*
-    obtained the password (phishing, credential stuffing) can. Sending
-    a non-actionable notification to the recovery address turns the
-    rotation into a detectable event the legitimate owner can react to.
+    The endpoint re-asserts the current password, so a stolen cookie alone
+    can't trigger this — but an attacker who *also* has the password
+    (phishing, credential stuffing) can. A non-actionable notice to the
+    recovery address makes the rotation a detectable event.
 
-    Intentionally short and informational: no IP, no UA, no
-    user-agent-based geo. Adding them would invite confusion when an
-    owner rotates from their phone while travelling, and an attacker
-    who can read this email has already taken the inbox anyway. The
-    forgot-password link is the recovery surface, not a deep link
-    inside the change-password flow itself.
+    No IP / UA / geo: they'd confuse an owner rotating while travelling, and
+    an attacker who can read this email has already taken the inbox. The
+    forgot-password link is the recovery surface, not a deep link into the
+    change-password flow.
     """
     return Email(
         to=to,

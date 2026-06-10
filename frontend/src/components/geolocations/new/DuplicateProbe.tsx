@@ -8,11 +8,8 @@ import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { PossibleDuplicate } from "@/types";
 
-// Coords + source-url + event-date go through this debounce before we
-// fire the duplicate probe so we don't slam the endpoint per keystroke.
-// 500ms is the standard "user paused typing" threshold — short enough
-// that the warning lands while the analyst is still on the form, long
-// enough that we're not chasing every digit of a longitude.
+// Debounce signal-field edits so we don't probe per keystroke.
+// 500ms is the standard "user paused typing" threshold.
 const DUPLICATE_PROBE_DEBOUNCE_MS = 500;
 
 interface DuplicateProbeProps {
@@ -20,23 +17,17 @@ interface DuplicateProbeProps {
   lng: string;
   sourceUrl: string;
   eventDate: string;
-  /** Bounty-fulfilment mode skips the probe entirely: the bounty is
-   *  the authoritative trace, "duplicating a bounty" doesn't apply
-   *  (and the source URL is locked to the bounty's anyway, so the
-   *  host leg would re-surface the bounty itself as a candidate). */
+  /** Bounty-fulfilment mode skips the probe: the source URL is locked to
+   *  the bounty's, so the host leg would re-surface the bounty itself. */
   skip: boolean;
 }
 
 /**
- * Possible-duplicate probe + inline warning. Fires whenever the signal
- * fields (coords, source URL, event date) change, after a short idle
- * debounce. The backend tolerates partial / malformed inputs (a
- * half-typed source URL just disables the host leg, a bad date
- * does the same for the date leg, no usable leg → empty array)
- * so it's safe to call eagerly while the user is still typing.
- *
- * Renders nothing until the probe surfaces candidates; never blocks
- * submission — the analyst skims and decides.
+ * Possible-duplicate probe + inline warning, fired on signal-field
+ * (coords, source URL, event date) change after a debounce. The backend
+ * tolerates partial / malformed inputs (an unusable leg is just dropped,
+ * no usable leg → []), so it's safe to call eagerly while the user types.
+ * Renders nothing until candidates surface; never blocks submission.
  */
 export function DuplicateProbe({
   lat,
@@ -45,18 +36,15 @@ export function DuplicateProbe({
   eventDate,
   skip,
 }: DuplicateProbeProps) {
-  // Soft warning: rows the duplicate probe surfaces as "maybe the
-  // same event". Cleared / re-fetched whenever the signal fields
-  // change.
+  // Soft warning: rows surfaced as "maybe the same event".
   const [hits, setHits] = useState<PossibleDuplicate[]>([]);
 
   useEffect(() => {
     if (skip) return;
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
-    // Need coords at minimum — proximity is the always-on leg. If
-    // both source URL and event date are still empty, the backend
-    // will return [] anyway; we drop here to skip the round trip.
+    // Need coords at minimum — proximity is the always-on leg. With no
+    // source URL or event date the backend returns []; drop to skip it.
     if (
       Number.isNaN(latNum) ||
       Number.isNaN(lngNum) ||
@@ -89,16 +77,10 @@ export function DuplicateProbe({
           setHits(rows);
         })
         .catch(() => {
-          // Soft warning — silently drop on any failure (429 rate
-          // limit from rapid edits, 5xx, network blip). The form
-          // remains submittable; we're not blocking on this signal.
-          //
-          // Deliberately do NOT clear the previous result here: a
-          // transient 429 mid-typing would otherwise wipe a warning
-          // the analyst was already looking at, with no explanation.
-          // The next successful fetch overwrites; if no fetch ever
-          // succeeds the analyst sees a stale-but-truthful list (the
-          // candidates were real at the moment they were fetched).
+          // Soft warning: drop on any failure (429 from rapid edits, 5xx,
+          // network) without clearing hits. A transient 429 mid-typing
+          // would otherwise wipe a warning the analyst is looking at; the
+          // next successful fetch overwrites, so a stale list stays truthful.
         });
     }, DUPLICATE_PROBE_DEBOUNCE_MS);
     return () => {
@@ -112,17 +94,12 @@ export function DuplicateProbe({
 }
 
 /**
- * Inline soft-warning rendered above the submit button when the
- * duplicate probe surfaces candidates. Each row links to the existing
- * geolocation in a new tab so the analyst can sanity-check without
- * losing the in-progress form. Never blocks — the submit button stays
- * enabled; this is a "did you mean…" signal, not a gate.
+ * Inline soft-warning listing duplicate candidates; each row opens the
+ * existing geolocation in a new tab to preserve the in-progress form.
  *
- * Palette split per `design.md`: the outer card stays amber (the
- * "warning, not error" semantic — same idiom as the gate page's
- * notification panel), but every clickable affordance inside is
- * orange. Without that split the card would violate the "if it's
- * clickable, it's orange" rule that the rest of the app reads by.
+ * Palette split per `design.md`: the card stays amber ("warning, not
+ * error"), but clickable affordances are orange to honour the "if it's
+ * clickable, it's orange" rule the rest of the app reads by.
  */
 function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
   return (
@@ -174,16 +151,10 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
 }
 
 /**
- * Render a metres distance compactly. <1km → "N m" rounded to 10m
- * (the GPS jitter floor for phone-grade coords), ≥1km → "N.N km"
- * with one decimal. Negative values are clamped to 0 (the backend
- * never returns negative distances, but a stray ``-0.0`` from a
- * float round-trip would print as "-0 m").
- *
- * The threshold compares the post-rounding value, not the raw
- * input: 995 m rounds to 1000 m, which should render as "1.0 km"
- * — not the contradictory "1000 m". Switching at the rounded
- * boundary avoids that artefact at the km/m crossover.
+ * Format a metres distance: <1km → "N m" rounded to 10m (the phone-GPS
+ * jitter floor), ≥1km → "N.N km". Clamp negatives so a stray ``-0.0``
+ * from a float round-trip doesn't print as "-0 m". The km/m threshold
+ * compares the rounded value, so 995m → "1.0 km", not "1000 m".
  */
 function formatDistance(distanceM: number): string {
   const clamped = Math.max(0, distanceM);

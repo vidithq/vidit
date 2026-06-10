@@ -15,9 +15,8 @@ class RegisterRequest(BaseModel):
 class RegisterResponse(BaseModel):
     """Response to a successful ``POST /auth/register``.
 
-    The user is NOT signed in — no session cookie is set. The address
-    holds a pending row; the user must click the link in the
-    confirmation email to actually create the account.
+    The user is NOT signed in — no session cookie. The address holds a pending
+    row; the account is created only when they click the confirmation link.
     """
 
     status: Literal["pending_confirmation"] = "pending_confirmation"
