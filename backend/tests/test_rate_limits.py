@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
@@ -113,3 +114,24 @@ def test_disabled_limiter_never_blocks(user):
         client.patch(ME, json={"bio": f"n{i}"}, headers=headers).status_code for i in range(35)
     }
     assert statuses == {200}
+
+
+def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
+    # Cross-router proof: the one shared limiter also enforces on the tags
+    # router, not just users. Idempotent same-name create keeps it to a single
+    # row (first 201, the rest 200) while the limiter counts every request.
+    headers = _auth(user, "203.0.113.13")  # create_tag is 30/minute
+    name = f"rl-{uuid.uuid4().hex[:8]}"
+    try:
+        for i in range(30):
+            r = client.post(
+                "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
+            )
+            assert r.status_code in (200, 201), f"request {i} was {r.status_code}"
+        blocked = client.post(
+            "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
+        )
+        assert blocked.status_code == 429
+    finally:
+        db.query(Tag).filter(Tag.name == name).delete(synchronize_session=False)
+        db.commit()
