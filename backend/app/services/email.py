@@ -117,6 +117,7 @@ def send(email: Email) -> None:
 
 
 def password_reset_email(*, to: str, link: str) -> Email:
+    ttl = settings.password_reset_token_minutes
     return Email(
         to=to,
         subject="Reset your Vidit password",
@@ -124,8 +125,8 @@ def password_reset_email(*, to: str, link: str) -> Email:
             "Someone — hopefully you — asked to reset the password on the Vidit\n"
             "account associated with this address.\n"
             "\n"
-            f"To set a new password, follow this link within the next 15 minutes:\n"
-            f"\n"
+            f"To set a new password, follow this link within the next {ttl} minutes:\n"
+            "\n"
             f"  {link}\n"
             "\n"
             "If you didn't request a reset, ignore this email — your password is\n"
