@@ -14,7 +14,7 @@ The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not g
 
 ## M1 — Open source launch *(now)*
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *Unreleased* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, firing in the same window.
+Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.0* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, firing in the same window.
 
 DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https://github.com/apps/dco) (installed at the org level), not an in-repo workflow file — same standard installation as Kubernetes / Helm / containerd. Branch protection on `main` requires the `DCO` status check.
 
