@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -6,6 +6,7 @@ from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.follow import Follow
 from app.models.geolocation import Geolocation
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.geolocation import GeolocationList, PaginatedGeolocations
 from app.schemas.user import UserProfile, UserRead, UserUpdate
 from app.services import social
@@ -50,7 +51,9 @@ def _profile_payload(
 
 
 @router.patch("/me", response_model=UserRead)
+@limiter.limit("30/minute")
 def update_my_profile(
+    request: Request,
     body: UserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -84,7 +87,9 @@ def update_my_profile(
 
 
 @router.get("/{username}", response_model=UserProfile)
+@limiter.limit("120/minute")
 def get_user_profile(
+    request: Request,
     username: str,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
@@ -114,7 +119,9 @@ def get_user_profile(
 
 
 @router.post("/{username}/follow", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 def follow_user(
+    request: Request,
     username: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -130,7 +137,9 @@ def follow_user(
 
 
 @router.delete("/{username}/follow", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 def unfollow_user(
+    request: Request,
     username: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -144,7 +153,9 @@ def unfollow_user(
 
 
 @router.get("/{username}/geolocations", response_model=PaginatedGeolocations)
+@limiter.limit("120/minute")
 def get_user_geolocations(
+    request: Request,
     username: str,
     page: int = 1,
     per_page: int = 20,

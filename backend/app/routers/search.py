@@ -10,20 +10,17 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from slowapi import Limiter
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.search import SearchResponse
 from app.services import search as search_service
-from app.services.audit import rate_limit_key
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-limiter = Limiter(key_func=rate_limit_key)
 
 
 @router.get("", response_model=SearchResponse)

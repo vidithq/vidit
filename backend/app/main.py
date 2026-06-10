@@ -6,11 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.middleware.csrf import CSRFMiddleware
+from app.ratelimit import limiter
 from app.routers import (
     admin,
     auth,
@@ -21,7 +21,6 @@ from app.routers import (
     tags,
     users,
 )
-from app.services.audit import rate_limit_key
 from app.services.storage import LOCAL_STORAGE_MOUNT_PATH
 
 # Error tracking. Boots only when SENTRY_DSN is set; safe to leave unset.
@@ -32,9 +31,6 @@ if settings.sentry_dsn:
         traces_sample_rate=settings.sentry_traces_sample_rate,
         send_default_pii=False,
     )
-
-limiter = Limiter(key_func=rate_limit_key, default_limits=["60/minute"])
-limiter.enabled = settings.rate_limit_enabled
 
 app = FastAPI(
     title="Vidit API",

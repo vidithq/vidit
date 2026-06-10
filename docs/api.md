@@ -74,6 +74,52 @@ Auth column: — anonymous, 🔒 logged-in, 🛡️ admin-only.
 
 ---
 
+## Rate limits
+
+One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP — the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev).
+
+| Endpoint | Limit (per IP) |
+|---|---|
+| **Auth** | |
+| `POST /auth/login` | 5/min + 30/hour |
+| `POST /auth/register` | 10/hour |
+| `POST /auth/confirm-registration` | 30/hour |
+| `POST /auth/resend-confirmation` | 5/hour |
+| `POST /auth/forgot-password` | 5/hour |
+| `POST /auth/reset-password` | 10/hour |
+| `POST /auth/change-password` | 10/hour (keyed per session) |
+| **Geolocations** | |
+| `GET /geolocations` | 120/min |
+| `GET /geolocations/points` | 60/min |
+| `GET /geolocations/possible-duplicates` | 60/min |
+| `GET /geolocations/{id}` | 120/min |
+| `POST /geolocations/import-from-tweet` | 30/min |
+| `GET /geolocations/import-from-tweet/media` | 60/min |
+| `POST /geolocations` | 30/min |
+| `DELETE /geolocations/{id}` | 30/min |
+| `POST /geolocations/proof-images` | 30/min (+ per-user 24h DB ceiling) |
+| **Bounties** | |
+| `GET /bounties`, `GET /bounties/{id}` | 120/min |
+| `POST /bounties`, `DELETE /bounties/{id}` | 30/min |
+| `POST`/`DELETE /bounties/{id}/claim`, `POST /bounties/{id}/close` | 60/min |
+| **Search / Tags** | |
+| `GET /search` | 60/min |
+| `GET /tags` | 60/min |
+| `POST /tags` | 30/min |
+| **Users / Timeline** | |
+| `GET /users/{username}`, `GET /users/{username}/geolocations`, `GET /timeline` | 120/min |
+| `PATCH /users/me` | 30/min |
+| `POST`/`DELETE /users/{username}/follow` | 60/min |
+| **Admin** 🛡️ | |
+| `POST /admin/invite-codes` · `DELETE /admin/users/{id}` | 30/hour |
+| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `DELETE /admin/geolocations/{id}` | 60/hour |
+| `POST`/`DELETE /admin/seed-demo[-bounties]` | 10/hour |
+| `POST /admin/maintenance/reap-*` | 30/hour |
+
+`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/users`, `/admin/invite-codes` list) carry no limit.
+
+---
+
 ## Auth
 
 ### `POST /auth/register`

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.geolocation import GeolocationList, PaginatedGeolocations
 from app.services import social
 
@@ -10,7 +11,9 @@ router = APIRouter()
 
 
 @router.get("/timeline", response_model=PaginatedGeolocations)
+@limiter.limit("120/minute")
 def get_timeline(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),

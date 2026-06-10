@@ -48,9 +48,11 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cookie_domain: str = ""  # empty → host-only cookie (recommended)
-    # Front-door rate limits (60/min default, 5/min on /login, 10/hr on
-    # /register). Hostile during local dev iteration (repeated register/login);
-    # set false in backend/.env to silence the limiter locally.
+    # Master switch for the shared slowapi limiter (app/ratelimit.py). Limits
+    # are per-endpoint decorators (e.g. 5/min on /login, 10/hr on /register,
+    # per-minute reads/writes elsewhere) — there is no global floor. Hostile
+    # during local dev iteration (repeated register/login); set false in
+    # backend/.env to silence every limit at once.
     rate_limit_enabled: bool = True
     sentry_dsn: str = ""
     sentry_environment: str = "development"

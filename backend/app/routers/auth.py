@@ -14,7 +14,6 @@ from fastapi import (
     Response,
     status,
 )
-from slowapi import Limiter
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -32,6 +31,7 @@ from app.models.auth_event import (
 )
 from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.auth import LoginRequest, RegisterRequest, RegisterResponse
 from app.schemas.recovery import (
     ChangePasswordRequest,
@@ -61,9 +61,6 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
-
-limiter = Limiter(key_func=rate_limit_key)
-limiter.enabled = settings.rate_limit_enabled
 
 
 def _session_or_ip_key(request: Request) -> str:
