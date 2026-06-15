@@ -77,11 +77,11 @@ def user_factory(db):
 
     created: list[User] = []
 
-    def _make(*, password: str = "originalpassword1") -> tuple[User, str]:
+    def _make(*, password: str | None = "originalpassword1") -> tuple[User, str | None]:
         user = User(
             username=f"u{uuid.uuid4().hex[:12]}",
             email=f"{uuid.uuid4().hex}@example.com",
-            password_hash=auth_service.hash_password(password),
+            password_hash=auth_service.hash_password(password) if password is not None else None,
         )
         db.add(user)
         db.commit()
@@ -389,3 +389,19 @@ def test_consume_atomic_under_parallel_use(user_factory):
         f"exactly one consume() must succeed; got {len(winners)} successes "
         f"out of {len(results)} attempts"
     )
+
+
+def test_credential_less_account_cannot_log_in(client, user_factory):
+    """A profile with no password — an unclaimed assembled profile, or a future
+    OAuth-only claim — must never authenticate by password, and must fail
+    cleanly with 401 rather than crash on the NULL hash.
+    """
+    user, _ = user_factory(password=None)
+    assert user.password_hash is None  # premise: the row is credential-less
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "anything-at-all"},
+    )
+
+    assert response.status_code == 401

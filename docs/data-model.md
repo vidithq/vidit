@@ -7,8 +7,9 @@ erDiagram
     users {
         UUID id PK
         VARCHAR username
-        VARCHAR email
-        VARCHAR password_hash
+        VARCHAR email "nullable until claimed"
+        VARCHAR password_hash "nullable until claimed"
+        VARCHAR x_handle "nullable, UNIQUE, assembled-profile anchor"
         BOOLEAN is_active
         BOOLEAN is_admin
         BOOLEAN is_trusted
@@ -20,6 +21,7 @@ erDiagram
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}, linktree-style"
+        TIMESTAMPTZ claimed_at "nullable; NULL = unclaimed assembled profile"
         TIMESTAMPTZ created_at
     }
 
@@ -189,8 +191,9 @@ erDiagram
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
-| `email` | `VARCHAR(255)` | UNIQUE, NOT NULL |
-| `password_hash` | `VARCHAR(255)` | NOT NULL |
+| `email` | `VARCHAR(255)` | UNIQUE, nullable — NULL on an assembled profile (built from an X handle before login); set when its owner claims it. Every self-registered / claimed account carries it. |
+| `password_hash` | `VARCHAR(255)` | nullable — NULL until claimed, same reason as `email`. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable — the X handle an assembled profile was built from (lowercased, no `@`). Pre-claim identity anchor and the dedup key so re-consent reuses the existing profile. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false` — auto-flipped on login/register if email matches `ADMIN_EMAILS` |
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false` — substantiated trust mark (toggle UI lands later; column ships now) |
@@ -202,10 +205,12 @@ erDiagram
 | `bio` | `TEXT` | nullable — short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint — cap changes don't need migrations). |
 | `avatar_url` | `TEXT` | nullable — public avatar URL. Validated as http(s) at the API layer to keep `javascript:` URLs out of the `<img src>` render path. No upload pipeline yet (free-form URL — analysts paste a Gravatar / CDN link). |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb` — Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge conflicts with the whole-panel form submit. |
+| `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()` — the moment an owner took control. Defaults to insert time so owned-at-creation paths (registration, seeder, future sign-up) are correct without stamping it; the assembly pipeline inserts an explicit NULL for an unclaimed profile, so `claimed_at IS NULL` means "assembled, not yet claimed" (identified by `x_handle` alone). Existing rows backfilled to `created_at`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
+- `users_x_handle_key` UNIQUE on `(x_handle)` — one profile per X handle; Postgres allows the unlimited NULLs of handle-less (registered) rows
 - `ix_users_live` on `(created_at) WHERE deleted_at IS NULL` — partial; admin search and the auth path filter `deleted_at IS NULL`
 - `ix_users_demo` on `(id) WHERE is_demo = true` — partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
 - `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))` — backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight

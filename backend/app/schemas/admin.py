@@ -59,14 +59,15 @@ class AdminUserRead(BaseModel):
     """User shape returned by the admin search endpoint.
 
     Carries the bits the admin acts on (`is_trusted` + `trust_reason`) plus
-    `email`, which the public `UserProfile` omits.
+    `email` (NULL for an assembled profile not yet claimed), which the public
+    `UserProfile` omits.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     username: str
-    email: str
+    email: str | None
     is_admin: bool
     is_trusted: bool
     trust_reason: str | None
