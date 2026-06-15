@@ -12,28 +12,48 @@ The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not g
 
 ---
 
-## M1 — Open source launch *(now)*
+## M1 — Open source launch
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.0* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq) + cold-reach DMs, firing in the same window.
+Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.0* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq). Cold-reach DMs are superseded by M1.5's claim-based onboarding.
 
 DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https://github.com/apps/dco) (installed at the org level), not an in-repo workflow file — same standard installation as Kubernetes / Helm / containerd. Branch protection on `main` requires the `DCO` status check.
 
 ---
 
+## M1.5 — Curated onboarding (read-only) *(now)*
+
+Strategic context: [`roadmap.md`](roadmap.md) → *M1.5*. The barrier to adoption is the analyst's time — they won't re-enter on Vidit work they've already published to X. Automate onboarding so that, with one consent, an analyst's X handle becomes a ready-to-claim profile at zero effort to them.
+
+Consent first: nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed — the pipeline runs only on a yes. Sequencing: **Phase A** (foundations) runs alongside the legal review; **Phase B** (the on-ramp) builds on A; **Phase C** (go public) is gated on the legal review.
+
+| Pri | Area | Item | Why / how |
+|---|---|---|---|
+| P0 | Consent | B — Explicit-consent gate before any pipeline run | The ask comes first; the yes is recorded (the legal-basis record) and covers **past and future** tweets, so a consented account keeps syncing. Lightweight by design — a yes from the analyst's own account, **no X account-linking** (analysts won't OAuth a site they don't yet know). The yes must arrive *from* the account (DM / reply), not a form anyone could fill with someone else's handle — that's the attribution check without OAuth. |
+| P0 | Ingestion | A — On-demand X API pull per consented handle | Discovery step, **app-only bearer** — reads public tweets, asks nothing of the analyst. Paid but bounded: one handle at a time, on demand (~$1 per ~200 tweets at 2026 per-result read pricing). Only consented handles are ever pulled. |
+| P0 | Ingestion | A — "Is this a geolocation tweet?" classifier | Binary filter over the pulled timeline. LLM-based; narrows a handle's tweets down to the geolocation ones. **Open:** define what counts as a geolocation tweet, build a labelled eval set, pick the approach (prompt vs. heuristics+LLM) + a precision/recall bar, fix the output contract — its own design spike. |
+| P0 | Ingestion | A — Harden structured extraction in [`tweet_parsing.py`](../backend/app/services/tweet_parsing.py) | Per-tweet media + coordinate extraction on the free syndication path: quote-tweets, threads, the decimal / DMS / Maps-URL coordinate forms, media variants. |
+| P0 | Data model | A — Split `Author` from `User` | Today fused: `geolocations.author_id` is a NOT NULL FK to `users.id`, so no profile exists without an auth account. Decouple so an assembled profile exists before its owner logs in; migrate existing hand-made profiles onto the new author rows without orphaning their geolocations. **Open:** new `authors` table with nullable `user_id` vs. a claim-flag on `users` — decides whether `geolocations.author_id` re-points (a migration touching the FK + every author query). |
+| P0 | Onboarding | B — Pipeline assembles the profile from the handle | On consent: handle → API pull → classifier → structured geolocations (syndication) → a profile + its geolocations, ready for the owner with zero data entry on their part. |
+| P0 | Claim | B — Profile claim = the migration step | Once Vidit has earned the analyst's trust, they take ownership of the assembled profile — OAuth-X is acceptable *here* (trust is established by now) and fixes the unverified free-text X anchor. The "migrate to source of truth" end of the funnel, not the entry. |
+| P1 | Integration | B — Consented-accounts bot timeline | A dedicated bot account follows only the consented handles and reads its own home timeline — one feed surfacing every consented account's new posts. Runs on Railway alongside the backend. The substrate for ongoing sync (future geolocation tweets ingest as posted) and the warning replies below. |
+| P1 | Integration | B — Reply in-thread with dedup warnings | On a consented account's new tweet: *media already on Vidit* (`Media.sha256` match) or *geolocation already exists* (the existing duplicate probe). Consented accounts only, low volume, within X's automation rules; write cost applies (link-bearing replies bill higher). |
+| P0 | Legal | A — Legal review of the consent-first exposure | Gates Phase C. Reduced surface — only consented work is processed — but republishing identifiable people's media still wants a review (licence terms, droit à l'image of people in the footage) before going public. |
+| P0 | Read access | C — Anonymous read: drop the auth requirement on read endpoints + public map / detail pages | Pulled forward from M2. The analyst and their audience see the result without an account. |
+| P0 | Anti-scraping | C — Read-endpoint floor: per-IP read rate limits + Cloudflare free Bot Fight Mode / WAF | The minimum that makes public read safe at this controlled scale, with behavioral test coverage (N pass, N+1 → 429). `/geolocations/points` 10/min, list 30/min, detail 120/min, tags + users 60/min; the free tier catches default `curl`/`python-requests`. At-scale hardening (`?bbox=`, `LIMIT 100` + cursor, per-user read cap) stays in M2 — the catalog is small and consent-public here, so abuse, not full-scrape cost, is the concern. |
+
+---
+
 ## M2 — Open beta
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M2*. Every row here is a hard blocker.
+Strategic context: [`roadmap.md`](roadmap.md) → *M2*. Anonymous read + the contributor on-ramp moved to M1.5; M2 is the **open-write** gate — self-registration plus the abuse / moderation / legal stack it requires. Every row here is a hard blocker.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
 | P0 | Registration | Public self-registration form + retire invite codes | Anyone can sign up; the closed-beta invite-code path comes down. |
-| P0 | Read access | Anonymous read — drop the auth requirement on read endpoints + public map / detail pages | Anyone browses the map and geolocation pages without an account. Anti-scraping rows below make it safe. |
 | P0 | Anti-scraping | `?bbox=` required on `/geolocations/points` + viewport-driven map fetch | Catalog size stops mattering — viewport size matters. Kills the dominant Phase-3 cost line + the "one curl loads the catalog" vector. PostGIS `ST_MakeEnvelope` + MapLibre viewport listener. ~2 days. |
 | P0 | Anti-scraping | Hard server-side `LIMIT 100` on every list endpoint + `Link: rel="next"` cursor | Single biggest other scraping mitigation. Validate `limit`/`page` params in the same pass — garbage values 500 today instead of 422, and one list endpoint hydrates unbounded. |
-| P0 | Anti-scraping | Per-IP slowapi limits on read endpoints | `/geolocations/points` 10/min, list 30/min, detail 120/min, tags + users 60/min. Tune from real traffic. |
 | P0 | Anti-scraping | Per-user limit on authenticated reads (~1000 req/hr) | Logged-in scraper rotating IPs still hits a wall. Keyed by `User.id`. |
 | P0 | Anti-scraping | Behavioral tests on every rate limit | The rows above stake the open-beta scraping posture on slowapi decorators, and no limit has test coverage — a refactor that drops a `@limiter.limit` or breaks the limiter wiring passes CI green today. One parametrized test per documented limit: N requests pass, N+1 returns 429. |
-| P0 | Anti-scraping | Cloudflare Bot Fight Mode + WAF managed rules | Free tier. Catches default `curl`/`python-requests` + scanner patterns. |
 | P0 | Anti-scraping | CAPTCHA on register (Cloudflare Turnstile or hCaptcha) | No PII to Google. |
 | P0 | Anti-scraping | Honeypot on register; tighten `/auth/register` rate limit from today's 10/hr/IP to 3/hr/IP + 20/day/IP | |
 | P0 | Anti-scraping | Disposable-email blocklist on register | Friction, not perfection. |
