@@ -295,8 +295,13 @@ def login(
     # so the unknown-email and soft-deleted branches take the same time as
     # the wrong-password branch. Without the dummy verify, response time is
     # a free oracle for "is this email a known-but-deleted user?".
+    # A credential-less profile (password_hash NULL — an unclaimed assembled
+    # profile, or a future OAuth-only claim) takes the dummy-verify branch: it
+    # can't authenticate by password, and the constant-time path is preserved.
     password_hash = (
-        user.password_hash if user is not None and user.deleted_at is None else DUMMY_PASSWORD_HASH
+        user.password_hash
+        if user is not None and user.deleted_at is None and user.password_hash is not None
+        else DUMMY_PASSWORD_HASH
     )
     password_ok = verify_password(body.password, password_hash)
     if user is None or user.deleted_at is not None or not password_ok:
@@ -469,7 +474,10 @@ def forgot_password(
         # branch, which only schedules the background task before returning.
         return
 
-    background_tasks.add_task(_process_forgot_password, user.id, user.email)
+    # No email = nothing to send to (a found user always has one — lookup is by
+    # email — but the column is nullable for assembled profiles).
+    if user.email is not None:
+        background_tasks.add_task(_process_forgot_password, user.id, user.email)
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
@@ -535,7 +543,12 @@ def change_password(
     task so a slow Resend round-trip doesn't pad the wire response and
     best-effort so a provider outage doesn't fail a completed rotation.
     """
-    if not verify_password(body.current_password, current_user.password_hash):
+    # `password_hash` is None only for a credential-less account (a future
+    # OAuth-only claim has no password to re-assert) — reject like a wrong
+    # password; a dedicated set-password flow lands with OAuth claim.
+    if current_user.password_hash is None or not verify_password(
+        body.current_password, current_user.password_hash
+    ):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     # Capture the address *before* the commit. ``expire_on_commit`` (the
@@ -563,8 +576,9 @@ def change_password(
     db.refresh(current_user)
     issue_session_cookies(response, create_access_token(current_user))
 
-    background_tasks.add_task(
-        _send_password_changed_notification_best_effort,
-        user_id=user_id,
-        to=notify_to,
-    )
+    if notify_to is not None:
+        background_tasks.add_task(
+            _send_password_changed_notification_best_effort,
+            user_id=user_id,
+            to=notify_to,
+        )
