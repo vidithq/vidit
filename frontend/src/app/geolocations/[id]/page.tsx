@@ -68,8 +68,11 @@ export default function GeolocationPage() {
               Location
             </h2>
             <div className="h-64 rounded-lg overflow-hidden border border-neutral-700">
+              {/* Single-point map reads only [id, lat, lng]; the two date
+                  slots are inert here, so pass empty strings rather than
+                  depend on the shape of `created_at`. */}
               <Map
-                points={[[geo.id, geo.lat, geo.lng]]}
+                points={[[geo.id, geo.lat, geo.lng, "", ""]]}
                 center={{ lat: geo.lat, lng: geo.lng }}
                 zoom={12}
               />

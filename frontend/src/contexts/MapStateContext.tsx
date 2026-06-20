@@ -39,14 +39,32 @@ interface MapState {
   setSelectedCaptureSources: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedTags: string[];
   setSelectedTags: (v: string[] | ((prev: string[]) => string[])) => void;
-  eventDateFrom: string;
-  setEventDateFrom: (v: string) => void;
-  eventDateTo: string;
-  setEventDateTo: (v: string) => void;
-  submittedFrom: string;
-  setSubmittedFrom: (v: string) => void;
-  submittedTo: string;
-  setSubmittedTo: (v: string) => void;
+  // Media presence — image / video; a geo matches if it has any attachment of
+  // a selected type. ``trustedOnly`` / ``hideDemo`` are global quality toggles.
+  selectedMediaTypes: string[];
+  setSelectedMediaTypes: (v: string[] | ((prev: string[]) => string[])) => void;
+  trustedOnly: boolean;
+  setTrustedOnly: (v: boolean | ((prev: boolean) => boolean)) => void;
+  hideDemo: boolean;
+  setHideDemo: (v: boolean | ((prev: boolean) => boolean)) => void;
+
+  // Two timeline windows — Event date (event_date, point[3]) and Submitted
+  // date (created_at, point[4]). Each is an active date range filtered
+  // client-side from the per-point dates, so dragging and playback never
+  // refetch. Empty string = open at that edge (snaps to the data's min/max).
+  eventStart: string;
+  setEventStart: (v: string) => void;
+  eventEnd: string;
+  setEventEnd: (v: string) => void;
+  eventPlaying: boolean;
+  setEventPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
+  submittedStart: string;
+  setSubmittedStart: (v: string) => void;
+  submittedEnd: string;
+  setSubmittedEnd: (v: string) => void;
+  submittedPlaying: boolean;
+  setSubmittedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
+
   authorFilter: string;
   setAuthorFilter: (v: string) => void;
 
@@ -62,10 +80,15 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
   const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [eventDateFrom, setEventDateFrom] = useState("");
-  const [eventDateTo, setEventDateTo] = useState("");
-  const [submittedFrom, setSubmittedFrom] = useState("");
-  const [submittedTo, setSubmittedTo] = useState("");
+  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>([]);
+  const [trustedOnly, setTrustedOnly] = useState(false);
+  const [hideDemo, setHideDemo] = useState(false);
+  const [eventStart, setEventStart] = useState("");
+  const [eventEnd, setEventEnd] = useState("");
+  const [eventPlaying, setEventPlaying] = useState(false);
+  const [submittedStart, setSubmittedStart] = useState("");
+  const [submittedEnd, setSubmittedEnd] = useState("");
+  const [submittedPlaying, setSubmittedPlaying] = useState(false);
   const [authorFilter, setAuthorFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
 
@@ -85,14 +108,24 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setSelectedCaptureSources,
       selectedTags,
       setSelectedTags,
-      eventDateFrom,
-      setEventDateFrom,
-      eventDateTo,
-      setEventDateTo,
-      submittedFrom,
-      setSubmittedFrom,
-      submittedTo,
-      setSubmittedTo,
+      selectedMediaTypes,
+      setSelectedMediaTypes,
+      trustedOnly,
+      setTrustedOnly,
+      hideDemo,
+      setHideDemo,
+      eventStart,
+      setEventStart,
+      eventEnd,
+      setEventEnd,
+      eventPlaying,
+      setEventPlaying,
+      submittedStart,
+      setSubmittedStart,
+      submittedEnd,
+      setSubmittedEnd,
+      submittedPlaying,
+      setSubmittedPlaying,
       authorFilter,
       setAuthorFilter,
       filtersOpen,
@@ -104,10 +137,15 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       selectedConflicts,
       selectedCaptureSources,
       selectedTags,
-      eventDateFrom,
-      eventDateTo,
-      submittedFrom,
-      submittedTo,
+      selectedMediaTypes,
+      trustedOnly,
+      hideDemo,
+      eventStart,
+      eventEnd,
+      eventPlaying,
+      submittedStart,
+      submittedEnd,
+      submittedPlaying,
       authorFilter,
       filtersOpen,
     ]

@@ -383,9 +383,11 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 3  # [id, lat, lng]
+    assert len(row) == 5  # [id, lat, lng, event_date, submitted_date]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
+    assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
+    assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -429,6 +431,53 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     assert filtered.headers.get("x-cache") == "MISS", "different filter must MISS"
     # Filtered set is strictly smaller than unfiltered.
     assert len(filtered.json()) < len(unfiltered.json())
+
+
+def test_points_filters_media_trusted_and_demo(db, author):
+    """``media``, ``trusted_only`` and ``hide_demo`` each narrow the point set."""
+    from app.models.media import Media
+
+    plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
+    with_video = _make_geo(db, author=author, lat=41.0, lng=41.0)
+    db.add(Media(geolocation_id=with_video.id, storage_url="s3://x/v.mp4", media_type="video"))
+    demo = _make_geo(db, author=author, lat=42.0, lng=42.0)
+    demo.is_demo = True
+
+    trusted = User(
+        username=f"tr{uuid.uuid4().hex[:8]}",
+        email=f"tr-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_trusted=True,
+        trust_reason="verified",
+    )
+    db.add(trusted)
+    db.commit()
+    by_trusted = _make_geo(db, author=trusted, lat=43.0, lng=43.0)
+
+    def ids(query: str) -> set[str]:
+        return {row[0] for row in client.get(f"/api/v1/geolocations/points{query}").json()}
+
+    media_ids = ids("?media=video")
+    assert str(with_video.id) in media_ids
+    assert str(plain.id) not in media_ids
+
+    trusted_ids = ids("?trusted_only=true")
+    assert str(by_trusted.id) in trusted_ids
+    assert str(plain.id) not in trusted_ids
+
+    nodemo_ids = ids("?hide_demo=true")
+    assert str(plain.id) in nodemo_ids
+    assert str(demo.id) not in nodemo_ids
+
+    # A junk media value is rejected (422), not silently treated as "no match".
+    assert client.get("/api/v1/geolocations/points?media=bogus").status_code == 422
+
+    # ``by_trusted`` belongs to a user the ``author`` fixture won't clean up.
+    db.query(Geolocation).filter(Geolocation.author_id == trusted.id).delete(
+        synchronize_session=False
+    )
+    db.query(User).filter(User.id == trusted.id).delete(synchronize_session=False)
+    db.commit()
 
 
 def test_points_cache_key_builder_is_separator_safe():

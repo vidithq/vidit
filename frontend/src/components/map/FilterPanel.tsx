@@ -1,29 +1,139 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
-import type { Tag } from "@/types";
-import {
-  FILTER_CHIP_ACTIVE,
-  FILTER_CHIP_INACTIVE,
-} from "@/components/ui/styles";
+import type { MapPoint, Tag } from "@/types";
+import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "@/components/ui/styles";
 import { useMapState } from "@/contexts/MapStateContext";
+import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
 interface FilterPanelProps {
   /** Live tag taxonomy driving the chip buckets. */
   tags: Tag[];
-  /** Current point count shown in the header. */
+  /** Boundary-filtered points (pre-window) — feeds the timeline histograms. */
+  points: MapPoint[];
+  /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
   /** Points fetch in flight — drives the pulse dot. */
   loading: boolean;
 }
 
+// Free-tag bucket grows unbounded; show this many, hide the rest behind
+// "Show all". Selected tags past the cut are surfaced regardless so you can
+// still see and clear them without expanding.
+const TAGS_PREVIEW = 8;
+
+// Fixed media-presence options (Media.media_type values).
+const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
+  ["image", "Image"],
+  ["video", "Video"],
+];
+
+/** Collapsed-header summary: "Any", a single value, or "first +N". */
+function chipSummary(values: string[]): string {
+  if (values.length === 0) return "Any";
+  if (values.length === 1) return values[0];
+  return `${values[0]} +${values.length - 1}`;
+}
+
+const fmtMonth = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+/** Compact "start – end" summary from two optional ISO dates ("" = open). */
+function rangeSummary(from: string, to: string): string {
+  if (!from && !to) return "Any";
+  return `${from ? fmtMonth(from) : "…"} – ${to ? fmtMonth(to) : "…"}`;
+}
+
 /**
- * The map's collapsible filter overlay. Filter state lives in
- * MapStateContext so it survives navigation away and back; the panel
- * reads and writes the context directly.
+ * One collapsible filter section. Open/closed state is owned by the parent
+ * (controlled via `open` + `onToggle`) so a panel re-render — e.g. toggling
+ * "show all tags" — never resets which sections are expanded. While collapsed
+ * the header shows a one-line state summary (orange when active); heavy
+ * controls (the timelines) only mount when open.
  */
-export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
+function FilterSection({
+  title,
+  summary,
+  active,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary: string;
+  active: boolean;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="border-b border-neutral-800 last:border-b-0">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between py-2.5 group"
+      >
+        <span className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors">
+          {title}
+        </span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          {!open && (
+            <span
+              className={`text-[11px] truncate max-w-[150px] ${
+                active ? "text-orange-400" : "text-neutral-600"
+              }`}
+            >
+              {summary}
+            </span>
+          )}
+          {open ? (
+            <ChevronUp size={13} className="text-neutral-500 shrink-0" />
+          ) : (
+            <ChevronDown size={13} className="text-neutral-500 shrink-0" />
+          )}
+        </span>
+      </button>
+      {open && <div className="pb-3">{children}</div>}
+    </div>
+  );
+}
+
+/** A compact on/off row for a boolean filter. */
+function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={onToggle}
+      className="w-full flex items-center justify-between py-2.5 border-b border-neutral-800 last:border-b-0 group"
+    >
+      <span className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors">
+        {label}
+      </span>
+      <span
+        className={`relative w-7 h-4 rounded-full transition-colors ${on ? "bg-orange-500" : "bg-neutral-700"}`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-neutral-400 transition-all ${on ? "left-3.5" : "left-0.5"}`}
+        />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The map's filter overlay. Sections collapse individually (state summaries in
+ * the header), ordered required → optional, broad → specific: Conflict and
+ * Capture source (curated, open by default) → Event date → Submitted date →
+ * Tags → Author. Filter state lives in MapStateContext so it survives
+ * navigation; the panel reads and writes the context directly.
+ */
+export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelProps) {
   const {
     selectedConflicts,
     setSelectedConflicts,
@@ -31,58 +141,115 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
     setSelectedCaptureSources,
     selectedTags,
     setSelectedTags,
-    eventDateFrom,
-    setEventDateFrom,
-    eventDateTo,
-    setEventDateTo,
-    submittedFrom,
-    setSubmittedFrom,
-    submittedTo,
-    setSubmittedTo,
+    selectedMediaTypes,
+    setSelectedMediaTypes,
+    trustedOnly,
+    setTrustedOnly,
+    hideDemo,
+    setHideDemo,
+    eventStart,
+    setEventStart,
+    eventEnd,
+    setEventEnd,
+    eventPlaying,
+    setEventPlaying,
+    submittedStart,
+    setSubmittedStart,
+    submittedEnd,
+    setSubmittedEnd,
+    submittedPlaying,
+    setSubmittedPlaying,
     authorFilter,
     setAuthorFilter,
     filtersOpen,
     setFiltersOpen,
   } = useMapState();
 
+  const [showAllTags, setShowAllTags] = useState(false);
+  // Accordion open-state lives here (not per-section) so a re-render never
+  // resets which sections are expanded. Curated buckets open by default.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    Conflict: true,
+    "Capture source": true,
+  });
+  const toggleSection = (title: string) =>
+    setOpenSections((s) => ({ ...s, [title]: !s[title] }));
+
   const clearFilters = () => {
     setSelectedConflicts([]);
     setSelectedCaptureSources([]);
     setSelectedTags([]);
-    setEventDateFrom("");
-    setEventDateTo("");
-    setSubmittedFrom("");
-    setSubmittedTo("");
+    setSelectedMediaTypes([]);
+    setTrustedOnly(false);
+    setHideDemo(false);
+    setEventStart("");
+    setEventEnd("");
+    setEventPlaying(false);
+    setSubmittedStart("");
+    setSubmittedEnd("");
+    setSubmittedPlaying(false);
     setAuthorFilter("");
   };
 
-  // Chip toggle: add to the bucket if absent, remove if present. The
-  // bucket-specific setter is captured at the call site.
+  // Chip toggle: add to the bucket if absent, remove if present.
   const toggleInBucket = (
     name: string,
     set: (v: string[] | ((prev: string[]) => string[])) => void,
   ) => set((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
 
+  const eventActive = !!(eventStart || eventEnd);
+  const submittedActive = !!(submittedStart || submittedEnd);
+  const authorActive = !!authorFilter.trim();
+
   const activeFilterCount =
     selectedConflicts.length +
     selectedCaptureSources.length +
     selectedTags.length +
-    [
-      eventDateFrom,
-      eventDateTo,
-      submittedFrom,
-      submittedTo,
-      authorFilter.trim(),
-    ].filter(Boolean).length;
+    selectedMediaTypes.length +
+    (trustedOnly ? 1 : 0) +
+    (hideDemo ? 1 : 0) +
+    // Each timeline window counts as one active filter.
+    (eventActive ? 1 : 0) +
+    (submittedActive ? 1 : 0) +
+    (authorActive ? 1 : 0);
 
   const hasActiveFilters = activeFilterCount > 0;
 
-  const conflictTags = tags.filter((t) => t.category === "conflict");
-  const captureSourceTags = tags.filter((t) => t.category === "capture_source");
-  const freeTags = tags.filter((t) => t.category === "free");
+  // Alphabetical so the free-tag "top N" preview is stable across loads.
+  const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
+  const conflictTags = tags.filter((t) => t.category === "conflict").sort(byName);
+  const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
+  const freeTags = tags.filter((t) => t.category === "free").sort(byName);
+
+  const visibleFreeTags = showAllTags
+    ? freeTags
+    : [
+        ...freeTags.slice(0, TAGS_PREVIEW),
+        ...freeTags.slice(TAGS_PREVIEW).filter((t) => selectedTags.includes(t.name)),
+      ];
+
+  const renderChips = (
+    bucket: Tag[],
+    selected: string[],
+    setter: (v: string[] | ((prev: string[]) => string[])) => void,
+  ) => (
+    <div className="flex flex-wrap gap-1.5">
+      {bucket.map((tag) => (
+        <button
+          key={tag.id}
+          onClick={() => toggleInBucket(tag.name, setter)}
+          className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+            selected.includes(tag.name) ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
+          }`}
+        >
+          {tag.name}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="absolute top-4 left-[72px] z-1000 w-60">
+    <div className="absolute top-4 left-[72px] z-1000 w-72">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
         className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors"
@@ -97,12 +264,8 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-neutral-500">
-            {pointCount.toLocaleString()}
-          </span>
-          {loading && (
-            <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-          )}
+          <span className="text-xs text-neutral-500">{pointCount.toLocaleString()}</span>
+          {loading && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />}
           {filtersOpen ? (
             <ChevronUp size={14} className="text-neutral-500" />
           ) : (
@@ -112,133 +275,143 @@ export function FilterPanel({ tags, pointCount, loading }: FilterPanelProps) {
       </button>
 
       {filtersOpen && (
-        <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 p-3 space-y-3">
+        <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
           {conflictTags.length > 0 && (
-            <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-                Conflict
-              </span>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {conflictTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => toggleInBucket(tag.name, setSelectedConflicts)}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                      selectedConflicts.includes(tag.name)
-                        ? FILTER_CHIP_ACTIVE
-                        : FILTER_CHIP_INACTIVE
-                    }`}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterSection
+              title="Conflict"
+              summary={chipSummary(selectedConflicts)}
+              active={selectedConflicts.length > 0}
+              open={!!openSections["Conflict"]}
+              onToggle={() => toggleSection("Conflict")}
+            >
+              {renderChips(conflictTags, selectedConflicts, setSelectedConflicts)}
+            </FilterSection>
           )}
 
           {captureSourceTags.length > 0 && (
-            <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-                Capture source
-              </span>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {captureSourceTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => toggleInBucket(tag.name, setSelectedCaptureSources)}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                      selectedCaptureSources.includes(tag.name)
-                        ? FILTER_CHIP_ACTIVE
-                        : FILTER_CHIP_INACTIVE
-                    }`}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterSection
+              title="Capture source"
+              summary={chipSummary(selectedCaptureSources)}
+              active={selectedCaptureSources.length > 0}
+              open={!!openSections["Capture source"]}
+              onToggle={() => toggleSection("Capture source")}
+            >
+              {renderChips(captureSourceTags, selectedCaptureSources, setSelectedCaptureSources)}
+            </FilterSection>
           )}
+
+          <FilterSection
+            title="Media"
+            summary={chipSummary(
+              selectedMediaTypes.map((m) => m[0].toUpperCase() + m.slice(1)),
+            )}
+            active={selectedMediaTypes.length > 0}
+            open={!!openSections["Media"]}
+            onToggle={() => toggleSection("Media")}
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {MEDIA_TYPES.map(([value, lbl]) => (
+                <button
+                  key={value}
+                  onClick={() => toggleInBucket(value, setSelectedMediaTypes)}
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                    selectedMediaTypes.includes(value) ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection
+            title="Event date"
+            summary={rangeSummary(eventStart, eventEnd)}
+            active={eventActive}
+            open={!!openSections["Event date"]}
+            onToggle={() => toggleSection("Event date")}
+          >
+            <TimelineScrubber
+              points={points}
+              dateIndex={3}
+              label="Event date"
+              start={eventStart}
+              setStart={setEventStart}
+              end={eventEnd}
+              setEnd={setEventEnd}
+              playing={eventPlaying}
+              setPlaying={setEventPlaying}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Submitted date"
+            summary={rangeSummary(submittedStart, submittedEnd)}
+            active={submittedActive}
+            open={!!openSections["Submitted date"]}
+            onToggle={() => toggleSection("Submitted date")}
+          >
+            <TimelineScrubber
+              points={points}
+              dateIndex={4}
+              label="Submitted date"
+              start={submittedStart}
+              setStart={setSubmittedStart}
+              end={submittedEnd}
+              setEnd={setSubmittedEnd}
+              playing={submittedPlaying}
+              setPlaying={setSubmittedPlaying}
+            />
+          </FilterSection>
 
           {freeTags.length > 0 && (
-            <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-                Tags
-              </span>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {freeTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => toggleInBucket(tag.name, setSelectedTags)}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                      selectedTags.includes(tag.name)
-                        ? FILTER_CHIP_ACTIVE
-                        : FILTER_CHIP_INACTIVE
-                    }`}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterSection
+              title="Tags"
+              summary={chipSummary(selectedTags)}
+              active={selectedTags.length > 0}
+              open={!!openSections["Tags"]}
+              onToggle={() => toggleSection("Tags")}
+            >
+              {renderChips(visibleFreeTags, selectedTags, setSelectedTags)}
+              {freeTags.length > TAGS_PREVIEW && (
+                <button
+                  onClick={() => setShowAllTags((s) => !s)}
+                  className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                >
+                  {showAllTags ? "Show less" : `Show all ${freeTags.length}`}
+                </button>
+              )}
+            </FilterSection>
           )}
 
-          <div>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-              Event date
-            </span>
-            <div className="flex gap-1.5 mt-1">
-              <input
-                type="date"
-                value={eventDateFrom}
-                onChange={(e) => setEventDateFrom(e.target.value)}
-                className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
-              />
-              <input
-                type="date"
-                value={eventDateTo}
-                onChange={(e) => setEventDateTo(e.target.value)}
-                className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-              Submitted
-            </span>
-            <div className="flex gap-1.5 mt-1">
-              <input
-                type="date"
-                value={submittedFrom}
-                onChange={(e) => setSubmittedFrom(e.target.value)}
-                className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
-              />
-              <input
-                type="date"
-                value={submittedTo}
-                onChange={(e) => setSubmittedTo(e.target.value)}
-                className="flex-1 min-w-0 px-1.5 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-              Author
-            </span>
+          <FilterSection
+            title="Author"
+            summary={authorFilter.trim() || "Any"}
+            active={authorActive}
+            open={!!openSections["Author"]}
+            onToggle={() => toggleSection("Author")}
+          >
             <input
               type="text"
               value={authorFilter}
               onChange={(e) => setAuthorFilter(e.target.value)}
               placeholder="Username..."
-              className="w-full mt-1 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
+              aria-label="Author username"
+              className="w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
             />
-          </div>
+          </FilterSection>
+
+          <ToggleRow
+            label="Trusted analysts only"
+            on={trustedOnly}
+            onToggle={() => setTrustedOnly((v) => !v)}
+          />
+          <ToggleRow label="Hide demo data" on={hideDemo} onToggle={() => setHideDemo((v) => !v)} />
 
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="w-full text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors py-1"
+              className="w-full text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors py-2"
             >
               Clear all filters
             </button>
