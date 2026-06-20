@@ -50,7 +50,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 |-----------|--------|
 | Framework | **Next.js 16** (App Router) |
 | UI runtime | **React 19** |
-| Language | **TypeScript** |
+| Language | **TypeScript** (`tsconfig` `target: ES2017` — the legacy `es5` default is a deprecation error under TypeScript 6 and is removed in 7; Next's SWC downlevels at build regardless of the type-checker target). Code that needs GeoJSON types imports them from the `geojson` module — TS 6 no longer pulls the `@types/geojson` UMD global (`GeoJSON.*`) into module scope. |
 | Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **CARTO Dark Matter** vector tiles |
 | Rich editor (proof) | **Tiptap** |
 | Styles | **Tailwind CSS 4** (CSS-first config — `@theme` block in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css), no `tailwind.config.ts`) |
