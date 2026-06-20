@@ -11,6 +11,7 @@ import MapGL, {
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { MapPoint } from "@/types";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
+import type { FeatureCollection } from "geojson";
 
 interface MapProps {
   points: MapPoint[];
@@ -114,7 +115,7 @@ export default function Map({
     setMounted(true);
   }, []);
 
-  const geojson = useMemo<GeoJSON.FeatureCollection>(() => ({
+  const geojson = useMemo<FeatureCollection>(() => ({
     type: "FeatureCollection",
     features: points.map(([id, lat, lng]) => ({
       type: "Feature",
