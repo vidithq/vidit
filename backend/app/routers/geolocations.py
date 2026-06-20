@@ -32,6 +32,7 @@ from app.config import settings
 from app.dependencies import get_current_user, get_db
 from app.models.bounty import Bounty
 from app.models.geolocation import Geolocation
+from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
@@ -74,6 +75,10 @@ router = APIRouter()
 # `User.username.ilike(f"%{author}%")` in `_apply_filters`. Restricting to
 # characters real usernames carry kills `%` / `\` vectors before the SQL builder.
 _AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
+# Accepted ``media`` filter values (the ``Media.media_type`` domain). Reject
+# anything else at the boundary so a typo returns 422 instead of silently
+# matching nothing — parameterized, so never an injection risk.
+_MEDIA_TYPES = frozenset({"image", "video"})
 
 
 _GEOLOCATION_ERROR_STATUS: dict[str, int] = {
@@ -108,6 +113,9 @@ def _build_points_cache_key(
     submitted_from: str | None,
     submitted_to: str | None,
     author: str | None,
+    media: list[str] | None = None,
+    trusted_only: bool = False,
+    hide_demo: bool = False,
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
 
@@ -131,6 +139,9 @@ def _build_points_cache_key(
             submitted_from,
             submitted_to,
             author,
+            sorted(media) if media else None,
+            trusted_only,
+            hide_demo,
         ]
     )
     return f"points:{hashlib.sha256(payload).hexdigest()}"
@@ -174,6 +185,9 @@ def _apply_filters(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = None,
+    media: list[str] | None = None,
+    trusted_only: bool = False,
+    hide_demo: bool = False,
     bbox: str | None = None,
 ) -> SAQuery:
     """Apply the standard geolocation filter set to a query.
@@ -229,6 +243,17 @@ def _apply_filters(
 
     if author:
         query = query.join(Geolocation.author).filter(User.username.ilike(f"%{author}%"))
+
+    if media:
+        # ``.media.any(...)`` → EXISTS, so a geo with several attachments isn't
+        # row-multiplied. Values are ``Media.media_type`` (image / video).
+        query = query.filter(Geolocation.media.any(Media.media_type.in_(media)))
+    if trusted_only:
+        # ``.author.has(...)`` → EXISTS on the FK, so it can't collide with the
+        # ``author`` ilike join above.
+        query = query.filter(Geolocation.author.has(User.is_trusted.is_(True)))
+    if hide_demo:
+        query = query.filter(Geolocation.is_demo.is_(False))
 
     if bbox:
         south, west, north, east = _parse_bbox(bbox)
@@ -293,12 +318,26 @@ def list_points(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=_AUTHOR_FILTER_PATTERN),
+    # ``media`` accepts multiple values (``?media=image&media=video``); a geo
+    # matches if it has any attachment of a listed type.
+    media: list[str] | None = Query(None),
+    trusted_only: bool = False,
+    hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Return all geolocations as a compact array: [[id, lat, lng], ...]
+    """Return all geolocations as a compact array:
+    ``[[id, lat, lng, event_date, submitted_date], ...]``.
     No joins, no limit — designed for map display with client-side clustering.
+    ``event_date`` and ``submitted_date`` (the ``created_at`` calendar day) are
+    ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
+    scrubbers and filters the windows client-side (no refetch per drag).
     Cached in-memory for 60s per unique filter combination.
     """
+    if media and not set(media) <= _MEDIA_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"media must be one of: {', '.join(sorted(_MEDIA_TYPES))}",
+        )
     cache_key = _build_points_cache_key(
         conflict=conflict,
         capture_source=capture_source,
@@ -308,6 +347,9 @@ def list_points(
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
+        media=media,
+        trusted_only=trusted_only,
+        hide_demo=hide_demo,
     )
 
     cached_bytes = points_cache.get(cache_key)
@@ -322,6 +364,8 @@ def list_points(
         Geolocation.id,
         ST_Y(Geolocation.location).label("lat"),
         ST_X(Geolocation.location).label("lng"),
+        Geolocation.event_date,
+        Geolocation.created_at,
     )
     q = _apply_filters(
         q,
@@ -333,10 +377,22 @@ def list_points(
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
+        media=media,
+        trusted_only=trusted_only,
+        hide_demo=hide_demo,
     )
 
     rows = q.all()
-    result = [[str(r.id), float(r.lat), float(r.lng)] for r in rows]
+    result = [
+        [
+            str(r.id),
+            float(r.lat),
+            float(r.lng),
+            r.event_date.isoformat(),
+            r.created_at.date().isoformat(),
+        ]
+        for r in rows
+    ]
 
     json_bytes = orjson.dumps(result)
     points_cache.set(cache_key, json_bytes)

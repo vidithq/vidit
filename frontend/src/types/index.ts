@@ -48,8 +48,12 @@ interface GeolocationListItem {
   tags: Tag[];
 }
 
-/** Compact point from /geolocations/points: [id, lat, lng] */
-export type MapPoint = [string, number, number];
+/** Compact point from /geolocations/points:
+ *  [id, lat, lng, event_date, submitted_date]. ``event_date`` and
+ *  ``submitted_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings —
+ *  the timeline scrubbers bucket them for the histograms and filter their
+ *  windows client-side. */
+export type MapPoint = [string, number, number, string, string];
 
 /**
  * Pre-fill payload from POST /geolocations/import-from-tweet. Best-effort:

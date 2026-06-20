@@ -365,21 +365,24 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 
 ### `GET /geolocations/points`
 
-Compact `[id, lat, lng]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read).
+Compact `[id, lat, lng, event_date, submitted_date]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side.
 
-The same filter set as `GET /geolocations` applies (except `bbox` and `limit`).
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
 to 60/min/IP.
 
 **Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`,
-`submitted_from`, `submitted_to`, `author` — see `GET /geolocations` for semantics.
+`submitted_from`, `submitted_to`, `author` (see `GET /geolocations` for semantics), plus
+map-only filters `media` (repeatable — `?media=image&media=video` — matches a geolocation
+carrying any attachment of a listed type; values are constrained to `image`/`video`, else
+422), `trusted_only` (author `is_trusted`), and `hide_demo` (exclude demo rows). The date
+params are still accepted but the map now filters dates client-side from the payload.
 
 **Response 200:**
 ```json
 [
-  ["6c1f…uuid", 48.123, 37.456],
-  ["a0b2…uuid", 50.450, 30.523]
+  ["6c1f…uuid", 48.123, 37.456, "2024-03-11", "2024-03-12"],
+  ["a0b2…uuid", 50.450, 30.523, "2024-05-02", "2024-05-04"]
 ]
 ```
 

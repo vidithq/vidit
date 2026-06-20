@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import type { MapPoint, GeolocationDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
@@ -24,10 +24,13 @@ export default function HomePage() {
     selectedConflicts,
     selectedCaptureSources,
     selectedTags,
-    eventDateFrom,
-    eventDateTo,
-    submittedFrom,
-    submittedTo,
+    selectedMediaTypes,
+    trustedOnly,
+    hideDemo,
+    eventStart,
+    eventEnd,
+    submittedStart,
+    submittedEnd,
     authorFilter,
   } = useMapState();
 
@@ -54,10 +57,9 @@ export default function HomePage() {
     selectedConflicts.forEach((c) => params.append("conflict", c));
     selectedCaptureSources.forEach((s) => params.append("capture_source", s));
     selectedTags.forEach((t) => params.append("tag", t));
-    if (eventDateFrom) params.set("event_date_from", eventDateFrom);
-    if (eventDateTo) params.set("event_date_to", eventDateTo);
-    if (submittedFrom) params.set("submitted_from", submittedFrom);
-    if (submittedTo) params.set("submitted_to", submittedTo);
+    selectedMediaTypes.forEach((m) => params.append("media", m));
+    if (trustedOnly) params.set("trusted_only", "true");
+    if (hideDemo) params.set("hide_demo", "true");
     // Strip chars outside the backend whitelist (`[A-Za-z0-9_-]{1,50}`) so
     // a stray `%` or space doesn't trip the LIKE-injection guard's 422.
     // Drop the param entirely if nothing's left (an empty value also 422s).
@@ -75,10 +77,9 @@ export default function HomePage() {
     selectedConflicts,
     selectedCaptureSources,
     selectedTags,
-    eventDateFrom,
-    eventDateTo,
-    submittedFrom,
-    submittedTo,
+    selectedMediaTypes,
+    trustedOnly,
+    hideDemo,
     authorFilter,
   ]);
 
@@ -124,10 +125,34 @@ export default function HomePage() {
     hydratedIdRef.current = null;
   };
 
+  // Apply both timeline windows client-side: each point carries its event and
+  // submitted dates, so scrubbing and playback filter the in-memory set
+  // instantly with no /points refetch. A point must fall inside both windows.
+  const visiblePoints = useMemo(() => {
+    if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return points;
+    const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
+    const hi = (iso: string) => (iso ? Date.parse(`${iso}T23:59:59Z`) : Infinity);
+    const evLo = lo(eventStart);
+    const evHi = hi(eventEnd);
+    const subLo = lo(submittedStart);
+    const subHi = hi(submittedEnd);
+    return points.filter((p) => {
+      // A missing/unparseable date must not silently drop the point (NaN fails
+      // every comparison) — treat that dimension as unconstrained, matching the
+      // histogram, which skips undated points rather than hiding them. Both
+      // columns are NOT NULL today; this is defensive against future sources.
+      const ev = p[3] ? Date.parse(`${p[3]}T00:00:00Z`) : NaN;
+      const sub = p[4] ? Date.parse(`${p[4]}T00:00:00Z`) : NaN;
+      const evOk = Number.isNaN(ev) || (ev >= evLo && ev <= evHi);
+      const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
+      return evOk && subOk;
+    });
+  }, [points, eventStart, eventEnd, submittedStart, submittedEnd]);
+
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-[#0a0a0a]">
       <Map
-        points={points}
+        points={visiblePoints}
         selectedId={selectedId}
         onPointClick={handlePointClick}
         className="map-fullscreen"
@@ -136,7 +161,12 @@ export default function HomePage() {
         onViewChange={setViewState}
       />
 
-      <FilterPanel tags={tags} pointCount={points.length} loading={loading} />
+      <FilterPanel
+        tags={tags}
+        points={points}
+        pointCount={visiblePoints.length}
+        loading={loading}
+      />
 
       {selectedId && (
         <DetailSidePanel
