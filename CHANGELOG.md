@@ -12,6 +12,13 @@ _Nothing yet._
 
 ---
 
+## v0.3.2 — 2026-06-21
+
+### Changed
+- **Roadmap reframed onto a single version ladder; the public roadmap now shows versions and surfaces the curated-onboarding phase** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx), [`planning/roadmap.md`](planning/roadmap.md), [`planning/next.md`](planning/next.md), [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`.github/ISSUE_TEMPLATE/feature_request.md`](.github/ISSUE_TEMPLATE/feature_request.md), [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml), [`docs/index.md`](docs/index.md)). The internal milestone IDs (`M1` / `M1.5` / `M2` / `M3`) are retired in favour of target minor versions — `v0.3` open source launch, `v0.4` curated onboarding, `v0.5` open beta, `v1.0` public v1 — so one ladder serves both the internal tracker and the reader-facing projection, and the awkward half-milestone (M1.5) becomes a plain `v0.4`. The landing-page roadmap gains the previously-absent `v0.4` curated-onboarding card (the whole curated-onboarding phase was invisible before), leads each card with its version, and marks `v0.3` shipped. Corrects the `v0.4` framing along the way: invite-gated registration and profile claiming coexist — what `v0.5` defers is *open* (no-invite) self-registration and its open-write stack. The now-stale "M1 public flip" / "currently private" comments in the CodeQL workflow are dropped (the repo is already public). ([#80](https://github.com/vidithq/vidit/pull/80))
+
+---
+
 ## v0.3.1 — 2026-06-21
 
 ### Added
