@@ -41,30 +41,30 @@ Per-PR detail in [`CHANGELOG.md`](../CHANGELOG.md).
 
 ---
 
-## M1 — Open source launch
+## v0.3 — Open source launch
 
 A single coordinated event that retires the "closed-source / unknown / vibe-coded" objection and widens the closed-beta analyst pool beyond the early testers. The AGPL-3.0 flip on the repo, the pinned X tweet on [`@vidithq`](https://x.com/vidithq), and cold-reach DMs to new analysts all fire in the same window. This operationalizes the standing AGPL commitment (see *Openness & transparency* below) and opens the *codebase* — not the doors. Independent of the safety stack.
 
-Work breakdown: [`next.md`](next.md) → *M1*.
+Work breakdown: [`next.md`](next.md) → *v0.3*.
 
-## M1.5 — Curated onboarding (read-only)
+## v0.4 — Curated onboarding (read-only)
 
 Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand — coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: with the analyst's consent, a pipeline turns their X handle into a ready-to-claim profile, so joining costs them a single yes, not hours of re-entering work they've already done.
 
-The shape inverts the closed beta: **read opens, write stays closed.** New contributors arrive by **claiming** a profile, not by self-registration — so M2's open-write stack (upload moderation, CSAM scanning, registration anti-abuse) stays deferred.
+The shape inverts the closed beta: **read opens to everyone; write stays gated.** Claiming a curated profile becomes a second on-ramp alongside the existing invite-gated registration — both lead to a writing account. What stays deferred to v0.5 is *open* self-registration (sign up with no invite) and the open-write stack it needs: upload moderation, CSAM scanning, registration anti-abuse.
 
 Two rules bound it:
 
 - **Consent first, then pipeline.** Nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed; the pipeline runs only on a yes, and that consent covers their past *and* future tweets. The consent is lightweight — a yes from the analyst's own account, **no X account-linking**, since analysts won't connect a third-party site they don't yet know. Account linking (the claim) is deferred to the eventual migration, once Vidit has earned their trust.
 - **On-demand ingestion, bounded cost.** Discovery uses the X API on-demand, one consented handle at a time; the free public syndication path already in the codebase does the structured per-tweet extraction. Flow: handle → API timeline pull → geolocation-tweet classifier → structured geolocations (syndication) → assembled profile.
 
-This pulls anonymous read forward from M2 and adds the onboarding machinery: the classifier, robust media/coordinate extraction, an author identity decoupled from the auth account, and the trust-gated claim flow. A bot scoped to the consented accounts keeps their geolocations in sync and can reply in-thread with dedup warnings — *media already on Vidit*, *geolocation already exists* — surfacing Vidit's value inside the analyst's existing X workflow. Going public is gated on a legal review — a reduced surface, since only consented work is ever processed.
+This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the classifier, robust media/coordinate extraction, an author identity decoupled from the auth account, and the trust-gated claim flow. A bot scoped to the consented accounts keeps their geolocations in sync and can reply in-thread with dedup warnings — *media already on Vidit*, *geolocation already exists* — surfacing Vidit's value inside the analyst's existing X workflow. Going public is gated on a legal review — a reduced surface, since only consented work is ever processed.
 
-Work breakdown: [`next.md`](next.md) → *M1.5*.
+Work breakdown: [`next.md`](next.md) → *v0.4*.
 
-## M2 — Open beta
+## v0.5 — Open beta
 
-Open self-registration; the invite-code gate retires. Anonymous read lands in M1.5 — M2 widens the gate to **write**: anyone can register and submit, not just claim a seeded profile. The threat model widens to account-farmers and unknown uploaded content.
+Open self-registration; the invite-code gate retires. Anonymous read lands in v0.4 — v0.5 widens the gate to **open write**: anyone can register and submit, not just claim a seeded profile or enter on an invite. The threat model widens to account-farmers and unknown uploaded content.
 
 Three layers protect quality:
 
@@ -76,13 +76,13 @@ Asymmetric design: read is open, write is open after registration, the trust mar
 
 Plus the legal foundation (DSA compliance, DPA agreements, professional insurance) the public-facing entity needs.
 
-Work breakdown: [`next.md`](next.md) → *M2*.
+Work breakdown: [`next.md`](next.md) → *v0.5*.
 
-## M3 — Public v1
+## v1.0 — Public v1
 
 Open beta hardened: catalog density, search and social depth, cost tuning, closed-beta framing removed.
 
-Work breakdown: [`next.md`](next.md) → *M3*.
+Work breakdown: [`next.md`](next.md) → *v1.0*.
 
 ---
 

@@ -2,12 +2,10 @@ name: codeql
 
 # CodeQL static analysis for Python (backend) + TypeScript/JavaScript (frontend).
 #
-# **Currently inert.** The repository is private and GitHub Advanced Security
-# isn't enabled, so the `analyze` job is gated on the repo being public — code
-# scanning is free on public repos but a paid add-on on private ones. The
-# workflow file lands now so it lights up automatically the moment the M1
-# *Flip the repository public* row in `planning/next.md` ships, without
-# needing a follow-up PR.
+# The `analyze` job is gated on the repository being public — code scanning
+# is free on public repos but a paid add-on (GitHub Advanced Security) on
+# private ones. The gate is a safety net: if the repo ever flips back to
+# private, analysis stops cleanly instead of hitting a billing wall.
 #
 # Once the gate clears: each push to `main`, each PR, and the weekly cron
 # fire a CodeQL analysis. Results post to the Security tab → Code scanning
@@ -39,8 +37,8 @@ permissions:
 jobs:
   analyze:
     # Private repos require GitHub Advanced Security (paid) for code scanning;
-    # public repos get it for free. Skip while private — the file activates
-    # automatically on the M1 public flip.
+    # public repos get it for free. Skip while private — re-activates
+    # automatically whenever the repo is public.
     if: ${{ !github.event.repository.private }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest

@@ -8,8 +8,8 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 
 ## Before you start
 
-- **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the forward direction (M1 → M2 → M3), and what's deferred to *future considerations*.
-- **Read [`next.md`](planning/next.md)** to see what's on the table this milestone. Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the forward direction (v0.4 → v0.5 → v1.0), and what's deferred to *future considerations*.
+- **Read [`next.md`](planning/next.md)** to see what's on the table this version. Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.

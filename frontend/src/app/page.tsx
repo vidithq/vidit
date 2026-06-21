@@ -89,6 +89,7 @@ const GITHUB_URL = "https://github.com/vidithq/vidit";
 // Reader-facing roadmap. Optional `link` surfaces an in-card link to a
 // concrete artifact (e.g. the repo for "Open source launch").
 const ROADMAP: {
+  version: string;
   tag: string;
   current: boolean;
   title: string;
@@ -96,19 +97,29 @@ const ROADMAP: {
   link?: { href: string; label: string };
 }[] = [
   {
-    tag: "Now",
-    current: true,
+    version: "v0.3",
+    tag: "Shipped",
+    current: false,
     title: "Open source launch",
-    body: "Vidit becomes open source under AGPL-3.0 — the clearest answer to “closed / unknown tool” — and the closed beta widens to more analysts in the same launch window.",
+    body: "Vidit is open source under AGPL-3.0 — the clearest answer to “closed / unknown tool”.",
     link: { href: GITHUB_URL, label: "View on GitHub" },
   },
   {
+    version: "v0.4",
+    tag: "Now",
+    current: true,
+    title: "Curated onboarding",
+    body: "Read opens to everyone — the map and the archive go public. Analysts join by claiming a profile assembled from their own public geolocations on X, with no manual re-entry.",
+  },
+  {
+    version: "v0.5",
     tag: "Next",
     current: false,
     title: "Open beta",
-    body: "Anonymous read and open self-registration: the invite-code gate comes down, behind a hardened safety and legal stack.",
+    body: "Open self-registration: the invite-code gate comes down, behind a hardened moderation and legal stack.",
   },
   {
+    version: "v1.0",
     tag: "Later",
     current: false,
     title: "Public v1",
@@ -194,7 +205,7 @@ export default function LandingPage() {
           </h2>
         </div>
         <ol className="mt-6 space-y-3">
-          {ROADMAP.map(({ tag, current, title, body, link }) => (
+          {ROADMAP.map(({ version, tag, current, title, body, link }) => (
             <li
               key={title}
               className={`flex gap-4 rounded-lg border p-4 ${
@@ -211,7 +222,12 @@ export default function LandingPage() {
                 {tag}
               </span>
               <div>
-                <h3 className="text-sm font-medium text-neutral-100">{title}</h3>
+                <h3 className="text-sm font-medium text-neutral-100">
+                  <span className="font-mono text-xs text-neutral-500">
+                    {version}
+                  </span>{" "}
+                  {title}
+                </h3>
                 <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
                   {body}
                 </p>

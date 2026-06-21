@@ -22,10 +22,10 @@ What else did you weigh, and why did you rule it out?
 
 Where does this fit on the roadmap?
 
-- [ ] M1 — Open source launch
-- [ ] M2 — Open beta
-- [ ] M3 — Public v1
-- [ ] Refactor / hygiene (no macro gating)
+- [ ] v0.4 — Curated onboarding
+- [ ] v0.5 — Open beta
+- [ ] v1.0 — Public v1
+- [ ] Refactor / hygiene (no version gating)
 - [ ] Unscheduled candidate
 
 See [`planning/next.md`](../../planning/next.md) for the milestone tables and the *Unscheduled candidates* section. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger — check that your proposal isn't already covered there.

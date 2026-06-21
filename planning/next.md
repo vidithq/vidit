@@ -1,28 +1,28 @@
 # What's next
 
-Work tracker organized by the macros defined in [`roadmap.md`](roadmap.md). Items get deleted when they ship — the [CHANGELOG](../CHANGELOG.md) records what landed.
+Work tracker organized by the version milestones defined in [`roadmap.md`](roadmap.md). Items get deleted when they ship — the [CHANGELOG](../CHANGELOG.md) records what landed.
 
-Within each macro, rows carry a priority:
+Within each version, rows carry a priority:
 
-- **P0** — hard blocker; the macro doesn't ship without it.
-- **P1** — strongly recommended; lands inside the macro if there's time.
+- **P0** — hard blocker; the version doesn't ship without it.
+- **P1** — strongly recommended; lands inside the version if there's time.
 - **P2** — nice-to-have; can slip without embarrassment.
 
-The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not gated on any macro.
+The [Refactors](#refactors) at the bottom are ongoing engineering hygiene, not gated on any version.
 
 ---
 
-## M1 — Open source launch
+## v0.3 — Open source launch
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M1*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.0* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq). The manual-signup pitch in cold-reach DMs is superseded by M1.5's consent-ask + claim onboarding — the DM channel itself still carries the consent ask.
+Strategic context: [`roadmap.md`](roadmap.md) → *v0.3*. The repository is **public** — the vitrine, the repo-prep work, the public docs site at [`docs.vidit.app`](https://docs.vidit.app), the pre-flip hygiene passes, and the flip itself (with the security floor: secret scanning + push protection, branch protection, CodeQL) have shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.0* and *v0.2.0*). What's left: the pinned X tweet on [`@vidithq`](https://x.com/vidithq). The manual-signup pitch in cold-reach DMs is superseded by v0.4's consent-ask + claim onboarding — the DM channel itself still carries the consent ask.
 
 DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https://github.com/apps/dco) (installed at the org level), not an in-repo workflow file — same standard installation as Kubernetes / Helm / containerd. Branch protection on `main` requires the `DCO` status check.
 
 ---
 
-## M1.5 — Curated onboarding (read-only) *(now)*
+## v0.4 — Curated onboarding (read-only) *(now)*
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M1.5*. The barrier to adoption is the analyst's time — they won't re-enter on Vidit work they've already published to X. Automate onboarding so that, with one consent, an analyst's X handle becomes a ready-to-claim profile at zero effort to them.
+Strategic context: [`roadmap.md`](roadmap.md) → *v0.4*. The barrier to adoption is the analyst's time — they won't re-enter on Vidit work they've already published to X. Automate onboarding so that, with one consent, an analyst's X handle becomes a ready-to-claim profile at zero effort to them.
 
 Consent first: nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed — the pipeline runs only on a yes. Sequencing: **Phase A** (foundations + the legal review) runs first; **Phase B** (the on-ramp) builds on A; **Phase C** (go public) is gated on the legal review. Rows below are grouped by phase. Phase A's data-model foundation — the Author/User split, so an assembled profile exists before its owner logs in — has shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.1*); the ingestion, consent, and claim rows remain.
 
@@ -39,13 +39,13 @@ Consent first: nothing is fetched, processed, or published for an analyst who ha
 | P1 | Integration | B — Consented-accounts bot timeline | A dedicated bot account follows only the consented handles and reads its own home timeline — one feed surfacing every consented account's new posts. Runs on Railway as a **separate service** (not a second backend replica — the slowapi buckets + points cache are in-process, one replica today). The substrate for ongoing sync (future geolocation tweets ingest as posted) and the warning replies below. |
 | P1 | Integration | B — Reply in-thread with dedup warnings | On a consented account's new tweet: *media already on Vidit* (`Media.sha256` match) or *geolocation already exists* (the existing duplicate probe). Consented accounts only, low volume, within X's automation rules; write cost applies (link-bearing replies bill higher). |
 | P0 | Read access | C — Open anonymous read at the frontend gate | Backend read endpoints are already anonymous; the wall is the [`proxy.ts`](../frontend/src/proxy.ts) default-deny (its own comment anticipates this — "when anonymous read opens, content routes…"). Work: add the content routes (`/map`, `/geolocations`, `/profile`, …) to the allowlist + drop the `ClosedBetaBanner`. Exception: `GET /search` is still `🔒` ([`search.py`](../backend/app/routers/search.py)) — open it or keep it gated deliberately. |
-| P0 | Anti-scraping | C — Read-endpoint anti-scraping floor | Per-IP read limits already ship (`GET /geolocations` 120/min, `/points` 60/min, detail 120/min — see [`api.md`](../docs/api.md)). M1.5 work: add Cloudflare free Bot Fight Mode / WAF, tighten the read limits for public exposure if traffic warrants, and add per-documented-limit behavioral coverage (N pass, N+1 → 429) — today only the limiter *wiring* is pinned ([`test_rate_limits.py`](../backend/tests/test_rate_limits.py)). At-scale hardening (`?bbox=`, `LIMIT 100` + cursor, per-user read cap) stays in M2. |
+| P0 | Anti-scraping | C — Read-endpoint anti-scraping floor | Per-IP read limits already ship (`GET /geolocations` 120/min, `/points` 60/min, detail 120/min — see [`api.md`](../docs/api.md)). v0.4 work: add Cloudflare free Bot Fight Mode / WAF, tighten the read limits for public exposure if traffic warrants, and add per-documented-limit behavioral coverage (N pass, N+1 → 429) — today only the limiter *wiring* is pinned ([`test_rate_limits.py`](../backend/tests/test_rate_limits.py)). At-scale hardening (`?bbox=`, `LIMIT 100` + cursor, per-user read cap) stays in v0.5. |
 
 ---
 
-## M2 — Open beta
+## v0.5 — Open beta
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M2*. Anonymous read + the contributor on-ramp moved to M1.5; M2 is the **open-write** gate — self-registration plus the abuse / moderation / legal stack it requires. Every row here is a hard blocker.
+Strategic context: [`roadmap.md`](roadmap.md) → *v0.5*. Anonymous read + the contributor on-ramp moved to v0.4; v0.5 is the **open-write** gate — self-registration plus the abuse / moderation / legal stack it requires. Every row here is a hard blocker.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
@@ -74,9 +74,9 @@ Strategic context: [`roadmap.md`](roadmap.md) → *M2*. Anonymous read + the con
 
 ---
 
-## M3 — Public v1
+## v1.0 — Public v1
 
-Strategic context: [`roadmap.md`](roadmap.md) → *M3*. Priorities are relative within the macro — P1 before P2; none of it blocks the open-beta gate.
+Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. Priorities are relative within the version — P1 before P2; none of it blocks the open-beta gate.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
@@ -114,7 +114,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *M3*. Priorities are relative 
 
 ## Refactors
 
-Engineering-hygiene work, not gated on any milestone — pick these up when they unblock the next feature or when the smell starts to bite. Order is rough priority.
+Engineering-hygiene work, not gated on any version — pick these up when they unblock the next feature or when the smell starts to bite. Order is rough priority.
 
 | Area | Item | Why / how |
 |---|---|---|
@@ -123,7 +123,7 @@ Engineering-hygiene work, not gated on any milestone — pick these up when they
 | Backend | Transactional test isolation | The suite runs against the configured dev database with hand-rolled teardown: a crashed run leaves residue rows, `pytest-xdist` is unsafe, and pointing the env at a real database before `pytest` mutates it. Wrap each test in a rolled-back transaction, or create/drop a dedicated test DB in `conftest.py`. |
 | Backend | Stop running sync DB I/O on the event loop | `async def` handlers call sync SQLAlchemy sessions directly, and Pillow re-encodes run in-request — concurrent uploads stall every in-flight request on the single uvicorn worker. Drop `async` from sync-DB handlers (FastAPI threadpools plain `def`) or move to async sessions; queue the image work when an async worker exists (pairs with the video-metadata-strip row below). |
 | Frontend | Generate API types from the backend OpenAPI spec | [`types/index.ts`](../frontend/src/types/index.ts) hand-mirrors backend schemas behind a blind `res.json() as T` cast — a backend schema change breaks the frontend at runtime with no compile error, despite strict TS everywhere else. FastAPI emits the spec for free; `openapi-typescript` in CI turns schema drift into a `tsc` failure. |
-| Backend | Reconcile `/geolocations/points` filter surface after the map-filter work | The map now filters event/submitted **dates client-side** (the payload carries both per point), so `/points` still *accepts* `event_date_from/to` + `submitted_from/to` but the app no longer sends them — decide keep-as-API vs drop. The new `media` / `trusted_only` / `hide_demo` predicates run on the no-`LIMIT` scan with no supporting index (`media.media_type`, `users.is_trusted`, `geolocations.is_demo`) — pair with the M2 `?bbox=` row + the M3 compress row. `trusted_only` overlaps the planned M2 `?vetted_only=` (same `is_trusted` substantiation) — converge the naming when that filter lands. |
+| Backend | Reconcile `/geolocations/points` filter surface after the map-filter work | The map now filters event/submitted **dates client-side** (the payload carries both per point), so `/points` still *accepts* `event_date_from/to` + `submitted_from/to` but the app no longer sends them — decide keep-as-API vs drop. The new `media` / `trusted_only` / `hide_demo` predicates run on the no-`LIMIT` scan with no supporting index (`media.media_type`, `users.is_trusted`, `geolocations.is_demo`) — pair with the v0.5 `?bbox=` row + the v1.0 compress row. `trusted_only` overlaps the planned v0.5 `?vetted_only=` (same `is_trusted` substantiation) — converge the naming when that filter lands. |
 
 ---
 
@@ -155,7 +155,7 @@ Concept-level only — **no commitment** to design or ship. Promote a candidate 
 | Ops | Redis exit for the points cache + limiter buckets | The in-process TTL cache ([`cache.py`](../backend/app/cache.py)) and in-memory slowapi buckets pin the backend to exactly one process — `--workers 2` or a second Railway replica multiplies every rate limit by N and serves stale soft-deletes for the cache TTL. Deliberate for the MVP (see [`engineering.md`](../docs/engineering.md) → *Out of technical scope*); promote to scheduled the moment a second process is on the table. |
 | Comms | External "what's in flight" surface | A pinned location for "yes, the X bug is known and being worked on" — either a `STATUS.md` at the repo root (read by anyone clicking through to the source) or a pinned message in the Discord channel. Today the pattern is repeated explanation in DMs. Pick a format when the same "is X being looked at?" question lands twice. |
 | Brand | Branded status URL via Cloudflare redirect | UptimeRobot exposes a public status page on free tier (currently `https://stats.uptimerobot.com/<monitor-id>` for the `Vidit API health` monitor). The URL leaks the provider name and reads off-brand. A Cloudflare Redirect Rule on a `status.vidit.app` subdomain would 302 every visit to the underlying UptimeRobot URL — clean brand, no UptimeRobot upgrade needed. **DNS:** add a record for `status.vidit.app` and flip it to **Proxied** (orange cloud) — safe to proxy this one because the subdomain hosts no service and doesn't need Let's Encrypt (unlike the apex and `api.` where proxy mode breaks cert provisioning, see [`engineering.md`](../docs/engineering.md) → *Particularities*). **Cloudflare → Rules → Single Redirect:** match `http.host eq "status.vidit.app"` → dynamic redirect to `https://stats.uptimerobot.com/<monitor-id>`, status 302. Free on all Cloudflare plans. Worth wiring once the status page becomes something analysts are asked to check; not urgent until then. |
-| UX | Mobile responsiveness audit | A mobile pass across the golden paths (map → detail → submit → profile → admin under 375px) was scoped once, then de-prioritized: desktop is the only target surface for the closed beta. The audit can come back if and when public registration is on the table (M2), where casual visitors on phones become a real population. What it would cover when it surfaces: filter panel on the map taking too much width and burying data points; card-header CTAs (e.g. `/bounties` "Post bounty") wrapping at narrow widths; long-prose pages (`/about`) rendering at large body-text sizes that don't read like a phone UI; file-input controls leaking the browser-default truncated "Choose files / No file chosen" label. |
+| UX | Mobile responsiveness audit | A mobile pass across the golden paths (map → detail → submit → profile → admin under 375px) was scoped once, then de-prioritized: desktop is the only target surface for the closed beta. The audit can come back if and when public registration is on the table (v0.5), where casual visitors on phones become a real population. What it would cover when it surfaces: filter panel on the map taking too much width and burying data points; card-header CTAs (e.g. `/bounties` "Post bounty") wrapping at narrow widths; long-prose pages (`/about`) rendering at large body-text sizes that don't read like a phone UI; file-input controls leaking the browser-default truncated "Choose files / No file chosen" label. |
 
 **Cross-cutting rules:**
 
