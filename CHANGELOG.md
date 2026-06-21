@@ -8,6 +8,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+---
+
+## v0.3.1 — 2026-06-21
+
 ### Added
 - **Author/User split — a profile can exist before its owner logs in** ([`backend/app/models/user.py`](backend/app/models/user.py), [`backend/alembic/versions/u7p9r1t3v5x7_author_user_split.py`](backend/alembic/versions/u7p9r1t3v5x7_author_user_split.py) (new), [`docs/data-model.md`](docs/data-model.md), [`planning/next.md`](planning/next.md)). An *assembled profile* — built from a consented X handle before its owner registers — is now a credential-less `users` row rather than a separate `authors` table: `email` / `password_hash` are nullable, a unique `x_handle` is the pre-claim identity anchor and the re-consent dedup key, and `claimed_at` records when an owner took control — it defaults to insert time for owned accounts and is NULL only for an unclaimed assembled profile (existing rows backfilled to `created_at`). `geolocations.author_id` / `bounties.author_id` keep pointing at `users.id`, so there's no FK re-point and no author-query rewrite; existing hand-made profiles (incl. demo authors) are already `users` rows, so nothing migrates. The auth flow (login, admin promotion, password reset / change) guards the new credential-less / email-less state — a credential-less account can't authenticate by password (regression-tested).
 
