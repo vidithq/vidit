@@ -6,7 +6,7 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 
 | Content | Home | Not allowed in |
 |---|---|---|
-| Strategy / vision / macros (M1, M2, M3) | `planning/roadmap.md` | `docs/`, source code |
+| Strategy / vision / version milestones | `planning/roadmap.md` | `docs/`, source code |
 | Work tracker / priorities | `planning/next.md` | `docs/`, source code |
 | Reference (API, schema, ops, design) | `docs/*.md` | `planning/` |
 | Release history | `CHANGELOG.md` | `docs/`, `planning/` |
@@ -14,12 +14,12 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 | Local-dev setup | `README.md` | `docs/`, `planning/` |
 | AI / agent rules (this file) | `AGENTS.md` | scattered |
 
-CI enforces a floor — every PR to `main` must touch *both* `docs/` and `planning/`. See the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Granular pairings (routers ↔ `api.md`, milestone IDs only in `planning/`, etc.) are conventions the writing rules below + human review own; the check stays deliberately blunt so it ages well.
+CI enforces a floor — every PR to `main` must touch *both* `docs/` and `planning/`. See the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Granular pairings (routers ↔ `api.md`, version milestones only in `planning/`, etc.) are conventions the writing rules below + human review own; the check stays deliberately blunt so it ages well.
 
 ## Doc writing rules
 
 1. **One fact, one home.** If it lives elsewhere, link; don't restate.
-2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, milestone IDs (M1, M2, M3), or macro names (e.g. *Open beta*) in `docs/*.md` or source files. Milestone tracking lives in `planning/`, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates).
+2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in `planning/`, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates). The reader-facing roadmap on the public landing is the one sanctioned projection.
 3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…" — make it a decision or a task in next.md.
 4. **No "for context" / "for clarity" intros.** State the thing.
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.
