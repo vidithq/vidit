@@ -215,6 +215,8 @@ Indexes:
 - `ix_users_demo` on `(id) WHERE is_demo = true` — partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
 - `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))` — backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight
 
+The credential-less assembled-profile model — nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row — shipped in `v0.3.1`; see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
+
 ---
 
 ### `auth_tokens`

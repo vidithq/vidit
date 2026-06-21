@@ -24,7 +24,7 @@ DCO sign-off on inbound contributions is enforced via the [Probot DCO App](https
 
 Strategic context: [`roadmap.md`](roadmap.md) → *M1.5*. The barrier to adoption is the analyst's time — they won't re-enter on Vidit work they've already published to X. Automate onboarding so that, with one consent, an analyst's X handle becomes a ready-to-claim profile at zero effort to them.
 
-Consent first: nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed — the pipeline runs only on a yes. Sequencing: **Phase A** (foundations + the legal review) runs first; **Phase B** (the on-ramp) builds on A; **Phase C** (go public) is gated on the legal review. Rows below are grouped by phase.
+Consent first: nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed — the pipeline runs only on a yes. Sequencing: **Phase A** (foundations + the legal review) runs first; **Phase B** (the on-ramp) builds on A; **Phase C** (go public) is gated on the legal review. Rows below are grouped by phase. Phase A's data-model foundation — the Author/User split, so an assembled profile exists before its owner logs in — has shipped (see [CHANGELOG](../CHANGELOG.md) under *v0.3.1*); the ingestion, consent, and claim rows remain.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
