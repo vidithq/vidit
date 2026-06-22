@@ -26,6 +26,12 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Default types + `labeled`/`unlabeled` so the docs-pairing
+    # `no-docs-needed` exemption (below) takes effect the moment the
+    # label is toggled, with no extra push. Re-running the suite on a
+    # label change is the same simplicity-over-minutes trade as the
+    # no-path-filters choice above; label toggles are rare.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 # A force-push to a PR branch obsoletes the in-flight run — cancel it.
@@ -169,14 +175,17 @@ jobs:
   #   relevant macro is reasonable overhead.
   #
   # If the rule fires legitimately for a PR that genuinely doesn't need
-  # either touch, justify it in the PR description; the rule is a
-  # friction-first guardrail, not a hard contract.
+  # either touch, justify it in the PR description and apply the
+  # `no-docs-needed` label — the job then passes (same mechanism as the
+  # Dependabot exemption). The rule is a friction-first guardrail, not a
+  # hard contract.
   #
-  # Exempt from the rule: Dependabot PRs. Routine version-bump PRs
-  # (security or version-update) don't carry reference-doc or tracker
-  # impact — every Dependabot bump that would, gets its own human-
-  # authored CHANGELOG entry on merge anyway. Forcing a doc/+planning/
-  # touch on each weekly Dependabot wave is friction without signal.
+  # Exempt from the rule: Dependabot PRs and any PR carrying the
+  # `no-docs-needed` label. Routine version-bump PRs (security or
+  # version-update) don't carry reference-doc or tracker impact — every
+  # Dependabot bump that would, gets its own human-authored CHANGELOG
+  # entry on merge anyway. Forcing a doc/+planning/ touch on each weekly
+  # Dependabot wave is friction without signal.
   docs-pairing:
     name: PR touches docs/ and planning/
     if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
@@ -189,13 +198,19 @@ jobs:
           echo "✓ Dependabot PR — docs-pairing check is exempt for routine version bumps."
           echo "If this PR turns out to need a doc / planning note (e.g., a breaking-change migration), the human handling the merge adds it via a follow-up commit on the branch."
 
+      - name: Note no-docs-needed exemption
+        if: contains(github.event.pull_request.labels.*.name, 'no-docs-needed')
+        run: |
+          echo "✓ PR labelled 'no-docs-needed' — docs-pairing check is exempt."
+          echo "The author asserts this change has no docs/ + planning/ impact (justify it in the PR description). Remove the label to re-enforce the check."
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        if: github.event.pull_request.user.login != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'no-docs-needed')
         with:
           fetch-depth: 0
 
       - name: Enumerate changed files
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        if: github.event.pull_request.user.login != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'no-docs-needed')
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
@@ -205,7 +220,7 @@ jobs:
           cat /tmp/changed.txt
 
       - name: Check docs/ + planning/ touched
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        if: github.event.pull_request.user.login != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'no-docs-needed')
         run: |
           set -e
           FILES=$(cat /tmp/changed.txt)
@@ -213,12 +228,12 @@ jobs:
           FAIL=0
 
           if ! touched '^docs/'; then
-            echo "::error::No file under docs/ was touched. Every PR should update reference docs (api / data-model / engineering / design / backups) when production behavior, API surface, schema, or operational config changes. If the PR genuinely has no docs/ impact, justify it in the description and override the check."
+            echo "::error::No file under docs/ was touched. Every PR should update reference docs (api / data-model / engineering / design / backups) when production behavior, API surface, schema, or operational config changes. If the PR genuinely has no docs/ impact, justify it in the description and apply the 'no-docs-needed' label."
             FAIL=1
           fi
 
           if ! touched '^planning/'; then
-            echo "::error::No file under planning/ was touched. Every PR should update the tracker — remove or amend a row in planning/next.md for shipped work, or leave a brief note in the relevant macro for changes that weren't tracked. If the PR genuinely has no planning impact, justify it in the description and override."
+            echo "::error::No file under planning/ was touched. Every PR should update the tracker — remove or amend a row in planning/next.md for shipped work, or leave a brief note in the relevant version for changes that weren't tracked. If the PR genuinely has no planning impact, justify it in the description and apply the 'no-docs-needed' label."
             FAIL=1
           fi
 
