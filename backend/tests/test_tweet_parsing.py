@@ -13,6 +13,7 @@ from app.services import tweet_parsing
 from app.services.tweet_parsing import (
     InvalidTweetUrl,
     _extract_external_source_url,
+    clean_proof_text,
     derive_title,
     extract_coords,
     is_trusted_media_url,
@@ -146,6 +147,44 @@ def test_gmaps_url_near_miss_rejects_non_maps_at():
     assert extract_coords("Tagging @user1 @user2 for visibility") == []
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hit confirmed 33.123°N 35.456°E overnight",  # ° + suffix letter
+        "Coordinates: 33.123N, 35.456E",  # no °, comma separator, suffix
+        "Location N33.123 E35.456 per the report",  # prefix letter, no °
+        "Grid 33.123° N / 35.456° E",  # spaced letter, slash separator
+    ],
+)
+def test_decimal_hemisphere_extracts_each_ordering(text):
+    coords = extract_coords(text)
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(33.123)
+    assert coords[0].lng == pytest.approx(35.456)
+
+
+def test_decimal_hemisphere_southern_western_negate():
+    coords = extract_coords("Position 33.918861S 18.423300W")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(-33.918861)
+    assert coords[0].lng == pytest.approx(-18.423300)
+
+
+def test_decimal_hemisphere_single_fractional_digit():
+    # One decimal place is enough — the hemisphere letter is the discriminator.
+    coords = extract_coords("33.1°N 35.5°E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(33.1)
+    assert coords[0].lng == pytest.approx(35.5)
+
+
+def test_decimal_hemisphere_near_miss_requires_adjacent_pair():
+    # Hemisphere-tagged numbers separated by prose aren't a coordinate pair.
+    assert extract_coords("vitamin N12.5 area E34.6 batteries") == []
+    # A lone hemisphere number with no lng half is not a pair.
+    assert extract_coords("heading 48.5N then onward") == []
+
+
 def test_extract_coords_dedupes_across_extractors():
     text = (
         "Decimal: 48.012345, 37.802411\n"
@@ -201,6 +240,60 @@ def test_title_hard_cuts_unbroken_token():
     text = "a" * 200
     out = derive_title(text)
     assert len(out) <= 120
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("1. Strike near the depot", "Strike near the depot"),
+        ("2) Strike near the depot", "Strike near the depot"),
+        ("- Strike near the depot", "Strike near the depot"),
+        ("• Strike near the depot", "Strike near the depot"),
+    ],
+)
+def test_title_strips_leading_list_marker(raw, expected):
+    assert derive_title(raw) == expected
+
+
+def test_title_strips_bare_coordinates_from_line():
+    assert derive_title("Strike on depot 48.012345, 37.802411") == "Strike on depot"
+
+
+def test_title_skips_coordinate_only_first_line():
+    # A line that is nothing but coordinates must not become the title.
+    assert derive_title("48.012345, 37.802411\nStrike on the depot") == "Strike on the depot"
+
+
+def test_title_empty_when_only_coordinates():
+    assert derive_title("48.012345, 37.802411") == ""
+
+
+# ── Proof text cleanup ────────────────────────────────────────────────────
+
+
+def test_clean_proof_strips_coords_tco_and_markers():
+    raw = (
+        "1. Strike on the depot 48.012345, 37.802411\n"
+        "Footage via https://t.co/abc123\n"
+        "- second angle 33.1°N 35.5°E"
+    )
+    assert clean_proof_text(raw) == "Strike on the depot\nFootage via\nsecond angle"
+
+
+def test_clean_proof_drops_lines_emptied_by_removal():
+    # A line that is only a coordinate / only a shortlink leaves nothing.
+    raw = "48.012345, 37.802411\nReal narrative here\nhttps://t.co/xyz"
+    assert clean_proof_text(raw) == "Real narrative here"
+
+
+def test_clean_proof_collapses_internal_whitespace():
+    raw = "Strike    on     the   depot"
+    assert clean_proof_text(raw) == "Strike on the depot"
+
+
+def test_clean_proof_empty_input():
+    assert clean_proof_text("") == ""
+    assert clean_proof_text("48.012345, 37.802411\n\nhttps://t.co/x") == ""
 
 
 # ── Trusted media host ────────────────────────────────────────────────────

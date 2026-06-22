@@ -31,16 +31,19 @@ not authoritative storage for tweets.
 Coordinate parsing
 ------------------
 
-Three extractors run over the full text, de-duped:
+Four extractors run over the full text, de-duped:
 
 1. Decimal pairs (``48.012345, 37.802411``)
-2. DMS (``48°00'45"N 37°48'08"E``)
-3. Google Maps ``@lat,lng,zoom`` links
+2. Decimal degrees + hemisphere (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``,
+   ``N48.0123 E37.8024`` — ``°`` optional, letter on either side)
+3. DMS (``48°00'45"N 37°48'08"E``)
+4. Google Maps ``@lat,lng,zoom`` links
 
 The first lands in the form by default; extras become "other candidates"
-chips. The decimal extractor requires ≥3 decimal places to avoid matching
-dates / version strings (`1.2.3`, `2025-11-12`); DMS uses the directional
-letters as the discriminator; Maps URLs are unambiguous.
+chips. The decimal-pair extractor requires ≥3 decimal places to avoid
+matching dates / version strings (`1.2.3`, `2025-11-12`); the hemisphere and
+DMS forms use the directional letters as the discriminator (one fractional
+digit suffices); Maps URLs are unambiguous.
 """
 
 from __future__ import annotations
@@ -327,6 +330,30 @@ _DECIMAL_PAIR_RE = re.compile(
     r"(?![\d.])"
 )
 
+# Decimal degrees + hemisphere letter. The letter (not a decimal floor) is the
+# discriminator — it disambiguates from dates / versions — so one fractional
+# digit is enough; ``°`` is optional. Latitude (N/S) first in both orderings,
+# matching how OSINT posts write them. Two variants: letter-suffix
+# (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``) and letter-prefix
+# (``N48.0123 E37.8024``). A required ``[\s,/]`` separator between the two
+# halves keeps the boundaries tight.
+_DECIMAL_HEMI_SUFFIX_RE = re.compile(
+    r"(?<![\w.])"
+    r"(\d{1,3}\.\d+)\s*°?\s*([NS])"
+    r"[\s,/]+"
+    r"(\d{1,3}\.\d+)\s*°?\s*([EW])"
+    r"(?![\w.])",
+    re.IGNORECASE,
+)
+_DECIMAL_HEMI_PREFIX_RE = re.compile(
+    r"(?<![\w.])"
+    r"([NS])\s*(\d{1,3}\.\d+)\s*°?"
+    r"[\s,/]+"
+    r"([EW])\s*(\d{1,3}\.\d+)\s*°?"
+    r"(?![\w.])",
+    re.IGNORECASE,
+)
+
 # DMS — degrees, minutes, seconds + hemisphere letter.
 _DMS_RE = re.compile(
     r"(\d{1,3})°\s*(\d{1,2})['’]\s*(\d{1,2}(?:\.\d+)?)?[\"”]?\s*([NS])"
@@ -354,6 +381,14 @@ def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:
     m = int(mnt)
     s = float(sec) if sec else 0.0
     decimal = d + m / 60.0 + s / 3600.0
+    if hemi.upper() in ("S", "W"):
+        decimal = -decimal
+    return decimal
+
+
+def _hemi_decimal(value: str, hemi: str) -> float:
+    """Signed decimal degree from a bare number + hemisphere letter."""
+    decimal = float(value)
     if hemi.upper() in ("S", "W"):
         decimal = -decimal
     return decimal
@@ -390,6 +425,16 @@ def extract_coords(text: str) -> list[ParsedCoord]:
         if len(candidates) >= _MAX_CANDIDATES:
             return candidates
 
+    for m in _DECIMAL_HEMI_SUFFIX_RE.finditer(text):
+        _push(_hemi_decimal(m.group(1), m.group(2)), _hemi_decimal(m.group(3), m.group(4)))
+        if len(candidates) >= _MAX_CANDIDATES:
+            return candidates
+
+    for m in _DECIMAL_HEMI_PREFIX_RE.finditer(text):
+        _push(_hemi_decimal(m.group(2), m.group(1)), _hemi_decimal(m.group(4), m.group(3)))
+        if len(candidates) >= _MAX_CANDIDATES:
+            return candidates
+
     for m in _DMS_RE.finditer(text):
         try:
             lat = _dms_to_decimal(m.group(1), m.group(2), m.group(3), m.group(4))
@@ -412,22 +457,46 @@ def extract_coords(text: str) -> list[ParsedCoord]:
     return candidates
 
 
+# Every coordinate form, for stripping coordinates out of prose (title +
+# proof body). The structured ``coordinate`` field is the home for the value;
+# leaving it in the text duplicates it and reads as noise.
+_COORD_RES = (
+    _DECIMAL_PAIR_RE,
+    _DECIMAL_HEMI_SUFFIX_RE,
+    _DECIMAL_HEMI_PREFIX_RE,
+    _DMS_RE,
+    _GMAPS_RE,
+)
+
+
+def _strip_coords(text: str) -> str:
+    for rx in _COORD_RES:
+        text = rx.sub(" ", text)
+    return text
+
+
 # ── Title heuristic ───────────────────────────────────────────────────────
 
 
 _HASHTAG_RE = re.compile(r"#\w+")
 _URL_RE = re.compile(r"https?://\S+")
 _WHITESPACE_RE = re.compile(r"\s+")
+# A leading list marker: bullet glyphs or an ordinal (``1.`` / ``1)``) at the
+# start of a line. Anchored + single-shot so it only peels the marker, not
+# digits mid-prose.
+_LEADING_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*•·‣–—]|\d{1,3}[.)])\s+")
 _TITLE_MAX_LEN = 120
 
 
 def derive_title(text: str) -> str:
     """Best-effort title from the tweet body.
 
-    First non-empty line, hashtags + URLs stripped, whitespace collapsed,
-    truncated to ``_TITLE_MAX_LEN`` on a word boundary. If nothing usable
-    remains (empty / all-hashtags / all-URLs), return ``""`` so the analyst
-    types one — a wrong title in the field is worse than none.
+    First usable line — hashtags, URLs, a leading list marker, and any bare
+    coordinates stripped, whitespace collapsed, truncated to ``_TITLE_MAX_LEN``
+    on a word boundary. A line that holds nothing but coordinates / links /
+    hashtags is skipped (the title must never be a bare coordinate). If no line
+    is usable, return ``""`` so the analyst types one — a wrong title in the
+    field is worse than none.
 
     Truncation: prefer the last space inside the limit; with none (one long
     token, e.g. a no-space cyrillic address) hard-cut so the title never
@@ -436,6 +505,8 @@ def derive_title(text: str) -> str:
     for raw_line in text.splitlines():
         line = _HASHTAG_RE.sub("", raw_line)
         line = _URL_RE.sub("", line)
+        line = _LEADING_LIST_MARKER_RE.sub("", line)
+        line = _strip_coords(line)
         line = _WHITESPACE_RE.sub(" ", line).strip()
         if not line:
             continue
@@ -449,6 +520,37 @@ def derive_title(text: str) -> str:
             return clipped[:cut_at].rstrip()
         return clipped.rstrip()
     return ""
+
+
+# ── Proof text cleanup ────────────────────────────────────────────────────
+
+
+# ``t.co`` shortlinks as they appear inline in raw tweet text — X wraps every
+# link this way. The expanded source is captured structurally elsewhere
+# (``source_url`` / ``detected_from_url``), so the proof body keeps only prose.
+_T_CO_URL_RE = re.compile(r"https?://t\.co/\S+", re.IGNORECASE)
+
+
+def clean_proof_text(text: str) -> str:
+    """Strip from assembled proof text the artefacts that don't belong in a
+    proof body: bare coordinates (the value is a structured field), ``t.co``
+    shortlinks (provenance lives in ``source_url`` / ``detected_from_url``),
+    and per-line leading list markers. Lines emptied by the removals are
+    dropped; internal whitespace is collapsed; lines join with single
+    newlines.
+
+    Used by the assemble step when it turns a tweet / thread into a
+    detection's proof document — source-agnostic (archive or syndication).
+    """
+    out_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = _strip_coords(raw_line)
+        line = _T_CO_URL_RE.sub("", line)
+        line = _LEADING_LIST_MARKER_RE.sub("", line)
+        line = _WHITESPACE_RE.sub(" ", line).strip()
+        if line:
+            out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 # ── Media extraction ──────────────────────────────────────────────────────
