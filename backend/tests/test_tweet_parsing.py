@@ -185,6 +185,22 @@ def test_decimal_hemisphere_near_miss_requires_adjacent_pair():
     assert extract_coords("heading 48.5N then onward") == []
 
 
+def test_decimal_hemisphere_skips_out_of_bounds():
+    # `\d{1,3}` lets the regex match 233 / 999, but bounds rejection drops it.
+    assert extract_coords("233.5N 999.9E") == []
+
+
+def test_decimal_hemisphere_lng_first_not_matched():
+    # Documented limitation: latitude (N/S) must come first.
+    assert extract_coords("35.5°E 33.1°N") == []
+
+
+def test_extract_coords_no_cross_line_pairing():
+    # A coordinate lives on one line; a lat/lng split across lines is not a pair.
+    assert extract_coords("48.012345,\n37.802411") == []
+    assert extract_coords("48.5N\n35.5E") == []
+
+
 def test_extract_coords_dedupes_across_extractors():
     text = (
         "Decimal: 48.012345, 37.802411\n"
@@ -266,6 +282,20 @@ def test_title_skips_coordinate_only_first_line():
 
 def test_title_empty_when_only_coordinates():
     assert derive_title("48.012345, 37.802411") == ""
+
+
+def test_title_removes_empty_brackets_left_by_coord_strip():
+    assert derive_title("Strike (48.012345, 37.802411) hit") == "Strike hit"
+
+
+def test_title_trims_dangling_label_punctuation():
+    # The bare-coord strip leaves "Coordinates:"; the trailing colon is trimmed.
+    assert derive_title("Coordinates: 48.012345, 37.802411") == "Coordinates"
+
+
+def test_title_skips_line_with_no_word_after_cleanup():
+    # Emoji + coordinate only → no real word → fall through to the next line.
+    assert derive_title("📍 48.012345, 37.802411\nDepot strike") == "Depot strike"
 
 
 # ── Proof text cleanup ────────────────────────────────────────────────────

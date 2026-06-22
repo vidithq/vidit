@@ -319,13 +319,19 @@ class ParsedCoord:
     lng: float
 
 
+# Horizontal whitespace only — a coordinate pair lives on one line. A separator
+# that spanned a newline would pair a latitude on one line with a longitude on
+# the next, and the per-line proof / title strippers (run over ``splitlines()``)
+# wouldn't remove what ``extract_coords`` lifted. Every extractor below uses it.
+_HWS = r"[^\S\r\n]"
+
 # Decimal pairs. The `.\d{3,}` floor on both sides keeps us off dates
 # (`2025-11-12`), version strings (`1.2.3`), and reply counts — none carry
 # 3+ decimals on both numbers at once.
 _DECIMAL_PAIR_RE = re.compile(
     r"(?<![\d.])"
     r"([-+]?\d{1,3}\.\d{3,})"
-    r"\s*[,\s]\s*"
+    rf"(?:{_HWS}|,)+"
     r"([-+]?\d{1,3}\.\d{3,})"
     r"(?![\d.])"
 )
@@ -335,12 +341,14 @@ _DECIMAL_PAIR_RE = re.compile(
 # digit is enough; ``°`` is optional. Latitude (N/S) first in both orderings,
 # matching how OSINT posts write them. Two variants: letter-suffix
 # (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``) and letter-prefix
-# (``N48.0123 E37.8024``). A required ``[\s,/]`` separator between the two
-# halves keeps the boundaries tight.
+# (``N48.0123 E37.8024``). Lat-first only — lng-first input (``35.5E 33.1N``)
+# is intentionally not matched. The inter-half separator is a comma / slash /
+# horizontal whitespace (no newline, via ``_HWS``); requiring it is also what
+# rejects prose-embedded letters like ``N12.5 area E34.6``.
 _DECIMAL_HEMI_SUFFIX_RE = re.compile(
     r"(?<![\w.])"
     r"(\d{1,3}\.\d+)\s*°?\s*([NS])"
-    r"[\s,/]+"
+    rf"(?:{_HWS}|[,/])+"
     r"(\d{1,3}\.\d+)\s*°?\s*([EW])"
     r"(?![\w.])",
     re.IGNORECASE,
@@ -348,7 +356,7 @@ _DECIMAL_HEMI_SUFFIX_RE = re.compile(
 _DECIMAL_HEMI_PREFIX_RE = re.compile(
     r"(?<![\w.])"
     r"([NS])\s*(\d{1,3}\.\d+)\s*°?"
-    r"[\s,/]+"
+    rf"(?:{_HWS}|[,/])+"
     r"([EW])\s*(\d{1,3}\.\d+)\s*°?"
     r"(?![\w.])",
     re.IGNORECASE,
@@ -397,9 +405,10 @@ def _hemi_decimal(value: str, hemi: str) -> float:
 def extract_coords(text: str) -> list[ParsedCoord]:
     """Run all extractors over ``text`` and return a de-duped candidate list.
 
-    Order: decimal pairs (most common in OSINT posts), DMS (older intel),
-    then Google Maps URLs. Capped at ``_MAX_CANDIDATES`` so a flood of
-    coordinate-shaped strings can't blow up the payload.
+    Order: decimal pairs (most common in OSINT posts), decimal degrees +
+    hemisphere, DMS (older intel), then Google Maps URLs. Capped at
+    ``_MAX_CANDIDATES`` so a flood of coordinate-shaped strings can't blow up
+    the payload.
 
     Dedup by rounded-to-6-decimals key — finer gives float-equality
     artefacts, coarser conflates candidates the analyst wants distinct.
@@ -485,18 +494,28 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # start of a line. Anchored + single-shot so it only peels the marker, not
 # digits mid-prose.
 _LEADING_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*•·‣–—]|\d{1,3}[.)])\s+")
+# A bracket pair emptied by coordinate removal — ``(48.0, 37.8)`` becomes
+# ``( )`` after the strip; drop the husk rather than leave it in the title. Only
+# matches pairs with no word char inside, so ``(note)`` is left intact.
+_EMPTY_BRACKETS_RE = re.compile(r"[(\[{][^\w)\]}]*[)\]}]")
+# Edge punctuation left dangling once coords / brackets are gone (a trailing
+# ``:`` from ``Coordinates: <coord>``, a stray separator). Stripped from the
+# ends only — internal punctuation is untouched.
+_TITLE_EDGE_CHARS = " \t:;,.|/-–—()[]{}°"
+_HAS_WORD_RE = re.compile(r"\w")
 _TITLE_MAX_LEN = 120
 
 
 def derive_title(text: str) -> str:
     """Best-effort title from the tweet body.
 
-    First usable line — hashtags, URLs, a leading list marker, and any bare
-    coordinates stripped, whitespace collapsed, truncated to ``_TITLE_MAX_LEN``
-    on a word boundary. A line that holds nothing but coordinates / links /
-    hashtags is skipped (the title must never be a bare coordinate). If no line
-    is usable, return ``""`` so the analyst types one — a wrong title in the
-    field is worse than none.
+    First usable line — hashtags, URLs, a leading list marker, bare
+    coordinates, and the bracket / punctuation husks they leave behind are
+    stripped; whitespace is collapsed and the result truncated to
+    ``_TITLE_MAX_LEN`` on a word boundary. A line that holds no real word once
+    cleaned (coordinates / links / hashtags / punctuation only) is skipped — the
+    title is never a bare coordinate. If no line is usable, return ``""`` so the
+    analyst types one — a wrong title in the field is worse than none.
 
     Truncation: prefer the last space inside the limit; with none (one long
     token, e.g. a no-space cyrillic address) hard-cut so the title never
@@ -507,8 +526,10 @@ def derive_title(text: str) -> str:
         line = _URL_RE.sub("", line)
         line = _LEADING_LIST_MARKER_RE.sub("", line)
         line = _strip_coords(line)
-        line = _WHITESPACE_RE.sub(" ", line).strip()
-        if not line:
+        line = _EMPTY_BRACKETS_RE.sub(" ", line)
+        line = _WHITESPACE_RE.sub(" ", line).strip().strip(_TITLE_EDGE_CHARS)
+        # Nothing but punctuation / emoji left once the noise is gone — skip it.
+        if not line or not _HAS_WORD_RE.search(line):
             continue
         if len(line) <= _TITLE_MAX_LEN:
             return line
@@ -526,8 +547,9 @@ def derive_title(text: str) -> str:
 
 
 # ``t.co`` shortlinks as they appear inline in raw tweet text — X wraps every
-# link this way. The expanded source is captured structurally elsewhere
-# (``source_url`` / ``detected_from_url``), so the proof body keeps only prose.
+# link this way. Only t.co is stripped (not arbitrary URLs): a real source link
+# in the body is provenance worth keeping, and the structured source lives
+# elsewhere (``source_url`` / ``detected_from_url``).
 _T_CO_URL_RE = re.compile(r"https?://t\.co/\S+", re.IGNORECASE)
 
 
