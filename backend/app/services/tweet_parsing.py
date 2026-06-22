@@ -362,11 +362,16 @@ _DECIMAL_HEMI_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# DMS — degrees, minutes, seconds + hemisphere letter.
+# DMS — degrees, minutes, seconds + hemisphere letter. Minutes / seconds accept
+# both ASCII quotes (``'`` ``"``) and the typographic prime / double-prime
+# (``′`` U+2032, ``″`` U+2033) that Google Earth and similar tools emit — a real
+# recall gap real archives surface. The inter-half separator is newline-safe
+# (``_HWS``), like the other extractors, so a lat/lng split across lines doesn't
+# pair.
 _DMS_RE = re.compile(
-    r"(\d{1,3})°\s*(\d{1,2})['’]\s*(\d{1,2}(?:\.\d+)?)?[\"”]?\s*([NS])"
-    r"\s*[,\s]?\s*"
-    r"(\d{1,3})°\s*(\d{1,2})['’]\s*(\d{1,2}(?:\.\d+)?)?[\"”]?\s*([EW])",
+    r"(\d{1,3})°\s*(\d{1,2})['’′]\s*(\d{1,2}(?:\.\d+)?)?[\"”″]?\s*([NS])"
+    rf"(?:{_HWS}|,)*"
+    r"(\d{1,3})°\s*(\d{1,2})['’′]\s*(\d{1,2}(?:\.\d+)?)?[\"”″]?\s*([EW])",
     re.IGNORECASE,
 )
 

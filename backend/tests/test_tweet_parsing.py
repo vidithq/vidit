@@ -133,6 +133,26 @@ def test_dms_near_miss_rejects_bare_degree_symbol():
     assert extract_coords("Temperature 48° in Donetsk yesterday") == []
 
 
+def test_dms_accepts_typographic_primes():
+    # Google-Earth-style output uses ′ (U+2032) / ″ (U+2033), not ASCII ' ".
+    coords = extract_coords("Geolocated 12°30′30″N 98°15′15″E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(12 + 30 / 60 + 30 / 3600)
+    assert coords[0].lng == pytest.approx(98 + 15 / 60 + 15 / 3600)
+
+
+def test_dms_prime_tolerates_narrow_no_break_space():
+    # Real archives put U+202F (narrow NBSP) before the hemisphere letter.
+    coords = extract_coords("12°30′30″ N 98°15′15″ E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(12 + 30 / 60 + 30 / 3600)
+
+
+def test_dms_no_cross_line_pairing():
+    # Inter-half separator is newline-safe: lat / lng on separate lines don't pair.
+    assert extract_coords("12°30′30″N\n98°15′15″E") == []
+
+
 def test_gmaps_url_extracts_at_segment():
     coords = extract_coords(
         "See https://www.google.com/maps/place/X/@48.012345,37.802411,15z for details"
