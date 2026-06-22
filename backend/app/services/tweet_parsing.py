@@ -33,7 +33,7 @@ Coordinate parsing
 
 Four extractors run over the full text, de-duped:
 
-1. Decimal pairs (``48.012345, 37.802411``)
+1. Decimal pairs (``48.012345, 37.802411``; degree-marked ``48.6° 38.0°`` too)
 2. Decimal degrees + hemisphere (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``,
    ``N48.0123 E37.8024`` — ``°`` optional, letter on either side)
 3. DMS (``48°00'45"N 37°48'08"E``)
@@ -325,15 +325,18 @@ class ParsedCoord:
 # wouldn't remove what ``extract_coords`` lifted. Every extractor below uses it.
 _HWS = r"[^\S\r\n]"
 
-# Decimal pairs. The `.\d{3,}` floor on both sides keeps us off dates
-# (`2025-11-12`), version strings (`1.2.3`), and reply counts — none carry
-# 3+ decimals on both numbers at once.
+# Decimal pairs, optionally degree-marked (``48.621451° 38.041689°``). The
+# `.\d{3,}` floor on both sides keeps us off dates (`2025-11-12`), version
+# strings (`1.2.3`), and reply counts — none carry 3+ decimals on both numbers
+# at once. The trailing guard rejects only a *longer dotted number* (``…411.5``),
+# not a sentence-ending period (``…802411.``) — the old ``(?![\d.])`` swallowed
+# that period and silently dropped real coords.
 _DECIMAL_PAIR_RE = re.compile(
     r"(?<![\d.])"
-    r"([-+]?\d{1,3}\.\d{3,})"
+    r"([-+]?\d{1,3}\.\d{3,})°?"
     rf"(?:{_HWS}|,)+"
-    r"([-+]?\d{1,3}\.\d{3,})"
-    r"(?![\d.])"
+    r"([-+]?\d{1,3}\.\d{3,})°?"
+    r"(?!\d)(?!\.\d)"
 )
 
 # Decimal degrees + hemisphere letter. The letter (not a decimal floor) is the

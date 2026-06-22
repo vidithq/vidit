@@ -114,6 +114,33 @@ def test_decimal_pair_skips_out_of_bounds():
     assert extract_coords("Reading: 200.123456, 50.123456") == []
 
 
+def test_decimal_pair_trailing_sentence_period():
+    # A coord ending a sentence must still parse — the '.' is punctuation, not a
+    # longer dotted number. (Corpus bug: the old guard dropped ~365 of these.)
+    coords = extract_coords("POV from approx 48.592153, 38.00248.")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(48.592153)
+    assert coords[0].lng == pytest.approx(38.00248)
+
+
+def test_decimal_pair_rejects_longer_dotted_number():
+    # `…411.5` is a longer dotted number, not a clean coord → reject.
+    assert extract_coords("ratio 48.012345, 37.802411.5 here") == []
+
+
+def test_decimal_pair_degree_marked():
+    # Decimal degrees written with the ° symbol and no hemisphere letter.
+    coords = extract_coords("Grid 48.621451°  38.041689° confirmed")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(48.621451)
+    assert coords[0].lng == pytest.approx(38.041689)
+
+
+def test_decimal_degree_marked_still_needs_decimal_floor():
+    # Degree-marked but <3 decimals (a temperature range) is not a coordinate.
+    assert extract_coords("range 5.5° 10.2° today") == []
+
+
 def test_dms_extracts_decimal():
     coords = extract_coords("Coordinates 48°00'45\"N 37°48'08\"E in the report.")
     assert len(coords) == 1
