@@ -13,6 +13,7 @@ from app.services import tweet_parsing
 from app.services.tweet_parsing import (
     InvalidTweetUrl,
     _extract_external_source_url,
+    clean_proof_text,
     derive_title,
     extract_coords,
     is_trusted_media_url,
@@ -113,6 +114,33 @@ def test_decimal_pair_skips_out_of_bounds():
     assert extract_coords("Reading: 200.123456, 50.123456") == []
 
 
+def test_decimal_pair_trailing_sentence_period():
+    # A coord ending a sentence must still parse — the '.' is punctuation, not a
+    # longer dotted number. (Corpus bug: the old guard dropped ~365 of these.)
+    coords = extract_coords("POV from approx 48.592153, 38.00248.")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(48.592153)
+    assert coords[0].lng == pytest.approx(38.00248)
+
+
+def test_decimal_pair_rejects_longer_dotted_number():
+    # `…411.5` is a longer dotted number, not a clean coord → reject.
+    assert extract_coords("ratio 48.012345, 37.802411.5 here") == []
+
+
+def test_decimal_pair_degree_marked():
+    # Decimal degrees written with the ° symbol and no hemisphere letter.
+    coords = extract_coords("Grid 48.621451°  38.041689° confirmed")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(48.621451)
+    assert coords[0].lng == pytest.approx(38.041689)
+
+
+def test_decimal_degree_marked_still_needs_decimal_floor():
+    # Degree-marked but <3 decimals (a temperature range) is not a coordinate.
+    assert extract_coords("range 5.5° 10.2° today") == []
+
+
 def test_dms_extracts_decimal():
     coords = extract_coords("Coordinates 48°00'45\"N 37°48'08\"E in the report.")
     assert len(coords) == 1
@@ -132,6 +160,26 @@ def test_dms_near_miss_rejects_bare_degree_symbol():
     assert extract_coords("Temperature 48° in Donetsk yesterday") == []
 
 
+def test_dms_accepts_typographic_primes():
+    # Google-Earth-style output uses ′ (U+2032) / ″ (U+2033), not ASCII ' ".
+    coords = extract_coords("Geolocated 12°30′30″N 98°15′15″E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(12 + 30 / 60 + 30 / 3600)
+    assert coords[0].lng == pytest.approx(98 + 15 / 60 + 15 / 3600)
+
+
+def test_dms_prime_tolerates_narrow_no_break_space():
+    # Real archives put U+202F (narrow NBSP) before the hemisphere letter.
+    coords = extract_coords("12°30′30″ N 98°15′15″ E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(12 + 30 / 60 + 30 / 3600)
+
+
+def test_dms_no_cross_line_pairing():
+    # Inter-half separator is newline-safe: lat / lng on separate lines don't pair.
+    assert extract_coords("12°30′30″N\n98°15′15″E") == []
+
+
 def test_gmaps_url_extracts_at_segment():
     coords = extract_coords(
         "See https://www.google.com/maps/place/X/@48.012345,37.802411,15z for details"
@@ -144,6 +192,60 @@ def test_gmaps_url_extracts_at_segment():
 def test_gmaps_url_near_miss_rejects_non_maps_at():
     # An at-mention is not a maps link.
     assert extract_coords("Tagging @user1 @user2 for visibility") == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hit confirmed 33.123°N 35.456°E overnight",  # ° + suffix letter
+        "Coordinates: 33.123N, 35.456E",  # no °, comma separator, suffix
+        "Location N33.123 E35.456 per the report",  # prefix letter, no °
+        "Grid 33.123° N / 35.456° E",  # spaced letter, slash separator
+    ],
+)
+def test_decimal_hemisphere_extracts_each_ordering(text):
+    coords = extract_coords(text)
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(33.123)
+    assert coords[0].lng == pytest.approx(35.456)
+
+
+def test_decimal_hemisphere_southern_western_negate():
+    coords = extract_coords("Position 33.918861S 18.423300W")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(-33.918861)
+    assert coords[0].lng == pytest.approx(-18.423300)
+
+
+def test_decimal_hemisphere_single_fractional_digit():
+    # One decimal place is enough — the hemisphere letter is the discriminator.
+    coords = extract_coords("33.1°N 35.5°E")
+    assert len(coords) == 1
+    assert coords[0].lat == pytest.approx(33.1)
+    assert coords[0].lng == pytest.approx(35.5)
+
+
+def test_decimal_hemisphere_near_miss_requires_adjacent_pair():
+    # Hemisphere-tagged numbers separated by prose aren't a coordinate pair.
+    assert extract_coords("vitamin N12.5 area E34.6 batteries") == []
+    # A lone hemisphere number with no lng half is not a pair.
+    assert extract_coords("heading 48.5N then onward") == []
+
+
+def test_decimal_hemisphere_skips_out_of_bounds():
+    # `\d{1,3}` lets the regex match 233 / 999, but bounds rejection drops it.
+    assert extract_coords("233.5N 999.9E") == []
+
+
+def test_decimal_hemisphere_lng_first_not_matched():
+    # Documented limitation: latitude (N/S) must come first.
+    assert extract_coords("35.5°E 33.1°N") == []
+
+
+def test_extract_coords_no_cross_line_pairing():
+    # A coordinate lives on one line; a lat/lng split across lines is not a pair.
+    assert extract_coords("48.012345,\n37.802411") == []
+    assert extract_coords("48.5N\n35.5E") == []
 
 
 def test_extract_coords_dedupes_across_extractors():
@@ -201,6 +303,74 @@ def test_title_hard_cuts_unbroken_token():
     text = "a" * 200
     out = derive_title(text)
     assert len(out) <= 120
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("1. Strike near the depot", "Strike near the depot"),
+        ("2) Strike near the depot", "Strike near the depot"),
+        ("- Strike near the depot", "Strike near the depot"),
+        ("• Strike near the depot", "Strike near the depot"),
+    ],
+)
+def test_title_strips_leading_list_marker(raw, expected):
+    assert derive_title(raw) == expected
+
+
+def test_title_strips_bare_coordinates_from_line():
+    assert derive_title("Strike on depot 48.012345, 37.802411") == "Strike on depot"
+
+
+def test_title_skips_coordinate_only_first_line():
+    # A line that is nothing but coordinates must not become the title.
+    assert derive_title("48.012345, 37.802411\nStrike on the depot") == "Strike on the depot"
+
+
+def test_title_empty_when_only_coordinates():
+    assert derive_title("48.012345, 37.802411") == ""
+
+
+def test_title_removes_empty_brackets_left_by_coord_strip():
+    assert derive_title("Strike (48.012345, 37.802411) hit") == "Strike hit"
+
+
+def test_title_trims_dangling_label_punctuation():
+    # The bare-coord strip leaves "Coordinates:"; the trailing colon is trimmed.
+    assert derive_title("Coordinates: 48.012345, 37.802411") == "Coordinates"
+
+
+def test_title_skips_line_with_no_word_after_cleanup():
+    # Emoji + coordinate only → no real word → fall through to the next line.
+    assert derive_title("📍 48.012345, 37.802411\nDepot strike") == "Depot strike"
+
+
+# ── Proof text cleanup ────────────────────────────────────────────────────
+
+
+def test_clean_proof_strips_coords_tco_and_markers():
+    raw = (
+        "1. Strike on the depot 48.012345, 37.802411\n"
+        "Footage via https://t.co/abc123\n"
+        "- second angle 33.1°N 35.5°E"
+    )
+    assert clean_proof_text(raw) == "Strike on the depot\nFootage via\nsecond angle"
+
+
+def test_clean_proof_drops_lines_emptied_by_removal():
+    # A line that is only a coordinate / only a shortlink leaves nothing.
+    raw = "48.012345, 37.802411\nReal narrative here\nhttps://t.co/xyz"
+    assert clean_proof_text(raw) == "Real narrative here"
+
+
+def test_clean_proof_collapses_internal_whitespace():
+    raw = "Strike    on     the   depot"
+    assert clean_proof_text(raw) == "Strike on the depot"
+
+
+def test_clean_proof_empty_input():
+    assert clean_proof_text("") == ""
+    assert clean_proof_text("48.012345, 37.802411\n\nhttps://t.co/x") == ""
 
 
 # ── Trusted media host ────────────────────────────────────────────────────

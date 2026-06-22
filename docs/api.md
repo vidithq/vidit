@@ -475,7 +475,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 }
 ```
 
-Every field is best-effort. `parsed_coords` runs three extractors over `tweet_text` first, then over `quoted_tweet.tweet_text` if the OP yielded nothing (decimal pairs, DMS with hemisphere letters, `@lat,lng,zoom` in Google Maps URLs) and caps at three candidates ordered by extractor. `suggested_title` is the first non-empty line of the OP's text with leading hashtags + URLs stripped, truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always either `pbs.twimg.com` or `video.twimg.com` — the response filters anything else.
+Every field is best-effort. `parsed_coords` runs four extractors over `tweet_text` first, then over `quoted_tweet.tweet_text` if the OP yielded nothing (decimal pairs; decimal degrees + hemisphere letter — `33.1°N 35.5°E`, `50.4501N, 30.5234E`, `N48.0123 E37.8024`, `°` optional; DMS with hemisphere letters; `@lat,lng,zoom` in Google Maps URLs) and caps at three candidates ordered by extractor. `suggested_title` is the first usable line of the OP's text with leading hashtags, URLs, a leading list marker, and any bare coordinates stripped, truncated to 120 chars on a word boundary; a coordinate-only line is skipped and the title is never a bare coordinate; empty when nothing usable remains. `media[].remote_url` is always either `pbs.twimg.com` or `video.twimg.com` — the response filters anything else.
 
 `source_url` resolution priority:
 
