@@ -43,22 +43,25 @@ Per-PR detail in [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## v0.3 — Open source launch
 
-A single coordinated event that retires the "closed-source / unknown / vibe-coded" objection and widens the closed-beta analyst pool beyond the early testers. The AGPL-3.0 flip on the repo, the pinned X tweet on [`@vidithq`](https://x.com/vidithq), and cold-reach DMs to new analysts all fire in the same window. This operationalizes the standing AGPL commitment (see *Openness & transparency* below) and opens the *codebase* — not the doors. Independent of the safety stack.
+A single coordinated event that retires the "closed-source / unknown / vibe-coded" objection and widens the closed-beta analyst pool beyond the early testers. The AGPL-3.0 flip on the repo and the pinned X tweet on [`@vidithq`](https://x.com/vidithq) fire in the same window. This operationalizes the standing AGPL commitment (see *Openness & transparency* below) and opens the *codebase* — not the doors. Independent of the safety stack.
 
 Work breakdown: [`next.md`](next.md) → *v0.3*.
 
 ## v0.4 — Curated onboarding (read-only)
 
-Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand — coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: with the analyst's consent, a pipeline turns their X handle into a ready-to-claim profile, so joining costs them a single yes, not hours of re-entering work they've already done.
+Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand — coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: an analyst proves their handle, imports their published history in one step, and keeps it current by tagging a Vidit bot, so joining costs them a yes, not hours of re-entering work they've already done.
 
-The shape inverts the closed beta: **read opens to everyone; write stays gated.** Claiming a curated profile becomes a second on-ramp alongside the existing invite-gated registration — both lead to a writing account. What stays deferred to v0.5 is *open* self-registration (sign up with no invite) and the open-write stack it needs: upload moderation, CSAM scanning, registration anti-abuse.
+The shape inverts the closed beta: **read opens to everyone; write stays gated.** The curated on-ramp becomes a second path to a writing account alongside the existing invite-gated registration. What stays deferred to v0.5 is *open* self-registration (sign up with no invite) and the open-write stack it needs: upload moderation, CSAM scanning, registration anti-abuse.
 
-Two rules bound it:
+The decisions that bound it:
 
-- **Consent first, then pipeline.** Nothing is fetched, processed, or published for an analyst who hasn't explicitly agreed; the pipeline runs only on a yes, and that consent covers their past *and* future tweets. The consent is lightweight — a yes from the analyst's own account, **no X account-linking**, since analysts won't connect a third-party site they don't yet know. Account linking (the claim) is deferred to the eventual migration, once Vidit has earned their trust.
-- **On-demand ingestion, bounded cost.** Discovery uses the X API on-demand, one consented handle at a time; the free public syndication path already in the codebase does the structured per-tweet extraction. Flow: handle → API timeline pull → geolocation-tweet classifier → structured geolocations (syndication) → assembled profile.
+- **Two self-serve channels, one shared core.** The analyst **uploads their official X archive** (the "Download your data" export — full history, no API, no cap) for a one-time backfill, and **tags a Vidit bot** on each new geolocation tweet for ongoing sync. Both feed one extraction core; re-uploading a fresh archive is a free catch-up.
+- **Consent is the action.** The upload and the tag *are* the consent — in-product, self-serve, scoped to the analyst's own posts. Nothing is fetched, processed, or published for anyone who hasn't acted; there is no out-of-band ask.
+- **Ownership is proven, not assumed.** Control of a handle is established by a one-shot OAuth that reads only the public profile and keeps nothing reusable — nothing is attributed to a handle publicly until ownership is proven.
+- **Detection is deterministic.** A parseable coordinate marks a geolocation tweet; there is no LLM classifier. The work is robust coordinate and media extraction, not training a model.
+- **Machine output is provisional but public.** Imported and bot-ingested geolocations land `detected` and appear on **every** public surface (map, search, timeline, profile), **always clearly marked**; the owner reviews and **validates** them, which removes the marker and freezes the row. A direct submission or a bounty fulfilment is born `validated`.
 
-This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the classifier, robust media/coordinate extraction, an author identity decoupled from the auth account, and the trust-gated claim flow. A bot scoped to the consented accounts keeps their geolocations in sync and can reply in-thread with dedup warnings — *media already on Vidit*, *geolocation already exists* — surfacing Vidit's value inside the analyst's existing X workflow. Going public is gated on a legal review — a reduced surface, since only consented work is ever processed.
+This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the extraction core, the archive intake, handle-ownership proof, the `detected → validated` review flow, and an author identity decoupled from the auth account (shipped). The bot replies in-thread with dedup and coordinate-vs-image warnings, and a value layer — image-coordinate cross-checks and near-duplicate media matching — is what makes the import worth the analyst's while. Going public is gated on a legal review — a reduced surface, since only the analyst's own consented work is ever processed.
 
 Work breakdown: [`next.md`](next.md) → *v0.4*.
 

@@ -32,3 +32,9 @@ Thumbs.db
 
 # MkDocs build output (docs.vidit.app deploy artifact)
 site/
+
+# Working scratch — local notes + backups (not the tracked planning/ tree). Never commit.
+tmp/
+
+# Raw X API timeline pulls / datasets — tweet content, large. Never commit.
+backend/datasets/
