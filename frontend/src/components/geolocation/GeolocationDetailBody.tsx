@@ -10,8 +10,10 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
 import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
@@ -119,7 +121,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
     <>
       {geo.state === "detected" && (
         <div className={row}>
-          <span className={label}>Status</span>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Status <FieldHelp text={FIELD_HELP.status} label="What does the status mean?" />
+          </span>
           <DetectedBadge state={geo.state} />
         </div>
       )}
@@ -147,7 +151,10 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
         <div className={row}>
-          <span className={label}>Detected from</span>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Detected from{" "}
+            <FieldHelp text={FIELD_HELP.detected_from} label="What is 'Detected from'?" />
+          </span>
           <a
             href={geo.detected_from_url}
             target="_blank"

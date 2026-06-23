@@ -4,7 +4,9 @@ import type { ChangeEvent } from "react";
 
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import FieldHelp from "@/components/ui/FieldHelp";
 import { FilePreviewGrid } from "@/components/ui/FilePreviewGrid";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { BountyDetail } from "@/types";
 import { LockedHint } from "./LockedHint";
 
@@ -72,7 +74,7 @@ export function EvidenceUploader({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label htmlFor="files" className={FORM_LABEL}>
-              Files
+              Files <FieldHelp text={FIELD_HELP.source_media} label="What media to upload?" />
             </label>
             <input
               id="files"

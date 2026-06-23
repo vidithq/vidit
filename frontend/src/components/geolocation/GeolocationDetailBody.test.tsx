@@ -119,6 +119,13 @@ describe("GeolocationDetailBody", () => {
     expect(
       screen.getByRole("link", { name: "https://x.com/ana/status/123" })
     ).toHaveAttribute("href", "https://x.com/ana/status/123");
+    // ? help on the Status + Detected-from fields.
+    expect(
+      screen.getByRole("button", { name: "What does the status mean?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is 'Detected from'?" })
+    ).toBeInTheDocument();
   });
 
   it("page variant without a bounty trace omits the row", () => {
