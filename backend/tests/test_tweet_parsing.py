@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import pytest
 
-from app.services import tweet_parsing
-from app.services.tweet_parsing import (
+from app.services.tweet_ingest import (
     InvalidTweetUrl,
-    _extract_external_source_url,
     clean_proof_text,
     derive_title,
     extract_coords,
     is_trusted_media_url,
     normalise_tweet_url,
     parse_tweet,
+    syndication,
 )
+from app.services.tweet_ingest.syndication import _extract_external_source_url
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -463,7 +463,7 @@ def _stub_syndication(monkeypatch, body: dict) -> None:
     The real ``fetch_syndication`` makes a network call; these tests
     exercise everything *around* the fetch so we keep them hermetic.
     """
-    monkeypatch.setattr(tweet_parsing, "fetch_syndication", lambda tweet_id, client=None: body)
+    monkeypatch.setattr(syndication, "fetch_syndication", lambda tweet_id, client=None: body)
 
 
 def _user_block(handle: str) -> dict:
@@ -624,28 +624,28 @@ def test_cache_lru_evicts_oldest_when_full(monkeypatch):
     30/min limit) before any natural eviction.
     """
     # Shrink the bound so the test runs cheap.
-    monkeypatch.setattr(tweet_parsing, "_CACHE_MAX_ENTRIES", 3)
-    tweet_parsing._cache_put("a", {"x": 1})
-    tweet_parsing._cache_put("b", {"x": 2})
-    tweet_parsing._cache_put("c", {"x": 3})
+    monkeypatch.setattr(syndication, "_CACHE_MAX_ENTRIES", 3)
+    syndication._cache_put("a", {"x": 1})
+    syndication._cache_put("b", {"x": 2})
+    syndication._cache_put("c", {"x": 3})
     # Touch ``a`` so ``b`` is now the LRU entry.
-    assert tweet_parsing._cache_get("a") == {"x": 1}
-    tweet_parsing._cache_put("d", {"x": 4})
+    assert syndication._cache_get("a") == {"x": 1}
+    syndication._cache_put("d", {"x": 4})
     # ``b`` should have been evicted, ``a`` / ``c`` / ``d`` kept.
-    assert tweet_parsing._cache_get("b") is None
-    assert tweet_parsing._cache_get("a") == {"x": 1}
-    assert tweet_parsing._cache_get("c") == {"x": 3}
-    assert tweet_parsing._cache_get("d") == {"x": 4}
+    assert syndication._cache_get("b") is None
+    assert syndication._cache_get("a") == {"x": 1}
+    assert syndication._cache_get("c") == {"x": 3}
+    assert syndication._cache_get("d") == {"x": 4}
 
 
 def test_cache_ttl_evicts_expired_on_get(monkeypatch):
     """Expired entries are not served — even when they're still in the dict."""
-    monkeypatch.setattr(tweet_parsing, "_CACHE_TTL_S", 0.01)
-    tweet_parsing._cache_put("a", {"x": 1})
+    monkeypatch.setattr(syndication, "_CACHE_TTL_S", 0.01)
+    syndication._cache_put("a", {"x": 1})
     import time as _t
 
     _t.sleep(0.05)
-    assert tweet_parsing._cache_get("a") is None
+    assert syndication._cache_get("a") is None
 
 
 # ── Cache hygiene (test isolation) ────────────────────────────────────────
@@ -653,6 +653,6 @@ def test_cache_ttl_evicts_expired_on_get(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_tweet_cache():
-    tweet_parsing._cache_clear()
+    syndication._cache_clear()
     yield
-    tweet_parsing._cache_clear()
+    syndication._cache_clear()

@@ -60,7 +60,7 @@ from app.services.storage import (
     upload_proof_image,
     validate_file,
 )
-from app.services.tweet_parsing import (
+from app.services.tweet_ingest import (
     InvalidTweetUrl,
     TweetFetchFailed,
     TweetNotAccessible,

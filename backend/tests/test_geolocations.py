@@ -1528,7 +1528,7 @@ def test_possible_duplicates_orders_by_distance(db, author):
 def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None):
     """Replace ``parse_tweet`` on the router module with a stub.
 
-    Routes import the function directly (``from app.services.tweet_parsing
+    Routes import the function directly (``from app.services.tweet_ingest
     import parse_tweet``), so the patch target is the router module's
     binding, not the service module's.
     """
@@ -1551,7 +1551,7 @@ def test_import_from_tweet_requires_auth():
 
 
 def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
-    from app.services.tweet_parsing import ParsedCoord, ParsedMedia, ParsedTweet
+    from app.services.tweet_ingest import ParsedCoord, ParsedMedia, ParsedTweet
 
     _stub_parse_tweet(
         monkeypatch,
@@ -1589,7 +1589,7 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
 
 
 def test_import_from_tweet_returns_400_for_invalid_url(author, monkeypatch):
-    from app.services.tweet_parsing import InvalidTweetUrl
+    from app.services.tweet_ingest import InvalidTweetUrl
 
     _stub_parse_tweet(monkeypatch, raises=InvalidTweetUrl("Not a tweet URL"))
     response = client.post(
@@ -1602,7 +1602,7 @@ def test_import_from_tweet_returns_400_for_invalid_url(author, monkeypatch):
 
 
 def test_import_from_tweet_returns_404_for_inaccessible_tweet(author, monkeypatch):
-    from app.services.tweet_parsing import TweetNotAccessible
+    from app.services.tweet_ingest import TweetNotAccessible
 
     _stub_parse_tweet(monkeypatch, raises=TweetNotAccessible("Tweet not accessible"))
     response = client.post(
@@ -1615,7 +1615,7 @@ def test_import_from_tweet_returns_404_for_inaccessible_tweet(author, monkeypatc
 
 
 def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatch):
-    from app.services.tweet_parsing import TweetFetchFailed
+    from app.services.tweet_ingest import TweetFetchFailed
 
     _stub_parse_tweet(monkeypatch, raises=TweetFetchFailed("upstream timeout"))
     response = client.post(
