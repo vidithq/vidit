@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import DetectedBadge from "@/components/geolocation/DetectedBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { formatDate } from "@/lib/format";
@@ -329,6 +330,7 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
           <Highlighted value={hit.title_highlight} />
         </h3>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+          <DetectedBadge state={hit.state} />
           <span className="inline-flex items-center gap-1">
             <UserIcon size={11} />@{hit.author.username}
             <TrustBadge

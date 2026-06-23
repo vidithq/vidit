@@ -13,6 +13,8 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     lng: 37.802411,
     event_date: "2026-06-01",
     is_demo: false,
+    state: "validated",
+    detected_from_url: null,
     author: {
       id: "u1",
       username: "ana",
@@ -92,6 +94,31 @@ describe("GeolocationDetailBody", () => {
       "href",
       "/profile/ana"
     );
+  });
+
+  it("validated geo shows no detected markers", () => {
+    render(<GeolocationDetailBody geo={geoFixture()} variant="page" />);
+    expect(screen.queryByText("Detected")).not.toBeInTheDocument();
+    expect(screen.queryByText("Status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
+  });
+
+  it("detected geo shows the badge, status row, and provenance link", () => {
+    render(
+      <GeolocationDetailBody
+        geo={geoFixture({
+          state: "detected",
+          detected_from_url: "https://x.com/ana/status/123",
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("Detected")).toBeInTheDocument();
+    expect(screen.getByText("Detected from")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "https://x.com/ana/status/123" })
+    ).toHaveAttribute("href", "https://x.com/ana/status/123");
   });
 
   it("page variant without a bounty trace omits the row", () => {

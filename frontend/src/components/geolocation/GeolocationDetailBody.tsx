@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
+import DetectedBadge from "@/components/geolocation/DetectedBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
 
@@ -116,6 +117,12 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
+      {geo.state === "detected" && (
+        <div className={row}>
+          <span className={label}>Status</span>
+          <DetectedBadge state={geo.state} />
+        </div>
+      )}
       <div className={row}>
         <span className={label}>Event date</span>
         <span className={value}>{formatDate(geo.event_date)}</span>
@@ -136,6 +143,23 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           className={compact ? "ml-4" : "text-sm ml-4"}
         />
       </div>
+      {/* The post a detection was imported from — distinct from Source (the
+          footage origin), never folded into it. */}
+      {geo.detected_from_url && (
+        <div className={row}>
+          <span className={label}>Detected from</span>
+          <a
+            href={geo.detected_from_url}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className={`${compact ? "" : "text-sm"} text-orange-400 hover:underline truncate ml-4 ${
+              compact ? "max-w-[200px]" : "max-w-[300px]"
+            }`}
+          >
+            {geo.detected_from_url}
+          </a>
+        </div>
+      )}
       {geo.tags.length > 0 && (
         <div className={rowStart}>
           <span className={label}>Tags</span>

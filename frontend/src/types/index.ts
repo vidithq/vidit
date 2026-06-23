@@ -37,6 +37,11 @@ export interface Tag {
   category: TagCategory;
 }
 
+/** Lifecycle state. ``validated`` = human submit / bounty fulfilment (the
+ *  norm); ``detected`` = machine-produced, rendered marked everywhere until
+ *  its owner validates it. */
+export type GeolocationState = "validated" | "detected";
+
 interface GeolocationListItem {
   id: string;
   title: string;
@@ -44,16 +49,18 @@ interface GeolocationListItem {
   lng: number;
   event_date: string;
   is_demo: boolean;
+  state: GeolocationState;
   author: Author;
   tags: Tag[];
 }
 
 /** Compact point from /geolocations/points:
- *  [id, lat, lng, event_date, submitted_date]. ``event_date`` and
+ *  [id, lat, lng, event_date, submitted_date, detected]. ``event_date`` and
  *  ``submitted_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings —
  *  the timeline scrubbers bucket them for the histograms and filter their
- *  windows client-side. */
-export type MapPoint = [string, number, number, string, string];
+ *  windows client-side. ``detected`` is 1 for a machine detection (marked on
+ *  the map), 0 for a validated row. */
+export type MapPoint = [string, number, number, string, string, 0 | 1];
 
 /**
  * Pre-fill payload from POST /geolocations/import-from-tweet. Best-effort:
@@ -131,6 +138,10 @@ interface Media {
 
 export interface GeolocationDetail extends GeolocationListItem {
   source_url: string;
+  /** For a ``detected`` row, the post it was imported from — a provenance
+   *  link distinct from ``source_url`` (footage origin). Null for human
+   *  submits. */
+  detected_from_url: string | null;
   proof: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -201,6 +212,7 @@ export interface SearchGeolocationHit {
   lng: number;
   event_date: string;
   is_demo: boolean;
+  state: GeolocationState;
   author: Author;
   tags: Tag[];
 }
