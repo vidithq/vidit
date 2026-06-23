@@ -125,6 +125,8 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. Priorities are relativ
 | P2 | Bounties | Bounty-author marks a specific claimer's geo as "the answer" | Out of scope until queue ambiguity matters. |
 | P2 | UX | RBAC on tag creation (admin-only) | Once tags become curated taxonomy. |
 | P2 | UX | `/notifications` feed | Follows + report-status updates. |
+| P2 | UX | Submit form mirrors the geolocation / bounty detail layout | The submit forms ([`geolocations/new`](../frontend/src/app/geolocations/new/page.tsx), [`bounties/new`](../frontend/src/app/bounties/new/page.tsx)) group + order their fields differently from how the object renders on its detail page ([`GeolocationDetailBody`](../frontend/src/components/geolocation/GeolocationDetailBody.tsx)), so an analyst can't map "what I fill in" to "what readers see". Re-group the form sections to mirror the detail layout (media → location → details → proof) so input and output read as the same object. |
+| P2 | UX | De-emphasise the detail Copy link / Share on X buttons | On the detail header + map side-panel, `Copy link` + `Share on X` ([`ShareButtons`](../frontend/src/components/geolocation/ShareButtons.tsx)) carry full button weight and pull focus from the geolocation itself. Demote to a lighter affordance (ghost / icon-only) so the content leads. |
 | P2 | Seed | Real footage import flow (data-sharing agreement or CC-licensed sources) | Admin-page button reading a KMZ + posting. No standalone CLI. |
 
 ---
