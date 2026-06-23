@@ -19,6 +19,7 @@ shared failures without a cycle.
 
 from __future__ import annotations
 
+from .archive import archive_media_fetcher, read_tweets
 from .detect import DetectedGeoloc, detect
 from .errors import (
     InvalidTweetUrl,
@@ -58,6 +59,7 @@ __all__ = [
     "TweetImportError",
     "TweetNotAccessible",
     "TweetRecord",
+    "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",
     "detect",
@@ -66,5 +68,6 @@ __all__ = [
     "is_trusted_media_url",
     "normalise_tweet_url",
     "parse_tweet",
+    "read_tweets",
     "stitch",
 ]

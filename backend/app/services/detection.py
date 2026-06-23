@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import cast
 
 from geoalchemy2.shape import from_shape, to_shape
@@ -23,7 +24,14 @@ from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
 from app.services.storage import get_storage, sweep_keys, upload_detected_media
-from app.services.tweet_ingest import DetectedGeoloc, ParsedMedia
+from app.services.tweet_ingest import (
+    DetectedGeoloc,
+    ParsedMedia,
+    archive_media_fetcher,
+    detect,
+    read_tweets,
+    stitch,
+)
 
 # How a caller hands the assemble step the bytes for one piece of media: maps a
 # ``ParsedMedia`` to ``(bytes, content_type)``, or ``None`` to skip it (missing
@@ -161,3 +169,30 @@ async def assemble_detections(
         if verdict == "recreate":
             outcome.recreated += 1
     return outcome
+
+
+async def backfill_from_archive(
+    db: Session,
+    *,
+    owner: User,
+    archive_dir: Path,
+    is_demo: bool = False,
+) -> AssembleOutcome:
+    """Run a full archive backfill: acquire → stitch → detect → assemble.
+
+    Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
+    ``tweets_media/``), rebuilds self-threads, detects coordinates, and persists
+    the detections as ``detected`` rows owned by ``owner`` — the account whose
+    verified handle the archive belongs to. ``is_demo`` marks the rows wipeable
+    (the dev/admin seed path passes it).
+    """
+    handle = owner.x_handle or owner.username
+    records = read_tweets(archive_dir, handle=handle)
+    detections = [d for thread in stitch(records) for d in detect(thread)]
+    return await assemble_detections(
+        db,
+        owner=owner,
+        detections=detections,
+        fetch_media=archive_media_fetcher(archive_dir),
+        is_demo=is_demo,
+    )

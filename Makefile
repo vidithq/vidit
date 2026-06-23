@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-timeline mock-admin mock-demo-user promo
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo
 
 help:
 	@echo "Available commands:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make migrate       - Apply database migrations via Alembic"
 	@echo "  make seed          - mock-admin + 50 demo geolocations + admin follows every demo analyst"
 	@echo "  make seed-demo     - Just the 50 demo geolocations (no admin, no follows)"
+	@echo "  make seed-detections - Backfill machine 'detected' geolocations from the synthetic archive"
 	@echo "  make seed-timeline - Make the admin user follow every demo analyst"
 	@echo "  make mock-admin    - Create a mock admin user (admin@vidit.app / admin)"
 	@echo "  make dev-backend   - Run FastAPI dev server (port 8000)"
@@ -27,6 +28,9 @@ init: install env db-up migrate
 
 seed-demo:
 	cd backend && uv run python scripts/seed_demo.py
+
+seed-detections:
+	cd backend && uv run python scripts/seed_detections.py
 
 seed-timeline:
 	cd backend && uv run python scripts/seed_timeline.py

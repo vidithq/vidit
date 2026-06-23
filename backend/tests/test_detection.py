@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from geoalchemy2.shape import from_shape
@@ -20,9 +21,11 @@ from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.detection import assemble_detections
+from app.services.detection import assemble_detections, backfill_from_archive
 from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia
 from tests._fixtures import TINY_JPEG
+
+ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
 
 @pytest.fixture
@@ -163,3 +166,31 @@ async def test_validated_pair_is_skipped(db, owner):
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert outcome.skipped == 1 and outcome.created == []
+
+
+async def test_backfill_from_archive_end_to_end(db, owner):
+    # Full chain: read the synthetic X export -> stitch -> detect -> assemble.
+    outcome = await backfill_from_archive(
+        db, owner=owner, archive_dir=ARCHIVE, is_demo=True
+    )
+    assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
+
+    geos = db.query(Geolocation).filter(Geolocation.author_id == owner.id).all()
+    assert len(geos) == 6
+    assert all(g.state == STATE_DETECTED for g in geos)
+    assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
+    assert all(g.proof and g.proof["content"] for g in geos)
+
+    # Only the two photo-bearing tweets (1001 + the 2001/2002 thread head)
+    # ingested media; the coord-only tweets persist media-incomplete.
+    media_count = (
+        db.query(Media)
+        .join(Geolocation, Media.geolocation_id == Geolocation.id)
+        .filter(Geolocation.author_id == owner.id)
+        .count()
+    )
+    assert media_count == 2
+
+    # Re-running the same archive is a no-op (idempotent on the permalink+coord).
+    again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
+    assert again.created == [] and again.skipped == 6
