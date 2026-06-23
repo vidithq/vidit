@@ -6,6 +6,11 @@
  * mistake to avoid.
  */
 export const FIELD_HELP = {
+  title:
+    "A short, factual description — the place and what happened (e.g. “Strike on a depot, Donetsk”). Not a caption or commentary.",
+  conflict: "Which armed conflict this event belongs to.",
+  capture_source:
+    "How the footage was captured — drone, dashcam, body / helmet cam, satellite, static camera, smartphone.",
   source_url:
     "Where the footage was first published — the original post or channel. Not your own geolocation tweet.",
   source_media:

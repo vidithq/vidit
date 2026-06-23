@@ -138,7 +138,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         </span>
       </div>
       <div className={row}>
-        <span className={label}>Source</span>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+        </span>
         <SourceLabel
           isDemo={geo.is_demo}
           url={geo.source_url}

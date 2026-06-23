@@ -11,12 +11,14 @@ import type { Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { FilePreviewGrid } from "@/components/ui/FilePreviewGrid";
 import { TagPicker } from "@/components/ui/TagPicker";
+import FieldHelp from "@/components/ui/FieldHelp";
 import {
   FORM_ERROR_BANNER,
   FORM_INPUT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 
 export default function NewBountyPage() {
@@ -112,7 +114,7 @@ export default function NewBountyPage() {
 
             <div className="space-y-1.5">
               <label htmlFor="title" className={FORM_LABEL}>
-                Title
+                Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
               </label>
               <input
                 id="title"
@@ -127,7 +129,8 @@ export default function NewBountyPage() {
 
             <div className="space-y-1.5">
               <label htmlFor="source_url" className={FORM_LABEL}>
-                Source URL
+                Source URL{" "}
+                <FieldHelp text={FIELD_HELP.source_url} label="What is the Source URL?" />
               </label>
               <input
                 id="source_url"

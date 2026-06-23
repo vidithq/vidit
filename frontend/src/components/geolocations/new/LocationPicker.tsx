@@ -59,7 +59,7 @@ export function LocationPicker({
 
       <div className="space-y-1.5">
         <label htmlFor="title" className={FORM_LABEL}>
-          Title
+          Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
         </label>
         <input
           id="title"
