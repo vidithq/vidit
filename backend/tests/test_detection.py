@@ -112,7 +112,7 @@ async def test_assemble_persists_detected_row(db, owner):
 
 async def test_media_less_detection_persists(db, owner):
     # A detected row may be media-incomplete — the owner completes it before
-    # validating (Phase B). No media required, unlike a human submit.
+    # validating. No media required, unlike a human submit.
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
@@ -230,6 +230,25 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
     assert len(outcome.created) == 1 and outcome.failed == 0
     geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
     assert db.query(Media).filter(Media.geolocation_id == geo.id).count() == 0
+
+
+async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
+    # One detection raising mid-persist is caught, counted, rolled back — the
+    # others still land, and no partial row survives.
+    async def boom(*_a, **_k):
+        raise RuntimeError("upload exploded")
+
+    monkeypatch.setattr("app.services.detection.upload_prepared_media", boom)
+
+    bad = _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/A", media=[_img()])
+    good = _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/B")  # no media
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[bad, good], fetch_media=_image_fetcher
+    )
+    assert outcome.failed == 1
+    assert len(outcome.created) == 1
+    # The failed detection's partial row was rolled back, not orphaned.
+    assert db.query(Geolocation).filter(Geolocation.author_id == owner.id).count() == 1
 
 
 def test_validate_bytes_guards_type_and_size():

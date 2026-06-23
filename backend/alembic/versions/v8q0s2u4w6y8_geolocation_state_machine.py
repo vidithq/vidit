@@ -55,6 +55,16 @@ def upgrade() -> None:
         "geolocations",
         sa.Column("detected_from_url", sa.Text(), nullable=True),
     )
+    # Partial index on the idempotency anchor: the assemble step queries
+    # ``WHERE detected_from_url = ?`` once per detection, so an archive backfill
+    # is N look-ups. ``WHERE ... IS NOT NULL`` keeps human rows (always NULL) out.
+    # Mirrored in ``Geolocation.__table_args__`` so autogenerate won't drop it.
+    op.create_index(
+        "ix_geolocations_detected_from_url",
+        "geolocations",
+        ["detected_from_url"],
+        postgresql_where=sa.text("detected_from_url IS NOT NULL"),
+    )
     op.execute(
         f"UPDATE geolocations SET proof = '{_EMPTY_TIPTAP_DOC}'::jsonb WHERE proof IS NULL"
     )
@@ -67,5 +77,6 @@ def downgrade() -> None:
     op.alter_column(
         "geolocations", "proof", existing_type=postgresql.JSONB(), nullable=True
     )
+    op.drop_index("ix_geolocations_detected_from_url", table_name="geolocations")
     op.drop_column("geolocations", "detected_from_url")
     op.drop_column("geolocations", "state")

@@ -107,25 +107,28 @@ LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 LOCAL_STORAGE_URL_PREFIX = f"http://localhost:8000{LOCAL_STORAGE_MOUNT_PATH}"
 
 
+def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
+    """Resolve an allowed MIME to ``(media_type, max byte size)``.
+
+    The one place :func:`validate_file` (multipart) and :func:`validate_bytes`
+    (bytes) agree on the type allowlist + per-type size ceiling, so they can't
+    drift. Raises ``ValueError`` on a disallowed type.
+    """
+    if content_type in ALLOWED_IMAGE_TYPES:
+        return "image", settings.max_image_size
+    if content_type in ALLOWED_VIDEO_TYPES:
+        return "video", settings.max_video_size
+    raise ValueError(f"File type {content_type} not allowed")
+
+
 def validate_file(file: UploadFile) -> str:
     """Validate type + size; return media_type ('image' or 'video')."""
-    if file.content_type not in ALLOWED_TYPES:
-        raise ValueError(f"File type {file.content_type} not allowed")
-
-    if file.content_type in ALLOWED_IMAGE_TYPES:
-        media_type = "image"
-        max_size = settings.max_image_size
-    else:
-        media_type = "video"
-        max_size = settings.max_video_size
-
+    media_type, max_size = _media_type_and_max_size(file.content_type)
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
-
     if size > max_size:
         raise ValueError(f"File too large: {size} bytes (max {max_size})")
-
     return media_type
 
 
@@ -422,12 +425,7 @@ def validate_bytes(data: bytes, content_type: str) -> str:
     the single worker — the OOM line the video path avoids — and accept any MIME.
     Raises ``ValueError``; the caller maps it to its own error / skip.
     """
-    if content_type in ALLOWED_IMAGE_TYPES:
-        media_type, max_size = "image", settings.max_image_size
-    elif content_type in ALLOWED_VIDEO_TYPES:
-        media_type, max_size = "video", settings.max_video_size
-    else:
-        raise ValueError(f"File type {content_type} not allowed")
+    media_type, max_size = _media_type_and_max_size(content_type)
     if len(data) > max_size:
         raise ValueError(f"File too large: {len(data)} bytes (max {max_size})")
     return media_type
@@ -459,6 +457,10 @@ def prepare_media(
     )
 
     if content_type not in ALLOWED_IMAGE_TYPES:
+        # Video / other: no strip, no derivatives. Unlike the multipart path
+        # this holds the whole file in memory — the caller already buffered it,
+        # and ``validate_bytes`` caps it at ``max_video_size``. (No video reaches
+        # this path today; the archive adapter ingests photos only.)
         return PreparedMedia(data, None, None, content_type)
     cleaned = strip_metadata(data, content_type)
     if not produce_derivatives:

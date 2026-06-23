@@ -58,6 +58,19 @@ def test_edge_pointing_outside_batch_is_ignored():
     assert [r.tweet_id for r in threads[0]] == ["5"]
 
 
+def test_malformed_timestamp_does_not_hijack_the_head():
+    # An empty / non-ISO created_at must sort LAST, not become the head — detect
+    # anchors provenance + event_date on thread[0].
+    records = [
+        _rec("2", "", reply_to="1"),  # missing timestamp
+        _rec("1", "2025-11-12T10:00:00Z"),  # the real head
+        _rec("3", "Wed Nov 12 10:05:00 +0000 2025", reply_to="1"),  # non-ISO
+    ]
+    threads = stitch(records)
+    assert len(threads) == 1
+    assert threads[0][0].tweet_id == "1"
+
+
 def test_first_appearance_order_of_threads_is_stable():
     records = [
         _rec("1", "2025-11-12T10:00:00Z"),

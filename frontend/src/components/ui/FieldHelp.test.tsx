@@ -9,9 +9,10 @@ describe("FieldHelp", () => {
     const btn = screen.getByRole("button", { name: "Source help" });
     expect(btn).toHaveAttribute("aria-expanded", "false");
     // The text lives in the DOM (a role=tooltip) so hover / focus reveal it.
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "Where the footage was first published."
-    );
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Where the footage was first published.");
+    // The trigger is described by the tooltip so a screen reader announces it.
+    expect(btn.getAttribute("aria-describedby")).toBe(tooltip.getAttribute("id"));
   });
 
   it("toggles the pinned state on click (touch devices don't hover)", () => {

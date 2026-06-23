@@ -85,4 +85,12 @@ class Geolocation(Base):
             unique=True,
             postgresql_where="originated_from_bounty_id IS NOT NULL",
         ),
+        # Backs the assemble idempotency look-up (one per detection during a
+        # backfill). Partial on the populated cohort — human rows are always
+        # NULL. Mirrors migration ``v8q0s2u4w6y8``.
+        Index(
+            "ix_geolocations_detected_from_url",
+            "detected_from_url",
+            postgresql_where="detected_from_url IS NOT NULL",
+        ),
     )

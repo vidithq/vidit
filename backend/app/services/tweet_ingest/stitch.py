@@ -52,4 +52,18 @@ def stitch(records: list[TweetRecord]) -> list[list[TweetRecord]]:
     for i, r in enumerate(records):
         groups.setdefault(find(i), []).append(r)
 
-    return [sorted(members, key=lambda r: r.created_at) for members in groups.values()]
+    return [sorted(members, key=_chronological) for members in groups.values()]
+
+
+def _chronological(record: TweetRecord) -> str:
+    """Sort key for ordering a thread head-first.
+
+    ISO 8601 timestamps sort lexicographically by time. A missing ("") or
+    non-ISO ``created_at`` (an adapter that couldn't normalise the upstream
+    format) is pushed *last* so it can't hijack the head — ``detect`` anchors
+    the thread's provenance + event date on ``thread[0]``.
+    """
+    created_at = record.created_at
+    if created_at and created_at[0].isdigit():
+        return created_at
+    return "￿"

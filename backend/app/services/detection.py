@@ -86,16 +86,25 @@ def preview_detection(url: str, *, client: httpx.Client | None = None) -> list[D
     return [d for thread in stitch([record]) for d in detect(thread)]
 
 
-def _disposition(db: Session, dto: DetectedGeoloc) -> str:
+def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     """Idempotency verdict for one detection: ``skip`` / ``create`` / ``recreate``.
 
-    Looks at every row sharing ``detected_from_url`` (including soft-deleted)
-    and matches the coordinate to ``_COORD_PLACES``. A live match (validated or
-    detected) wins → ``skip``; only a soft-deleted match → ``recreate``; no
-    match → ``create``.
+    Scoped to ``owner``: a detection only dedups against the backfiller's own
+    rows. (``detected_from_url`` embeds the handle, so it's already owner-unique
+    in practice, but the explicit ``author_id`` filter makes the invariant hold
+    even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
+    every row sharing ``detected_from_url`` (including soft-deleted) and matches
+    the coordinate to ``_COORD_PLACES``. A live match (validated or detected)
+    wins → ``skip``; only a soft-deleted match → ``recreate``; no match →
+    ``create``.
     """
     rows = (
-        db.query(Geolocation).filter(Geolocation.detected_from_url == dto.detected_from_url).all()
+        db.query(Geolocation)
+        .filter(
+            Geolocation.author_id == owner.id,
+            Geolocation.detected_from_url == dto.detected_from_url,
+        )
+        .all()
     )
     deleted_match = False
     for row in rows:
@@ -130,7 +139,11 @@ async def _prepared_media(
         try:
             validate_bytes(data, content_type)
             prepared = await asyncio.to_thread(prepare_media, data, content_type)
-        except Exception:
+        except ValueError:
+            # ValueError is the unusable-media surface: validate_bytes (bad
+            # type / size) + EvidenceProcessingError (undecodable image) both
+            # subclass it. A broader catch would swallow real bugs as a silent
+            # media skip across a whole archive.
             logger.warning("Skipping unusable detection media %s", parsed.remote_url)
             prepared = None
     cache[parsed.remote_url] = prepared
@@ -196,7 +209,9 @@ async def _persist_one(
         db.rollback()
         sweep_keys(uploaded_keys, context=f"detection assemble {dto.detected_from_url}")
         raise
-    db.refresh(geo)
+    # No post-commit refresh: a refresh failure here would misclassify an
+    # already-durable row as failed. The geo's attributes lazy-load from the
+    # still-open session on access.
     return geo
 
 
@@ -229,7 +244,7 @@ async def assemble_detections(
     for dto in detections:
         if dto.detected_from_url != cache_url:
             cache_url, media_cache = dto.detected_from_url, {}
-        verdict = _disposition(db, dto)
+        verdict = _disposition(db, owner, dto)
         if verdict == "skip":
             outcome.skipped += 1
             continue

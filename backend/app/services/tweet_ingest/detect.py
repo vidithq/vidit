@@ -30,7 +30,9 @@ class DetectedGeoloc:
     # The post this detection was imported from — the idempotency anchor and
     # the provenance link, distinct from ``source_url`` (the footage origin).
     detected_from_url: str
-    # Author handle (normalized) — the detection is owned by this handle's user.
+    # Author handle (normalized), informational — the tweet's own handle. The
+    # assemble caller attributes the row to the backfiller it was given, not to
+    # this field (they're the same when an owner imports their own archive).
     owner_handle: str
     # Provisional event date = the head tweet's post date; the owner corrects it
     # at validation. ``event_date`` is NOT NULL on the model, so a detection

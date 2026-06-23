@@ -87,6 +87,20 @@ export interface TweetImportQuotedTweet {
   tweet_text: string;
 }
 
+/** One machine detection the pipeline would produce from a pasted tweet — the
+ *  no-persist preview output (zero DB writes). The UI doesn't render this yet
+ *  (the analyst-facing preview is deferred); the type keeps the contract
+ *  honest with the backend ``DetectedGeolocPreview`` schema. */
+export interface DetectedGeolocPreview {
+  lat: number;
+  lng: number;
+  title: string;
+  proof_text: string;
+  detected_from_url: string;
+  event_date: string;
+  media: TweetImportMedia[];
+}
+
 export interface TweetImportResponse {
   /** SOURCE URL — the quoted tweet's URL when the OP quote-retweets,
    *  otherwise the OP's own URL. The form binds this directly to its
@@ -105,6 +119,9 @@ export interface TweetImportResponse {
    *  which is primary vs proof. */
   media: TweetImportMedia[];
   quoted_tweet: TweetImportQuotedTweet | null;
+  /** The machine path's view of the same tweet — the detections the pipeline
+   *  would produce, for inspection. Empty when no coordinate parses. */
+  detected: DetectedGeolocPreview[];
 }
 
 /**
