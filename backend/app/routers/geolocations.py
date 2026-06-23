@@ -723,7 +723,10 @@ def import_from_tweet(
                 event_date=d.event_date,
                 media=[
                     TweetImportMedia(
-                        kind=m.kind, remote_url=m.remote_url, content_type=m.content_type, origin=m.origin
+                        kind=m.kind,
+                        remote_url=m.remote_url,
+                        content_type=m.content_type,
+                        origin=m.origin,
                     )
                     for m in d.media
                 ],

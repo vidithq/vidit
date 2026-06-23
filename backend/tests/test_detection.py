@@ -171,9 +171,7 @@ async def test_validated_pair_is_skipped(db, owner):
 
 async def test_backfill_from_archive_end_to_end(db, owner):
     # Full chain: read the synthetic X export -> stitch -> detect -> assemble.
-    outcome = await backfill_from_archive(
-        db, owner=owner, archive_dir=ARCHIVE, is_demo=True
-    )
+    outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
     assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
 
     geos = db.query(Geolocation).filter(Geolocation.author_id == owner.id).all()

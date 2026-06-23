@@ -1623,9 +1623,7 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
     assert body["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
 
 
-def test_import_from_tweet_surfaces_detection_preview_without_persisting(
-    author, monkeypatch, db
-):
+def test_import_from_tweet_surfaces_detection_preview_without_persisting(author, monkeypatch, db):
     from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia, ParsedTweet
 
     before = db.query(Geolocation).count()
