@@ -39,7 +39,7 @@ from shapely.geometry import Point
 from app.cache import points_cache
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
@@ -382,11 +382,12 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 5  # [id, lat, lng, event_date, submitted_date]
+    assert len(row) == 6  # [id, lat, lng, event_date, submitted_date, detected]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
+    assert row[5] == 0  # validated row → not marked detected
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -396,6 +397,36 @@ def test_points_excludes_soft_deleted(db, author):
     ids = {row[0] for row in response.json()}
     assert str(live.id) in ids
     assert str(dead.id) not in ids
+
+
+def test_detected_row_renders_marked_across_surfaces(db, author):
+    geo = Geolocation(
+        author_id=author.id,
+        title="Detected geo",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://x.com/a/status/1",
+        event_date=date(2026, 5, 1),
+        state=STATE_DETECTED,
+        detected_from_url="https://x.com/a/status/1",
+    )
+    db.add(geo)
+    db.commit()
+    db.refresh(geo)
+
+    # /points — the compact map payload marks it with the detected flag.
+    points = client.get("/api/v1/geolocations/points").json()
+    point = next(r for r in points if r[0] == str(geo.id))
+    assert point[5] == 1
+
+    # Detail — state + the distinct detected_from_url provenance link.
+    detail = client.get(f"/api/v1/geolocations/{geo.id}").json()
+    assert detail["state"] == "detected"
+    assert detail["detected_from_url"] == "https://x.com/a/status/1"
+
+    # List card — carries state too.
+    listing = client.get("/api/v1/geolocations").json()
+    item = next(i for i in listing if i["id"] == str(geo.id))
+    assert item["state"] == "detected"
 
 
 def test_points_cache_miss_then_hit(db, author):

@@ -31,7 +31,7 @@ from app.cache import points_cache
 from app.config import settings
 from app.dependencies import get_current_user, get_db
 from app.models.bounty import Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
@@ -326,11 +326,13 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return all geolocations as a compact array:
-    ``[[id, lat, lng, event_date, submitted_date], ...]``.
+    ``[[id, lat, lng, event_date, submitted_date, detected], ...]``.
     No joins, no limit — designed for map display with client-side clustering.
     ``event_date`` and ``submitted_date`` (the ``created_at`` calendar day) are
     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
     scrubbers and filters the windows client-side (no refetch per drag).
+    ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
+    validated row — a flag, not the state string, to keep the payload small.
     Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
@@ -366,6 +368,7 @@ def list_points(
         ST_X(Geolocation.location).label("lng"),
         Geolocation.event_date,
         Geolocation.created_at,
+        Geolocation.state,
     )
     q = _apply_filters(
         q,
@@ -383,6 +386,9 @@ def list_points(
     )
 
     rows = q.all()
+    # Compact 6-tuple: [id, lat, lng, event_date, submitted_date, detected].
+    # ``detected`` is 1/0 (not the state string) so the no-LIMIT catalog payload
+    # stays small — the map colours the marker off this flag.
     result = [
         [
             str(r.id),
@@ -390,6 +396,7 @@ def list_points(
             float(r.lng),
             r.event_date.isoformat(),
             r.created_at.date().isoformat(),
+            1 if r.state == STATE_DETECTED else 0,
         ]
         for r in rows
     ]
@@ -460,6 +467,7 @@ def list_geolocations(
             lng=lng,
             event_date=geo.event_date,
             is_demo=geo.is_demo,
+            state=geo.state,
             author=geo.author,
             tags=geo.tags,
         )
@@ -820,6 +828,8 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
+        state=geo.state,
+        detected_from_url=geo.detected_from_url,
         author=geo.author,
         media=geo.media,
         tags=geo.tags,
@@ -1043,6 +1053,8 @@ async def create_geolocation(
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
+        state=geo.state,
+        detected_from_url=geo.detected_from_url,
         author=geo.author,
         media=geo.media,
         tags=geo.tags,
