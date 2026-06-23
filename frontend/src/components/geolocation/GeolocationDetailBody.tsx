@@ -157,16 +157,16 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             Detected from{" "}
             <FieldHelp text={FIELD_HELP.detected_from} label="What is 'Detected from'?" />
           </span>
-          <a
-            href={geo.detected_from_url}
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            className={`${compact ? "" : "text-sm"} text-orange-400 hover:underline truncate ml-4 ${
-              compact ? "max-w-[200px]" : "max-w-[300px]"
-            }`}
-          >
-            {geo.detected_from_url}
-          </a>
+          {/* Same display nature as Source: SourceLabel reduces the URL to its
+              host (and shows "synthetic" for demo rows), so the two provenance
+              rows read alike rather than one host-reduced, one truncated-full. */}
+          <SourceLabel
+            isDemo={geo.is_demo}
+            url={geo.detected_from_url}
+            variant="link"
+            maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
+            className={compact ? "ml-4" : "text-sm ml-4"}
+          />
         </div>
       )}
       {geo.tags.length > 0 && (

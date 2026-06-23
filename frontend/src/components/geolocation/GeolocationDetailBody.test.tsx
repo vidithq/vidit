@@ -116,9 +116,12 @@ describe("GeolocationDetailBody", () => {
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Detected")).toBeInTheDocument();
     expect(screen.getByText("Detected from")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "https://x.com/ana/status/123" })
-    ).toHaveAttribute("href", "https://x.com/ana/status/123");
+    // Detected from renders via SourceLabel — host display, full URL as href,
+    // the same nature as the Source row.
+    expect(screen.getByRole("link", { name: "x.com" })).toHaveAttribute(
+      "href",
+      "https://x.com/ana/status/123"
+    );
     // ? help on the Status + Detected-from fields.
     expect(
       screen.getByRole("button", { name: "What does the status mean?" })
