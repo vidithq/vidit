@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
+import httpx
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ from app.services.tweet_ingest import (
     archive_media_fetcher,
     detect,
     read_tweets,
+    record_from_syndication,
     stitch,
 )
 
@@ -53,6 +55,17 @@ class AssembleOutcome:
 
 def _media_type(content_type: str) -> str:
     return "video" if content_type.startswith("video/") else "image"
+
+
+def preview_detection(url: str, *, client: httpx.Client | None = None) -> list[DetectedGeoloc]:
+    """The detections a pasted tweet WOULD produce — no DB writes, no media fetch.
+
+    Acquire (syndication) → stitch → detect over the single tweet at ``url``.
+    The inspection window into the machine path: the ``DetectedGeoloc`` DTOs are
+    returned as-is for the route to serialize. ``client`` is for tests.
+    """
+    record = record_from_syndication(url, client=client)
+    return [d for thread in stitch([record]) for d in detect(thread)]
 
 
 def _disposition(db: Session, dto: DetectedGeoloc) -> str:

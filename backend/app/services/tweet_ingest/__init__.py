@@ -19,6 +19,7 @@ shared failures without a cycle.
 
 from __future__ import annotations
 
+from .acquire import record_from_syndication
 from .archive import archive_media_fetcher, read_tweets
 from .detect import DetectedGeoloc, detect
 from .errors import (
@@ -69,5 +70,6 @@ __all__ = [
     "normalise_tweet_url",
     "parse_tweet",
     "read_tweets",
+    "record_from_syndication",
     "stitch",
 ]

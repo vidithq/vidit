@@ -38,6 +38,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.geolocation import (
+    DetectedGeolocPreview,
     GeolocationList,
     GeolocationRead,
     PossibleDuplicateRead,
@@ -51,6 +52,7 @@ from app.schemas.media import MediaUploadResponse
 from app.services import geolocations as geolocations_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent
+from app.services.detection import preview_detection
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
@@ -667,6 +669,10 @@ def import_from_tweet(
     """
     try:
         parsed = parse_tweet(body.url)
+        # The machine path's view of the same tweet — zero DB writes. Reuses the
+        # cached syndication body (parse_tweet just fetched it), so no second
+        # network hit. Same error surface as parse_tweet.
+        detections = preview_detection(body.url)
     except InvalidTweetUrl as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TweetNotAccessible as exc:
@@ -707,6 +713,23 @@ def import_from_tweet(
             for m in parsed.media
         ],
         quoted_tweet=quoted,
+        detected=[
+            DetectedGeolocPreview(
+                lat=d.coordinate.lat,
+                lng=d.coordinate.lng,
+                title=d.title,
+                proof_text=d.proof_text,
+                detected_from_url=d.detected_from_url,
+                event_date=d.event_date,
+                media=[
+                    TweetImportMedia(
+                        kind=m.kind, remote_url=m.remote_url, content_type=m.content_type, origin=m.origin
+                    )
+                    for m in d.media
+                ],
+            )
+            for d in detections
+        ],
     )
 
 
