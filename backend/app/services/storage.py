@@ -413,45 +413,34 @@ def derivative_key(original_key: str, suffix: str) -> str:
     return f"{stem_path}_{suffix}.jpg"
 
 
-async def _upload_with_optional_strip(
-    file: UploadFile,
+async def upload_bytes_with_optional_strip(
+    data: bytes,
+    content_type: str,
     key: str,
     *,
     produce_derivatives: bool = True,
 ) -> UploadResult:
-    """Dispatch by content type.
+    """Strip + upload media the caller already holds as bytes.
 
-    * **Image** (JPEG / PNG / WebP) — buffer the body (bounded by
-      ``max_image_size``), run ``strip_metadata`` to drop EXIF (incl.
-      submitter GPS), IPTC, XMP, ICC. When ``produce_derivatives`` is True
-      (default), also generate JPEG hero (≈1280 px) + thumbnail (≈400 px)
-      from the cleaned bytes and upload all three (original at ``key``,
-      derivatives at ``derivative_key(key, …)``). The sha256 lands on the
-      cleaned original — derivatives are regeneratable, so the row tracks
-      one hash and an auditor downloading the original's URL gets a match.
+    The bytes-source sibling of :func:`_upload_with_optional_strip`, for media
+    that never arrived as a multipart ``UploadFile`` — a tweet image fetched
+    from the X CDN, an archive file read from disk. Same guarantees:
 
-      ``produce_derivatives=False`` for ``upload_proof_image``: inline proof
-      images render through Tiptap via the raw ``storage_url``, so hero/thumb
-      JPEGs would be S3 objects nothing fetches yet retained 365 days under
-      Object Lock. Flip back to ``True`` when the proof renderer adopts
-      derivatives.
+    * **Image** (JPEG / PNG / WebP) — ``strip_metadata`` drops EXIF (incl. any
+      GPS), IPTC, XMP, ICC. When ``produce_derivatives`` is True (default), it
+      also builds JPEG hero (≈1280 px) + thumbnail (≈400 px) from the cleaned
+      bytes and uploads all three (original at ``key``, derivatives at
+      ``derivative_key(key, …)``). The sha256 lands on the cleaned original —
+      derivatives are regeneratable, so the row tracks one hash. A mid-flight
+      derivative-upload failure best-effort sweeps whatever landed before
+      re-raising, so the bucket never holds an original with no derivatives.
 
-    * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
-      derivatives (first-frame thumb not implemented). Stream-hash +
-      stream-upload via ``upload``, memory bounded at one chunk. The
-      buffer-vs-stream split is why EXIF can't run on videos: stripping a
-      100 MB MP4 in memory is the OOM line a prior PR caught.
+    * **Video** (and any other allowed type) — no strip (needs ffmpeg) and no
+      derivatives; a plain ``upload_bytes``.
 
-    Both the body read and the libjpeg/png/webp re-encode are sync
-    CPU-bound; ``asyncio.to_thread`` keeps a slow encode (WebP method=6 is
-    multi-second) off the event loop so siblings on the single worker don't
-    starve.
-
-    On a mid-flight derivative-upload failure, the original (if it landed)
-    and any uploaded derivative are best-effort swept before the exception
-    propagates, so a half-uploaded triple doesn't leave an indexable
-    original with no thumbnails. The caller still wraps its own row-level
-    cleanup (Media row not yet committed).
+    ``content_type`` must be an allowed MIME — the caller's adapter validates
+    type + size before reaching here. The libjpeg/png/webp re-encode is sync
+    CPU-bound, so it runs in a thread to keep the event loop free.
     """
     # Local import keeps the storage module free of an eager Pillow load
     # (libjpeg / libpng C extensions at process start); evidence_processing
@@ -463,53 +452,86 @@ async def _upload_with_optional_strip(
         strip_metadata,
     )
 
+    storage = get_storage()
+
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        # Video / other allowed types — no strip, no derivatives.
+        return await storage.upload_bytes(data, key, content_type)
+
+    def _strip_and_derive() -> tuple[bytes, bytes | None, bytes | None]:
+        cleaned = strip_metadata(data, content_type)
+        if not produce_derivatives:
+            return cleaned, None, None
+        hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
+        thumb = make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
+        return cleaned, hero, thumb
+
+    cleaned, hero, thumb = await asyncio.to_thread(_strip_and_derive)
+
+    if hero is None or thumb is None:
+        # Derivative-skipping path (proof images): single upload, empty
+        # derivative_keys.
+        return await storage.upload_bytes(cleaned, key, content_type)
+
+    hero_key = derivative_key(key, "hero")
+    thumb_key = derivative_key(key, "thumb")
+    uploaded: list[str] = []
+    try:
+        result = await storage.upload_bytes(cleaned, key, content_type)
+        uploaded.append(key)
+        await storage.upload_bytes(hero, hero_key, "image/jpeg")
+        uploaded.append(hero_key)
+        await storage.upload_bytes(thumb, thumb_key, "image/jpeg")
+        uploaded.append(thumb_key)
+    except Exception:
+        # Sweep whatever landed so the frontend never sees an original with no
+        # derivatives (or vice versa). Caller handles the row side; this
+        # handles the bucket-side leak.
+        if uploaded:
+            try:
+                storage.delete_many(uploaded)
+            except Exception:
+                logger.exception(
+                    "Failed to sweep partial-upload derivatives after error: %s",
+                    uploaded,
+                )
+        raise
+    # Attach derivative keys so the caller's row-creation rollback can sweep
+    # all three.
+    return result._replace(derivative_keys=(hero_key, thumb_key))
+
+
+async def _upload_with_optional_strip(
+    file: UploadFile,
+    key: str,
+    *,
+    produce_derivatives: bool = True,
+) -> UploadResult:
+    """Dispatch a multipart upload by content type.
+
+    * **Image** — buffer the body (bounded by ``max_image_size``) off the event
+      loop, then hand the bytes to :func:`upload_bytes_with_optional_strip`,
+      which strips metadata and (optionally) builds the hero/thumbnail JPEGs.
+      ``produce_derivatives=False`` for ``upload_proof_image``: inline proof
+      images render from the raw ``storage_url``, so hero/thumb JPEGs would be
+      unfetched objects retained 365 days under Object Lock.
+
+    * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
+      derivatives; stream-hash + ``upload_fileobj`` via ``upload``, memory
+      bounded at one chunk. Buffering a 100 MB MP4 to strip it is the OOM line
+      a prior PR caught — which is why EXIF strip can't run on videos.
+    """
     if file.content_type in ALLOWED_IMAGE_TYPES:
         content_type = file.content_type or ""
 
-        def _read_strip_and_derive() -> tuple[bytes, bytes | None, bytes | None]:
+        def _read() -> bytes:
             file.file.seek(0)
-            raw = file.file.read()
-            cleaned = strip_metadata(raw, content_type)
-            if not produce_derivatives:
-                return cleaned, None, None
-            hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
-            thumb = make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
-            return cleaned, hero, thumb
+            return file.file.read()
 
-        cleaned, hero, thumb = await asyncio.to_thread(_read_strip_and_derive)
-        storage = get_storage()
-
-        if hero is None or thumb is None:
-            # Derivative-skipping path (proof images): single upload, empty
-            # derivative_keys.
-            return await storage.upload_bytes(cleaned, key, content_type)
-
-        hero_key = derivative_key(key, "hero")
-        thumb_key = derivative_key(key, "thumb")
-        uploaded: list[str] = []
-        try:
-            result = await storage.upload_bytes(cleaned, key, content_type)
-            uploaded.append(key)
-            await storage.upload_bytes(hero, hero_key, "image/jpeg")
-            uploaded.append(hero_key)
-            await storage.upload_bytes(thumb, thumb_key, "image/jpeg")
-            uploaded.append(thumb_key)
-        except Exception:
-            # Sweep whatever landed so the frontend never sees an original
-            # with no derivatives (or vice versa). Caller handles the row
-            # side; this handles the bucket-side leak.
-            if uploaded:
-                try:
-                    storage.delete_many(uploaded)
-                except Exception:
-                    logger.exception(
-                        "Failed to sweep partial-upload derivatives after error: %s",
-                        uploaded,
-                    )
-            raise
-        # Attach derivative keys so the caller's row-creation rollback can
-        # sweep all three.
-        return result._replace(derivative_keys=(hero_key, thumb_key))
+        raw = await asyncio.to_thread(_read)
+        return await upload_bytes_with_optional_strip(
+            raw, content_type, key, produce_derivatives=produce_derivatives
+        )
     # Video path — stream-hash + upload_fileobj. No derivatives.
     return await get_storage().upload(file, key)
 
