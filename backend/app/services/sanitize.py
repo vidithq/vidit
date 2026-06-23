@@ -148,6 +148,26 @@ def sanitize_tiptap_doc(doc: Any) -> dict[str, Any]:
     return sanitized
 
 
+def tiptap_doc_from_text(text: str) -> dict[str, Any]:
+    """Build a minimal Tiptap proof document from plain text.
+
+    One paragraph node per non-blank line; blank lines drop out. Used by the
+    machine-detection assemble step to wrap a tweet / thread's cleaned text
+    (from ``clean_proof_text``) into the JSONB proof shape every row carries.
+    Empty or all-blank input yields :data:`EMPTY_TIPTAP_DOC`.
+    """
+    paragraphs = [line for line in text.split("\n") if line.strip()]
+    if not paragraphs:
+        return {"type": "doc", "content": []}
+    return {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": line}]}
+            for line in paragraphs
+        ],
+    }
+
+
 def _sanitize_node(node: Any, *, depth: int, counter: list[int]) -> dict[str, Any] | None:
     if depth > _MAX_DEPTH:
         raise ValueError(f"Tiptap document exceeds max depth ({_MAX_DEPTH})")

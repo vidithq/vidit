@@ -1,0 +1,165 @@
+"""Integration tests for the machine-detection assemble step.
+
+Exercises ``assemble_detections`` against the DB + local storage: a DTO
+becomes a ``detected`` row owned by the backfiller, media lands as ``Media``
+with a sha256, and the ``(detected_from_url, coordinate)`` idempotency
+skips / recreates correctly.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, date, datetime
+
+import pytest
+from geoalchemy2.shape import from_shape
+from shapely.geometry import Point
+
+from app.database import SessionLocal
+from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.media import Media
+from app.models.user import User
+from app.services.auth import hash_password
+from app.services.detection import assemble_detections
+from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia
+from tests._fixtures import TINY_JPEG
+
+
+@pytest.fixture
+def db():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def owner(db):
+    user = User(
+        username=f"own{uuid.uuid4().hex[:8]}",
+        email=f"own-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        x_handle=f"own{uuid.uuid4().hex[:8]}",
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    # media rows cascade off the geolocation FK (ondelete=CASCADE).
+    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
+async def _image_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
+    return TINY_JPEG, "image/jpeg"
+
+
+async def _missing_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str] | None:
+    return None
+
+
+def _dto(
+    *,
+    lat: float = 48.5,
+    lng: float = 34.5,
+    url: str = "https://x.com/own/status/1",
+    media: list[ParsedMedia] | None = None,
+) -> DetectedGeoloc:
+    return DetectedGeoloc(
+        coordinate=ParsedCoord(lat=lat, lng=lng),
+        title="Strike at Bakhmut",
+        proof_text="Strike at Bakhmut\nGeolocated by analyst",
+        detected_from_url=url,
+        owner_handle="own",
+        event_date=date(2025, 11, 12),
+        media=media or [],
+    )
+
+
+def _img() -> ParsedMedia:
+    return ParsedMedia(
+        kind="image", remote_url="https://pbs.twimg.com/media/x.jpg", content_type="image/jpeg"
+    )
+
+
+async def test_assemble_persists_detected_row(db, owner):
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=_image_fetcher
+    )
+    assert len(outcome.created) == 1
+    assert outcome.skipped == 0 and outcome.recreated == 0
+
+    geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
+    assert geo.state == STATE_DETECTED
+    assert geo.detected_from_url == "https://x.com/own/status/1"
+    assert geo.source_url == "https://x.com/own/status/1"
+    assert geo.event_date == date(2025, 11, 12)
+    # proof is the wrapped tweet text, never NULL.
+    assert geo.proof and geo.proof["type"] == "doc" and geo.proof["content"]
+
+    media = db.query(Media).filter(Media.geolocation_id == geo.id).all()
+    assert len(media) == 1
+    assert media[0].media_type == "image"
+    assert media[0].sha256 and len(media[0].sha256) == 64
+
+
+async def test_media_less_detection_persists(db, owner):
+    # A detected row may be media-incomplete — the owner completes it before
+    # validating (Phase B). No media required, unlike a human submit.
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
+    )
+    assert len(outcome.created) == 1
+    geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
+    assert db.query(Media).filter(Media.geolocation_id == geo.id).count() == 0
+
+
+async def test_idempotency_skips_existing_pair(db, owner):
+    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
+    )
+    assert outcome.created == [] and outcome.skipped == 1
+    assert db.query(Geolocation).filter(Geolocation.author_id == owner.id).count() == 1
+
+
+async def test_idempotency_recreates_soft_deleted_pair(db, owner):
+    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
+    geo.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.recreated == 1
+    live = (
+        db.query(Geolocation)
+        .filter(Geolocation.author_id == owner.id, Geolocation.deleted_at.is_(None))
+        .all()
+    )
+    assert len(live) == 1
+
+
+async def test_validated_pair_is_skipped(db, owner):
+    # A human (validated) row already at this (detected_from_url, coordinate)
+    # blocks a machine re-detection.
+    existing = Geolocation(
+        author_id=owner.id,
+        title="Human submit",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/footage",
+        event_date=date(2025, 11, 12),
+        state=STATE_VALIDATED,
+        detected_from_url="https://x.com/own/status/1",
+    )
+    db.add(existing)
+    db.commit()
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
+    )
+    assert outcome.skipped == 1 and outcome.created == []

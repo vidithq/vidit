@@ -553,6 +553,22 @@ async def upload_bounty_file(file: UploadFile, bounty_id: UUID) -> UploadResult:
     return await _upload_with_optional_strip(file, key)
 
 
+async def upload_detected_media(
+    data: bytes, content_type: str, geolocation_id: UUID
+) -> UploadResult:
+    """Upload a machine detection's media (already held as bytes) for a geolocation.
+
+    The bytes-path mirror of ``upload_file``: EXIF strip + JPEG hero/thumb
+    derivatives for images, plain upload for video. A distinct ``detected/``
+    prefix keeps machine-ingested media separable from human ``uploads/``.
+    ``content_type`` is one of ``ALLOWED_TYPES`` (the acquire adapter validated
+    it) so the extension is a safe short ASCII suffix.
+    """
+    ext = _safe_storage_extension(content_type)
+    key = f"detected/{geolocation_id}/{uuid4()}{ext}"
+    return await upload_bytes_with_optional_strip(data, content_type, key)
+
+
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
     """Inline image embedded in a Tiptap proof body.
 
