@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 
 /**
@@ -25,6 +25,7 @@ export default function FieldHelp({
 }) {
   const [pinned, setPinned] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const tooltipId = useId();
 
   useEffect(() => {
     if (!pinned) return;
@@ -52,6 +53,7 @@ export default function FieldHelp({
       <button
         type="button"
         aria-label={label}
+        aria-describedby={tooltipId}
         aria-expanded={pinned}
         onClick={(e) => {
           // The help icon often sits inside a clickable card / label — don't
@@ -69,6 +71,7 @@ export default function FieldHelp({
           would clip it off the panel's left. */}
       <span
         role="tooltip"
+        id={tooltipId}
         className={`absolute left-0 top-full mt-1.5 z-20 w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg transition-opacity duration-150 ${
           pinned
             ? "opacity-100 pointer-events-auto"

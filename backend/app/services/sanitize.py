@@ -154,7 +154,8 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     One paragraph node per non-blank line; blank lines drop out. Used by the
     machine-detection assemble step to wrap a tweet / thread's cleaned text
     (from ``clean_proof_text``) into the JSONB proof shape every row carries.
-    Empty or all-blank input yields :data:`EMPTY_TIPTAP_DOC`.
+    Empty or all-blank input yields an empty document (same shape as
+    :data:`EMPTY_TIPTAP_DOC`).
     """
     paragraphs = [line for line in text.split("\n") if line.strip()]
     if not paragraphs:

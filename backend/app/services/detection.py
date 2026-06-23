@@ -10,6 +10,8 @@ archive backfill, and the bot.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,7 +26,15 @@ from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
-from app.services.storage import get_storage, sweep_keys, upload_detected_media
+from app.services.storage import (
+    PreparedMedia,
+    detected_media_key,
+    get_storage,
+    prepare_media,
+    sweep_keys,
+    upload_prepared_media,
+    validate_bytes,
+)
 from app.services.tweet_ingest import (
     DetectedGeoloc,
     ParsedMedia,
@@ -35,11 +45,18 @@ from app.services.tweet_ingest import (
     stitch,
 )
 
+logger = logging.getLogger(__name__)
+
 # How a caller hands the assemble step the bytes for one piece of media: maps a
 # ``ParsedMedia`` to ``(bytes, content_type)``, or ``None`` to skip it (missing
 # archive file, untrusted host, fetch failure). The archive backfill reads
-# ``tweets_media/`` from disk; the bot (Phase B) fetches the X CDN.
+# ``tweets_media/`` from disk; the bot fetches the X CDN.
 MediaFetcher = Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]
+
+# A media reference → its prepared bytes (or None to skip). Cached per thread so
+# a multi-coordinate thread doesn't fetch / strip / derive identical media once
+# per coordinate.
+_MediaCache = dict[str, PreparedMedia | None]
 
 # Coordinate-equality tolerance for idempotency — matches the dedup rounding in
 # ``extract_coords`` so the same coordinate doesn't re-detect as a new pair.
@@ -51,6 +68,7 @@ class AssembleOutcome:
     created: list[Geolocation] = field(default_factory=list)
     skipped: int = 0  # a live row already held the pair
     recreated: int = 0  # a soft-deleted (rejected) pair was re-detected
+    failed: int = 0  # a detection raised mid-persist and was skipped
 
 
 def _media_type(content_type: str) -> str:
@@ -93,6 +111,32 @@ def _disposition(db: Session, dto: DetectedGeoloc) -> str:
     return "recreate" if deleted_match else "create"
 
 
+async def _prepared_media(
+    parsed: ParsedMedia, fetch_media: MediaFetcher, cache: _MediaCache
+) -> PreparedMedia | None:
+    """Fetch + validate + strip/derive one media, memoised in ``cache``.
+
+    Returns the prepared bytes, or ``None`` to skip (missing file, invalid
+    type/size, or undecodable image) — a detection persists media-incomplete
+    rather than failing. The strip + derivative work is the expensive part; the
+    cache amortises it across a thread's coordinate rows, which share media.
+    """
+    if parsed.remote_url in cache:
+        return cache[parsed.remote_url]
+    prepared: PreparedMedia | None = None
+    fetched = await fetch_media(parsed)
+    if fetched is not None:
+        data, content_type = fetched
+        try:
+            validate_bytes(data, content_type)
+            prepared = await asyncio.to_thread(prepare_media, data, content_type)
+        except Exception:
+            logger.warning("Skipping unusable detection media %s", parsed.remote_url)
+            prepared = None
+    cache[parsed.remote_url] = prepared
+    return prepared
+
+
 async def _persist_one(
     db: Session,
     *,
@@ -100,40 +144,44 @@ async def _persist_one(
     dto: DetectedGeoloc,
     fetch_media: MediaFetcher,
     is_demo: bool,
+    media_cache: _MediaCache,
 ) -> Geolocation:
-    geo = Geolocation(
-        author_id=owner.id,
-        title=dto.title,
-        location=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
-        # No reliable footage origin from the text alone, so the originating
-        # post is the honest source of record; it also surfaces as the distinct
-        # ``detected_from_url`` provenance link. The owner can't yet edit
-        # ``source_url`` (immutable), which is why it points at the real post,
-        # not a guess.
-        source_url=dto.detected_from_url,
-        proof=tiptap_doc_from_text(dto.proof_text),
-        event_date=dto.event_date,
-        state=STATE_DETECTED,
-        detected_from_url=dto.detected_from_url,
-        is_demo=is_demo,
-    )
-    db.add(geo)
-    db.flush()  # populate geo.id for media keys + the Media FK
-
     uploaded_keys: list[str] = []
     try:
+        geo = Geolocation(
+            author_id=owner.id,
+            title=dto.title,
+            location=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
+            # No reliable footage origin from the text alone, so the originating
+            # post is the honest source of record; it also surfaces as the
+            # distinct ``detected_from_url`` provenance link. ``source_url`` is
+            # immutable, so it points at the real post, not a guess.
+            source_url=dto.detected_from_url,
+            proof=tiptap_doc_from_text(dto.proof_text),
+            event_date=dto.event_date,
+            state=STATE_DETECTED,
+            detected_from_url=dto.detected_from_url,
+            is_demo=is_demo,
+        )
+        db.add(geo)
+        db.flush()  # populate geo.id for media keys + the Media FK
+
         storage = get_storage()
         for parsed in dto.media:
-            fetched = await fetch_media(parsed)
-            if fetched is None:
+            prepared = await _prepared_media(parsed, fetch_media, media_cache)
+            if prepared is None:
                 continue
-            data, content_type = fetched
-            result = await upload_detected_media(data, content_type, geo.id)
+            # Each geolocation owns its own S3 objects (own key) so a per-geo
+            # hard-delete sweep can't orphan a sibling's media — the cache shares
+            # the prepared bytes, not the keys.
+            result = await upload_prepared_media(
+                prepared, detected_media_key(geo.id, prepared.content_type)
+            )
             db.add(
                 Media(
                     geolocation_id=geo.id,
                     storage_url=result.url,
-                    media_type=_media_type(content_type),
+                    media_type=_media_type(prepared.content_type),
                     sha256=result.sha256,
                 )
             )
@@ -167,17 +215,38 @@ async def assemble_detections(
     ``(detected_from_url, coordinate)`` across states (see :func:`_disposition`).
 
     Each detection commits in its own transaction so one failure neither loses
-    the others nor strands S3 objects (its media keys are swept on rollback). A
-    detection may carry no media — a ``detected`` row can be media-incomplete
-    until its owner completes it before validating (Phase B).
+    the others nor strands S3 objects — a raise is caught, counted in
+    ``outcome.failed``, rolled back, and the loop moves on. A detection may carry
+    no media — a ``detected`` row can be media-incomplete until its owner
+    completes it before validating.
     """
     outcome = AssembleOutcome()
+    # Media cache scoped to the current thread: ``detect`` emits a thread's
+    # coordinate DTOs contiguously sharing one ``detected_from_url`` + media, so
+    # resetting on a URL change bounds the cached bytes to one thread.
+    cache_url: str | None = None
+    media_cache: _MediaCache = {}
     for dto in detections:
+        if dto.detected_from_url != cache_url:
+            cache_url, media_cache = dto.detected_from_url, {}
         verdict = _disposition(db, dto)
         if verdict == "skip":
             outcome.skipped += 1
             continue
-        geo = await _persist_one(db, owner=owner, dto=dto, fetch_media=fetch_media, is_demo=is_demo)
+        try:
+            geo = await _persist_one(
+                db,
+                owner=owner,
+                dto=dto,
+                fetch_media=fetch_media,
+                is_demo=is_demo,
+                media_cache=media_cache,
+            )
+        except Exception:
+            logger.exception("Detection assemble failed for %s", dto.detected_from_url)
+            db.rollback()
+            outcome.failed += 1
+            continue
         outcome.created.append(geo)
         if verdict == "recreate":
             outcome.recreated += 1

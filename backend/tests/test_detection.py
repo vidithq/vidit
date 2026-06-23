@@ -195,6 +195,55 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     assert again.created == [] and again.skipped == 6
 
 
+async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, owner):
+    # Two coordinates from the same post (same detected_from_url + media) → two
+    # rows, but the shared image is fetched / stripped only once (cache).
+    calls = {"n": 0}
+
+    async def counting_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        calls["n"] += 1
+        return TINY_JPEG, "image/jpeg"
+
+    img = _img()
+    detections = [
+        _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/9", media=[img]),
+        _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/9", media=[img]),
+    ]
+    outcome = await assemble_detections(
+        db, owner=owner, detections=detections, fetch_media=counting_fetcher
+    )
+    assert len(outcome.created) == 2
+    assert calls["n"] == 1  # fetched once, shared across both coordinate rows
+    geo_ids = [g.id for g in outcome.created]
+    assert db.query(Media).filter(Media.geolocation_id.in_(geo_ids)).count() == 2
+
+
+async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner):
+    # An undecodable image must not abort the detection — it persists
+    # media-incomplete, not failed.
+    async def bad_image_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return b"this is not a real image", "image/jpeg"
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=bad_image_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.failed == 0
+    geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
+    assert db.query(Media).filter(Media.geolocation_id == geo.id).count() == 0
+
+
+def test_validate_bytes_guards_type_and_size():
+    from app.config import settings
+    from app.services.storage import validate_bytes
+
+    assert validate_bytes(b"x", "image/jpeg") == "image"
+    assert validate_bytes(b"x", "video/mp4") == "video"
+    with pytest.raises(ValueError):
+        validate_bytes(b"x", "application/pdf")  # disallowed type
+    with pytest.raises(ValueError):
+        validate_bytes(b"x" * (settings.max_image_size + 1), "image/jpeg")  # oversize
+
+
 def test_preview_detection_returns_dtos_without_db():
     from app.services.detection import preview_detection
 

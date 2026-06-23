@@ -33,8 +33,8 @@ class DetectedGeoloc:
     # Author handle (normalized) — the detection is owned by this handle's user.
     owner_handle: str
     # Provisional event date = the head tweet's post date; the owner corrects it
-    # at validation (Phase B). ``event_date`` is NOT NULL on the model, so a
-    # detection always carries one.
+    # at validation. ``event_date`` is NOT NULL on the model, so a detection
+    # always carries one.
     event_date: date
     media: list[ParsedMedia] = field(default_factory=list)
 

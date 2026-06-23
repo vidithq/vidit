@@ -3,7 +3,7 @@
 The syndication sibling of ``archive.read_tweets``: one fetch, one record, no
 reply edges (syndication can't expose a self-thread in one call, so ``stitch``
 is the identity here). Backs the no-persist detection preview on
-``import-from-tweet``; the bot (Phase B) is the other consumer.
+``import-from-tweet``; the bot is the other consumer.
 """
 
 from __future__ import annotations
