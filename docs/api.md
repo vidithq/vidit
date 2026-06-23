@@ -346,6 +346,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
     "lng": 37.456,
     "event_date": "2026-03-15",
     "is_demo": false,
+    "state": "validated",
     "author": {
       "id": "uuid",
       "username": "kalush",
@@ -361,11 +362,13 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 ]
 ```
 
+`state` is `validated` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
+
 ---
 
 ### `GET /geolocations/points`
 
-Compact `[id, lat, lng, event_date, submitted_date]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side.
+Compact `[id, lat, lng, event_date, submitted_date, detected]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a validated row — a flag, not the state string, to keep the no-LIMIT catalog payload small.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -381,8 +384,8 @@ params are still accepted but the map now filters dates client-side from the pay
 **Response 200:**
 ```json
 [
-  ["6c1f…uuid", 48.123, 37.456, "2024-03-11", "2024-03-12"],
-  ["a0b2…uuid", 50.450, 30.523, "2024-05-02", "2024-05-04"]
+  ["6c1f…uuid", 48.123, 37.456, "2024-03-11", "2024-03-12", 0],
+  ["a0b2…uuid", 50.450, 30.523, "2024-05-02", "2024-05-04", 1]
 ]
 ```
 
@@ -471,9 +474,24 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
     "source_url": "https://x.com/source_handle/status/1234567890123456789",
     "author_handle": "source_handle",
     "tweet_text": "<full quoted tweet text>"
-  }
+  },
+  "detected": [
+    {
+      "lat": 48.012345,
+      "lng": 37.802411,
+      "title": "<derived title>",
+      "proof_text": "<cleaned tweet text>",
+      "detected_from_url": "https://x.com/analyst_handle/status/1234567890123456790",
+      "event_date": "2025-11-12",
+      "media": [
+        { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
+      ]
+    }
+  ]
 }
 ```
+
+`detected` is the **machine path's** view of the same tweet — the `DetectedGeoloc`s the assemble pipeline would produce, surfaced for inspection with **zero DB writes** (no row, no media fetch). One entry per parsed coordinate; empty when none parse. It's distinct from the human pre-fill above (`parsed_coords` + `media`): `parsed_coords` is candidates for the analyst to pick, `detected` is what the machine would persist as a `detected` row if this tweet were tagged or backfilled.
 
 Every field is best-effort. `parsed_coords` runs four extractors over `tweet_text` first, then over `quoted_tweet.tweet_text` if the OP yielded nothing (decimal pairs; decimal degrees + hemisphere letter — `33.1°N 35.5°E`, `50.4501N, 30.5234E`, `N48.0123 E37.8024`, `°` optional; DMS with hemisphere letters; `@lat,lng,zoom` in Google Maps URLs) and caps at three candidates ordered by extractor. `suggested_title` is the first usable line of the OP's text with leading hashtags, URLs, a leading list marker, and any bare coordinates stripped, truncated to 120 chars on a word boundary; a coordinate-only line is skipped and the title is never a bare coordinate; empty when nothing usable remains. `media[].remote_url` is always either `pbs.twimg.com` or `video.twimg.com` — the response filters anything else.
 
@@ -541,6 +559,8 @@ Full detail for a single geolocation.
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
+  "state": "validated",
+  "detected_from_url": null,
   "author": {
     "id": "uuid",
     "username": "kalush"
@@ -866,6 +886,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
       "is_demo": false,
+      "state": "validated",
       "author": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
       "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
     }
