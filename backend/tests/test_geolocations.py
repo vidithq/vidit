@@ -130,7 +130,6 @@ def _make_geo(
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
         source_url="https://example.com/source",
-        proof=None,
         event_date=event_date or date(2026, 5, 1),
     )
     if deleted:
@@ -1242,7 +1241,6 @@ def _make_geo_with_source(
         title=f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
         source_url=source_url,
-        proof=None,
         event_date=event_date_value,
     )
     db.add(geo)

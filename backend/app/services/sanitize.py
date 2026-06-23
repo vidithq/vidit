@@ -20,6 +20,12 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
+# The canonical empty proof document. ``geolocations.proof`` is NOT NULL — every
+# row carries a proof doc — so a submission with no proof body and the migration
+# that backfilled pre-existing NULLs both store this. It renders as "no proof"
+# through the proof renderer rather than a shape the frontend doesn't expect.
+EMPTY_TIPTAP_DOC: dict[str, Any] = {"type": "doc", "content": []}
+
 # Tiptap StarterKit nodes (+ Image extension wired in
 # frontend/src/components/editor/ProofEditor.tsx).
 _ALLOWED_NODES: dict[str, set[str]] = {
