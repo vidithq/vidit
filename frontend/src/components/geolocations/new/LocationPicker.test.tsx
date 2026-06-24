@@ -43,4 +43,14 @@ describe("LocationPicker", () => {
     fireEvent.click(chip);
     expect(onSwap).toHaveBeenCalledWith({ lat: 48.01, lng: 37.8 });
   });
+
+  it("drops the coordinates when showCoords is false (bounty), keeping source media", () => {
+    render(<LocationPicker {...baseProps} showCoords={false} />);
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the source media?" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Latitude")).toBeNull();
+    expect(screen.queryByLabelText("Longitude")).toBeNull();
+  });
 });

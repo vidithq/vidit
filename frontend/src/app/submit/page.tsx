@@ -18,7 +18,6 @@ import { FIELD_HELP } from "@/lib/fieldHelp";
 import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
-import { EvidenceUploader } from "@/components/geolocations/new/EvidenceUploader";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
@@ -399,31 +398,20 @@ function SubmitForm() {
           />
         </div>
 
-        {/* Geolocation: source media + coordinates merged into one Location
-            block. Bounty (an unfinished geolocation): media only, no point. */}
-        {showGeoFields ? (
-          <LocationPicker
-            lockedMedia={bounty ? bounty.media : null}
-            files={files}
-            setFiles={setFiles}
-            lat={lat}
-            setLat={setLat}
-            lng={lng}
-            setLng={setLng}
-            extraCoordCandidates={extraCoordCandidates}
-            onSwapCandidate={swapCoordCandidate}
-          />
-        ) : (
-          <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-            <header>
-              <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-                Source media
-                <FieldHelp text={FIELD_HELP.source_media} label="What is the source media?" />
-              </h2>
-            </header>
-            <EvidenceUploader lockedMedia={null} files={files} setFiles={setFiles} showLabel={false} />
-          </section>
-        )}
+        {/* One "Location" block in both modes: source media + coordinates for a
+            geolocation, source media alone for a bounty (no point yet). */}
+        <LocationPicker
+          lockedMedia={bounty ? bounty.media : null}
+          files={files}
+          setFiles={setFiles}
+          lat={lat}
+          setLat={setLat}
+          lng={lng}
+          setLng={setLng}
+          extraCoordCandidates={extraCoordCandidates}
+          onSwapCandidate={swapCoordCandidate}
+          showCoords={showGeoFields}
+        />
 
         <DetailsFields
           sourceUrl={sourceUrl}
