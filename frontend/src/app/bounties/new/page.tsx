@@ -104,19 +104,18 @@ export default function NewBountyPage() {
       subtitle="Post the media + source you couldn't geolocate. Another analyst will pick it up and turn it into a full geolocation. Once the geolocation is submitted, this bounty is archived."
     >
         <form onSubmit={handleSubmit} className="space-y-6">
+          <p className="text-xs text-neutral-500">
+            All fields are required unless marked <span className="text-neutral-400">optional</span>.
+          </p>
           {/* Sections mirror the bounty detail page's reading order
               (media → details) so what the author fills in maps to what
               readers see. */}
           <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-            <header className="space-y-1">
+            <header>
               <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
                 Source media
                 <FieldHelp text={FIELD_HELP.source_media} label="What is the source media?" />
               </h2>
-              <p className="text-xs text-neutral-500">
-                Images (jpg, png, webp) or videos (mp4, webm). At least one
-                file — the evidence the next analyst will work from.
-              </p>
             </header>
             <div className="space-y-1.5">
               <label htmlFor="files" className={FORM_LABEL}>
@@ -135,14 +134,11 @@ export default function NewBountyPage() {
           </section>
 
           <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-            <header className="space-y-1">
+            <header>
               <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
                 Details
                 <FieldHelp text={FIELD_HELP.section_details_bounty} label="What goes in Details?" />
               </h2>
-              <p className="text-xs text-neutral-500">
-                Title + the original source where the media was found.
-              </p>
             </header>
 
             <div className="space-y-1.5">
@@ -183,7 +179,6 @@ export default function NewBountyPage() {
             curatedTags={curatedTags}
             selectedTagIds={selectedTagIds}
             setSelectedTagIds={setSelectedTagIds}
-            subtitle="Help others find the bounty under the right conflict, capture source, or topic. All optional — but a capture source pre-fills the geolocation when someone fulfils it."
           />
 
           {error && (

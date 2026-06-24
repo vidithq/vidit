@@ -117,15 +117,11 @@ export function TweetImportBanner({
   const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
-      <header className="space-y-1">
+      <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Paste a tweet URL
           <FieldHelp text={FIELD_HELP.section_import} label="What does importing do?" />
         </h2>
-        <p className="text-xs text-neutral-500">
-          Pre-fills title, source, event date, media, and best-effort
-          coordinates from a public tweet. You review and submit.
-        </p>
       </header>
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {/* Pre-import nudge surfaces the no-linked-X signal before the analyst

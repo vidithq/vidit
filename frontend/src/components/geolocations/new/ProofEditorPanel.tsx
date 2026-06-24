@@ -31,16 +31,11 @@ export function ProofEditorPanel({
 }: ProofEditorPanelProps) {
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-      <header className="space-y-1">
+      <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Proof
           <FieldHelp text={FIELD_HELP.section_proof} label="What goes in Proof?" />
         </h2>
-        <p className="text-xs text-neutral-500">
-          Annotated cross-reference between the source media and a map
-          screenshot. Highlight matching anchor points with coloured
-          boxes.
-        </p>
       </header>
 
       {/* Re-mount the editor on every import. ``importGen`` changes even

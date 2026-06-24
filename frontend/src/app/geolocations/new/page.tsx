@@ -273,6 +273,9 @@ function NewGeolocationForm() {
       }
     >
         <form onSubmit={handleSubmit} className="space-y-6">
+          <p className="text-xs text-neutral-500">
+            All fields are required unless marked <span className="text-neutral-400">optional</span>.
+          </p>
           {/* Hidden in bounty-fulfilment mode: source URL + media are
               locked there, so the import pre-fill has nowhere to land. */}
           {!lockedFromBounty && (
@@ -335,11 +338,6 @@ function NewGeolocationForm() {
             setSelectedTagIds={setSelectedTagIds}
             requireConflict
             requireCaptureSource
-            subtitle={
-              lockedFromBounty
-                ? "Pre-filled from the bounty — adjust as needed. Conflict and capture source are required."
-                : "Conflict and capture source are required; add any free-form tags that apply."
-            }
           />
 
           <ProofEditorPanel

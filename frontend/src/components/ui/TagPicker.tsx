@@ -1,6 +1,6 @@
 "use client";
 
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { Tag } from "@/types";
 import { NewTagInput } from "@/components/ui/NewTagInput";
 import { TagChip } from "@/components/ui/TagChip";
@@ -8,11 +8,12 @@ import FieldHelp from "@/components/ui/FieldHelp";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 
-/** Muted "required" marker. Neutral, not orange: a label hint isn't clickable. */
-function RequiredHint() {
+/** Muted "optional" marker. The form convention is required-by-default — only
+ *  the exceptions are marked. Neutral, not orange: a label hint isn't clickable. */
+function OptionalHint() {
   return (
     <span className="ml-1 text-[10px] normal-case tracking-normal text-neutral-500">
-      required
+      optional
     </span>
   );
 }
@@ -27,9 +28,8 @@ interface TagPickerProps {
   curatedTags: Tag[];
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
-  subtitle: ReactNode;
-  /** Show the "required" hint. Hint only — enforcement lives in the
-   *  parent's submit handler. */
+  /** Required-by-default: when false, the group shows an "optional" marker.
+   *  Hint only — enforcement lives in the parent's submit handler. */
   requireConflict?: boolean;
   requireCaptureSource?: boolean;
 }
@@ -48,7 +48,6 @@ export function TagPicker({
   curatedTags,
   selectedTagIds,
   setSelectedTagIds,
-  subtitle,
   requireConflict = false,
   requireCaptureSource = false,
 }: TagPickerProps) {
@@ -82,14 +81,13 @@ export function TagPicker({
           Tags
           <FieldHelp text={FIELD_HELP.section_tags} label="What goes in Tags?" />
         </h2>
-        <p className="text-xs text-neutral-500">{subtitle}</p>
       </header>
 
       {conflictTags.length > 0 && (
         <div className="space-y-2">
           <span className={FORM_LABEL}>
             Conflict <FieldHelp text={FIELD_HELP.conflict} label="What is the Conflict tag?" />{" "}
-            {requireConflict && <RequiredHint />}
+            {!requireConflict && <OptionalHint />}
           </span>
           <div className="flex flex-wrap gap-2">
             {conflictTags.map((tag) => (
@@ -109,7 +107,7 @@ export function TagPicker({
           <span className={FORM_LABEL}>
             Capture source{" "}
             <FieldHelp text={FIELD_HELP.capture_source} label="What is the Capture source?" />{" "}
-            {requireCaptureSource && <RequiredHint />}
+            {!requireCaptureSource && <OptionalHint />}
           </span>
           <div className="flex flex-wrap gap-2">
             {captureSourceTags.map((tag) => (
@@ -125,7 +123,9 @@ export function TagPicker({
       )}
 
       <div className="space-y-2">
-        <span className={FORM_LABEL}>Free tags</span>
+        <span className={FORM_LABEL}>
+          Free tags <OptionalHint />
+        </span>
         {freeTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {freeTags.map((tag) => (
