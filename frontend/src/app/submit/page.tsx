@@ -138,8 +138,9 @@ function SubmitForm() {
   }, []);
 
   // Load the bounty being fulfilled to pre-fill + lock inherited fields.
-  // The server is authoritative (ignores divergent values when bounty_id
-  // is present); locking is just the UX cue.
+  // On fulfilment the server forces only `source_url` + media from the bounty;
+  // the other inherited fields (title, dates, proof, tags) are form-sourced, so
+  // this pre-fill is the only carry-over for them. Locking source_url is the UX cue.
   useEffect(() => {
     if (!bountyIdParam) return;
     getBounty(bountyIdParam)
@@ -368,7 +369,12 @@ function SubmitForm() {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setSubmitType(t)}
+                  onClick={() => {
+                    setSubmitType(t);
+                    // Bounty mode has no image upload, so a flag left true by an
+                    // in-flight geolocation upload would wedge the submit button.
+                    if (t === "bounty") setProofImageUploading(false);
+                  }}
                   aria-pressed={submitType === t}
                   className={`px-3 py-1 text-sm rounded transition-colors ${
                     submitType === t

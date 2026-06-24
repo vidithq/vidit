@@ -17,7 +17,7 @@ interface ProofEditorProps {
   // re-seed after mount.
   initialContent?: Record<string, unknown> | null;
   // Drops the Image extension + upload button. A bounty's proof maps to
-  // `bounties.description`, and the bounty create path never adopts inline
+  // `bounties.proof`, and the bounty create path never adopts inline
   // proof-images into `proof_images` rows (no `bounty_id` there), so an
   // uploaded image would orphan and get reaped. Text + formatting only there.
   allowImages?: boolean;

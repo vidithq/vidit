@@ -52,9 +52,9 @@ export default function FieldHelp({
     };
   }, [pinned]);
 
-  // Power-user opt-out: hide every `?` (toggle on the settings page). The
-  // section subtitles still carry the quick "what", so nothing essential is
-  // lost — this only removes the inline tooltips.
+  // Power-user opt-out: hide every `?` (toggle on the settings page). Sections
+  // carry no always-on subtitle, so with help hidden the form is just labels
+  // and fields — the intended power-user view.
   if (hidden) return null;
 
   return (
