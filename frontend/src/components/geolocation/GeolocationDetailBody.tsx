@@ -186,7 +186,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       )}
       {/* The three dates read as one block: event → source → submitted. */}
       <div className={row}>
-        <span className={label}>Submitted date</span>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Submitted date <FieldHelp concept="submitted_date" />
+        </span>
         <span className={value}>{formatDate(geo.created_at)}</span>
       </div>
       <div className={row}>

@@ -41,6 +41,10 @@ export const FIELD_HELP = {
     text: "When the source posted the media (the Telegram / X post date). Not when the event happened, nor when you submitted it here.",
     label: "What is the source date?",
   },
+  submitted_date: {
+    text: "When this was added to Vidit. Not when the event happened, nor when the source posted the media.",
+    label: "What is the submitted date?",
+  },
   status: {
     text: "Validated: submitted or vouched for by a human. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
     label: "What does the status mean?",
