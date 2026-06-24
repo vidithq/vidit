@@ -26,7 +26,7 @@ describe("LocationPicker", () => {
     expect(screen.getByLabelText("Latitude")).toBeInTheDocument();
     expect(screen.getByLabelText("Longitude")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What coordinates do I enter?" })
+      screen.getByRole("button", { name: "What goes in Location?" })
     ).toBeInTheDocument();
   });
 

@@ -43,9 +43,7 @@ export function LocationPicker({
       <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Location
-          {showCoords && (
-            <FieldHelp text={FIELD_HELP.coordinates} label="What coordinates do I enter?" />
-          )}
+          <FieldHelp text={FIELD_HELP.section_location} label="What goes in Location?" />
         </h2>
       </header>
 

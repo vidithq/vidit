@@ -76,6 +76,37 @@ describe("GeolocationDetailBody", () => {
     ).toBeInTheDocument();
   });
 
+  it("panel variant carries the same ? help as the page", () => {
+    render(<GeolocationDetailBody geo={geoFixture()} variant="panel" />);
+    expect(
+      screen.getByRole("button", { name: "What are the coordinates?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the Event date?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the Source?" })
+    ).toBeInTheDocument();
+  });
+
+  it("splits curated tags into their own rows, free tags under Tags", () => {
+    render(
+      <GeolocationDetailBody
+        geo={geoFixture({
+          tags: [
+            { id: "t1", name: "Ukraine", category: "conflict" },
+            { id: "t2", name: "Drone", category: "capture_source" },
+            { id: "t3", name: "armor", category: "free" },
+          ],
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Conflict")).toBeInTheDocument();
+    expect(screen.getByText("Capture source")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+  });
+
   it("page variant: hero media, bounty-trace + author rows, section headings", () => {
     const geo = geoFixture();
     render(<GeolocationDetailBody geo={geo} variant="page" />);

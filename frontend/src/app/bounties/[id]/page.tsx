@@ -64,6 +64,25 @@ export default function BountyDetailPage() {
   const isClaimedByMe = !!user && bounty.claimers.some((c) => c.id === user.id);
   const canGeolocate = bounty.status === "open";
 
+  // Curated tags get their own labelled rows (like a geolocation's detail) so
+  // conflict / capture source read as structured facts, not free-form chips.
+  const conflictTags = bounty.tags.filter((t) => t.category === "conflict");
+  const captureTags = bounty.tags.filter((t) => t.category === "capture_source");
+  const freeTags = bounty.tags.filter((t) => t.category === "free");
+  const tagRow = (name: string, tags: BountyDetail["tags"]) =>
+    tags.length > 0 ? (
+      <div className="flex justify-between items-start px-4 py-3">
+        <span className="text-sm text-neutral-500">{name}</span>
+        <div className="flex flex-wrap gap-1.5 justify-end">
+          {tags.map((tag) => (
+            <span key={tag.id} className={`text-xs px-2.5 py-0.5 rounded-full ${TAG_CHIP}`}>
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const handleToggleClaim = async () => {
     setActionPending(true);
     setActionError(null);
@@ -221,21 +240,9 @@ export default function BountyDetailPage() {
                 className="text-sm ml-4"
               />
             </div>
-            {bounty.tags.length > 0 && (
-              <div className="flex justify-between items-start px-4 py-3">
-                <span className="text-sm text-neutral-500">Tags</span>
-                <div className="flex flex-wrap gap-1.5 justify-end">
-                  {bounty.tags.map((tag) => (
-                    <span
-                      key={tag.id}
-                      className={`text-xs px-2.5 py-0.5 rounded-full ${TAG_CHIP}`}
-                    >
-                      {tag.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+            {tagRow("Conflict", conflictTags)}
+            {tagRow("Capture source", captureTags)}
+            {tagRow("Tags", freeTags)}
             {bounty.status === "open" && (
               <div className="flex justify-between items-start px-4 py-3">
                 <span className="text-sm text-neutral-500">Working on</span>

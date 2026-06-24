@@ -117,6 +117,30 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   const label = compact ? "text-neutral-500" : "text-sm text-neutral-500";
   const value = compact ? "text-neutral-200" : "text-sm text-neutral-200";
 
+  // Curated tags (conflict, capture source) get their own labelled rows so
+  // they read as structured facts, not free-form chips lost in one row.
+  const conflictTags = geo.tags.filter((t) => t.category === "conflict");
+  const captureTags = geo.tags.filter((t) => t.category === "capture_source");
+  const freeTags = geo.tags.filter((t) => t.category === "free");
+  const tagRow = (name: string, tags: GeolocationDetail["tags"]) =>
+    tags.length > 0 ? (
+      <div className={rowStart}>
+        <span className={label}>{name}</span>
+        <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className={`${
+                compact ? "text-[10px] px-2" : "text-xs px-2.5"
+              } py-0.5 rounded-full ${TAG_CHIP}`}
+            >
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const rows = (
     <>
       {/* Panel only: coordinates lead the rows — on the full page they show
@@ -193,25 +217,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           />
         </div>
       )}
-      {geo.tags.length > 0 && (
-        <div className={rowStart}>
-          <span className={label}>Tags</span>
-          <div
-            className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}
-          >
-            {geo.tags.map((tag) => (
-              <span
-                key={tag.id}
-                className={`${
-                  compact ? "text-[10px] px-2" : "text-xs px-2.5"
-                } py-0.5 rounded-full ${TAG_CHIP}`}
-              >
-                {tag.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {tagRow("Conflict", conflictTags)}
+      {tagRow("Capture source", captureTags)}
+      {tagRow("Tags", freeTags)}
       {/* Compact panel omits bounty-trace + author rows: the author is in
           the panel header, the trace belongs to the full page. */}
       {!compact && geo.originated_from_bounty && (

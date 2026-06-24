@@ -28,6 +28,8 @@ export const FIELD_HELP = {
   detected_from:
     "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin).",
   // Section-level guidance (the `?` next to a section heading).
+  section_location:
+    "The footage being located, and the coordinates where it was filmed. A bounty has just the footage; whoever picks it up adds the coordinates.",
   section_import:
     "Paste a public tweet to pre-fill the form: title, source, date, media, and best-effort coordinates. You review everything before submitting.",
   section_details:
