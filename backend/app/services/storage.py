@@ -107,25 +107,28 @@ LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 LOCAL_STORAGE_URL_PREFIX = f"http://localhost:8000{LOCAL_STORAGE_MOUNT_PATH}"
 
 
+def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
+    """Resolve an allowed MIME to ``(media_type, max byte size)``.
+
+    The one place :func:`validate_file` (multipart) and :func:`validate_bytes`
+    (bytes) agree on the type allowlist + per-type size ceiling, so they can't
+    drift. Raises ``ValueError`` on a disallowed type.
+    """
+    if content_type in ALLOWED_IMAGE_TYPES:
+        return "image", settings.max_image_size
+    if content_type in ALLOWED_VIDEO_TYPES:
+        return "video", settings.max_video_size
+    raise ValueError(f"File type {content_type} not allowed")
+
+
 def validate_file(file: UploadFile) -> str:
     """Validate type + size; return media_type ('image' or 'video')."""
-    if file.content_type not in ALLOWED_TYPES:
-        raise ValueError(f"File type {file.content_type} not allowed")
-
-    if file.content_type in ALLOWED_IMAGE_TYPES:
-        media_type = "image"
-        max_size = settings.max_image_size
-    else:
-        media_type = "video"
-        max_size = settings.max_video_size
-
+    media_type, max_size = _media_type_and_max_size(file.content_type)
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
-
     if size > max_size:
         raise ValueError(f"File too large: {size} bytes (max {max_size})")
-
     return media_type
 
 
@@ -413,49 +416,39 @@ def derivative_key(original_key: str, suffix: str) -> str:
     return f"{stem_path}_{suffix}.jpg"
 
 
-async def _upload_with_optional_strip(
-    file: UploadFile,
-    key: str,
-    *,
-    produce_derivatives: bool = True,
-) -> UploadResult:
-    """Dispatch by content type.
+def validate_bytes(data: bytes, content_type: str) -> str:
+    """Type + size validation for a bytes-source upload; returns the media_type.
 
-    * **Image** (JPEG / PNG / WebP) — buffer the body (bounded by
-      ``max_image_size``), run ``strip_metadata`` to drop EXIF (incl.
-      submitter GPS), IPTC, XMP, ICC. When ``produce_derivatives`` is True
-      (default), also generate JPEG hero (≈1280 px) + thumbnail (≈400 px)
-      from the cleaned bytes and upload all three (original at ``key``,
-      derivatives at ``derivative_key(key, …)``). The sha256 lands on the
-      cleaned original — derivatives are regeneratable, so the row tracks
-      one hash and an auditor downloading the original's URL gets a match.
-
-      ``produce_derivatives=False`` for ``upload_proof_image``: inline proof
-      images render through Tiptap via the raw ``storage_url``, so hero/thumb
-      JPEGs would be S3 objects nothing fetches yet retained 365 days under
-      Object Lock. Flip back to ``True`` when the proof renderer adopts
-      derivatives.
-
-    * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
-      derivatives (first-frame thumb not implemented). Stream-hash +
-      stream-upload via ``upload``, memory bounded at one chunk. The
-      buffer-vs-stream split is why EXIF can't run on videos: stripping a
-      100 MB MP4 in memory is the OOM line a prior PR caught.
-
-    Both the body read and the libjpeg/png/webp re-encode are sync
-    CPU-bound; ``asyncio.to_thread`` keeps a slow encode (WebP method=6 is
-    multi-second) off the event loop so siblings on the single worker don't
-    starve.
-
-    On a mid-flight derivative-upload failure, the original (if it landed)
-    and any uploaded derivative are best-effort swept before the exception
-    propagates, so a half-uploaded triple doesn't leave an indexable
-    original with no thumbnails. The caller still wraps its own row-level
-    cleanup (Media row not yet committed).
+    The symmetric guard to :func:`validate_file` for media that never arrived as
+    a multipart ``UploadFile`` (a fetched / read-from-disk archive file). Without
+    it the bytes path would buffer + re-encode an unbounded image in memory on
+    the single worker — the OOM line the video path avoids — and accept any MIME.
+    Raises ``ValueError``; the caller maps it to its own error / skip.
     """
+    media_type, max_size = _media_type_and_max_size(content_type)
+    if len(data) > max_size:
+        raise ValueError(f"File too large: {len(data)} bytes (max {max_size})")
+    return media_type
+
+
+class PreparedMedia(NamedTuple):
+    """An image / video whose CPU-bound strip + derivative work is already done,
+    so a caller can compute it once and upload the result to several keys (a
+    multi-coordinate thread shares one image across its coordinate rows)."""
+
+    cleaned: bytes
+    hero: bytes | None
+    thumb: bytes | None
+    content_type: str
+
+
+def prepare_media(
+    data: bytes, content_type: str, *, produce_derivatives: bool = True
+) -> PreparedMedia:
+    """Strip metadata + (optionally) build hero/thumb JPEGs. Sync, CPU-bound —
+    callers run it in a thread. Non-image types pass through unstripped."""
     # Local import keeps the storage module free of an eager Pillow load
-    # (libjpeg / libpng C extensions at process start); evidence_processing
-    # is the only consumer.
+    # (libjpeg / libpng C extensions at process start).
     from app.services.evidence_processing import (
         HERO_MAX_DIM,
         THUMBNAIL_MAX_DIM,
@@ -463,53 +456,108 @@ async def _upload_with_optional_strip(
         strip_metadata,
     )
 
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        # Video / other: no strip, no derivatives. Unlike the multipart path
+        # this holds the whole file in memory — the caller already buffered it,
+        # and ``validate_bytes`` caps it at ``max_video_size``. (No video reaches
+        # this path today; the archive adapter ingests photos only.)
+        return PreparedMedia(data, None, None, content_type)
+    cleaned = strip_metadata(data, content_type)
+    if not produce_derivatives:
+        return PreparedMedia(cleaned, None, None, content_type)
+    hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
+    thumb = make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
+    return PreparedMedia(cleaned, hero, thumb, content_type)
+
+
+async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResult:
+    """Upload an already-prepared media (cleaned + optional derivatives) to ``key``.
+
+    The sha256 lands on the cleaned original (derivatives are regeneratable). A
+    mid-flight derivative-upload failure best-effort sweeps whatever landed
+    before re-raising, so the bucket never holds an original with no derivatives.
+    """
+    storage = get_storage()
+    if prepared.hero is None or prepared.thumb is None:
+        return await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
+
+    hero_key = derivative_key(key, "hero")
+    thumb_key = derivative_key(key, "thumb")
+    uploaded: list[str] = []
+    try:
+        result = await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
+        uploaded.append(key)
+        await storage.upload_bytes(prepared.hero, hero_key, "image/jpeg")
+        uploaded.append(hero_key)
+        await storage.upload_bytes(prepared.thumb, thumb_key, "image/jpeg")
+        uploaded.append(thumb_key)
+    except Exception:
+        if uploaded:
+            try:
+                storage.delete_many(uploaded)
+            except Exception:
+                logger.exception(
+                    "Failed to sweep partial-upload derivatives after error: %s",
+                    uploaded,
+                )
+        raise
+    return result._replace(derivative_keys=(hero_key, thumb_key))
+
+
+async def upload_bytes_with_optional_strip(
+    data: bytes,
+    content_type: str,
+    key: str,
+    *,
+    produce_derivatives: bool = True,
+) -> UploadResult:
+    """Validate + strip + upload media the caller already holds as bytes.
+
+    The bytes-source sibling of :func:`_upload_with_optional_strip`, for media
+    that never arrived as a multipart ``UploadFile`` — a tweet image fetched from
+    the X CDN, an archive file read from disk. Validates type + size
+    (:func:`validate_bytes`), strips EXIF/IPTC/XMP/ICC + builds JPEG hero/thumb
+    for images (``produce_derivatives``), plain-uploads video. The re-encode is
+    sync CPU-bound, so it runs in a thread.
+    """
+    validate_bytes(data, content_type)
+    prepared = await asyncio.to_thread(
+        prepare_media, data, content_type, produce_derivatives=produce_derivatives
+    )
+    return await upload_prepared_media(prepared, key)
+
+
+async def _upload_with_optional_strip(
+    file: UploadFile,
+    key: str,
+    *,
+    produce_derivatives: bool = True,
+) -> UploadResult:
+    """Dispatch a multipart upload by content type.
+
+    * **Image** — buffer the body (bounded by ``max_image_size``) off the event
+      loop, then hand the bytes to :func:`upload_bytes_with_optional_strip`,
+      which strips metadata and (optionally) builds the hero/thumbnail JPEGs.
+      ``produce_derivatives=False`` for ``upload_proof_image``: inline proof
+      images render from the raw ``storage_url``, so hero/thumb JPEGs would be
+      unfetched objects retained 365 days under Object Lock.
+
+    * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
+      derivatives; stream-hash + ``upload_fileobj`` via ``upload``, memory
+      bounded at one chunk. Buffering a 100 MB MP4 to strip it is the OOM line
+      a prior PR caught — which is why EXIF strip can't run on videos.
+    """
     if file.content_type in ALLOWED_IMAGE_TYPES:
         content_type = file.content_type or ""
 
-        def _read_strip_and_derive() -> tuple[bytes, bytes | None, bytes | None]:
+        def _read() -> bytes:
             file.file.seek(0)
-            raw = file.file.read()
-            cleaned = strip_metadata(raw, content_type)
-            if not produce_derivatives:
-                return cleaned, None, None
-            hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
-            thumb = make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
-            return cleaned, hero, thumb
+            return file.file.read()
 
-        cleaned, hero, thumb = await asyncio.to_thread(_read_strip_and_derive)
-        storage = get_storage()
-
-        if hero is None or thumb is None:
-            # Derivative-skipping path (proof images): single upload, empty
-            # derivative_keys.
-            return await storage.upload_bytes(cleaned, key, content_type)
-
-        hero_key = derivative_key(key, "hero")
-        thumb_key = derivative_key(key, "thumb")
-        uploaded: list[str] = []
-        try:
-            result = await storage.upload_bytes(cleaned, key, content_type)
-            uploaded.append(key)
-            await storage.upload_bytes(hero, hero_key, "image/jpeg")
-            uploaded.append(hero_key)
-            await storage.upload_bytes(thumb, thumb_key, "image/jpeg")
-            uploaded.append(thumb_key)
-        except Exception:
-            # Sweep whatever landed so the frontend never sees an original
-            # with no derivatives (or vice versa). Caller handles the row
-            # side; this handles the bucket-side leak.
-            if uploaded:
-                try:
-                    storage.delete_many(uploaded)
-                except Exception:
-                    logger.exception(
-                        "Failed to sweep partial-upload derivatives after error: %s",
-                        uploaded,
-                    )
-            raise
-        # Attach derivative keys so the caller's row-creation rollback can
-        # sweep all three.
-        return result._replace(derivative_keys=(hero_key, thumb_key))
+        raw = await asyncio.to_thread(_read)
+        return await upload_bytes_with_optional_strip(
+            raw, content_type, key, produce_derivatives=produce_derivatives
+        )
     # Video path — stream-hash + upload_fileobj. No derivatives.
     return await get_storage().upload(file, key)
 
@@ -529,6 +577,14 @@ async def upload_bounty_file(file: UploadFile, bounty_id: UUID) -> UploadResult:
     ext = _safe_storage_extension(file.content_type)
     key = f"bounty_uploads/{bounty_id}/{uuid4()}{ext}"
     return await _upload_with_optional_strip(file, key)
+
+
+def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
+    """S3 key for a machine detection's media — a distinct ``detected/`` prefix
+    keeps it separable from human ``uploads/``. The extension derives from the
+    validated MIME (a safe short ASCII suffix), never an attacker filename."""
+    ext = _safe_storage_extension(content_type)
+    return f"detected/{geolocation_id}/{uuid4()}{ext}"
 
 
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:

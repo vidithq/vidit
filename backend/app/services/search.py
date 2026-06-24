@@ -135,6 +135,7 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
                 "lng": row.lng,
                 "event_date": geo.event_date,
                 "is_demo": geo.is_demo,
+                "state": geo.state,
                 "author": geo.author,
                 "tags": geo.tags,
             }

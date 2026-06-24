@@ -363,7 +363,6 @@ def geolocation(db, regular_user):
         title=f"Test geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
-        proof=None,
         event_date=date(2026, 5, 1),
     )
     db.add(geo)

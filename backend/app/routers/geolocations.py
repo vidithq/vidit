@@ -31,13 +31,14 @@ from app.cache import points_cache
 from app.config import settings
 from app.dependencies import get_current_user, get_db
 from app.models.bounty import Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.geolocation import (
+    DetectedGeolocPreview,
     GeolocationList,
     GeolocationRead,
     PossibleDuplicateRead,
@@ -51,6 +52,7 @@ from app.schemas.media import MediaUploadResponse
 from app.services import geolocations as geolocations_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent
+from app.services.detection import preview_detection
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
@@ -326,11 +328,13 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return all geolocations as a compact array:
-    ``[[id, lat, lng, event_date, submitted_date], ...]``.
+    ``[[id, lat, lng, event_date, submitted_date, detected], ...]``.
     No joins, no limit — designed for map display with client-side clustering.
     ``event_date`` and ``submitted_date`` (the ``created_at`` calendar day) are
     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
     scrubbers and filters the windows client-side (no refetch per drag).
+    ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
+    validated row — a flag, not the state string, to keep the payload small.
     Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
@@ -366,6 +370,7 @@ def list_points(
         ST_X(Geolocation.location).label("lng"),
         Geolocation.event_date,
         Geolocation.created_at,
+        Geolocation.state,
     )
     q = _apply_filters(
         q,
@@ -383,6 +388,9 @@ def list_points(
     )
 
     rows = q.all()
+    # Compact 6-tuple: [id, lat, lng, event_date, submitted_date, detected].
+    # ``detected`` is 1/0 (not the state string) so the no-LIMIT catalog payload
+    # stays small — the map colours the marker off this flag.
     result = [
         [
             str(r.id),
@@ -390,6 +398,7 @@ def list_points(
             float(r.lng),
             r.event_date.isoformat(),
             r.created_at.date().isoformat(),
+            1 if r.state == STATE_DETECTED else 0,
         ]
         for r in rows
     ]
@@ -460,6 +469,7 @@ def list_geolocations(
             lng=lng,
             event_date=geo.event_date,
             is_demo=geo.is_demo,
+            state=geo.state,
             author=geo.author,
             tags=geo.tags,
         )
@@ -659,6 +669,10 @@ def import_from_tweet(
     """
     try:
         parsed = parse_tweet(body.url)
+        # The machine path's view of the same tweet — zero DB writes. Reuses the
+        # cached syndication body (parse_tweet just fetched it), so no second
+        # network hit. Same error surface as parse_tweet.
+        detections = preview_detection(body.url)
     except InvalidTweetUrl as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TweetNotAccessible as exc:
@@ -699,6 +713,26 @@ def import_from_tweet(
             for m in parsed.media
         ],
         quoted_tweet=quoted,
+        detected=[
+            DetectedGeolocPreview(
+                lat=d.coordinate.lat,
+                lng=d.coordinate.lng,
+                title=d.title,
+                proof_text=d.proof_text,
+                detected_from_url=d.detected_from_url,
+                event_date=d.event_date,
+                media=[
+                    TweetImportMedia(
+                        kind=m.kind,
+                        remote_url=m.remote_url,
+                        content_type=m.content_type,
+                        origin=m.origin,
+                    )
+                    for m in d.media
+                ],
+            )
+            for d in detections
+        ],
     )
 
 
@@ -820,6 +854,8 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
+        state=geo.state,
+        detected_from_url=geo.detected_from_url,
         author=geo.author,
         media=geo.media,
         tags=geo.tags,
@@ -1043,6 +1079,8 @@ async def create_geolocation(
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
+        state=geo.state,
+        detected_from_url=geo.detected_from_url,
         author=geo.author,
         media=geo.media,
         tags=geo.tags,

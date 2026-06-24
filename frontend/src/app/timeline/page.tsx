@@ -9,12 +9,14 @@ import { useApiResource } from "@/hooks/useApiResource";
 import GeolocationCard from "@/components/geolocation/GeolocationCard";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import type { GeolocationState } from "@/types";
 
 interface TimelineEntry {
   id: string;
   title: string;
   event_date: string;
   is_demo: boolean;
+  state: GeolocationState;
   lat: number;
   lng: number;
   author: {

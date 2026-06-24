@@ -36,7 +36,7 @@ from app.services.evidence_intake import (
     attach_media_and_commit,
     enforce_file_count,
 )
-from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc
+from app.services.sanitize import EMPTY_TIPTAP_DOC, extract_image_srcs, sanitize_tiptap_doc
 from app.services.storage import get_storage, upload_file
 
 
@@ -171,7 +171,9 @@ async def create_with_evidence(
         title=title,
         location=from_shape(Point(lng, lat), srid=4326),
         source_url=bounty.source_url if bounty is not None else source_url,
-        proof=proof_data,
+        # NOT NULL: a submission with no proof body stores the empty doc, not
+        # NULL. ``proof_data`` stays None for the inline-image adoption below.
+        proof=proof_data if proof_data is not None else EMPTY_TIPTAP_DOC,
         event_date=event_date,
         originated_from_bounty_id=bounty.id if bounty else None,
     )

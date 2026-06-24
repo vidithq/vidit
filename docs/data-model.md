@@ -82,8 +82,10 @@ erDiagram
         VARCHAR title
         GEOMETRY location
         TEXT source_url
+        TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
         DATE event_date
+        VARCHAR state "validated | detected"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo row"
         UUID originated_from_bounty_id FK "nullable, trace to bounty"
@@ -334,9 +336,11 @@ Indexes:
 | `author_id` | `UUID` | FK → `users.id`, NOT NULL |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `location` | `GEOMETRY(Point, 4326)` | NOT NULL |
-| `source_url` | `TEXT` | NOT NULL |
-| `proof` | `JSONB` | nullable — Tiptap document (ProseMirror JSON) |
-| `event_date` | `DATE` | NOT NULL |
+| `source_url` | `TEXT` | NOT NULL — where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
+| `detected_from_url` | `TEXT` | nullable — the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
+| `proof` | `JSONB` | NOT NULL — Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
+| `event_date` | `DATE` | NOT NULL — for a machine detection, provisionally the originating tweet's post date; the owner corrects it at validation. |
+| `state` | `VARCHAR(20)` | NOT NULL, `server_default 'validated'` — `validated` (human submits + bounty fulfilments, immutable) vs `detected` (machine-produced, rendered marked on every surface until its owner validates it). Plain string, no DB enum (mirrors `bounties.status`); the default keeps every non-machine insert correct with no code change. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
 | `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable — provenance trace populated when a geolocation is promoted from a bounty. `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |

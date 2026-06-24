@@ -2,12 +2,14 @@ import Link from "next/link";
 
 import GeolocationCard from "@/components/geolocation/GeolocationCard";
 import type { PublicProfile } from "@/lib/users";
+import type { GeolocationState } from "@/types";
 
 export interface RecentSubmission {
   id: string;
   title: string;
   event_date: string;
   is_demo: boolean;
+  state: GeolocationState;
   lat: number;
   lng: number;
   tags: { id: string; name: string; category: "conflict" | "free" }[];

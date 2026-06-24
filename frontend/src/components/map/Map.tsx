@@ -117,11 +117,14 @@ export default function Map({
 
   const geojson = useMemo<FeatureCollection>(() => ({
     type: "FeatureCollection",
-    features: points.map(([id, lat, lng]) => ({
+    features: points.map(([id, lat, lng, , , detected]) => ({
       type: "Feature",
       properties: {
         id,
         selected: id === selectedId ? 1 : 0,
+        // 1 for a machine detection — the marker paint colours it amber so a
+        // detected point reads distinct from a validated one at a glance.
+        detected,
       },
       geometry: {
         type: "Point",
@@ -239,7 +242,7 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 7,
-            "circle-color": "#f97316",
+            "circle-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
             "circle-stroke-color": "#ffffff",
             "circle-stroke-width": 2,
             "circle-opacity": 1,
@@ -256,8 +259,9 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 6,
-            "circle-color": "#f97316",
-            "circle-stroke-color": "#f97316",
+            // Amber for a machine detection, orange for a validated row.
+            "circle-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
+            "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
             "circle-stroke-width": 1,
             "circle-opacity": 1,
           }}

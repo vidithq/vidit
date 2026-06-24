@@ -34,6 +34,12 @@ class GeolocationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_demo: bool
+    # ``validated`` (human submits + bounty fulfilments) vs ``detected``
+    # (machine-produced, rendered marked). See ``models.geolocation.STATE_*``.
+    state: str
+    # The post a machine detection was imported from — a provenance link
+    # distinct from ``source_url`` (footage origin). NULL for human submits.
+    detected_from_url: str | None = None
     author: AuthorRef
     media: list[MediaRead]
     tags: list[TagRead]
@@ -49,6 +55,8 @@ class GeolocationList(BaseModel):
     lng: float
     event_date: date
     is_demo: bool
+    # See ``GeolocationRead.state`` — a list card marks ``detected`` too.
+    state: str
     author: AuthorRef
     tags: list[TagRead]
 
@@ -120,6 +128,24 @@ class TweetImportQuotedTweet(BaseModel):
     tweet_text: str
 
 
+class DetectedGeolocPreview(BaseModel):
+    """One machine detection the pipeline would produce from a pasted tweet.
+
+    The no-persist preview output (``import-from-tweet``): zero DB writes, the
+    inspection window into the machine ``detect`` path. ``proof_text`` is the
+    plain proof body the assemble step would wrap into the JSONB proof doc;
+    ``detected_from_url`` is the originating post.
+    """
+
+    lat: float
+    lng: float
+    title: str
+    proof_text: str
+    detected_from_url: str
+    event_date: date
+    media: list[TweetImportMedia]
+
+
 class TweetImportResponse(BaseModel):
     """Pre-fill payload for the submit form.
 
@@ -142,3 +168,7 @@ class TweetImportResponse(BaseModel):
     parsed_coords: list[TweetImportCoord]
     media: list[TweetImportMedia]
     quoted_tweet: TweetImportQuotedTweet | None = None
+    # The machine path's view of the same tweet — the detections the pipeline
+    # would produce, surfaced for inspection. Zero DB writes. Empty when no
+    # coordinate parses.
+    detected: list[DetectedGeolocPreview] = []

@@ -4,7 +4,9 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { Tag } from "@/types";
 import { NewTagInput } from "@/components/ui/NewTagInput";
 import { TagChip } from "@/components/ui/TagChip";
+import FieldHelp from "@/components/ui/FieldHelp";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 /** Muted "required" marker. Neutral, not orange: a label hint isn't clickable. */
 function RequiredHint() {
@@ -83,7 +85,8 @@ export function TagPicker({
       {conflictTags.length > 0 && (
         <div className="space-y-2">
           <span className={FORM_LABEL}>
-            Conflict {requireConflict && <RequiredHint />}
+            Conflict <FieldHelp text={FIELD_HELP.conflict} label="What is the Conflict tag?" />{" "}
+            {requireConflict && <RequiredHint />}
           </span>
           <div className="flex flex-wrap gap-2">
             {conflictTags.map((tag) => (
@@ -101,11 +104,10 @@ export function TagPicker({
       {captureSourceTags.length > 0 && (
         <div className="space-y-2">
           <span className={FORM_LABEL}>
-            Capture source {requireCaptureSource && <RequiredHint />}
+            Capture source{" "}
+            <FieldHelp text={FIELD_HELP.capture_source} label="What is the Capture source?" />{" "}
+            {requireCaptureSource && <RequiredHint />}
           </span>
-          <p className="text-xs text-neutral-500">
-            The original lens that captured the media.
-          </p>
           <div className="flex flex-wrap gap-2">
             {captureSourceTags.map((tag) => (
               <TagChip

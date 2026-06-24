@@ -20,6 +20,12 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
+# The canonical empty proof document. ``geolocations.proof`` is NOT NULL — every
+# row carries a proof doc — so a submission with no proof body and the migration
+# that backfilled pre-existing NULLs both store this. It renders as "no proof"
+# through the proof renderer rather than a shape the frontend doesn't expect.
+EMPTY_TIPTAP_DOC: dict[str, Any] = {"type": "doc", "content": []}
+
 # Tiptap StarterKit nodes (+ Image extension wired in
 # frontend/src/components/editor/ProofEditor.tsx).
 _ALLOWED_NODES: dict[str, set[str]] = {
@@ -140,6 +146,27 @@ def sanitize_tiptap_doc(doc: Any) -> dict[str, Any]:
         return {"type": "doc", "content": []}
     sanitized.setdefault("content", [])
     return sanitized
+
+
+def tiptap_doc_from_text(text: str) -> dict[str, Any]:
+    """Build a minimal Tiptap proof document from plain text.
+
+    One paragraph node per non-blank line; blank lines drop out. Used by the
+    machine-detection assemble step to wrap a tweet / thread's cleaned text
+    (from ``clean_proof_text``) into the JSONB proof shape every row carries.
+    Empty or all-blank input yields an empty document (same shape as
+    :data:`EMPTY_TIPTAP_DOC`).
+    """
+    paragraphs = [line for line in text.split("\n") if line.strip()]
+    if not paragraphs:
+        return {"type": "doc", "content": []}
+    return {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": line}]}
+            for line in paragraphs
+        ],
+    }
 
 
 def _sanitize_node(node: Any, *, depth: int, counter: list[int]) -> dict[str, Any] | None:

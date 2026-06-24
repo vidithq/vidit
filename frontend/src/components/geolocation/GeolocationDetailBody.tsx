@@ -9,8 +9,11 @@ import { formatDate } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
+import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
@@ -116,6 +119,14 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
+      {geo.state === "detected" && (
+        <div className={row}>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Status <FieldHelp text={FIELD_HELP.status} label="What does the status mean?" />
+          </span>
+          <DetectedBadge state={geo.state} />
+        </div>
+      )}
       <div className={row}>
         <span className={label}>Event date</span>
         <span className={value}>{formatDate(geo.event_date)}</span>
@@ -127,7 +138,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         </span>
       </div>
       <div className={row}>
-        <span className={label}>Source</span>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+        </span>
         <SourceLabel
           isDemo={geo.is_demo}
           url={geo.source_url}
@@ -136,6 +149,26 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           className={compact ? "ml-4" : "text-sm ml-4"}
         />
       </div>
+      {/* The post a detection was imported from — distinct from Source (the
+          footage origin), never folded into it. */}
+      {geo.detected_from_url && (
+        <div className={row}>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Detected from{" "}
+            <FieldHelp text={FIELD_HELP.detected_from} label="What is 'Detected from'?" />
+          </span>
+          {/* Same display nature as Source: SourceLabel reduces the URL to its
+              host (and shows "synthetic" for demo rows), so the two provenance
+              rows read alike rather than one host-reduced, one truncated-full. */}
+          <SourceLabel
+            isDemo={geo.is_demo}
+            url={geo.detected_from_url}
+            variant="link"
+            maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
+            className={compact ? "ml-4" : "text-sm ml-4"}
+          />
+        </div>
+      )}
       {geo.tags.length > 0 && (
         <div className={rowStart}>
           <span className={label}>Tags</span>

@@ -29,6 +29,8 @@ class SearchGeolocationHit(BaseModel):
     lng: float
     event_date: date
     is_demo: bool
+    # ``detected`` rows surface in search marked, like everywhere else.
+    state: str
     author: AuthorRef
     tags: list[TagRead]
 

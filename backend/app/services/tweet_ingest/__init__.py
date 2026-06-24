@@ -1,13 +1,16 @@
 """Tweet ingestion — acquire a tweet / thread, extract structured data.
 
-Three single-responsibility bricks behind one import surface:
+Single-responsibility bricks behind one import surface:
 
 * ``extract`` — pure text core (coordinates, title, proof body), reused by
   every path.
 * ``syndication`` — X I/O (URL normalisation, fetch + token + cache, schema
   mappers).
-* ``parse`` — the human pre-fill orchestration behind
-  ``import-from-tweet``; sibling of the machine ``detect`` path.
+* ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
+* ``stitch`` — recombine records into threads (union-find on reply edges).
+* ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.
+* ``parse`` — the human pre-fill orchestration behind ``import-from-tweet``;
+  sibling of ``detect``.
 
 Callers import the public surface from this package; the module layout is an
 internal detail. ``errors`` is a leaf module so any brick can raise the
@@ -16,6 +19,9 @@ shared failures without a cycle.
 
 from __future__ import annotations
 
+from .acquire import record_from_syndication
+from .archive import archive_media_fetcher, read_tweets
+from .detect import DetectedGeoloc, detect
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -29,6 +35,8 @@ from .extract import (
     extract_coords,
 )
 from .parse import ParsedTweet, parse_tweet
+from .records import TweetRecord
+from .stitch import stitch
 from .syndication import (
     TWITTER_MEDIA_HOSTS,
     NormalisedTweetUrl,
@@ -41,6 +49,7 @@ from .syndication import (
 
 __all__ = [
     "TWITTER_MEDIA_HOSTS",
+    "DetectedGeoloc",
     "InvalidTweetUrl",
     "NormalisedTweetUrl",
     "ParsedCoord",
@@ -50,11 +59,17 @@ __all__ = [
     "TweetFetchFailed",
     "TweetImportError",
     "TweetNotAccessible",
+    "TweetRecord",
+    "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",
+    "detect",
     "extract_coords",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "parse_tweet",
+    "read_tweets",
+    "record_from_syndication",
+    "stitch",
 ]

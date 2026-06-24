@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+- **Machine-detected geolocations — v0.4 Phase A spine.** An X "Download your data" archive becomes machine-`detected` geolocations that render marked on every surface, distinct from human-`validated` rows. The `services/tweet_ingest/` package gains the acquire → stitch → detect bricks (`records` / `stitch` / `detect` / `acquire` syndication / `archive` X-export); `services/detection.py` assembles `DetectedGeoloc` DTOs into `detected` rows — owned by the backfiller, idempotent on `(detected_from_url, coordinate)` across states, media through a new bytes-source evidence path (EXIF strip + JPEG derivatives). A `geolocations` state machine adds `state` (`validated` default / `detected`) + `detected_from_url`, and makes `proof` NOT NULL. `state` flows into every read surface (list, detail, search, the `/points` tuple's 6th flag) and the frontend marks a detection (amber badge on cards / detail / search, a distinct map-marker colour, a `detected_from_url` provenance link). `import-from-tweet` gains a no-persist `detected` preview. A committed synthetic archive + `make seed-detections` is the dev feeder; the analyst-facing on-ramp (OAuth ownership, upload UI, review queue, the bot) is deferred. `?` field-guidance tooltips explain every evidence field across the geolocation + bounty submit forms (title, source URL, media, event date, conflict, capture source) and the detail page (Status, Source, "Detected from"). ([#90](https://github.com/vidithq/vidit/pull/90))
 
 ---
 

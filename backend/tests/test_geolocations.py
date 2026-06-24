@@ -39,7 +39,7 @@ from shapely.geometry import Point
 from app.cache import points_cache
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
@@ -130,7 +130,6 @@ def _make_geo(
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
         source_url="https://example.com/source",
-        proof=None,
         event_date=event_date or date(2026, 5, 1),
     )
     if deleted:
@@ -383,11 +382,12 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 5  # [id, lat, lng, event_date, submitted_date]
+    assert len(row) == 6  # [id, lat, lng, event_date, submitted_date, detected]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
+    assert row[5] == 0  # validated row → not marked detected
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -397,6 +397,36 @@ def test_points_excludes_soft_deleted(db, author):
     ids = {row[0] for row in response.json()}
     assert str(live.id) in ids
     assert str(dead.id) not in ids
+
+
+def test_detected_row_renders_marked_across_surfaces(db, author):
+    geo = Geolocation(
+        author_id=author.id,
+        title="Detected geo",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://x.com/a/status/1",
+        event_date=date(2026, 5, 1),
+        state=STATE_DETECTED,
+        detected_from_url="https://x.com/a/status/1",
+    )
+    db.add(geo)
+    db.commit()
+    db.refresh(geo)
+
+    # /points — the compact map payload marks it with the detected flag.
+    points = client.get("/api/v1/geolocations/points").json()
+    point = next(r for r in points if r[0] == str(geo.id))
+    assert point[5] == 1
+
+    # Detail — state + the distinct detected_from_url provenance link.
+    detail = client.get(f"/api/v1/geolocations/{geo.id}").json()
+    assert detail["state"] == "detected"
+    assert detail["detected_from_url"] == "https://x.com/a/status/1"
+
+    # List card — carries state too.
+    listing = client.get("/api/v1/geolocations").json()
+    item = next(i for i in listing if i["id"] == str(geo.id))
+    assert item["state"] == "detected"
 
 
 def test_points_cache_miss_then_hit(db, author):
@@ -1242,7 +1272,6 @@ def _make_geo_with_source(
         title=f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
         source_url=source_url,
-        proof=None,
         event_date=event_date_value,
     )
     db.add(geo)
@@ -1525,12 +1554,12 @@ def test_possible_duplicates_orders_by_distance(db, author):
 # ── POST /geolocations/import-from-tweet ──────────────────────────────────
 
 
-def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None):
-    """Replace ``parse_tweet`` on the router module with a stub.
+def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None, detections=None):
+    """Replace ``parse_tweet`` + ``preview_detection`` on the router module.
 
-    Routes import the function directly (``from app.services.tweet_ingest
-    import parse_tweet``), so the patch target is the router module's
-    binding, not the service module's.
+    Routes call both for ``import-from-tweet`` (the human pre-fill and the
+    machine preview over the same cached tweet), so both are patched at the
+    router module's binding to keep the test off the network.
     """
     from app.routers import geolocations as geolocations_router
 
@@ -1539,7 +1568,13 @@ def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None):
             raise raises
         return returns
 
+    def fake_preview(url, *, client=None):
+        if raises is not None:
+            raise raises
+        return detections or []
+
     monkeypatch.setattr(geolocations_router, "parse_tweet", fake)
+    monkeypatch.setattr(geolocations_router, "preview_detection", fake_preview)
 
 
 def test_import_from_tweet_requires_auth():
@@ -1586,6 +1621,56 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
     assert body["suggested_title"].startswith("Strike")
     assert body["parsed_coords"] == [{"lat": 48.012345, "lng": 37.802411}]
     assert body["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
+
+
+def test_import_from_tweet_surfaces_detection_preview_without_persisting(author, monkeypatch, db):
+    from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia, ParsedTweet
+
+    before = db.query(Geolocation).count()
+    _stub_parse_tweet(
+        monkeypatch,
+        returns=ParsedTweet(
+            source_url="https://x.com/handle/status/1",
+            original_tweet_url="https://x.com/handle/status/1",
+            posted_at="2025-11-12T14:33:00.000Z",
+            author_handle="handle",
+            tweet_text="Strike at 48.012345, 37.802411",
+            suggested_title="Strike",
+            parsed_coords=[],
+            media=[],
+            quoted_tweet=None,
+        ),
+        detections=[
+            DetectedGeoloc(
+                coordinate=ParsedCoord(lat=48.012345, lng=37.802411),
+                title="Strike",
+                proof_text="Strike",
+                detected_from_url="https://x.com/handle/status/1",
+                owner_handle="handle",
+                event_date=date(2025, 11, 12),
+                media=[
+                    ParsedMedia(
+                        kind="image",
+                        remote_url="https://pbs.twimg.com/media/x.jpg",
+                        content_type="image/jpeg",
+                    )
+                ],
+            )
+        ],
+    )
+    response = client.post(
+        "/api/v1/geolocations/import-from-tweet",
+        headers=login_as(client, author),
+        json={"url": "https://x.com/handle/status/1"},
+    )
+    assert response.status_code == 200, response.text
+    detected = response.json()["detected"]
+    assert len(detected) == 1
+    assert detected[0]["lat"] == 48.012345
+    assert detected[0]["detected_from_url"] == "https://x.com/handle/status/1"
+    assert detected[0]["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
+    # The preview never persists — the strongest no-write guard.
+    assert db.query(Geolocation).count() == before
 
 
 def test_import_from_tweet_returns_400_for_invalid_url(author, monkeypatch):
