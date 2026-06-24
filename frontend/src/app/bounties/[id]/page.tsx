@@ -14,8 +14,10 @@ import {
 } from "@/lib/bounties";
 import { formatDate } from "@/lib/format";
 import SourceLabel from "@/components/ui/SourceLabel";
+import FieldHelp from "@/components/ui/FieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import type { BountyDetail, BountyStatus } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
@@ -177,11 +179,17 @@ export default function BountyDetailPage() {
           </h2>
           <div className="bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800">
             <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-sm text-neutral-500">Status</span>
+              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                Status{" "}
+                <FieldHelp text={FIELD_HELP.bounty_status} label="What does the status mean?" />
+              </span>
               <StatusBadge status={bounty.status} />
             </div>
             <div className="flex justify-between px-4 py-3">
-              <span className="text-sm text-neutral-500">Source</span>
+              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                Source{" "}
+                <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+              </span>
               <SourceLabel
                 isDemo={bounty.is_demo}
                 url={bounty.source_url}

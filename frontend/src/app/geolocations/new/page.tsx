@@ -13,6 +13,7 @@ import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { EvidenceUploader } from "@/components/geolocations/new/EvidenceUploader";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
@@ -283,26 +284,32 @@ function NewGeolocationForm() {
             />
           )}
 
+          {/* Form sections mirror the detail page's reading order
+              (media → location → details → proof) so an analyst can map
+              "what I fill in" to "what readers see". */}
+          <EvidenceUploader
+            lockedMedia={bounty ? bounty.media : null}
+            files={files}
+            setFiles={setFiles}
+          />
+
           <LocationPicker
-            title={title}
-            setTitle={setTitle}
             lat={lat}
             setLat={setLat}
             lng={lng}
             setLng={setLng}
+            extraCoordCandidates={extraCoordCandidates}
+            onSwapCandidate={swapCoordCandidate}
+          />
+
+          <DetailsFields
+            title={title}
+            setTitle={setTitle}
             sourceUrl={sourceUrl}
             setSourceUrl={setSourceUrl}
             eventDate={eventDate}
             setEventDate={setEventDate}
             lockedFromBounty={lockedFromBounty}
-            extraCoordCandidates={extraCoordCandidates}
-            onSwapCandidate={swapCoordCandidate}
-          />
-
-          <EvidenceUploader
-            lockedMedia={bounty ? bounty.media : null}
-            files={files}
-            setFiles={setFiles}
           />
 
           {curatedTagsError && (

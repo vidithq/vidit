@@ -217,6 +217,14 @@ The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/Aut
 - **Ghost:** `text-neutral-500 hover:text-neutral-300` — tertiary actions (close, clear).
 - Compact size: `px-3 py-1.5 text-sm rounded-md`.
 
+### Forms
+
+Submit forms mirror their detail page's reading order — **media → location → details → proof** — so an analyst maps "what I fill in" to "what readers see". The geolocation form ([`geolocations/new`](../frontend/src/app/geolocations/new/page.tsx)) runs Media ([`EvidenceUploader`](../frontend/src/components/geolocations/new/EvidenceUploader.tsx)) → Location ([`LocationPicker`](../frontend/src/components/geolocations/new/LocationPicker.tsx), coordinates) → Details ([`DetailsFields`](../frontend/src/components/geolocations/new/DetailsFields.tsx): title, event date, source) → Tags ([`TagPicker`](../frontend/src/components/ui/TagPicker.tsx)) → Proof ([`ProofEditorPanel`](../frontend/src/components/geolocations/new/ProofEditorPanel.tsx)); the bounty form ([`bounties/new`](../frontend/src/app/bounties/new/page.tsx)) runs Media → Details → Tags. Section chrome is `bg-neutral-900 rounded-lg border border-neutral-700 p-5` with an `h2` (`text-sm font-medium text-neutral-200`) + a one-line `text-xs text-neutral-500` subtitle. Labels (`FORM_LABEL`), inputs (`FORM_INPUT`), bounty-inherited locked inputs (`FORM_INPUT_LOCKED`), and the error banner (`FORM_ERROR_BANNER`) come from [`form-styles.ts`](../frontend/src/components/ui/form-styles.ts).
+
+### Field help (`?`)
+
+[`FieldHelp`](../frontend/src/components/ui/FieldHelp.tsx) puts a `?` (`HelpCircle`) next to a field label or detail row; it reveals a one-line explanation on hover / focus, pinned on click (touch devices don't hover), dismissed by outside-click or Escape (a real `role="tooltip"` in the DOM, not a CSS-only title). It is **neutral grey, not orange** — meta help, not a content action — the one sanctioned exception to "clickable ⇒ orange". Copy lives in one place, [`lib/fieldHelp.ts`](../frontend/src/lib/fieldHelp.ts) (`FIELD_HELP`), mirroring the field descriptions in [`data-model.md`](data-model.md). Apply it to every evidence field the reader could misread — across both submit forms (title, coordinates, source URL, source media, event date, conflict, capture source) and the geolocation + bounty detail rows (Status, Source, "Detected from").
+
 ### Work-in-progress affordances
 
 For features visible to testers but not yet built:

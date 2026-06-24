@@ -104,9 +104,37 @@ export default function NewBountyPage() {
       subtitle="Post the media + source you couldn't geolocate. Another analyst will pick it up and turn it into a full geolocation. Once the geolocation is submitted, this bounty is archived."
     >
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Sections mirror the bounty detail page's reading order
+              (media → details) so what the author fills in maps to what
+              readers see. */}
           <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
             <header className="space-y-1">
-              <h2 className="text-sm font-medium text-neutral-200">What</h2>
+              <h2 className="text-sm font-medium text-neutral-200">Media</h2>
+              <p className="text-xs text-neutral-500">
+                Images (jpg, png, webp) or videos (mp4, webm). At least one
+                file — the evidence the next analyst will work from.
+              </p>
+            </header>
+            <div className="space-y-1.5">
+              <label htmlFor="files" className={FORM_LABEL}>
+                Files{" "}
+                <FieldHelp text={FIELD_HELP.source_media} label="What media to upload?" />
+              </label>
+              <input
+                id="files"
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                onChange={handleFiles}
+                className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-sm file:border-0 file:bg-neutral-700 file:text-neutral-300 file:cursor-pointer"
+              />
+            </div>
+            {files.length > 0 && <FilePreviewGrid files={files} />}
+          </section>
+
+          <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+            <header className="space-y-1">
+              <h2 className="text-sm font-medium text-neutral-200">Details</h2>
               <p className="text-xs text-neutral-500">
                 Title + the original source where the media was found.
               </p>
@@ -142,25 +170,6 @@ export default function NewBountyPage() {
                 className={FORM_INPUT}
               />
             </div>
-          </section>
-
-          <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-            <header className="space-y-1">
-              <h2 className="text-sm font-medium text-neutral-200">Media</h2>
-              <p className="text-xs text-neutral-500">
-                Images (jpg, png, webp) or videos (mp4, webm). At least one
-                file — the evidence the next analyst will work from.
-              </p>
-            </header>
-            <input
-              id="files"
-              type="file"
-              multiple
-              accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
-              onChange={handleFiles}
-              className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-sm file:border-0 file:bg-neutral-700 file:text-neutral-300 file:cursor-pointer"
-            />
-            {files.length > 0 && <FilePreviewGrid files={files} />}
           </section>
 
           <TagPicker
