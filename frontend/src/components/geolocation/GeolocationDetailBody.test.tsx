@@ -12,6 +12,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     lat: 48.015883,
     lng: 37.802411,
     event_date: "2026-06-01",
+    source_date: null,
     is_demo: false,
     state: "validated",
     detected_from_url: null,
@@ -75,6 +76,37 @@ describe("GeolocationDetailBody", () => {
     ).toBeInTheDocument();
   });
 
+  it("panel variant carries the same ? help as the page", () => {
+    render(<GeolocationDetailBody geo={geoFixture()} variant="panel" />);
+    expect(
+      screen.getByRole("button", { name: "What are the coordinates?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the event date?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the source?" })
+    ).toBeInTheDocument();
+  });
+
+  it("splits curated tags into their own rows, free tags under Tags", () => {
+    render(
+      <GeolocationDetailBody
+        geo={geoFixture({
+          tags: [
+            { id: "t1", name: "Ukraine", category: "conflict" },
+            { id: "t2", name: "Drone", category: "capture_source" },
+            { id: "t3", name: "armor", category: "free" },
+          ],
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Conflict")).toBeInTheDocument();
+    expect(screen.getByText("Capture source")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+  });
+
   it("page variant: hero media, bounty-trace + author rows, section headings", () => {
     const geo = geoFixture();
     render(<GeolocationDetailBody geo={geo} variant="page" />);
@@ -127,7 +159,7 @@ describe("GeolocationDetailBody", () => {
       screen.getByRole("button", { name: "What does the status mean?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is 'Detected from'?" })
+      screen.getByRole("button", { name: "What is 'detected from'?" })
     ).toBeInTheDocument();
   });
 
@@ -189,5 +221,19 @@ describe("GeolocationDetailBody", () => {
     );
     expect(screen.getByText("No media available")).toBeInTheDocument();
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
+  });
+
+  it("shows the Source date row only when set", () => {
+    const { rerender } = render(
+      <GeolocationDetailBody geo={geoFixture({ source_date: null })} variant="page" />
+    );
+    expect(screen.queryByText("Source date")).not.toBeInTheDocument();
+    rerender(
+      <GeolocationDetailBody
+        geo={geoFixture({ source_date: "2026-05-03" })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Source date")).toBeInTheDocument();
   });
 });

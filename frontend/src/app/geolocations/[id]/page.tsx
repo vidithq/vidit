@@ -8,6 +8,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
+import FieldHelp from "@/components/ui/FieldHelp";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
@@ -64,20 +65,37 @@ export default function GeolocationPage() {
     >
         <GeolocationDetailBody geo={geo} variant="page">
           <div>
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
               Location
+              <FieldHelp concept="section_location" />
             </h2>
-            <div className="h-64 rounded-lg overflow-hidden border border-neutral-700">
-              {/* Single-point map reads [id, lat, lng] + the detected flag
-                  (so the marker colours match the rest of the app); the two
-                  date slots are inert here, so pass empty strings. */}
-              <Map
-                points={[
-                  [geo.id, geo.lat, geo.lng, "", "", geo.state === "detected" ? 1 : 0],
-                ]}
-                center={{ lat: geo.lat, lng: geo.lng }}
-                zoom={12}
-              />
+            {/* Map + coordinates are one module: the coords read as a Details-
+                style row fused to the bottom of the map (shared border, no gap),
+                mirroring the submit form's Location section. `overflow-hidden`
+                sits on the map alone (to clip its rounded top corners) — not the
+                whole module, which would clip the coordinate row's `?` tooltip. */}
+            <div className="rounded-lg border border-neutral-700">
+              <div className="h-64 overflow-hidden rounded-t-lg">
+                {/* Single-point map reads [id, lat, lng] + the detected flag
+                    (so the marker colours match the rest of the app); the two
+                    date slots are inert here, so pass empty strings. */}
+                <Map
+                  points={[
+                    [geo.id, geo.lat, geo.lng, "", "", geo.state === "detected" ? 1 : 0],
+                  ]}
+                  center={{ lat: geo.lat, lng: geo.lng }}
+                  zoom={12}
+                />
+              </div>
+              <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900 rounded-b-lg">
+                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                  Coordinates{" "}
+                  <FieldHelp concept="coordinates" />
+                </span>
+                <span className="text-sm text-neutral-200 font-mono">
+                  {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+                </span>
+              </div>
             </div>
           </div>
         </GeolocationDetailBody>

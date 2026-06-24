@@ -11,6 +11,8 @@ import {
   FORM_INPUT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { useHelpHidden } from "@/hooks/useHelpHidden";
+import { setHelpHidden } from "@/lib/helpPreference";
 
 
 
@@ -24,6 +26,7 @@ export default function SettingsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const helpHidden = useHelpHidden();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -87,6 +90,41 @@ export default function SettingsPage() {
               <span className={FORM_LABEL}>Email</span>
               <p className="text-neutral-100 mt-0.5">{user.email}</p>
             </div>
+          </div>
+        </div>
+
+        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-sm font-medium text-neutral-300">Display</h2>
+            <p className="text-xs text-neutral-500">
+              Preferences stored in this browser.
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-neutral-200">Show help tooltips</p>
+              <p className="text-xs text-neutral-500">
+                The small <span className="font-medium">?</span> icons that
+                explain each field and section. Turn them off once you know the
+                form.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!helpHidden}
+              aria-label="Show help tooltips"
+              onClick={() => setHelpHidden(!helpHidden)}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                helpHidden ? "bg-neutral-700" : "bg-orange-500/60"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-neutral-100 transition-transform ${
+                  helpHidden ? "translate-x-0.5" : "translate-x-[18px]"
+                }`}
+              />
+            </button>
           </div>
         </div>
 

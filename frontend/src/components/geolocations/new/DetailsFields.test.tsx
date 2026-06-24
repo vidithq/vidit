@@ -1,0 +1,69 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { DetailsFields } from "./DetailsFields";
+
+const baseProps = {
+  sourceUrl: "",
+  setSourceUrl: () => {},
+  eventDate: "",
+  setEventDate: () => {},
+  sourceDate: "",
+  setSourceDate: () => {},
+  lockedFromBounty: false,
+};
+
+const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
+
+describe("DetailsFields", () => {
+  it("renders the Details heading, the date + source fields, and their ? help", () => {
+    render(<DetailsFields {...baseProps} />);
+    expect(screen.getByText("Details")).toBeInTheDocument();
+    expect(screen.getByText("Event date")).toBeInTheDocument();
+    expect(screen.getByText("Source date")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the event date?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the source date?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What is the source?" })
+    ).toBeInTheDocument();
+  });
+
+  it("marks the source date optional (it is the only optional field here)", () => {
+    render(<DetailsFields {...baseProps} />);
+    expect(screen.getByText("optional")).toBeInTheDocument();
+  });
+
+  it("does not render a title field (the title leads the form)", () => {
+    render(<DetailsFields {...baseProps} />);
+    expect(
+      screen.queryByRole("button", { name: "What makes a good title?" })
+    ).toBeNull();
+  });
+
+  it("leaves the source URL editable by default", () => {
+    render(<DetailsFields {...baseProps} />);
+    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).not.toHaveAttribute(
+      "readonly"
+    );
+  });
+
+  it("locks the source URL in bounty-fulfilment mode", () => {
+    render(
+      <DetailsFields {...baseProps} lockedFromBounty sourceUrl="https://t.me/c/1" />
+    );
+    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
+      "readonly"
+    );
+  });
+
+  it("marks the event date optional too when eventDateRequired is false (bounty)", () => {
+    render(<DetailsFields {...baseProps} eventDateRequired={false} />);
+    // Both the event date and the source date now carry the optional marker.
+    expect(screen.getAllByText("optional")).toHaveLength(2);
+  });
+});

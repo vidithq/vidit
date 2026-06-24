@@ -3,29 +3,36 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 
+import { useHelpHidden } from "@/hooks/useHelpHidden";
+import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
+
 /**
- * A `?` help affordance next to a field label: surfaces a one-line explanation
- * on hover / focus, pinned on click (touch devices don't hover), closed by
- * outside-click or Escape. Mirrors TrustBadge's popover mechanics.
+ * A `?` help affordance next to a field or section: surfaces a one-line
+ * explanation on hover / focus, pinned on click (touch devices don't hover),
+ * closed by outside-click or Escape. Mirrors TrustBadge's popover mechanics.
+ *
+ * Takes a single `concept` key — the explanation text and the accessible label
+ * both come from the one registry in `lib/fieldHelp.ts`, so the same concept
+ * reads identically everywhere it appears (submit form, detail page, map panel)
+ * and never drifts between them.
  *
  * Neutral, not orange: it's meta help, not a content action — orange stays
  * reserved for primary affordances.
  */
 export default function FieldHelp({
-  text,
-  label = "Field help",
+  concept,
   size = 13,
   className = "",
 }: {
-  text: string;
-  /** aria-label for the trigger; defaults to a generic phrase. */
-  label?: string;
+  concept: Concept;
   size?: number;
   className?: string;
 }) {
+  const { text, label } = FIELD_HELP[concept];
   const [pinned, setPinned] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
+  const hidden = useHelpHidden();
 
   useEffect(() => {
     if (!pinned) return;
@@ -44,6 +51,11 @@ export default function FieldHelp({
       document.removeEventListener("keydown", onKey);
     };
   }, [pinned]);
+
+  // Power-user opt-out: hide every `?` (toggle on the settings page). Sections
+  // carry no always-on subtitle, so with help hidden the form is just labels
+  // and fields — the intended power-user view.
+  if (hidden) return null;
 
   return (
     <span

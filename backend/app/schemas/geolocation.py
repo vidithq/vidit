@@ -31,6 +31,9 @@ class GeolocationRead(BaseModel):
     source_url: str
     proof: dict[str, Any] | None
     event_date: date
+    # When the original source posted the media — distinct from ``event_date``
+    # (when the event happened) and ``created_at`` (submission). Nullable.
+    source_date: date | None = None
     created_at: datetime
     updated_at: datetime
     is_demo: bool

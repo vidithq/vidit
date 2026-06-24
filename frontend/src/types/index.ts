@@ -155,6 +155,10 @@ interface Media {
 
 export interface GeolocationDetail extends GeolocationListItem {
   source_url: string;
+  /** The date the original source posted the media — distinct from
+   *  ``event_date`` (when the event happened) and ``created_at`` (submission).
+   *  Null when unknown / not provided. ISO ``YYYY-MM-DD``. */
+  source_date: string | null;
   /** For a ``detected`` row, the post it was imported from — a provenance
    *  link distinct from ``source_url`` (footage origin). Null for human
    *  submits. */
@@ -197,7 +201,13 @@ export interface BountyDetail {
   id: string;
   title: string;
   source_url: string;
-  description: Record<string, unknown> | null;
+  /** The in-progress proof (Tiptap JSON), mirroring a geolocation's `proof`.
+   *  Optional and image-free. Null when the poster left it empty. */
+  proof: Record<string, unknown> | null;
+  /** Optional, ISO YYYY-MM-DD. When the event happened / when the source
+   *  posted the media. Null when the poster didn't supply them. */
+  event_date: string | null;
+  source_date: string | null;
   status: BountyStatus;
   created_at: string;
   updated_at: string;

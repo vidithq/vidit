@@ -30,6 +30,11 @@ class Geolocation(Base):
     # than importing ``EMPTY_TIPTAP_DOC`` (models must not depend on services).
     proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # The date the original source (a Telegram channel, an X account, …) posted
+    # the media. Distinct from ``event_date`` (when the event happened) and
+    # ``created_at`` (when it was submitted to Vidit). Nullable — not always
+    # known, and unrecoverable for pre-existing rows.
+    source_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Lifecycle state — ``validated`` (default) vs ``detected`` (machine path).
     # See ``STATE_*``. server_default so every non-machine insert stays correct
     # without setting it; the machine path passes ``state=STATE_DETECTED``.

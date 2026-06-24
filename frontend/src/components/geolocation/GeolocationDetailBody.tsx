@@ -13,7 +13,7 @@ import DetectedBadge from "@/components/geolocation/DetectedBadge";
 import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
-import { FIELD_HELP } from "@/lib/fieldHelp";
+import type { Concept } from "@/lib/fieldHelp";
 
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
@@ -97,8 +97,9 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
         Media
+        <FieldHelp concept="source_media" />
       </h2>
       {geo.media.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
@@ -117,29 +118,82 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   const label = compact ? "text-neutral-500" : "text-sm text-neutral-500";
   const value = compact ? "text-neutral-200" : "text-sm text-neutral-200";
 
+  // Curated tags (conflict, capture source) get their own labelled rows so
+  // they read as structured facts, not free-form chips lost in one row.
+  const conflictTags = geo.tags.filter((t) => t.category === "conflict");
+  const captureTags = geo.tags.filter((t) => t.category === "capture_source");
+  const freeTags = geo.tags.filter((t) => t.category === "free");
+  const tagRow = (name: string, tags: GeolocationDetail["tags"], concept?: Concept) =>
+    tags.length > 0 ? (
+      <div className={rowStart}>
+        <span className={concept ? `${label} inline-flex items-center gap-1` : label}>
+          {name}
+          {concept && <FieldHelp concept={concept} />}
+        </span>
+        <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className={`${
+                compact ? "text-[10px] px-2" : "text-xs px-2.5"
+              } py-0.5 rounded-full ${TAG_CHIP}`}
+            >
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const rows = (
     <>
+      {/* Panel only: coordinates lead the rows — on the full page they show
+          under the Location map, so they're prominent there too; the panel has
+          no map, so leading the rows keeps them first. */}
+      {compact && (
+        <div className={row}>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Coordinates{" "}
+            <FieldHelp concept="coordinates" />
+          </span>
+          <span className={`${value} font-mono text-xs`}>
+            {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+          </span>
+        </div>
+      )}
       {geo.state === "detected" && (
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
-            Status <FieldHelp text={FIELD_HELP.status} label="What does the status mean?" />
+            Status <FieldHelp concept="status" />
           </span>
           <DetectedBadge state={geo.state} />
         </div>
       )}
       <div className={row}>
-        <span className={label}>Event date</span>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Event date <FieldHelp concept="event_date" />
+        </span>
         <span className={value}>{formatDate(geo.event_date)}</span>
       </div>
+      {geo.source_date && (
+        <div className={row}>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Source date{" "}
+            <FieldHelp concept="source_date" />
+          </span>
+          <span className={value}>{formatDate(geo.source_date)}</span>
+        </div>
+      )}
+      {/* The three dates read as one block: event → source → submitted. */}
       <div className={row}>
-        <span className={label}>Coordinates</span>
-        <span className={`${value} font-mono${compact ? " text-xs" : ""}`}>
-          {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Submitted date <FieldHelp concept="submitted_date" />
         </span>
+        <span className={value}>{formatDate(geo.created_at)}</span>
       </div>
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
-          Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+          Source <FieldHelp concept="source_url" />
         </span>
         <SourceLabel
           isDemo={geo.is_demo}
@@ -155,7 +209,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
             Detected from{" "}
-            <FieldHelp text={FIELD_HELP.detected_from} label="What is 'Detected from'?" />
+            <FieldHelp concept="detected_from" />
           </span>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
               host (and shows "synthetic" for demo rows), so the two provenance
@@ -169,29 +223,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           />
         </div>
       )}
-      {geo.tags.length > 0 && (
-        <div className={rowStart}>
-          <span className={label}>Tags</span>
-          <div
-            className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}
-          >
-            {geo.tags.map((tag) => (
-              <span
-                key={tag.id}
-                className={`${
-                  compact ? "text-[10px] px-2" : "text-xs px-2.5"
-                } py-0.5 rounded-full ${TAG_CHIP}`}
-              >
-                {tag.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className={row}>
-        <span className={label}>Submitted</span>
-        <span className={value}>{formatDate(geo.created_at)}</span>
-      </div>
+      {tagRow("Conflict", conflictTags, "conflict")}
+      {tagRow("Capture source", captureTags, "capture_source")}
+      {tagRow("Tags", freeTags)}
       {/* Compact panel omits bounty-trace + author rows: the author is in
           the panel header, the trace belongs to the full page. */}
       {!compact && geo.originated_from_bounty && (
@@ -253,8 +287,9 @@ function ProofBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   if (compact) {
     return (
       <div className="pt-2 border-t border-neutral-800">
-        <h3 className="text-xs text-neutral-500 uppercase tracking-wider mb-1.5">
+        <h3 className="text-xs text-neutral-500 uppercase tracking-wider mb-1.5 inline-flex items-center gap-1.5">
           Proof
+          <FieldHelp concept="section_proof" />
         </h3>
         {body}
       </div>

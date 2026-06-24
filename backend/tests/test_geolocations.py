@@ -1138,6 +1138,64 @@ def test_create_succeeds_with_both_required_tags(
     assert {"conflict", "capture_source"} <= categories
 
 
+def test_create_accepts_optional_source_date(
+    db, author, conflict_tag, capture_source_tag, tmp_path, monkeypatch
+):
+    """``source_date`` is optional: supplied → round-trips on the read model;
+    omitted → the row's source_date is null."""
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    base = {
+        "title": "with source date",
+        "lat": "48.5",
+        "lng": "34.5",
+        "source_url": "https://t.me/c/1",
+        "event_date": "2026-05-01",
+        "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+    }
+
+    with_date = client.post(
+        "/api/v1/geolocations",
+        headers=login_as(client, author),
+        data={**base, "source_date": "2026-05-03"},
+        files={"files": ("ok.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    assert with_date.status_code == 201, with_date.text
+    assert with_date.json()["source_date"] == "2026-05-03"
+
+    without = client.post(
+        "/api/v1/geolocations",
+        headers=login_as(client, author),
+        data=base,
+        files={"files": ("ok.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    assert without.status_code == 201, without.text
+    assert without.json()["source_date"] is None
+
+
+def test_create_rejects_invalid_source_date(author):
+    """Garbage ``source_date`` → 422 before any S3 round-trip (same contract
+    as ``event_date``)."""
+    response = client.post(
+        "/api/v1/geolocations",
+        headers=login_as(client, author),
+        data={
+            "title": "x",
+            "lat": "0.0",
+            "lng": "0.0",
+            "source_url": "https://example.com",
+            "event_date": "2026-05-01",
+            "source_date": "not-a-date",
+        },
+        files={"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    assert response.status_code == 422
+    assert "source_date" in response.json()["detail"].lower()
+
+
 # ── POST /geolocations/proof-images — sha256 contract ──────────────────────
 
 

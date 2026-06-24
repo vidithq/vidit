@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import WipBadge from "@/components/ui/WipBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 
 const X_URL = "https://x.com/vidithq";
@@ -77,7 +76,7 @@ const ROW_CLASS =
 
 // Must match the aside's `duration-200` width transition. Labels render only
 // after the expand finishes, else they overflow the still-narrow sidebar mid-
-// animation and flicker (notably next to the "Soon" pills).
+// animation and flicker.
 const EXPAND_TRANSITION_MS = 200;
 
 interface NavItem {
@@ -85,10 +84,7 @@ interface NavItem {
   icon: typeof Globe;
   label: string;
   auth?: boolean;
-  // `wip` shows a "Soon" pill (planned-but-not-built). `notify` shows a dot at
-  // the icon corner (new content awaits; static today). Independent on purpose:
-  // Timeline is both, a search-only placeholder would be `wip` without `notify`.
-  wip?: boolean;
+  // `notify` shows a dot at the icon corner (new content awaits; static today).
   notify?: boolean;
   // Custom active-state matcher so deep pages inherit their section's highlight
   // (e.g. /geolocations/[id] keeps Map lit). Defaults to exact match on `href`.
@@ -105,12 +101,10 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Globe,
     label: "Map",
     auth: true,
-    // Match exactly /geolocations/<id> (one segment) so sub-routes like
-    // /geolocations/<id>/edit don't inherit the Map highlight. ``/new`` is the
-    // Submit row's path and matches this shape, so exclude it or both light up.
-    activeFor: (p) =>
-      p === "/map" ||
-      (/^\/geolocations\/[^/]+$/.test(p) && p !== "/geolocations/new"),
+    // Match exactly /geolocations/<id> (one segment) so a geolocation detail
+    // keeps the Map highlight; sub-routes like /geolocations/<id>/edit don't.
+    // Submit lives at /submit now, so no carve-out is needed here.
+    activeFor: (p) => p === "/map" || /^\/geolocations\/[^/]+$/.test(p),
   },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search", auth: true },
@@ -119,11 +113,10 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Target,
     label: "Bounties",
     auth: true,
-    // No exclusion needed (unlike Map): Submit owns /geolocations/new, not
-    // /bounties/new, so every /bounties/* path is genuinely a Bounties page.
+    // Every /bounties/* path is a Bounties page (creation lives at /submit).
     activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
   },
-  { href: "/geolocations/new", icon: Plus, label: "Submit", auth: true },
+  { href: "/submit", icon: Plus, label: "Submit", auth: true },
   { href: "/about", icon: Info, label: "About" },
 ];
 
@@ -168,11 +161,7 @@ export default function Sidebar() {
       <Link
         key={item.href}
         href={item.href}
-        title={
-          !labelsVisible
-            ? `${item.label}${item.wip ? " (coming soon)" : ""}`
-            : undefined
-        }
+        title={!labelsVisible ? item.label : undefined}
         className={`${ROW_CLASS} relative overflow-hidden ${
           active
             ? FILTER_CHIP_ACTIVE
@@ -190,11 +179,6 @@ export default function Sidebar() {
         </span>
         {labelsVisible && (
           <span className="truncate flex-1 animate-label-in">{item.label}</span>
-        )}
-        {labelsVisible && item.wip && (
-          <span className="animate-label-in">
-            <WipBadge>Soon</WipBadge>
-          </span>
         )}
       </Link>
     );

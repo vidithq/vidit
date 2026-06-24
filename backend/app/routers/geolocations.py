@@ -851,6 +851,7 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         source_url=geo.source_url,
         proof=geo.proof,
         event_date=geo.event_date,
+        source_date=geo.source_date,
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
@@ -991,6 +992,9 @@ async def create_geolocation(
     # reject a valid ``2026-05-01T00:00:00`` with a generic Pydantic 422
     # instead of our custom message.
     event_date: str = Form(...),
+    # Optional: the date the original source posted the media. Same loose
+    # ``str`` shape as ``event_date`` — parsed below, not by Pydantic.
+    source_date: str | None = Form(None),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     bounty_id: str | None = Form(None),
@@ -1013,6 +1017,17 @@ async def create_geolocation(
             status_code=422,
             detail="event_date must be an ISO-8601 date (YYYY-MM-DD)",
         ) from exc
+
+    # Optional — empty string / absent → None. Same 422-on-garbage contract.
+    parsed_source_date: date | None = None
+    if source_date:
+        try:
+            parsed_source_date = date.fromisoformat(source_date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="source_date must be an ISO-8601 date (YYYY-MM-DD)",
+            ) from exc
 
     parsed_bounty_id: uuid.UUID | None = None
     if bounty_id:
@@ -1046,6 +1061,7 @@ async def create_geolocation(
             lng=lng,
             source_url=source_url,
             event_date=parsed_event_date,
+            source_date=parsed_source_date,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
             bounty_id=parsed_bounty_id,
@@ -1076,6 +1092,7 @@ async def create_geolocation(
         source_url=geo.source_url,
         proof=geo.proof,
         event_date=geo.event_date,
+        source_date=geo.source_date,
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,

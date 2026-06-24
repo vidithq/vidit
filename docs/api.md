@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT — an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string** — `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array** — `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope** — `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `bounty_not_found`, `bounty_not_open`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_description` — geolocations and bounties share the file/media codes via `services/evidence_intake`). The `code` is the stable contract surface — branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string** — `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array** — `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope** — `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `bounty_not_found`, `bounty_not_open`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof` — geolocations and bounties share the file/media codes via `services/evidence_intake`). The `code` is the stable contract surface — branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -556,6 +556,7 @@ Full detail for a single geolocation.
   "source_url": "https://t.me/channel/12345",
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
+  "source_date": "2026-03-14",
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
@@ -605,7 +606,8 @@ Create a geolocation.
 | `lat` | float | yes | Latitude (-90 to 90) |
 | `lng` | float | yes | Longitude (-180 to 180) |
 | `source_url` | string | yes | Original source URL — ignored when `bounty_id` is set (see below) |
-| `event_date` | string (YYYY-MM-DD) | yes | Event date |
+| `event_date` | string (YYYY-MM-DD) | yes | When the depicted event happened |
+| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media — distinct from `event_date` and the submission time. Omitted / empty → stored NULL. |
 | `proof` | string (JSON) | no | Serialized Tiptap document |
 | `tag_ids` | string (JSON array) | conditional | `["uuid1", "uuid2"]`. The fulfilling analyst's tag picks go on the geolocation — independent from the bounty's own tags. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
 | `bounty_id` | UUID | no | Fulfilment trace. See *Fulfilling a bounty* below. |
@@ -624,7 +626,7 @@ Create a geolocation.
 | 404 | `bounty_id` references an unknown / soft-deleted bounty |
 | 409 | `bounty_id` references a bounty that's no longer open (`fulfilled` or `closed`) |
 | 413 | Request body exceeds the platform body-size cap (`max(max_video_size, 12 × max_image_size) + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
-| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
+| 422 | Malformed input: `event_date` or `source_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
 
 ---
 
@@ -746,7 +748,9 @@ Full detail for one bounty.
   "id": "uuid",
   "title": "Footage from a strike, location unknown",
   "source_url": "https://t.me/channel/12345",
-  "description": { "type": "doc", "content": [] },
+  "proof": { "type": "doc", "content": [] },
+  "event_date": "2026-05-10",
+  "source_date": "2026-05-11",
   "status": "fulfilled",
   "created_at": "2026-05-12T09:42:00Z",
   "updated_at": "2026-05-12T09:42:00Z",
@@ -780,7 +784,9 @@ Post a bounty.
 |-------|------|----------|-------------|
 | `title` | string | yes | Title; empty / whitespace-only rejected. Max 255 chars. |
 | `source_url` | string | yes | URL where the media was found. Max 2000 chars. |
-| `description` | string (JSON) | no | Serialized Tiptap document; sanitised server-side |
+| `proof` | string (JSON) | no | In-progress proof (Tiptap document), mirroring a geolocation's `proof`; sanitised server-side and image-free (inline images dropped) |
+| `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Optional — a bounty is an unfinished geolocation. |
+| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media. Optional. |
 | `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]` |
 | `files` | File[] | yes | At least one image or video. Capped at **12 files per submission**. |
 
@@ -791,9 +797,9 @@ Multipart parsing + JSON-shape checks live in the router; business rules + the S
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`, malformed `description` / `tag_ids` JSON) **or** a typed `{code, message}` business-rule branch: `media_required` (no files), `invalid_description` (sanitiser rejection), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`. |
+| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`, malformed `proof` / `tag_ids` JSON) **or** a typed `{code, message}` business-rule branch: `media_required` (no files), `invalid_proof` (sanitiser rejection), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`. |
 | 413 | Request body exceeds the platform body-size cap — same middleware + `max(max_video_size, 12 × max_image_size) + 10 MB` headroom as `POST /geolocations`. |
-| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), or **more than 12 files** (`too_many_files` typed envelope). |
+| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), malformed `event_date` / `source_date` (not a YYYY-MM-DD date), or **more than 12 files** (`too_many_files` typed envelope). |
 
 ---
 
@@ -858,7 +864,7 @@ Author withdraws the bounty without anyone geolocating it. Sets `status="closed"
 
 Slice-1 full-text discovery surface across the three first-class entity types. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions over `geolocations.title`, `bounties.title`, and `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). The `simple` dictionary keeps matching predictable.
 
-**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`proof`, `bounty.description`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
+**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`geolocations.proof`, `bounties.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
 
 ### `GET /search` 🔒
 

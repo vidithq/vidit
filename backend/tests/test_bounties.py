@@ -26,6 +26,7 @@ What we lock in:
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, date, datetime
 
@@ -421,7 +422,7 @@ def test_create_rejects_blank_source_url(author):
     assert "source_url" in response.json()["detail"].lower()
 
 
-def test_create_rejects_invalid_description_json(author):
+def test_create_rejects_invalid_proof_json(author):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
@@ -429,12 +430,12 @@ def test_create_rejects_invalid_description_json(author):
         data={
             "title": "ok",
             "source_url": "https://example.com",
-            "description": "{not valid",
+            "proof": "{not valid",
         },
         files=files,
     )
     assert response.status_code == 400
-    assert "description" in response.json()["detail"].lower()
+    assert "proof" in response.json()["detail"].lower()
 
 
 def test_create_rejects_too_many_files(author):
@@ -478,9 +479,9 @@ def test_create_rejects_over_length_source_url(author):
     assert response.status_code == 422
 
 
-def test_create_rejects_unsanitisable_description(author):
+def test_create_rejects_unsanitisable_proof(author):
     """Valid JSON that isn't a Tiptap ``doc`` is rejected with the typed
-    ``invalid_description`` envelope, before any upload."""
+    ``invalid_proof`` envelope, before any upload."""
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
@@ -488,12 +489,12 @@ def test_create_rejects_unsanitisable_description(author):
         data={
             "title": "ok",
             "source_url": "https://example.com/post/1",
-            "description": '{"type": "not-doc"}',
+            "proof": '{"type": "not-doc"}',
         },
         files=files,
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "invalid_description"
+    assert response.json()["detail"]["code"] == "invalid_proof"
 
 
 def test_create_happy_path(db, author, free_tag):
@@ -520,6 +521,98 @@ def test_create_happy_path(db, author, free_tag):
     db.query(Media).filter(Media.bounty_id == bounty_id).delete(synchronize_session=False)
     db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
     db.commit()
+
+
+def test_create_accepts_optional_dates(db, author):
+    """``event_date`` + ``source_date`` are optional on a bounty: supplied →
+    round-trip on the read model, omitted → null."""
+    with_dates = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "Dated bounty",
+            "source_url": "https://example.com/post/1",
+            "event_date": "2026-05-01",
+            "source_date": "2026-05-02",
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert with_dates.status_code == 201, with_dates.text
+    assert with_dates.json()["event_date"] == "2026-05-01"
+    assert with_dates.json()["source_date"] == "2026-05-02"
+
+    without = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={"title": "Undated bounty", "source_url": "https://example.com/post/2"},
+        files={"files": _tiny_jpeg()},
+    )
+    assert without.status_code == 201, without.text
+    assert without.json()["event_date"] is None
+    assert without.json()["source_date"] is None
+
+    for created in (with_dates.json(), without.json()):
+        bid = uuid.UUID(created["id"])
+        db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
+        db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_strips_inline_images_from_proof(db, author):
+    """A bounty's proof is image-free: an inline image that would otherwise
+    pass sanitisation is dropped (it has no ``proof_images`` row to anchor it,
+    so it would orphan) while the surrounding text survives."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Lead on the depot."}],
+            },
+            {"type": "image", "attrs": {"src": "/uploads/x.png"}},
+        ],
+    }
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "Image in proof",
+            "source_url": "https://example.com/post/1",
+            "proof": json.dumps(doc),
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert response.status_code == 201, response.text
+    stored = response.json()["proof"]
+    node_types = [node["type"] for node in stored["content"]]
+    assert "image" not in node_types
+    assert stored["content"] == [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "Lead on the depot."}],
+        }
+    ]
+
+    bid = uuid.UUID(response.json()["id"])
+    db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
+    db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_rejects_invalid_event_date(author):
+    """Garbage ``event_date`` → 422 before any S3 round-trip."""
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "x",
+            "source_url": "https://example.com/post/1",
+            "event_date": "not-a-date",
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert response.status_code == 422
+    assert "event_date" in response.json()["detail"].lower()
 
 
 def test_create_populates_sha256_on_media(db, author):

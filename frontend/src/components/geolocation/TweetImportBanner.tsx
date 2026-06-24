@@ -51,7 +51,7 @@ export function authorshipState(
  * Hidden in bounty-fulfilment mode (source URL + media are locked to the
  * bounty, so a pre-fill has nothing to land in). The fetch + state population
  * live in the parent so the form keeps one source of truth per field — see
- * ``frontend/src/app/geolocations/new/page.tsx``.
+ * ``frontend/src/app/submit/page.tsx``.
  */
 export function TweetImportBanner({
   onImported,
@@ -114,16 +114,7 @@ export function TweetImportBanner({
   const imported = importedFrom !== null;
   const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
-      <header className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-200">
-          Paste a tweet URL
-        </h2>
-        <p className="text-xs text-neutral-500">
-          Pre-fills title, source, event date, media, and best-effort
-          coordinates from a public tweet. You review and submit.
-        </p>
-      </header>
+    <div className="space-y-3">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {/* Pre-import nudge surfaces the no-linked-X signal before the analyst
           pastes; post-import, ``AuthorshipWarning`` covers it more pointedly. */}
@@ -154,7 +145,7 @@ export function TweetImportBanner({
           {imported ? "Imported!" : busy ? "Importing…" : "Import"}
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -184,7 +175,7 @@ function AuthorshipWarning({
       <div className="space-y-1">
         {state === "different" ? (
           <p>
-            Heads up — the tweet was posted by{" "}
+            Heads up: the tweet was posted by{" "}
             <span className="font-medium">@{tweetAuthor}</span>, but your
             linked X account is{" "}
             <span className="font-medium">@{linkedHandle}</span>. Only
@@ -193,7 +184,7 @@ function AuthorshipWarning({
           </p>
         ) : (
           <p>
-            Heads up — you haven&apos;t linked an X account to your
+            Heads up: you haven&apos;t linked an X account to your
             Vidit profile, so we can&apos;t check that this tweet is
             yours. Only publish work you authored yourself or have
             explicit permission to reproduce.
@@ -220,8 +211,8 @@ function AuthorshipNudgeNoLink() {
           className="text-orange-400 hover:text-orange-300 transition-colors underline-offset-2 hover:underline"
         >
           profile
-        </a>{" "}
-        — we&apos;ll flag a heads-up on import to make sure you have
+        </a>
+        . We&apos;ll flag a heads-up on import to make sure you have
         permission to publish the tweet.
       </span>
     </div>

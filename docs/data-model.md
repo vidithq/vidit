@@ -85,6 +85,7 @@ erDiagram
         TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
         DATE event_date
+        DATE source_date "nullable, when the source posted the media"
         VARCHAR state "validated | detected"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo row"
@@ -98,7 +99,9 @@ erDiagram
         UUID author_id FK
         VARCHAR title
         TEXT source_url
-        JSONB description "nullable, Tiptap"
+        JSONB proof "nullable, Tiptap, image-free"
+        DATE event_date "nullable, when the event happened"
+        DATE source_date "nullable, when the source posted"
         VARCHAR status "open|fulfilled|closed"
         TIMESTAMPTZ closed_at "nullable"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
@@ -339,7 +342,8 @@ Indexes:
 | `source_url` | `TEXT` | NOT NULL — where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
 | `detected_from_url` | `TEXT` | nullable — the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL — Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
-| `event_date` | `DATE` | NOT NULL — for a machine detection, provisionally the originating tweet's post date; the owner corrects it at validation. |
+| `event_date` | `DATE` | NOT NULL — when the depicted event happened. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at validation. |
+| `source_date` | `DATE` | nullable — when the original source posted the media (a Telegram / X post date). Distinct from `event_date` (when the event happened) and `created_at` (when it was submitted to Vidit). NULL when unknown; unrecoverable for rows created before the column. |
 | `state` | `VARCHAR(20)` | NOT NULL, `server_default 'validated'` — `validated` (human submits + bounty fulfilments, immutable) vs `detected` (machine-produced, rendered marked on every surface until its owner validates it). Plain string, no DB enum (mirrors `bounties.status`); the default keeps every non-machine insert correct with no code change. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
@@ -373,7 +377,9 @@ An **unfinished geolocation**: media + a source URL someone couldn't place. Life
 | `author_id` | `UUID` | FK → `users.id`, NOT NULL |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `source_url` | `TEXT` | NOT NULL — required because a bounty is evidence in search of a location |
-| `description` | `JSONB` | nullable — Tiptap document (ProseMirror JSON), sanitised server-side on insert |
+| `proof` | `JSONB` | nullable — the in-progress proof (Tiptap / ProseMirror JSON), mirroring `geolocations.proof`. Sanitised server-side on insert and image-free (inline images dropped — a bounty proof image has no `proof_images` row to anchor it) |
+| `event_date` | `DATE` | nullable — when the depicted event happened, carried into the geolocation on fulfilment. Optional: a bounty is an unfinished geolocation, so it may be unknown |
+| `source_date` | `DATE` | nullable — when the original source posted the media. Same optional, carried-over rationale as `event_date` |
 | `status` | `VARCHAR(20)` | NOT NULL, default `'open'` — one of `open`, `fulfilled`, `closed`. Plain string (no DB enum) so adding a state doesn't require a migration |
 | `closed_at` | `TIMESTAMPTZ` | nullable — set when status transitions to `fulfilled` or `closed` |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — soft-delete; filtered from every public read (admin path acts on the raw model) |

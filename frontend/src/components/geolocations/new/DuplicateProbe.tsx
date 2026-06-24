@@ -117,7 +117,7 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
           </h2>
           <p className="text-xs text-amber-200/80">
             Same area + matching source or event date. Check before
-            submitting — submission isn&apos;t blocked.
+            submitting; submission isn&apos;t blocked.
           </p>
         </div>
       </header>
