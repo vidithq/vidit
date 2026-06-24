@@ -15,20 +15,15 @@ interface EvidenceUploaderProps {
   lockedMedia: BountyDetail["media"] | null;
   files: File[];
   setFiles: (files: File[]) => void;
-  /** Render the "Source media" label + `?`. Off when the host section already
-   *  carries that heading (the bounty form's standalone media section). */
-  showLabel?: boolean;
 }
 
-/** The source-media control: the original footage being geolocated — a file
- *  input with previews, or the locked bounty-media grid. Section-less so it can
- *  sit inside the geolocation form's "Location" block or the bounty form's
- *  "Source media" section. */
+/** The source-media control: the original footage being geolocated, as a file
+ *  input with previews, or the locked bounty-media grid. Section-less so it sits
+ *  inside the "Location" block in both submit modes. */
 export function EvidenceUploader({
   lockedMedia,
   files,
   setFiles,
-  showLabel = true,
 }: EvidenceUploaderProps) {
   const handleFiles = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -72,15 +67,20 @@ export function EvidenceUploader({
     </div>
   );
 
-  if (!showLabel) return control;
-
   return (
     <div className="space-y-1.5">
-      <span className={FORM_LABEL}>
-        Source media{" "}
-        <FieldHelp concept="source_media" />
-        {lockedMedia && <LockedHint />}
-      </span>
+      {lockedMedia ? (
+        // Locked-media mode renders a preview grid, not an input, so there's
+        // no control to associate a label with.
+        <span className={FORM_LABEL}>
+          Source media <FieldHelp concept="source_media" />
+          <LockedHint />
+        </span>
+      ) : (
+        <label htmlFor="files" className={FORM_LABEL}>
+          Source media <FieldHelp concept="source_media" />
+        </label>
+      )}
       {control}
     </div>
   );
