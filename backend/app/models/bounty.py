@@ -80,7 +80,10 @@ class Bounty(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # The in-progress proof (a bounty is an unfinished geolocation): same Tiptap
+    # JSON shape as ``Geolocation.proof``, but optional and image-free
+    # (services/bounties.py sanitises it with ``allow_images=False``).
+    proof: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # Optional metadata carried over when the bounty becomes a geolocation:
     # when the event happened, and when the source posted the media. A bounty is
     # an unfinished geolocation, so both may be unknown at posting time.

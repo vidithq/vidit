@@ -45,8 +45,8 @@ class BountyError(EvidenceIntakeError):
     code = "bounty_error"
 
 
-class InvalidDescriptionError(BountyError):
-    code = "invalid_description"
+class InvalidProofError(BountyError):
+    code = "invalid_proof"
 
 
 async def create_with_evidence(
@@ -55,7 +55,7 @@ async def create_with_evidence(
     current_user: User,
     title: str,
     source_url: str,
-    description_data: dict | None,
+    proof_data: dict | None,
     event_date: date | None = None,
     source_date: date | None = None,
     tag_ids: list,
@@ -75,8 +75,8 @@ async def create_with_evidence(
     * No files (:class:`MediaRequiredError`) — a bounty is an "unfinished
       geolocation", so the poster's evidence must be on the row from the
       start.
-    * ``description`` fails Tiptap sanitisation
-      (:class:`InvalidDescriptionError`)
+    * ``proof`` fails Tiptap sanitisation
+      (:class:`InvalidProofError`)
     * File type/size rejected, or the uploader raises
       ``EvidenceProcessingError`` (``InvalidFileError`` /
       ``EvidenceProcessingFailedError``)
@@ -89,20 +89,20 @@ async def create_with_evidence(
     if not files:
         raise MediaRequiredError("At least one media file is required")
 
-    if description_data is not None:
+    if proof_data is not None:
         try:
             # allow_images=False: a bounty's proof is image-free. Inline images
             # would never be adopted into proof_images (no bounty_id there) and
             # would orphan, so they're dropped rather than stored broken.
-            description_data = sanitize_tiptap_doc(description_data, allow_images=False)
+            proof_data = sanitize_tiptap_doc(proof_data, allow_images=False)
         except ValueError as exc:
-            raise InvalidDescriptionError(str(exc)) from exc
+            raise InvalidProofError(str(exc)) from exc
 
     bounty = Bounty(
         author_id=current_user.id,
         title=title,
         source_url=source_url,
-        description=description_data,
+        proof=proof_data,
         event_date=event_date,
         source_date=source_date,
         status=STATUS_OPEN,

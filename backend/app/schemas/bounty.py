@@ -20,7 +20,7 @@ class BountyRead(BaseModel):
     id: uuid.UUID
     title: str
     source_url: str
-    description: dict[str, Any] | None
+    proof: dict[str, Any] | None
     # Optional dates, mirroring a geolocation: when the event happened, and when
     # the source posted the media. Null when the poster didn't supply them.
     event_date: date | None = None

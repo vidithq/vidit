@@ -99,7 +99,7 @@ erDiagram
         UUID author_id FK
         VARCHAR title
         TEXT source_url
-        JSONB description "nullable, Tiptap"
+        JSONB proof "nullable, Tiptap, image-free"
         DATE event_date "nullable, when the event happened"
         DATE source_date "nullable, when the source posted"
         VARCHAR status "open|fulfilled|closed"
@@ -377,7 +377,7 @@ An **unfinished geolocation**: media + a source URL someone couldn't place. Life
 | `author_id` | `UUID` | FK → `users.id`, NOT NULL |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `source_url` | `TEXT` | NOT NULL — required because a bounty is evidence in search of a location |
-| `description` | `JSONB` | nullable — Tiptap document (ProseMirror JSON), sanitised server-side on insert |
+| `proof` | `JSONB` | nullable — the in-progress proof (Tiptap / ProseMirror JSON), mirroring `geolocations.proof`. Sanitised server-side on insert and image-free (inline images dropped — a bounty proof image has no `proof_images` row to anchor it) |
 | `event_date` | `DATE` | nullable — when the depicted event happened, carried into the geolocation on fulfilment. Optional: a bounty is an unfinished geolocation, so it may be unknown |
 | `source_date` | `DATE` | nullable — when the original source posted the media. Same optional, carried-over rationale as `event_date` |
 | `status` | `VARCHAR(20)` | NOT NULL, default `'open'` — one of `open`, `fulfilled`, `closed`. Plain string (no DB enum) so adding a state doesn't require a migration |

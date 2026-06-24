@@ -81,7 +81,7 @@ function SubmitForm() {
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   // Separate from the geolocation proof: a bounty's proof is the same idea but
   // in progress (else it'd be a geolocation), optional, and stored on
-  // `bounties.description`. Kept apart so toggling submit type doesn't bleed one
+  // `bounties.proof`. Kept apart so toggling submit type doesn't bleed one
   // draft into the other.
   const [bountyProof, setBountyProof] = useState<Record<string, unknown> | null>(
     null
@@ -153,6 +153,14 @@ function SubmitForm() {
         setBounty(b);
         setTitle(b.title);
         setSourceUrl(b.source_url);
+        // Carry the bounty's optional metadata into the geolocation form: the
+        // dates the poster knew, and the in-progress proof so the analyst
+        // continues from it instead of a blank editor. The form mounts only
+        // after the bounty loads (Loading guard below), so the proof editor
+        // picks `proof` up as its initial content.
+        setEventDate(b.event_date ?? "");
+        setSourceDate(b.source_date ?? "");
+        setProof(b.proof ?? null);
         setSelectedTagIds(b.tags.map((t) => t.id));
       })
       .catch((err: Error) => setBountyError(err.message));
@@ -183,7 +191,7 @@ function SubmitForm() {
       const created = await createBounty({
         title: title.trim(),
         source_url: sourceUrl.trim(),
-        description: bountyProof,
+        proof: bountyProof,
         event_date: eventDate || undefined,
         source_date: sourceDate || undefined,
         tag_ids: selectedTagIds,
@@ -337,11 +345,11 @@ function SubmitForm() {
       >
         @{bounty!.author.username}
       </Link>
-      . Title and tags are pre-filled from the bounty; refine them if needed.
-      Source and media stay locked (that&apos;s the bounty&apos;s evidence). Add
-      coordinates, an event date, and the proof body (cross-referenced satellite
-      imagery). When you submit, the bounty is archived as fulfilled and the
-      resulting geolocation traces back to it.
+      . Title, tags, dates, and the proof so far are pre-filled from the bounty;
+      refine them. Source and media stay locked (that&apos;s the bounty&apos;s
+      evidence). Add the coordinates and finish the proof (cross-referenced
+      satellite imagery). When you submit, the bounty is archived as fulfilled
+      and the resulting geolocation traces back to it.
     </>
   ) : (
     "Add a geolocation, or post a bounty for footage you couldn't place yet."
@@ -469,8 +477,8 @@ function SubmitForm() {
           // Same Proof section, harmonised: a bounty's proof is a geolocation
           // proof still in progress (else it'd be a geolocation), so it's
           // optional and image-free — the bounty create path doesn't adopt
-          // inline images, which would orphan. Stored as `description`. The
-          // distinct key remounts a fresh, correctly-configured editor on toggle.
+          // inline images, which would orphan. Stored as `proof`. The distinct
+          // key remounts a fresh, correctly-configured editor on toggle.
           <ProofEditorPanel
             key="bounty-proof"
             importedFrom={null}

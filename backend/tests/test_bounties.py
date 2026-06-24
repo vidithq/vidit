@@ -422,7 +422,7 @@ def test_create_rejects_blank_source_url(author):
     assert "source_url" in response.json()["detail"].lower()
 
 
-def test_create_rejects_invalid_description_json(author):
+def test_create_rejects_invalid_proof_json(author):
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
@@ -430,12 +430,12 @@ def test_create_rejects_invalid_description_json(author):
         data={
             "title": "ok",
             "source_url": "https://example.com",
-            "description": "{not valid",
+            "proof": "{not valid",
         },
         files=files,
     )
     assert response.status_code == 400
-    assert "description" in response.json()["detail"].lower()
+    assert "proof" in response.json()["detail"].lower()
 
 
 def test_create_rejects_too_many_files(author):
@@ -479,9 +479,9 @@ def test_create_rejects_over_length_source_url(author):
     assert response.status_code == 422
 
 
-def test_create_rejects_unsanitisable_description(author):
+def test_create_rejects_unsanitisable_proof(author):
     """Valid JSON that isn't a Tiptap ``doc`` is rejected with the typed
-    ``invalid_description`` envelope, before any upload."""
+    ``invalid_proof`` envelope, before any upload."""
     files = {"files": _tiny_jpeg()}
     response = client.post(
         "/api/v1/bounties",
@@ -489,12 +489,12 @@ def test_create_rejects_unsanitisable_description(author):
         data={
             "title": "ok",
             "source_url": "https://example.com/post/1",
-            "description": '{"type": "not-doc"}',
+            "proof": '{"type": "not-doc"}',
         },
         files=files,
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "invalid_description"
+    assert response.json()["detail"]["code"] == "invalid_proof"
 
 
 def test_create_happy_path(db, author, free_tag):
@@ -558,7 +558,7 @@ def test_create_accepts_optional_dates(db, author):
     db.commit()
 
 
-def test_create_strips_inline_images_from_description(db, author):
+def test_create_strips_inline_images_from_proof(db, author):
     """A bounty's proof is image-free: an inline image that would otherwise
     pass sanitisation is dropped (it has no ``proof_images`` row to anchor it,
     so it would orphan) while the surrounding text survives."""
@@ -578,12 +578,12 @@ def test_create_strips_inline_images_from_description(db, author):
         data={
             "title": "Image in proof",
             "source_url": "https://example.com/post/1",
-            "description": json.dumps(doc),
+            "proof": json.dumps(doc),
         },
         files={"files": _tiny_jpeg()},
     )
     assert response.status_code == 201, response.text
-    stored = response.json()["description"]
+    stored = response.json()["proof"]
     node_types = [node["type"] for node in stored["content"]]
     assert "image" not in node_types
     assert stored["content"] == [

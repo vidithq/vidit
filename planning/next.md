@@ -111,7 +111,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. Priorities are relativ
 | P1 | UX | Wire search-by-author on profile | Clickable analyst handles everywhere (cards, timeline, search). Pair with search slice-2 author filter. Deferred from closed beta — only pays back when there are enough analysts to discover. |
 | P1 | UX | No-match-filter empty states (map / timeline / search) | Pair with the filter rollouts above — these only matter once filtering has a meaningful catalog to operate on. |
 | P1 | Timeline | Follower / following list pages + frontend routes | Counters exist; lists don't. `GET /users/{username}/followers` etc. |
-| P2 | Search | JSONB content search (proof body, bounty description) | Flatten via `jsonb_path_query_array` materialised into a column or trigger. |
+| P2 | Search | JSONB content search (geolocation + bounty proof bodies) | Flatten via `jsonb_path_query_array` materialised into a column or trigger. |
 | P2 | Search | URL-fragment search (host + path units) | Paste a tweet ID and find the geo. |
 | P2 | Search | Infinite scroll per group | Cursor keyed by `(rank, created_at, id)`. |
 | P2 | Search | `'english'` stemming opt-in | DDL one-line swap if "strikes" misses "strike". |

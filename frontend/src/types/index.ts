@@ -201,7 +201,9 @@ export interface BountyDetail {
   id: string;
   title: string;
   source_url: string;
-  description: Record<string, unknown> | null;
+  /** The in-progress proof (Tiptap JSON), mirroring a geolocation's `proof`.
+   *  Optional and image-free. Null when the poster left it empty. */
+  proof: Record<string, unknown> | null;
   /** Optional, ISO YYYY-MM-DD. When the event happened / when the source
    *  posted the media. Null when the poster didn't supply them. */
   event_date: string | null;

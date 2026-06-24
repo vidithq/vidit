@@ -138,11 +138,11 @@ def sanitize_tiptap_doc(doc: Any, *, allow_images: bool = True) -> dict[str, Any
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
 
-    ``allow_images=False`` drops every image node. Bounty descriptions use
-    this: the bounty create path never adopts inline images into
-    ``proof_images`` rows (that table only has a ``geolocation_id``), so a
-    kept image would orphan and get reaped — a broken image in the stored
-    proof. Geolocations adopt their images, so they keep the default.
+    ``allow_images=False`` drops every image node. Bounty proofs use this:
+    the bounty create path never adopts inline images into ``proof_images``
+    rows (that table only has a ``geolocation_id``), so a kept image would
+    orphan and get reaped — a broken image in the stored proof. Geolocations
+    adopt their images, so they keep the default.
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")
