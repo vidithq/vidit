@@ -6,7 +6,6 @@ import { NewTagInput } from "@/components/ui/NewTagInput";
 import { TagChip } from "@/components/ui/TagChip";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 
 /** Muted "optional" marker. The form convention is required-by-default — only
  *  the exceptions are marked. Neutral, not orange: a label hint isn't clickable. */
@@ -79,14 +78,14 @@ export function TagPicker({
       <header className="space-y-1">
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Tags
-          <FieldHelp text={FIELD_HELP.section_tags} label="What goes in Tags?" />
+          <FieldHelp concept="section_tags" />
         </h2>
       </header>
 
       {conflictTags.length > 0 && (
         <div className="space-y-2">
           <span className={FORM_LABEL}>
-            Conflict <FieldHelp text={FIELD_HELP.conflict} label="What is the Conflict tag?" />{" "}
+            Conflict <FieldHelp concept="conflict" />{" "}
             {!requireConflict && <OptionalHint />}
           </span>
           <div className="flex flex-wrap gap-2">
@@ -106,7 +105,7 @@ export function TagPicker({
         <div className="space-y-2">
           <span className={FORM_LABEL}>
             Capture source{" "}
-            <FieldHelp text={FIELD_HELP.capture_source} label="What is the Capture source?" />{" "}
+            <FieldHelp concept="capture_source" />{" "}
             {!requireCaptureSource && <OptionalHint />}
           </span>
           <div className="flex flex-wrap gap-2">

@@ -6,7 +6,6 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { FilePreviewGrid } from "@/components/ui/FilePreviewGrid";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { BountyDetail } from "@/types";
 import { LockedHint } from "./LockedHint";
 
@@ -79,7 +78,7 @@ export function EvidenceUploader({
     <div className="space-y-1.5">
       <span className={FORM_LABEL}>
         Source media{" "}
-        <FieldHelp text={FIELD_HELP.source_media} label="What is the source media?" />
+        <FieldHelp concept="source_media" />
         {lockedMedia && <LockedHint />}
       </span>
       {control}

@@ -3,7 +3,6 @@
 import type { BountyDetail, TweetImportCoord } from "@/types";
 import { FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import { EvidenceUploader } from "./EvidenceUploader";
 
 interface LocationPickerProps {
@@ -43,7 +42,7 @@ export function LocationPicker({
       <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Location
-          <FieldHelp text={FIELD_HELP.section_location} label="What goes in Location?" />
+          <FieldHelp concept="section_location" />
         </h2>
       </header>
 

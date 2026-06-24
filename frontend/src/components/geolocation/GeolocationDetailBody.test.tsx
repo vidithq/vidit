@@ -82,10 +82,10 @@ describe("GeolocationDetailBody", () => {
       screen.getByRole("button", { name: "What are the coordinates?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the Event date?" })
+      screen.getByRole("button", { name: "What is the event date?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the Source?" })
+      screen.getByRole("button", { name: "What is the source?" })
     ).toBeInTheDocument();
   });
 
@@ -159,7 +159,7 @@ describe("GeolocationDetailBody", () => {
       screen.getByRole("button", { name: "What does the status mean?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is 'Detected from'?" })
+      screen.getByRole("button", { name: "What is 'detected from'?" })
     ).toBeInTheDocument();
   });
 

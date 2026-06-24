@@ -6,7 +6,6 @@ import {
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import { LockedHint } from "./LockedHint";
 
 /** Muted "optional" marker — required-by-default form convention. */
@@ -50,14 +49,14 @@ export function DetailsFields({
       <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Details
-          <FieldHelp text={FIELD_HELP.section_details} label="What goes in Details?" />
+          <FieldHelp concept="section_details" />
         </h2>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label htmlFor="event_date" className={FORM_LABEL}>
-            Event date <FieldHelp text={FIELD_HELP.event_date} label="What is the Event date?" />{" "}
+            Event date <FieldHelp concept="event_date" />{" "}
             {!eventDateRequired && <OptionalHint />}
           </label>
           <input
@@ -72,7 +71,7 @@ export function DetailsFields({
         <div className="space-y-1.5">
           <label htmlFor="source_date" className={FORM_LABEL}>
             Source date{" "}
-            <FieldHelp text={FIELD_HELP.source_date} label="What is the Source date?" />{" "}
+            <FieldHelp concept="source_date" />{" "}
             <OptionalHint />
           </label>
           <input
@@ -87,7 +86,7 @@ export function DetailsFields({
 
       <div className="space-y-1.5">
         <label htmlFor="source_url" className={FORM_LABEL}>
-          Source URL <FieldHelp text={FIELD_HELP.source_url} label="What is the Source URL?" />{" "}
+          Source URL <FieldHelp concept="source_url" />{" "}
           {lockedFromBounty && <LockedHint />}
         </label>
         <input

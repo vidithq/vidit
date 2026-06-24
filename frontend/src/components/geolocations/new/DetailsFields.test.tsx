@@ -23,13 +23,13 @@ describe("DetailsFields", () => {
     expect(screen.getByText("Source date")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the Event date?" })
+      screen.getByRole("button", { name: "What is the event date?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the Source date?" })
+      screen.getByRole("button", { name: "What is the source date?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the Source URL?" })
+      screen.getByRole("button", { name: "What is the source?" })
     ).toBeInTheDocument();
   });
 

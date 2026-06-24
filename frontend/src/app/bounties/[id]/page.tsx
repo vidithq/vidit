@@ -17,7 +17,7 @@ import SourceLabel from "@/components/ui/SourceLabel";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
-import { FIELD_HELP } from "@/lib/fieldHelp";
+import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import type { BountyDetail, BountyStatus } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
@@ -69,10 +69,19 @@ export default function BountyDetailPage() {
   const conflictTags = bounty.tags.filter((t) => t.category === "conflict");
   const captureTags = bounty.tags.filter((t) => t.category === "capture_source");
   const freeTags = bounty.tags.filter((t) => t.category === "free");
-  const tagRow = (name: string, tags: BountyDetail["tags"]) =>
+  const tagRow = (name: string, tags: BountyDetail["tags"], concept?: Concept) =>
     tags.length > 0 ? (
       <div className="flex justify-between items-start px-4 py-3">
-        <span className="text-sm text-neutral-500">{name}</span>
+        <span
+          className={
+            concept
+              ? "text-sm text-neutral-500 inline-flex items-center gap-1"
+              : "text-sm text-neutral-500"
+          }
+        >
+          {name}
+          {concept && <FieldHelp concept={concept} />}
+        </span>
         <div className="flex flex-wrap gap-1.5 justify-end">
           {tags.map((tag) => (
             <span key={tag.id} className={`text-xs px-2.5 py-0.5 rounded-full ${TAG_CHIP}`}>
@@ -151,8 +160,9 @@ export default function BountyDetailPage() {
       }
     >
         <div>
-          <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+          <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
             Media
+            <FieldHelp concept="source_media" />
           </h2>
           {bounty.media.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -200,14 +210,16 @@ export default function BountyDetailPage() {
             <div className="flex justify-between items-center px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
                 Status{" "}
-                <FieldHelp text={FIELD_HELP.bounty_status} label="What does the status mean?" />
+                <FieldHelp concept="bounty_status" />
               </span>
               <StatusBadge status={bounty.status} />
             </div>
             {/* The dates read as one block — event → source → posted. */}
             {bounty.event_date && (
               <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500">Event date</span>
+                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                  Event date <FieldHelp concept="event_date" />
+                </span>
                 <span className="text-sm text-neutral-200">
                   {formatDate(bounty.event_date)}
                 </span>
@@ -215,7 +227,9 @@ export default function BountyDetailPage() {
             )}
             {bounty.source_date && (
               <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500">Source date</span>
+                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                  Source date <FieldHelp concept="source_date" />
+                </span>
                 <span className="text-sm text-neutral-200">
                   {formatDate(bounty.source_date)}
                 </span>
@@ -230,7 +244,7 @@ export default function BountyDetailPage() {
             <div className="flex justify-between px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
                 Source{" "}
-                <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+                <FieldHelp concept="source_url" />
               </span>
               <SourceLabel
                 isDemo={bounty.is_demo}
@@ -240,8 +254,8 @@ export default function BountyDetailPage() {
                 className="text-sm ml-4"
               />
             </div>
-            {tagRow("Conflict", conflictTags)}
-            {tagRow("Capture source", captureTags)}
+            {tagRow("Conflict", conflictTags, "conflict")}
+            {tagRow("Capture source", captureTags, "capture_source")}
             {tagRow("Tags", freeTags)}
             {bounty.status === "open" && (
               <div className="flex justify-between items-start px-4 py-3">

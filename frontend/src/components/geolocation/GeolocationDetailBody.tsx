@@ -13,7 +13,7 @@ import DetectedBadge from "@/components/geolocation/DetectedBadge";
 import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
-import { FIELD_HELP } from "@/lib/fieldHelp";
+import type { Concept } from "@/lib/fieldHelp";
 
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
@@ -97,8 +97,9 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
         Media
+        <FieldHelp concept="source_media" />
       </h2>
       {geo.media.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
@@ -122,10 +123,13 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   const conflictTags = geo.tags.filter((t) => t.category === "conflict");
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  const tagRow = (name: string, tags: GeolocationDetail["tags"]) =>
+  const tagRow = (name: string, tags: GeolocationDetail["tags"], concept?: Concept) =>
     tags.length > 0 ? (
       <div className={rowStart}>
-        <span className={label}>{name}</span>
+        <span className={concept ? `${label} inline-flex items-center gap-1` : label}>
+          {name}
+          {concept && <FieldHelp concept={concept} />}
+        </span>
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
           {tags.map((tag) => (
             <span
@@ -150,7 +154,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
             Coordinates{" "}
-            <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
+            <FieldHelp concept="coordinates" />
           </span>
           <span className={`${value} font-mono text-xs`}>
             {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
@@ -160,14 +164,14 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       {geo.state === "detected" && (
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
-            Status <FieldHelp text={FIELD_HELP.status} label="What does the status mean?" />
+            Status <FieldHelp concept="status" />
           </span>
           <DetectedBadge state={geo.state} />
         </div>
       )}
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
-          Event date <FieldHelp text={FIELD_HELP.event_date} label="What is the Event date?" />
+          Event date <FieldHelp concept="event_date" />
         </span>
         <span className={value}>{formatDate(geo.event_date)}</span>
       </div>
@@ -175,7 +179,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
             Source date{" "}
-            <FieldHelp text={FIELD_HELP.source_date} label="What is the Source date?" />
+            <FieldHelp concept="source_date" />
           </span>
           <span className={value}>{formatDate(geo.source_date)}</span>
         </div>
@@ -187,7 +191,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       </div>
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
-          Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />
+          Source <FieldHelp concept="source_url" />
         </span>
         <SourceLabel
           isDemo={geo.is_demo}
@@ -203,7 +207,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
             Detected from{" "}
-            <FieldHelp text={FIELD_HELP.detected_from} label="What is 'Detected from'?" />
+            <FieldHelp concept="detected_from" />
           </span>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
               host (and shows "synthetic" for demo rows), so the two provenance
@@ -217,8 +221,8 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           />
         </div>
       )}
-      {tagRow("Conflict", conflictTags)}
-      {tagRow("Capture source", captureTags)}
+      {tagRow("Conflict", conflictTags, "conflict")}
+      {tagRow("Capture source", captureTags, "capture_source")}
       {tagRow("Tags", freeTags)}
       {/* Compact panel omits bounty-trace + author rows: the author is in
           the panel header, the trace belongs to the full page. */}
@@ -281,8 +285,9 @@ function ProofBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   if (compact) {
     return (
       <div className="pt-2 border-t border-neutral-800">
-        <h3 className="text-xs text-neutral-500 uppercase tracking-wider mb-1.5">
+        <h3 className="text-xs text-neutral-500 uppercase tracking-wider mb-1.5 inline-flex items-center gap-1.5">
           Proof
+          <FieldHelp concept="section_proof" />
         </h3>
         {body}
       </div>

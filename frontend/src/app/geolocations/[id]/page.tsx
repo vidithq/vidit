@@ -9,7 +9,6 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
@@ -66,8 +65,9 @@ export default function GeolocationPage() {
     >
         <GeolocationDetailBody geo={geo} variant="page">
           <div>
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
               Location
+              <FieldHelp concept="section_location" />
             </h2>
             {/* Map + coordinates are one module: the coords read as a Details-
                 style row fused to the bottom of the map (shared border, no gap),
@@ -88,7 +88,7 @@ export default function GeolocationPage() {
               <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900">
                 <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
                   Coordinates{" "}
-                  <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
+                  <FieldHelp concept="coordinates" />
                 </span>
                 <span className="text-sm text-neutral-200 font-mono">
                   {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}

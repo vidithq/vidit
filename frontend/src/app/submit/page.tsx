@@ -385,7 +385,7 @@ function SubmitForm() {
         {/* Title leads, mirroring the detail page where it's the heading. */}
         <div className="space-y-1.5">
           <label htmlFor="title" className={FORM_LABEL}>
-            Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
+            Title <FieldHelp concept="title" />
           </label>
           <input
             id="title"
@@ -509,7 +509,7 @@ function SubmitForm() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         title="Import from a tweet"
-        subtitle={FIELD_HELP.section_import}
+        subtitle={FIELD_HELP.section_import.text}
       >
         <TweetImportBanner
           onImported={applyTweetImport}

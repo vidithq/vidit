@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 
 import FieldHelp from "@/components/ui/FieldHelp";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 
 const ProofEditor = dynamic(
   () => import("@/components/editor/ProofEditor"),
@@ -34,7 +33,7 @@ export function ProofEditorPanel({
       <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Proof
-          <FieldHelp text={FIELD_HELP.section_proof} label="What goes in Proof?" />
+          <FieldHelp concept="section_proof" />
         </h2>
       </header>
 
