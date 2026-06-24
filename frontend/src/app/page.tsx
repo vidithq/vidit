@@ -90,7 +90,6 @@ const GITHUB_URL = "https://github.com/vidithq/vidit";
 // concrete artifact (e.g. the repo for "Open source launch").
 const ROADMAP: {
   version: string;
-  tag: string;
   current: boolean;
   title: string;
   body: string;
@@ -98,7 +97,6 @@ const ROADMAP: {
 }[] = [
   {
     version: "v0.3",
-    tag: "Shipped",
     current: false,
     title: "Open source launch",
     body: "Vidit is open source under AGPL-3.0 — the clearest answer to “closed / unknown tool”.",
@@ -106,21 +104,18 @@ const ROADMAP: {
   },
   {
     version: "v0.4",
-    tag: "Now",
     current: true,
     title: "Curated onboarding",
     body: "Read opens to everyone — the map and the archive go public. Analysts join by claiming a profile assembled from their own public geolocations on X, with no manual re-entry.",
   },
   {
     version: "v0.5",
-    tag: "Next",
     current: false,
     title: "Open beta",
     body: "Open self-registration: the invite-code gate comes down, behind a hardened moderation and legal stack.",
   },
   {
     version: "v1.0",
-    tag: "Later",
     current: false,
     title: "Public v1",
     body: "Catalogue density, deeper search and social features, and the closed-beta framing removed. The full release.",
@@ -201,11 +196,11 @@ export default function LandingPage() {
       <section className="mx-auto max-w-3xl px-5 pb-20">
         <div className="text-center">
           <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-            Where we&apos;re going
+            Roadmap
           </h2>
         </div>
         <ol className="mt-6 space-y-3">
-          {ROADMAP.map(({ version, tag, current, title, body, link }) => (
+          {ROADMAP.map(({ version, current, title, body, link }) => (
             <li
               key={title}
               className={`flex gap-4 rounded-lg border p-4 ${
@@ -215,17 +210,14 @@ export default function LandingPage() {
               }`}
             >
               <span
-                className={`shrink-0 self-start px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                className={`shrink-0 self-start px-2 py-0.5 rounded-full font-mono text-[11px] font-medium ${
                   current ? FILTER_CHIP_ACTIVE : "bg-neutral-800 text-neutral-500"
                 }`}
               >
-                {tag}
+                {version}
               </span>
               <div>
                 <h3 className="text-sm font-medium text-neutral-100">
-                  <span className="font-mono text-xs text-neutral-500">
-                    {version}
-                  </span>{" "}
                   {title}
                 </h3>
                 <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
