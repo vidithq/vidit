@@ -749,6 +749,8 @@ Full detail for one bounty.
   "title": "Footage from a strike, location unknown",
   "source_url": "https://t.me/channel/12345",
   "description": { "type": "doc", "content": [] },
+  "event_date": "2026-05-10",
+  "source_date": "2026-05-11",
   "status": "fulfilled",
   "created_at": "2026-05-12T09:42:00Z",
   "updated_at": "2026-05-12T09:42:00Z",
@@ -783,6 +785,8 @@ Post a bounty.
 | `title` | string | yes | Title; empty / whitespace-only rejected. Max 255 chars. |
 | `source_url` | string | yes | URL where the media was found. Max 2000 chars. |
 | `description` | string (JSON) | no | Serialized Tiptap document; sanitised server-side |
+| `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Optional — a bounty is an unfinished geolocation. |
+| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media. Optional. |
 | `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]` |
 | `files` | File[] | yes | At least one image or video. Capped at **12 files per submission**. |
 
@@ -795,7 +799,7 @@ Multipart parsing + JSON-shape checks live in the router; business rules + the S
 |------|------|
 | 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`, malformed `description` / `tag_ids` JSON) **or** a typed `{code, message}` business-rule branch: `media_required` (no files), `invalid_description` (sanitiser rejection), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`. |
 | 413 | Request body exceeds the platform body-size cap — same middleware + `max(max_video_size, 12 × max_image_size) + 10 MB` headroom as `POST /geolocations`. |
-| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), or **more than 12 files** (`too_many_files` typed envelope). |
+| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), malformed `event_date` / `source_date` (not a YYYY-MM-DD date), or **more than 12 files** (`too_many_files` typed envelope). |
 
 ---
 

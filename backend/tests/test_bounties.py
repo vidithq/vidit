@@ -522,6 +522,57 @@ def test_create_happy_path(db, author, free_tag):
     db.commit()
 
 
+def test_create_accepts_optional_dates(db, author):
+    """``event_date`` + ``source_date`` are optional on a bounty: supplied →
+    round-trip on the read model, omitted → null."""
+    with_dates = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "Dated bounty",
+            "source_url": "https://example.com/post/1",
+            "event_date": "2026-05-01",
+            "source_date": "2026-05-02",
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert with_dates.status_code == 201, with_dates.text
+    assert with_dates.json()["event_date"] == "2026-05-01"
+    assert with_dates.json()["source_date"] == "2026-05-02"
+
+    without = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={"title": "Undated bounty", "source_url": "https://example.com/post/2"},
+        files={"files": _tiny_jpeg()},
+    )
+    assert without.status_code == 201, without.text
+    assert without.json()["event_date"] is None
+    assert without.json()["source_date"] is None
+
+    for created in (with_dates.json(), without.json()):
+        bid = uuid.UUID(created["id"])
+        db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
+        db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_rejects_invalid_event_date(author):
+    """Garbage ``event_date`` → 422 before any S3 round-trip."""
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "x",
+            "source_url": "https://example.com/post/1",
+            "event_date": "not-a-date",
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert response.status_code == 422
+    assert "event_date" in response.json()["detail"].lower()
+
+
 def test_create_populates_sha256_on_media(db, author):
     """SHA-256 hash of the uploaded bytes lands on the row + read API.
 

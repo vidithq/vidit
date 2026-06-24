@@ -128,12 +128,17 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         </div>
       )}
       <div className={row}>
-        <span className={label}>Event date</span>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Event date <FieldHelp text={FIELD_HELP.event_date} label="What is the Event date?" />
+        </span>
         <span className={value}>{formatDate(geo.event_date)}</span>
       </div>
       {geo.source_date && (
         <div className={row}>
-          <span className={label}>Source date</span>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Source date{" "}
+            <FieldHelp text={FIELD_HELP.source_date} label="What is the Source date?" />
+          </span>
           <span className={value}>{formatDate(geo.source_date)}</span>
         </div>
       )}
@@ -148,7 +153,10 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           keeps the coordinate row. */}
       {compact && (
         <div className={row}>
-          <span className={label}>Coordinates</span>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Coordinates{" "}
+            <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
+          </span>
           <span className={`${value} font-mono text-xs`}>
             {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
           </span>

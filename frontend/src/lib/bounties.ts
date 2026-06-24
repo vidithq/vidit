@@ -26,6 +26,10 @@ export interface CreateBountyInput {
   title: string;
   source_url: string;
   description?: Record<string, unknown> | null;
+  /** Optional, ISO YYYY-MM-DD — when the event happened. */
+  event_date?: string;
+  /** Optional, ISO YYYY-MM-DD — when the source posted the media. */
+  source_date?: string;
   tag_ids?: string[];
   files: File[];
 }
@@ -36,6 +40,12 @@ export function createBounty(input: CreateBountyInput): Promise<BountyDetail> {
   formData.append("source_url", input.source_url);
   if (input.description) {
     formData.append("description", JSON.stringify(input.description));
+  }
+  if (input.event_date) {
+    formData.append("event_date", input.event_date);
+  }
+  if (input.source_date) {
+    formData.append("source_date", input.source_date);
   }
   if (input.tag_ids && input.tag_ids.length > 0) {
     formData.append("tag_ids", JSON.stringify(input.tag_ids));

@@ -175,7 +175,7 @@ function AuthorshipWarning({
       <div className="space-y-1">
         {state === "different" ? (
           <p>
-            Heads up — the tweet was posted by{" "}
+            Heads up: the tweet was posted by{" "}
             <span className="font-medium">@{tweetAuthor}</span>, but your
             linked X account is{" "}
             <span className="font-medium">@{linkedHandle}</span>. Only
@@ -184,7 +184,7 @@ function AuthorshipWarning({
           </p>
         ) : (
           <p>
-            Heads up — you haven&apos;t linked an X account to your
+            Heads up: you haven&apos;t linked an X account to your
             Vidit profile, so we can&apos;t check that this tweet is
             yours. Only publish work you authored yourself or have
             explicit permission to reproduce.
@@ -211,8 +211,8 @@ function AuthorshipNudgeNoLink() {
           className="text-orange-400 hover:text-orange-300 transition-colors underline-offset-2 hover:underline"
         >
           profile
-        </a>{" "}
-        — we&apos;ll flag a heads-up on import to make sure you have
+        </a>
+        . We&apos;ll flag a heads-up on import to make sure you have
         permission to publish the tweet.
       </span>
     </div>

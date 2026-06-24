@@ -25,6 +25,16 @@ import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
 type SubmitType = "geolocation" | "bounty";
 
+// Inline X logo — lucide ships none, and "Import from a tweet" reads clearer
+// with the source platform's mark than a generic import glyph.
+function XGlyph({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
 export default function SubmitPage() {
   // `useSearchParams` opts out of static prerender; Next requires the bailing
   // component under a Suspense boundary. Fallback is minimal — the inner form
@@ -130,7 +140,7 @@ function SubmitForm() {
       .then((b) => {
         if (b.status !== "open") {
           setBountyError(
-            `This bounty is ${b.status} — can't be fulfilled. Open the bounty page instead.`
+            `This bounty is ${b.status}, so it can't be fulfilled. Open the bounty page instead.`
           );
           return;
         }
@@ -167,6 +177,8 @@ function SubmitForm() {
       const created = await createBounty({
         title: title.trim(),
         source_url: sourceUrl.trim(),
+        event_date: eventDate || undefined,
+        source_date: sourceDate || undefined,
         tag_ids: selectedTagIds,
         files,
       });
@@ -210,8 +222,8 @@ function SubmitForm() {
     if (curatedTags.length === 0) {
       setError(
         curatedTagsError
-          ? "Couldn’t load the required Conflict and Capture source options — use Retry above, or reload the page."
-          : "Still loading the required tag options — give it a moment and try again."
+          ? "Couldn’t load the required Conflict and Capture source options. Use Retry above, or reload the page."
+          : "Still loading the required tag options. Give it a moment and try again."
       );
       return;
     }
@@ -318,32 +330,18 @@ function SubmitForm() {
       >
         @{bounty!.author.username}
       </Link>
-      . Title and tags are pre-filled from the bounty — refine them if needed.
+      . Title and tags are pre-filled from the bounty; refine them if needed.
       Source and media stay locked (that&apos;s the bounty&apos;s evidence). Add
       coordinates, an event date, and the proof body (cross-referenced satellite
       imagery). When you submit, the bounty is archived as fulfilled and the
       resulting geolocation traces back to it.
     </>
   ) : (
-    "Add a geolocation, or post a bounty for footage you couldn't place — pick below."
+    "Add a geolocation, or post a bounty for footage you couldn't place yet."
   );
 
   return (
-    <PageShell
-      title={pageTitle}
-      subtitle={subtitle}
-      actions={
-        !lockedFromBounty ? (
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-sm text-orange-400 hover:text-orange-300 hover:bg-neutral-800 transition-colors"
-          >
-            Import from tweet
-          </button>
-        ) : undefined
-      }
-    >
+    <PageShell title={pageTitle} subtitle={subtitle}>
       <form onSubmit={handleSubmit} className="space-y-6">
         {showToggle && (
           <div className="inline-flex rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
@@ -363,6 +361,21 @@ function SubmitForm() {
               </button>
             ))}
           </div>
+        )}
+
+        {/* Import pre-fills the geolocation form from a tweet — a shortcut, so
+            it sits at the top as its own affordance (with the source mark), not
+            a field. Geolocation-only: a bounty has no coordinates / proof to
+            pre-fill. */}
+        {showGeoFields && (
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-orange-500/30 bg-orange-500/5 text-sm text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/50 transition-colors"
+          >
+            <XGlyph size={13} />
+            Import from a tweet
+          </button>
         )}
 
         <p className="text-xs text-neutral-500">
@@ -420,7 +433,7 @@ function SubmitForm() {
           sourceDate={sourceDate}
           setSourceDate={setSourceDate}
           lockedFromBounty={lockedFromBounty}
-          showDates={showGeoFields}
+          eventDateRequired={showGeoFields}
         />
 
         {showGeoFields && curatedTagsError && (

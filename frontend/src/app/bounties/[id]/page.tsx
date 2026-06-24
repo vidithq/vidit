@@ -185,6 +185,29 @@ export default function BountyDetailPage() {
               </span>
               <StatusBadge status={bounty.status} />
             </div>
+            {/* The dates read as one block — event → source → posted. */}
+            {bounty.event_date && (
+              <div className="flex justify-between px-4 py-3">
+                <span className="text-sm text-neutral-500">Event date</span>
+                <span className="text-sm text-neutral-200">
+                  {formatDate(bounty.event_date)}
+                </span>
+              </div>
+            )}
+            {bounty.source_date && (
+              <div className="flex justify-between px-4 py-3">
+                <span className="text-sm text-neutral-500">Source date</span>
+                <span className="text-sm text-neutral-200">
+                  {formatDate(bounty.source_date)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-sm text-neutral-500">Posted</span>
+              <span className="text-sm text-neutral-200">
+                {formatDate(bounty.created_at)}
+              </span>
+            </div>
             <div className="flex justify-between px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
                 Source{" "}
@@ -197,12 +220,6 @@ export default function BountyDetailPage() {
                 maxWidthClass="max-w-[300px]"
                 className="text-sm ml-4"
               />
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-sm text-neutral-500">Posted</span>
-              <span className="text-sm text-neutral-200">
-                {formatDate(bounty.created_at)}
-              </span>
             </div>
             {bounty.tags.length > 0 && (
               <div className="flex justify-between items-start px-4 py-3">

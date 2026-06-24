@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import NoReturn
 
 from fastapi import (
@@ -154,6 +154,8 @@ def _serialize_detail(bounty: Bounty) -> BountyRead:
         title=bounty.title,
         source_url=bounty.source_url,
         description=bounty.description,
+        event_date=bounty.event_date,
+        source_date=bounty.source_date,
         status=bounty.status,
         created_at=bounty.created_at,
         updated_at=bounty.updated_at,
@@ -233,6 +235,10 @@ async def create_bounty(
     title: str = Form(..., min_length=1, max_length=255),
     source_url: str = Form(..., max_length=2000),
     description: str | None = Form(None),
+    # Optional dates — same loose ``str`` shape as the geolocation form,
+    # parsed below (not by Pydantic).
+    event_date: str | None = Form(None),
+    source_date: str | None = Form(None),
     tag_ids: str | None = Form(None),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
@@ -268,6 +274,25 @@ async def create_bounty(
     if not isinstance(parsed_tag_ids, list):
         raise HTTPException(status_code=400, detail="'tag_ids' must be a JSON array")
 
+    # Optional dates — empty / absent → None, 422 on garbage (same contract as
+    # the geolocation form's event_date).
+    parsed_event_date: date | None = None
+    if event_date:
+        try:
+            parsed_event_date = date.fromisoformat(event_date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail="event_date must be an ISO-8601 date (YYYY-MM-DD)"
+            ) from exc
+    parsed_source_date: date | None = None
+    if source_date:
+        try:
+            parsed_source_date = date.fromisoformat(source_date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail="source_date must be an ISO-8601 date (YYYY-MM-DD)"
+            ) from exc
+
     try:
         bounty = await bounties_service.create_with_evidence(
             db,
@@ -275,6 +300,8 @@ async def create_bounty(
             title=title,
             source_url=source_url,
             description_data=description_data,
+            event_date=parsed_event_date,
+            source_date=parsed_source_date,
             tag_ids=parsed_tag_ids,
             files=files,
             uploaded_ip=extract_client_ip(request),

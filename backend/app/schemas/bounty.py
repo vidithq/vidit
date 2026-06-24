@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -21,6 +21,10 @@ class BountyRead(BaseModel):
     title: str
     source_url: str
     description: dict[str, Any] | None
+    # Optional dates, mirroring a geolocation: when the event happened, and when
+    # the source posted the media. Null when the poster didn't supply them.
+    event_date: date | None = None
+    source_date: date | None = None
     status: str
     created_at: datetime
     updated_at: datetime

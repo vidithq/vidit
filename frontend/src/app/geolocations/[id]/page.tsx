@@ -8,6 +8,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
+import FieldHelp from "@/components/ui/FieldHelp";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
@@ -84,7 +86,10 @@ export default function GeolocationPage() {
                 />
               </div>
               <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900">
-                <span className="text-sm text-neutral-500">Coordinates</span>
+                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                  Coordinates{" "}
+                  <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
+                </span>
                 <span className="text-sm text-neutral-200 font-mono">
                   {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
                 </span>

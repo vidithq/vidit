@@ -61,10 +61,9 @@ describe("DetailsFields", () => {
     );
   });
 
-  it("hides the dates when showDates is false (bounty mode), keeping the source URL", () => {
-    render(<DetailsFields {...baseProps} showDates={false} />);
-    expect(screen.queryByText("Event date")).toBeNull();
-    expect(screen.queryByText("Source date")).toBeNull();
-    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toBeInTheDocument();
+  it("marks the event date optional too when eventDateRequired is false (bounty)", () => {
+    render(<DetailsFields {...baseProps} eventDateRequired={false} />);
+    // Both the event date and the source date now carry the optional marker.
+    expect(screen.getAllByText("optional")).toHaveLength(2);
   });
 });

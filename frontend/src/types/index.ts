@@ -202,6 +202,10 @@ export interface BountyDetail {
   title: string;
   source_url: string;
   description: Record<string, unknown> | null;
+  /** Optional, ISO YYYY-MM-DD. When the event happened / when the source
+   *  posted the media. Null when the poster didn't supply them. */
+  event_date: string | null;
+  source_date: string | null;
   status: BountyStatus;
   created_at: string;
   updated_at: string;
