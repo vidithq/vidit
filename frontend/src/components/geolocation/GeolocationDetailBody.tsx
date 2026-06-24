@@ -137,6 +137,11 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           <span className={value}>{formatDate(geo.source_date)}</span>
         </div>
       )}
+      {/* The three dates read as one block: event → source → submitted. */}
+      <div className={row}>
+        <span className={label}>Submitted date</span>
+        <span className={value}>{formatDate(geo.created_at)}</span>
+      </div>
       {/* Panel only: the full page shows the coordinates under the Location
           map instead (see ``geolocations/[id]``), so input (the form's
           Location section) and output read alike. The panel has no map, so it
@@ -200,10 +205,6 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           </div>
         </div>
       )}
-      <div className={row}>
-        <span className={label}>Submitted</span>
-        <span className={value}>{formatDate(geo.created_at)}</span>
-      </div>
       {/* Compact panel omits bounty-trace + author rows: the author is in
           the panel header, the trace belongs to the full page. */}
       {!compact && geo.originated_from_bounty && (
