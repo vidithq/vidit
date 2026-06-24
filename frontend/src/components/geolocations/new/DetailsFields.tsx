@@ -6,16 +6,8 @@ import {
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
+import { OptionalHint } from "@/components/ui/OptionalHint";
 import { LockedHint } from "./LockedHint";
-
-/** Muted "optional" marker — required-by-default form convention. */
-function OptionalHint() {
-  return (
-    <span className="ml-1 text-[10px] normal-case tracking-normal text-neutral-500">
-      optional
-    </span>
-  );
-}
 
 interface DetailsFieldsProps {
   sourceUrl: string;

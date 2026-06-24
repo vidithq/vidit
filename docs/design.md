@@ -229,12 +229,9 @@ Forms are **required by default**: a one-line "required unless marked optional" 
 
 [`FieldHelp`](../frontend/src/components/ui/FieldHelp.tsx) puts a `?` (`HelpCircle`) next to a field label, a **section heading**, or a detail row; it reveals a one-line explanation on hover / focus, pinned on click (touch devices don't hover), dismissed by outside-click or Escape (a real `role="tooltip"` in the DOM, not a CSS-only title). It is **neutral grey, not orange** — meta help, not a content action — the one sanctioned exception to "clickable ⇒ orange". Every `?` is `<FieldHelp concept="…" />` — one key, nothing else. The **concept registry** [`lib/fieldHelp.ts`](../frontend/src/lib/fieldHelp.ts) (`FIELD_HELP`) is the single home pairing each concept's tooltip `text` with its accessible `label` (wording mirrors [`data-model.md`](data-model.md)); change a concept there and it updates everywhere, with no per-call-site copy to keep in sync. The **same concepts render on the submit form and on the detail page / map panel** — source media, location, coordinates, event date, source date, source, conflict, capture source, proof (plus status / "detected from" on detected rows, and the detail's own submitted-date row) — so what explains a field while you fill it explains it when others read it, and the two surfaces can't drift apart. The tweet-import modal explains itself in its own subtitle rather than a `?`. Readers who already know the forms can hide every `?` at once via **Settings → Display** — a per-browser `localStorage` preference ([`helpPreference.ts`](../frontend/src/lib/helpPreference.ts) + [`useHelpHidden`](../frontend/src/hooks/useHelpHidden.ts)). The `?` is the single source of section help — sections carry no always-on subtitle — so with help hidden the form is just labels and fields (the intended power-user view).
 
-### Work-in-progress affordances
+### Status dots and badges
 
-For features visible to testers but not yet built:
-
-- [`WipBadge`](../frontend/src/components/ui/WipBadge.tsx) — small white-on-dark pill, default text `Coming soon`. Pass `children` to override (the sidebar nav uses `Soon` for compactness).
-- Sidebar nav items opt into a `wip` flag (`Soon` pill in expanded mode) and a separate `notify` flag (orange dot in collapsed mode for "new content awaits").
+- Sidebar nav items carry an optional `notify` flag — an orange dot at the icon corner for "new content awaits" (static today).
 - For inline placeholders next to author handles or in panel headers, prefer a dedicated atom like [`profile/TrustBadge.tsx`](../frontend/src/components/profile/TrustBadge.tsx).
 
 ## What we avoid

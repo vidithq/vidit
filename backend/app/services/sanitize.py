@@ -131,17 +131,23 @@ def extract_image_srcs(doc: Any) -> list[str]:
     return srcs
 
 
-def sanitize_tiptap_doc(doc: Any) -> dict[str, Any]:
+def sanitize_tiptap_doc(doc: Any, *, allow_images: bool = True) -> dict[str, Any]:
     """Validate a Tiptap document against the allowlist.
 
     Drops unknown nodes/marks/attrs. Strips images with unsafe src and
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
+
+    ``allow_images=False`` drops every image node. Bounty descriptions use
+    this: the bounty create path never adopts inline images into
+    ``proof_images`` rows (that table only has a ``geolocation_id``), so a
+    kept image would orphan and get reaped — a broken image in the stored
+    proof. Geolocations adopt their images, so they keep the default.
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")
     counter = [0]
-    sanitized = _sanitize_node(doc, depth=0, counter=counter)
+    sanitized = _sanitize_node(doc, depth=0, counter=counter, allow_images=allow_images)
     if sanitized is None:
         return {"type": "doc", "content": []}
     sanitized.setdefault("content", [])
@@ -169,7 +175,9 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     }
 
 
-def _sanitize_node(node: Any, *, depth: int, counter: list[int]) -> dict[str, Any] | None:
+def _sanitize_node(
+    node: Any, *, depth: int, counter: list[int], allow_images: bool
+) -> dict[str, Any] | None:
     if depth > _MAX_DEPTH:
         raise ValueError(f"Tiptap document exceeds max depth ({_MAX_DEPTH})")
     counter[0] += 1
@@ -180,6 +188,8 @@ def _sanitize_node(node: Any, *, depth: int, counter: list[int]) -> dict[str, An
         return None
     node_type = node.get("type")
     if not isinstance(node_type, str) or node_type not in _ALLOWED_NODES:
+        return None
+    if node_type == "image" and not allow_images:
         return None
 
     cleaned: dict[str, Any] = {"type": node_type}
@@ -208,7 +218,10 @@ def _sanitize_node(node: Any, *, depth: int, counter: list[int]) -> dict[str, An
         clean_content = [
             c
             for c in (
-                _sanitize_node(child, depth=depth + 1, counter=counter) for child in raw_content
+                _sanitize_node(
+                    child, depth=depth + 1, counter=counter, allow_images=allow_images
+                )
+                for child in raw_content
             )
             if c
         ]

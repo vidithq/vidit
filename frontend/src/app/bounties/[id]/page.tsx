@@ -305,8 +305,11 @@ export default function BountyDetailPage() {
 
         {bounty.description && (
           <div>
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
-              Description
+            {/* A bounty's "Proof" reuses the stored `description` doc — harmonised
+                with the geolocation detail's Proof section. */}
+            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
+              Proof
+              <FieldHelp concept="section_proof" />
             </h2>
             <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
               <div className="text-sm text-neutral-300 leading-relaxed">

@@ -113,6 +113,29 @@ def test_image_relative_url_passes():
     assert cleaned["content"][0]["attrs"]["src"] == "/uploads/x.png"
 
 
+def test_allow_images_false_drops_images_keeps_text():
+    """Bounty descriptions sanitise with allow_images=False: an otherwise-valid
+    image is dropped (it would orphan — no bounty_id on proof_images) while the
+    surrounding text survives."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Lead on the depot."}],
+            },
+            {"type": "image", "attrs": {"src": "/uploads/x.png"}},
+        ],
+    }
+    cleaned = sanitize_tiptap_doc(doc, allow_images=False)
+    assert cleaned["content"] == [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "Lead on the depot."}],
+        }
+    ]
+
+
 def test_data_url_image_dropped():
     doc = {
         "type": "doc",

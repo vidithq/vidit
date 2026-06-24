@@ -91,7 +91,10 @@ async def create_with_evidence(
 
     if description_data is not None:
         try:
-            description_data = sanitize_tiptap_doc(description_data)
+            # allow_images=False: a bounty's proof is image-free. Inline images
+            # would never be adopted into proof_images (no bounty_id there) and
+            # would orphan, so they're dropped rather than stored broken.
+            description_data = sanitize_tiptap_doc(description_data, allow_images=False)
         except ValueError as exc:
             raise InvalidDescriptionError(str(exc)) from exc
 

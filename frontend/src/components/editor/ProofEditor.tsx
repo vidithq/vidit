@@ -16,12 +16,18 @@ interface ProofEditorProps {
   // Tiptap reads it once at construction — pair with a ``key`` on the parent to
   // re-seed after mount.
   initialContent?: Record<string, unknown> | null;
+  // Drops the Image extension + upload button. A bounty's proof maps to
+  // `bounties.description`, and the bounty create path never adopts inline
+  // proof-images into `proof_images` rows (no `bounty_id` there), so an
+  // uploaded image would orphan and get reaped. Text + formatting only there.
+  allowImages?: boolean;
 }
 
 export default function ProofEditor({
   onChange,
   onUploadStateChange,
   initialContent,
+  allowImages = true,
 }: ProofEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -34,7 +40,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, Image],
+    extensions: allowImages ? [StarterKit, Image] : [StarterKit],
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {
@@ -115,22 +121,26 @@ export default function ProofEditor({
         >
           List
         </button>
-        <div className="w-px h-4 bg-neutral-700 mx-1" />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 disabled:opacity-50"
-        >
-          {uploading ? "Uploading…" : "+ Image"}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={handleImageUpload}
-          className="hidden"
-        />
+        {allowImages && (
+          <>
+            <div className="w-px h-4 bg-neutral-700 mx-1" />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {uploading ? "Uploading…" : "+ Image"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+          </>
+        )}
       </div>
 
       <EditorContent editor={editor} />

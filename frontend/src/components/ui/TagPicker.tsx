@@ -5,17 +5,8 @@ import type { Tag } from "@/types";
 import { NewTagInput } from "@/components/ui/NewTagInput";
 import { TagChip } from "@/components/ui/TagChip";
 import FieldHelp from "@/components/ui/FieldHelp";
+import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-
-/** Muted "optional" marker. The form convention is required-by-default — only
- *  the exceptions are marked. Neutral, not orange: a label hint isn't clickable. */
-function OptionalHint() {
-  return (
-    <span className="ml-1 text-[10px] normal-case tracking-normal text-neutral-500">
-      optional
-    </span>
-  );
-}
 
 interface TagPickerProps {
   /** Live tags (referenced by ≥1 geolocation) — source of the free-tag chips

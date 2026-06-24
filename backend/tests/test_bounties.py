@@ -26,6 +26,7 @@ What we lock in:
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, date, datetime
 
@@ -554,6 +555,47 @@ def test_create_accepts_optional_dates(db, author):
         bid = uuid.UUID(created["id"])
         db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
         db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_strips_inline_images_from_description(db, author):
+    """A bounty's proof is image-free: an inline image that would otherwise
+    pass sanitisation is dropped (it has no ``proof_images`` row to anchor it,
+    so it would orphan) while the surrounding text survives."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Lead on the depot."}],
+            },
+            {"type": "image", "attrs": {"src": "/uploads/x.png"}},
+        ],
+    }
+    response = client.post(
+        "/api/v1/bounties",
+        headers=login_as(client, author),
+        data={
+            "title": "Image in proof",
+            "source_url": "https://example.com/post/1",
+            "description": json.dumps(doc),
+        },
+        files={"files": _tiny_jpeg()},
+    )
+    assert response.status_code == 201, response.text
+    stored = response.json()["description"]
+    node_types = [node["type"] for node in stored["content"]]
+    assert "image" not in node_types
+    assert stored["content"] == [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "Lead on the depot."}],
+        }
+    ]
+
+    bid = uuid.UUID(response.json()["id"])
+    db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
+    db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
     db.commit()
 
 

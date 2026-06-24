@@ -75,7 +75,7 @@ export const FIELD_HELP = {
     label: "What goes in Tags?",
   },
   section_proof: {
-    text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it.",
+    text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a bounty it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
 } as const;

@@ -79,6 +79,13 @@ function SubmitForm() {
   // import (a source is often a Telegram link, not the imported tweet).
   const [sourceDate, setSourceDate] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
+  // Separate from the geolocation proof: a bounty's proof is the same idea but
+  // in progress (else it'd be a geolocation), optional, and stored on
+  // `bounties.description`. Kept apart so toggling submit type doesn't bleed one
+  // draft into the other.
+  const [bountyProof, setBountyProof] = useState<Record<string, unknown> | null>(
+    null
+  );
   const [files, setFiles] = useState<File[]>([]);
   // useState, not useApiResource: TagPicker appends newly created tags
   // via setTags, so the list is server-seeded but locally mutable.
@@ -176,6 +183,7 @@ function SubmitForm() {
       const created = await createBounty({
         title: title.trim(),
         source_url: sourceUrl.trim(),
+        description: bountyProof,
         event_date: eventDate || undefined,
         source_date: sourceDate || undefined,
         tag_ids: selectedTagIds,
@@ -448,13 +456,29 @@ function SubmitForm() {
           requireCaptureSource={showGeoFields}
         />
 
-        {showGeoFields && (
+        {showGeoFields ? (
           <ProofEditorPanel
+            key="geo-proof"
             importedFrom={importedFrom}
             importGen={importGen}
             proof={proof}
             onChange={setProof}
             onUploadStateChange={setProofImageUploading}
+          />
+        ) : (
+          // Same Proof section, harmonised: a bounty's proof is a geolocation
+          // proof still in progress (else it'd be a geolocation), so it's
+          // optional and image-free — the bounty create path doesn't adopt
+          // inline images, which would orphan. Stored as `description`. The
+          // distinct key remounts a fresh, correctly-configured editor on toggle.
+          <ProofEditorPanel
+            key="bounty-proof"
+            importedFrom={null}
+            importGen={0}
+            proof={bountyProof}
+            onChange={setBountyProof}
+            allowImages={false}
+            optional
           />
         )}
 
