@@ -556,6 +556,7 @@ Full detail for a single geolocation.
   "source_url": "https://t.me/channel/12345",
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
+  "source_date": "2026-03-14",
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
@@ -605,7 +606,8 @@ Create a geolocation.
 | `lat` | float | yes | Latitude (-90 to 90) |
 | `lng` | float | yes | Longitude (-180 to 180) |
 | `source_url` | string | yes | Original source URL — ignored when `bounty_id` is set (see below) |
-| `event_date` | string (YYYY-MM-DD) | yes | Event date |
+| `event_date` | string (YYYY-MM-DD) | yes | When the depicted event happened |
+| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media — distinct from `event_date` and the submission time. Omitted / empty → stored NULL. |
 | `proof` | string (JSON) | no | Serialized Tiptap document |
 | `tag_ids` | string (JSON array) | conditional | `["uuid1", "uuid2"]`. The fulfilling analyst's tag picks go on the geolocation — independent from the bounty's own tags. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
 | `bounty_id` | UUID | no | Fulfilment trace. See *Fulfilling a bounty* below. |
@@ -624,7 +626,7 @@ Create a geolocation.
 | 404 | `bounty_id` references an unknown / soft-deleted bounty |
 | 409 | `bounty_id` references a bounty that's no longer open (`fulfilled` or `closed`) |
 | 413 | Request body exceeds the platform body-size cap (`max(max_video_size, 12 × max_image_size) + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
-| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
+| 422 | Malformed input: `event_date` or `source_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
 
 ---
 

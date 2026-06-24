@@ -15,7 +15,7 @@ export const FORM_LABEL_COMPACT =
   "block text-[10px] uppercase tracking-wider text-neutral-500 mb-1";
 
 export const FORM_INPUT =
-  "w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 focus:outline-hidden focus:border-orange-500";
+  "w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-hidden focus:border-orange-500";
 
 // Compact input — dimmer, no focus ring, for display-leaning fields that read
 // as part of a data row (admin invite-code rows, profile trust-reason editor).

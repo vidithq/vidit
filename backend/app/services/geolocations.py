@@ -81,6 +81,7 @@ async def create_with_evidence(
     lng: float,
     source_url: str,
     event_date: date,
+    source_date: date | None = None,
     proof_data: dict | None,
     tag_ids: list,
     bounty_id: uuid.UUID | None,
@@ -175,6 +176,7 @@ async def create_with_evidence(
         # NULL. ``proof_data`` stays None for the inline-image adoption below.
         proof=proof_data if proof_data is not None else EMPTY_TIPTAP_DOC,
         event_date=event_date,
+        source_date=source_date,
         originated_from_bounty_id=bounty.id if bounty else None,
     )
 

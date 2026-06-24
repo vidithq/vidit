@@ -19,6 +19,8 @@ export const FIELD_HELP = {
     "The footage being located — not a map screenshot or an annotated export.",
   event_date:
     "When the depicted event happened (from the chyron or context) — not the post or the geolocation date.",
+  source_date:
+    "When the source posted the media (the Telegram / X post date). Not when the event happened, nor when you submitted it here.",
   status:
     "Validated: submitted or vouched for by a human. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
   bounty_status:

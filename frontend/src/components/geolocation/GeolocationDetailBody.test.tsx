@@ -12,6 +12,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     lat: 48.015883,
     lng: 37.802411,
     event_date: "2026-06-01",
+    source_date: null,
     is_demo: false,
     state: "validated",
     detected_from_url: null,
@@ -189,5 +190,19 @@ describe("GeolocationDetailBody", () => {
     );
     expect(screen.getByText("No media available")).toBeInTheDocument();
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
+  });
+
+  it("shows the Source date row only when set", () => {
+    const { rerender } = render(
+      <GeolocationDetailBody geo={geoFixture({ source_date: null })} variant="page" />
+    );
+    expect(screen.queryByText("Source date")).not.toBeInTheDocument();
+    rerender(
+      <GeolocationDetailBody
+        geo={geoFixture({ source_date: "2026-05-03" })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Source date")).toBeInTheDocument();
   });
 });

@@ -3,15 +3,18 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { getBounty } from "@/lib/bounties";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
 import type { BountyDetail, Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
+import FieldHelp from "@/components/ui/FieldHelp";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -51,6 +54,12 @@ function NewGeolocationForm() {
   const [lng, setLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [eventDate, setEventDate] = useState("");
+  // Optional: the date the source posted the media. Independent of the tweet
+  // import (a source is often a Telegram link, not the imported tweet).
+  const [sourceDate, setSourceDate] = useState("");
+  // Import is a shortcut, not a field — collapsed by default so it doesn't read
+  // as something to fill, and its no-X-link nudge stays hidden until opened.
+  const [showImport, setShowImport] = useState(false);
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   // useState, not useApiResource: TagPicker appends newly created tags
@@ -192,6 +201,9 @@ function NewGeolocationForm() {
       formData.append("lng", lngNum.toString());
       formData.append("source_url", sourceUrl);
       formData.append("event_date", eventDate);
+      if (sourceDate) {
+        formData.append("source_date", sourceDate);
+      }
       formData.append("proof", JSON.stringify(proof));
       if (selectedTagIds.length > 0) {
         formData.append("tag_ids", JSON.stringify(selectedTagIds));
@@ -276,16 +288,45 @@ function NewGeolocationForm() {
           <p className="text-xs text-neutral-500">
             All fields are required unless marked <span className="text-neutral-400">optional</span>.
           </p>
-          {/* Hidden in bounty-fulfilment mode: source URL + media are
-              locked there, so the import pre-fill has nowhere to land. */}
-          {!lockedFromBounty && (
-            <TweetImportBanner
-              onImported={applyTweetImport}
-              onClear={clearImportedTweet}
-              importedFrom={importedFrom}
-              linkedX={user?.external_links?.x ?? null}
+
+          {/* Title leads, mirroring the detail page where it's the heading.
+              Coordinates live in Location, dates + source in Details. */}
+          <div className="space-y-1.5">
+            <label htmlFor="title" className={FORM_LABEL}>
+              Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
+            </label>
+            <input
+              id="title"
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Strike on ammunition depot, Donetsk"
+              className={FORM_INPUT}
             />
-          )}
+          </div>
+
+          {/* Import is a shortcut, not a field — collapsed so it reads as an
+              action and its no-X-link nudge stays hidden until opened. Hidden
+              entirely in bounty-fulfilment mode (source + media are locked). */}
+          {!lockedFromBounty &&
+            (showImport ? (
+              <TweetImportBanner
+                onImported={applyTweetImport}
+                onClear={clearImportedTweet}
+                importedFrom={importedFrom}
+                linkedX={user?.external_links?.x ?? null}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="inline-flex items-center gap-1.5 text-sm text-orange-400 hover:text-orange-300 transition-colors"
+              >
+                <ChevronDown size={14} />
+                Import from a tweet to pre-fill
+              </button>
+            ))}
 
           {/* Form sections mirror the detail page's reading order
               (media → location → details → proof) so an analyst can map
@@ -306,12 +347,12 @@ function NewGeolocationForm() {
           />
 
           <DetailsFields
-            title={title}
-            setTitle={setTitle}
             sourceUrl={sourceUrl}
             setSourceUrl={setSourceUrl}
             eventDate={eventDate}
             setEventDate={setEventDate}
+            sourceDate={sourceDate}
+            setSourceDate={setSourceDate}
             lockedFromBounty={lockedFromBounty}
           />
 

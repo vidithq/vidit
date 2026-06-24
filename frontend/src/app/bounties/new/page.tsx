@@ -107,6 +107,23 @@ export default function NewBountyPage() {
           <p className="text-xs text-neutral-500">
             All fields are required unless marked <span className="text-neutral-400">optional</span>.
           </p>
+
+          {/* Title leads, mirroring the detail page where it's the heading. */}
+          <div className="space-y-1.5">
+            <label htmlFor="title" className={FORM_LABEL}>
+              Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
+            </label>
+            <input
+              id="title"
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Unidentified strike, residential block"
+              className={FORM_INPUT}
+            />
+          </div>
+
           {/* Sections mirror the bounty detail page's reading order
               (media → details) so what the author fills in maps to what
               readers see. */}
@@ -140,21 +157,6 @@ export default function NewBountyPage() {
                 <FieldHelp text={FIELD_HELP.section_details_bounty} label="What goes in Details?" />
               </h2>
             </header>
-
-            <div className="space-y-1.5">
-              <label htmlFor="title" className={FORM_LABEL}>
-                Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
-              </label>
-              <input
-                id="title"
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Unidentified strike, residential block"
-                className={FORM_INPUT}
-              />
-            </div>
 
             <div className="space-y-1.5">
               <label htmlFor="source_url" className={FORM_LABEL}>

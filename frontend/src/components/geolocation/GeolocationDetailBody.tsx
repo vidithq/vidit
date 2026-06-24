@@ -131,6 +131,12 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={label}>Event date</span>
         <span className={value}>{formatDate(geo.event_date)}</span>
       </div>
+      {geo.source_date && (
+        <div className={row}>
+          <span className={label}>Source date</span>
+          <span className={value}>{formatDate(geo.source_date)}</span>
+        </div>
+      )}
       {/* Panel only: the full page shows the coordinates under the Location
           map instead (see ``geolocations/[id]``), so input (the form's
           Location section) and output read alike. The panel has no map, so it
