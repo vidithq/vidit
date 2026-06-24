@@ -67,23 +67,29 @@ export default function GeolocationPage() {
             <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
               Location
             </h2>
-            <div className="h-64 rounded-lg overflow-hidden border border-neutral-700">
-              {/* Single-point map reads [id, lat, lng] + the detected flag
-                  (so the marker colours match the rest of the app); the two
-                  date slots are inert here, so pass empty strings. */}
-              <Map
-                points={[
-                  [geo.id, geo.lat, geo.lng, "", "", geo.state === "detected" ? 1 : 0],
-                ]}
-                center={{ lat: geo.lat, lng: geo.lng }}
-                zoom={12}
-              />
+            {/* Map + coordinates are one module: the coords read as a Details-
+                style row fused to the bottom of the map (shared border, no gap),
+                mirroring the submit form's Location section. */}
+            <div className="rounded-lg overflow-hidden border border-neutral-700">
+              <div className="h-64">
+                {/* Single-point map reads [id, lat, lng] + the detected flag
+                    (so the marker colours match the rest of the app); the two
+                    date slots are inert here, so pass empty strings. */}
+                <Map
+                  points={[
+                    [geo.id, geo.lat, geo.lng, "", "", geo.state === "detected" ? 1 : 0],
+                  ]}
+                  center={{ lat: geo.lat, lng: geo.lng }}
+                  zoom={12}
+                />
+              </div>
+              <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900">
+                <span className="text-sm text-neutral-500">Coordinates</span>
+                <span className="text-sm text-neutral-200 font-mono">
+                  {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+                </span>
+              </div>
             </div>
-            {/* Coordinates sit with the map (not in Details), mirroring the
-                submit form's Location section. */}
-            <p className="mt-2 font-mono text-xs text-neutral-400">
-              {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-            </p>
           </div>
         </GeolocationDetailBody>
     </PageShell>

@@ -7,5 +7,5 @@ import { redirect } from "next/navigation";
  * bookmarks keep working.
  */
 export default function NewBountyPage() {
-  redirect("/geolocations/new?type=bounty");
+  redirect("/submit?type=bounty");
 }

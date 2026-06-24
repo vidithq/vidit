@@ -51,7 +51,7 @@ export function authorshipState(
  * Hidden in bounty-fulfilment mode (source URL + media are locked to the
  * bounty, so a pre-fill has nothing to land in). The fetch + state population
  * live in the parent so the form keeps one source of truth per field — see
- * ``frontend/src/app/geolocations/new/page.tsx``.
+ * ``frontend/src/app/submit/page.tsx``.
  */
 export function TweetImportBanner({
   onImported,

@@ -66,7 +66,7 @@ export function RecentSubmissions({
             No geolocations submitted yet.
           </p>
           <Link
-            href="/geolocations/new"
+            href="/submit"
             className="inline-block text-xs text-orange-400 hover:underline"
           >
             Submit your first geolocation →

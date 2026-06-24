@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { LocationPicker } from "./LocationPicker";
 
 const baseProps = {
+  lockedMedia: null,
+  files: [],
+  setFiles: () => {},
   lat: "",
   setLat: () => {},
   lng: "",
@@ -13,9 +16,13 @@ const baseProps = {
 };
 
 describe("LocationPicker", () => {
-  it("renders the Location heading, both coordinate inputs, and the ? help", () => {
+  it("renders the Location heading, the merged source media + coordinates, and the ? help", () => {
     render(<LocationPicker {...baseProps} />);
     expect(screen.getByText("Location")).toBeInTheDocument();
+    // Source media is merged into this Location block.
+    expect(
+      screen.getByRole("button", { name: "What is the source media?" })
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Latitude")).toBeInTheDocument();
     expect(screen.getByLabelText("Longitude")).toBeInTheDocument();
     expect(

@@ -105,12 +105,10 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Globe,
     label: "Map",
     auth: true,
-    // Match exactly /geolocations/<id> (one segment) so sub-routes like
-    // /geolocations/<id>/edit don't inherit the Map highlight. ``/new`` is the
-    // Submit row's path and matches this shape, so exclude it or both light up.
-    activeFor: (p) =>
-      p === "/map" ||
-      (/^\/geolocations\/[^/]+$/.test(p) && p !== "/geolocations/new"),
+    // Match exactly /geolocations/<id> (one segment) so a geolocation detail
+    // keeps the Map highlight; sub-routes like /geolocations/<id>/edit don't.
+    // Submit lives at /submit now, so no carve-out is needed here.
+    activeFor: (p) => p === "/map" || /^\/geolocations\/[^/]+$/.test(p),
   },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search", auth: true },
@@ -119,11 +117,10 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Target,
     label: "Bounties",
     auth: true,
-    // No exclusion needed (unlike Map): Submit owns /geolocations/new, not
-    // /bounties/new, so every /bounties/* path is genuinely a Bounties page.
+    // Every /bounties/* path is a Bounties page (creation lives at /submit).
     activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
   },
-  { href: "/geolocations/new", icon: Plus, label: "Submit", auth: true },
+  { href: "/submit", icon: Plus, label: "Submit", auth: true },
   { href: "/about", icon: Info, label: "About" },
 ];
 

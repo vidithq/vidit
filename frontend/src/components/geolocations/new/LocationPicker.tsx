@@ -1,11 +1,16 @@
 "use client";
 
-import type { TweetImportCoord } from "@/types";
+import type { BountyDetail, TweetImportCoord } from "@/types";
 import { FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { FIELD_HELP } from "@/lib/fieldHelp";
+import { EvidenceUploader } from "./EvidenceUploader";
 
 interface LocationPickerProps {
+  // Source media (the footage establishing the location) lives in this block.
+  lockedMedia: BountyDetail["media"] | null;
+  files: File[];
+  setFiles: (files: File[]) => void;
   lat: string;
   setLat: (v: string) => void;
   lng: string;
@@ -15,10 +20,13 @@ interface LocationPickerProps {
   onSwapCandidate: (candidate: TweetImportCoord) => void;
 }
 
-/** The "Location" section — mirrors the detail page's Location block: the
- *  coordinates where the footage was filmed (+ swap chips from a tweet
- *  import). Title, source, and event date live in the Details section. */
+/** The "Location" section: the source media plus the coordinates where it was
+ *  filmed — the footage and the point it pins, together. Mirrors the detail
+ *  page's media + Location block. */
 export function LocationPicker({
+  lockedMedia,
+  files,
+  setFiles,
   lat,
   setLat,
   lng,
@@ -34,6 +42,8 @@ export function LocationPicker({
           <FieldHelp text={FIELD_HELP.coordinates} label="What coordinates do I enter?" />
         </h2>
       </header>
+
+      <EvidenceUploader lockedMedia={lockedMedia} files={files} setFiles={setFiles} />
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">

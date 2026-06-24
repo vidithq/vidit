@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
 
-// Ghost orange — mirrors the sidebar's icon shortcuts (subtle, hover-bg) so
-// share reads as a light affordance, not a primary CTA competing with the
-// content. Orange because it's clickable and sits on the geolocation surface.
+// Ghost orange, icon-only — mirrors the sidebar's icon shortcuts (square,
+// hover-bg) so share reads as a light affordance, not a primary CTA competing
+// with the content. The label lives in an sr-only span (+ a hover title), so
+// the buttons stay compact without losing their accessible name.
 const SHARE_BUTTON =
-  "inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-sm text-orange-400 hover:text-orange-300 hover:bg-neutral-800 transition-colors";
+  "inline-flex items-center justify-center size-8 rounded-md text-orange-400 hover:text-orange-300 hover:bg-neutral-800 transition-colors";
 
 interface ShareButtonsProps {
   id: string;
@@ -90,15 +91,23 @@ export default function ShareButtons({
   };
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <button type="button" onClick={onCopy} className={SHARE_BUTTON}>
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-        {/* aria-live: a bare button-label change isn't announced reliably. */}
-        <span aria-live="polite">{copied ? "Link copied" : "Copy link"}</span>
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onCopy}
+        className={SHARE_BUTTON}
+        title={copied ? "Link copied" : "Copy link"}
+      >
+        {copied ? <Check size={15} /> : <Copy size={15} />}
+        {/* sr-only name + aria-live: a bare icon needs an accessible label, and
+            a label change isn't announced reliably without the live region. */}
+        <span className="sr-only" aria-live="polite">
+          {copied ? "Link copied" : "Copy link"}
+        </span>
       </button>
-      <button type="button" onClick={onShareX} className={SHARE_BUTTON}>
-        <XLogo size={13} />
-        Share on X
+      <button type="button" onClick={onShareX} className={SHARE_BUTTON} title="Share on X">
+        <XLogo size={14} />
+        <span className="sr-only">Share on X</span>
       </button>
     </div>
   );
