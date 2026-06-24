@@ -88,7 +88,7 @@ export default function BountiesPage() {
             ))}
           </div>
           <Link
-            href="/bounties/new"
+            href="/geolocations/new?type=bounty"
             className={`whitespace-nowrap px-3 py-1.5 text-xs rounded-md ${PRIMARY_BUTTON}`}
           >
             Post bounty
@@ -111,7 +111,10 @@ export default function BountiesPage() {
             {statusFilter === "all" && (
               <>
                 {" "}
-                <Link href="/bounties/new" className="text-orange-400 hover:underline">
+                <Link
+                  href="/geolocations/new?type=bounty"
+                  className="text-orange-400 hover:underline"
+                >
                   Post the first one
                 </Link>
                 .

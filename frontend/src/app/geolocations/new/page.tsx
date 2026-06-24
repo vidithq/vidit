@@ -3,19 +3,19 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
-import { getBounty } from "@/lib/bounties";
+import { createBounty, getBounty } from "@/lib/bounties";
 import { FORM_ERROR_BANNER, FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
 import type { BountyDetail, Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { Modal } from "@/components/ui/Modal";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { FIELD_HELP } from "@/lib/fieldHelp";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { EvidenceUploader } from "@/components/geolocations/new/EvidenceUploader";
@@ -23,10 +23,12 @@ import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
-export default function NewGeolocationPage() {
-  // `useSearchParams` opts out of static prerender; Next 14 requires the
-  // bailing component under a Suspense boundary. Fallback is minimal — the
-  // inner form shows its own "Loading…" once auth resolves.
+type SubmitType = "geolocation" | "bounty";
+
+export default function NewSubmissionPage() {
+  // `useSearchParams` opts out of static prerender; Next requires the bailing
+  // component under a Suspense boundary. Fallback is minimal — the inner form
+  // shows its own "Loading…" once auth resolves.
   return (
     <Suspense
       fallback={
@@ -35,12 +37,12 @@ export default function NewGeolocationPage() {
         </PageCenter>
       }
     >
-      <NewGeolocationForm />
+      <NewSubmissionForm />
     </Suspense>
   );
 }
 
-function NewGeolocationForm() {
+function NewSubmissionForm() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,6 +50,16 @@ function NewGeolocationForm() {
 
   const [bounty, setBounty] = useState<BountyDetail | null>(null);
   const [bountyError, setBountyError] = useState<string | null>(null);
+
+  // One page, two submission types. Fulfilling a bounty (``?bounty_id=``) is
+  // always a geolocation, so the toggle is hidden there; ``?type=bounty`` (the
+  // "Post bounty" entry) seeds bounty mode.
+  const [submitType, setSubmitType] = useState<SubmitType>(
+    !bountyIdParam && searchParams.get("type") === "bounty" ? "bounty" : "geolocation"
+  );
+  const isBounty = submitType === "bounty";
+
+  const [importOpen, setImportOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [lat, setLat] = useState("");
@@ -57,20 +69,16 @@ function NewGeolocationForm() {
   // Optional: the date the source posted the media. Independent of the tweet
   // import (a source is often a Telegram link, not the imported tweet).
   const [sourceDate, setSourceDate] = useState("");
-  // Import is a shortcut, not a field — collapsed by default so it doesn't read
-  // as something to fill, and its no-X-link nudge stays hidden until opened.
-  const [showImport, setShowImport] = useState(false);
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   // useState, not useApiResource: TagPicker appends newly created tags
   // via setTags, so the list is server-seeded but locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
-  // Required curated selectors (conflict + capture source). `?curated=true`
-  // includes the full taxonomy even for options no live geolocation
-  // references yet, else the first analyst to use one couldn't pick it and
-  // the required field would be unsatisfiable. A failed load (empty
-  // `curatedTags`) surfaces a recoverable `curatedTagsError` rather than a
-  // misleading "Select a conflict" with no chips.
+  // Required curated selectors (conflict + capture source) for geolocations.
+  // `?curated=true` includes the full taxonomy even for options no live
+  // geolocation references yet, else the first analyst to use one couldn't pick
+  // it and the required field would be unsatisfiable. A failed load (empty
+  // `curatedTags`) surfaces a recoverable `curatedTagsError`.
   const {
     data: curatedTagsData,
     error: curatedTagsError,
@@ -135,11 +143,42 @@ function NewGeolocationForm() {
   }, [bountyIdParam]);
 
   const lockedFromBounty = bounty !== null;
+  // The geolocation-only fields (coordinates, dates, proof, import) are hidden
+  // in bounty mode — a bounty is an unfinished geolocation.
+  const showGeoFields = !isBounty;
+  // No type toggle while fulfilling a bounty: that path is always a geolocation.
+  const showToggle = !bountyIdParam;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const submitBounty = async () => {
+    if (!title.trim()) {
+      setError("Title is required");
+      return;
+    }
+    if (!sourceUrl.trim()) {
+      setError("Source URL is required");
+      return;
+    }
+    if (files.length === 0) {
+      setError("At least one media file is required");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await createBounty({
+        title: title.trim(),
+        source_url: sourceUrl.trim(),
+        tag_ids: selectedTagIds,
+        files,
+      });
+      router.push(`/bounties/${created.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
+  const submitGeolocation = async () => {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
 
@@ -165,10 +204,9 @@ function NewGeolocationForm() {
       setError("An image is still uploading — please wait before submitting.");
       return;
     }
-    // Mirrors the server check in
-    // `routers/geolocations.py::create_geolocation`, inline so the analyst
-    // sees it before upload instead of as a 400. Empty taxonomy (failed
-    // load) gets a recoverable message, distinct from "didn't pick one".
+    // Mirrors the server check in `routers/geolocations.py`, inline so the
+    // analyst sees it before upload instead of as a 400. Empty taxonomy
+    // (failed load) gets a recoverable message, distinct from "didn't pick one".
     if (curatedTags.length === 0) {
       setError(
         curatedTagsError
@@ -227,6 +265,16 @@ function NewGeolocationForm() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (isBounty) {
+      await submitBounty();
+    } else {
+      await submitGeolocation();
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <PageCenter>
@@ -239,9 +287,7 @@ function NewGeolocationForm() {
   if (bountyIdParam && bountyError) {
     return (
       <PageShell title="Geolocate a bounty">
-        <div className={FORM_ERROR_BANNER}>
-          {bountyError}
-        </div>
+        <div className={FORM_ERROR_BANNER}>{bountyError}</div>
         <Link href="/bounties" className="text-sm text-orange-400 hover:underline">
           ← Back to bounties
         </Link>
@@ -259,84 +305,101 @@ function NewGeolocationForm() {
     );
   }
 
+  const pageTitle = lockedFromBounty
+    ? "Geolocate a bounty"
+    : isBounty
+      ? "Post a bounty"
+      : "Submit a geolocation";
+
+  const subtitle = lockedFromBounty ? (
+    <>
+      You&apos;re fulfilling a bounty posted by{" "}
+      <Link
+        href={`/profile/${bounty!.author.username}`}
+        className="text-orange-400 hover:underline"
+      >
+        @{bounty!.author.username}
+      </Link>
+      . Title and tags are pre-filled from the bounty — refine them if needed.
+      Source and media stay locked (that&apos;s the bounty&apos;s evidence). Add
+      coordinates, an event date, and the proof body (cross-referenced satellite
+      imagery). When you submit, the bounty is archived as fulfilled and the
+      resulting geolocation traces back to it.
+    </>
+  ) : isBounty ? (
+    "Post the media + source you couldn't geolocate. Another analyst picks it up and turns it into a full geolocation; the bounty is archived once they do."
+  ) : (
+    "Cross-reference source media against satellite imagery and annotate matching anchor points so other analysts can audit the call."
+  );
+
   return (
     <PageShell
-      title={lockedFromBounty ? "Geolocate a bounty" : "Submit"}
-      subtitle={
-        lockedFromBounty ? (
-          <>
-            You&apos;re fulfilling a bounty posted by{" "}
-            <Link
-              href={`/profile/${bounty!.author.username}`}
-              className="text-orange-400 hover:underline"
-            >
-              @{bounty!.author.username}
-            </Link>
-            . Title and tags are pre-filled from the bounty — refine them
-            if needed. Source and media stay locked (that&apos;s the
-            bounty&apos;s evidence). Add coordinates, an event date, and
-            the proof body (cross-referenced satellite imagery). When you
-            submit, the bounty is archived as fulfilled and the resulting
-            geolocation traces back to it.
-          </>
-        ) : (
-          "Cross-reference source media against satellite imagery and annotate matching anchor points so other analysts can audit the call."
-        )
+      title={pageTitle}
+      subtitle={subtitle}
+      actions={
+        showGeoFields && !lockedFromBounty ? (
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-sm text-orange-400 hover:text-orange-300 hover:bg-neutral-800 transition-colors"
+          >
+            Import from tweet
+          </button>
+        ) : undefined
       }
     >
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <p className="text-xs text-neutral-500">
-            All fields are required unless marked <span className="text-neutral-400">optional</span>.
-          </p>
-
-          {/* Title leads, mirroring the detail page where it's the heading.
-              Coordinates live in Location, dates + source in Details. */}
-          <div className="space-y-1.5">
-            <label htmlFor="title" className={FORM_LABEL}>
-              Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
-            </label>
-            <input
-              id="title"
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Strike on ammunition depot, Donetsk"
-              className={FORM_INPUT}
-            />
-          </div>
-
-          {/* Import is a shortcut, not a field — collapsed so it reads as an
-              action and its no-X-link nudge stays hidden until opened. Hidden
-              entirely in bounty-fulfilment mode (source + media are locked). */}
-          {!lockedFromBounty &&
-            (showImport ? (
-              <TweetImportBanner
-                onImported={applyTweetImport}
-                onClear={clearImportedTweet}
-                importedFrom={importedFrom}
-                linkedX={user?.external_links?.x ?? null}
-              />
-            ) : (
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {showToggle && (
+          <div className="inline-flex rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
+            {(["geolocation", "bounty"] as const).map((t) => (
               <button
+                key={t}
                 type="button"
-                onClick={() => setShowImport(true)}
-                className="inline-flex items-center gap-1.5 text-sm text-orange-400 hover:text-orange-300 transition-colors"
+                onClick={() => setSubmitType(t)}
+                aria-pressed={submitType === t}
+                className={`px-3 py-1 text-sm rounded transition-colors ${
+                  submitType === t
+                    ? FILTER_CHIP_ACTIVE
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
               >
-                <ChevronDown size={14} />
-                Import from a tweet to pre-fill
+                {t === "geolocation" ? "Geolocation" : "Bounty"}
               </button>
             ))}
+          </div>
+        )}
 
-          {/* Form sections mirror the detail page's reading order
-              (media → location → details → proof) so an analyst can map
-              "what I fill in" to "what readers see". */}
-          <EvidenceUploader
-            lockedMedia={bounty ? bounty.media : null}
-            files={files}
-            setFiles={setFiles}
+        <p className="text-xs text-neutral-500">
+          All fields are required unless marked{" "}
+          <span className="text-neutral-400">optional</span>.
+        </p>
+
+        {/* Title leads, mirroring the detail page where it's the heading. */}
+        <div className="space-y-1.5">
+          <label htmlFor="title" className={FORM_LABEL}>
+            Title <FieldHelp text={FIELD_HELP.title} label="What makes a good title?" />
+          </label>
+          <input
+            id="title"
+            type="text"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Strike on ammunition depot, Donetsk"
+            className={FORM_INPUT}
           />
+        </div>
 
+        {/* Sections mirror the detail page's reading order
+            (media → location → details → proof). Bounty mode drops the
+            geolocation-only sections (coordinates, dates, proof). */}
+        <EvidenceUploader
+          lockedMedia={bounty ? bounty.media : null}
+          files={files}
+          setFiles={setFiles}
+        />
+
+        {showGeoFields && (
           <LocationPicker
             lat={lat}
             setLat={setLat}
@@ -345,42 +408,44 @@ function NewGeolocationForm() {
             extraCoordCandidates={extraCoordCandidates}
             onSwapCandidate={swapCoordCandidate}
           />
+        )}
 
-          <DetailsFields
-            sourceUrl={sourceUrl}
-            setSourceUrl={setSourceUrl}
-            eventDate={eventDate}
-            setEventDate={setEventDate}
-            sourceDate={sourceDate}
-            setSourceDate={setSourceDate}
-            lockedFromBounty={lockedFromBounty}
-          />
+        <DetailsFields
+          sourceUrl={sourceUrl}
+          setSourceUrl={setSourceUrl}
+          eventDate={eventDate}
+          setEventDate={setEventDate}
+          sourceDate={sourceDate}
+          setSourceDate={setSourceDate}
+          lockedFromBounty={lockedFromBounty}
+          showDates={showGeoFields}
+        />
 
-          {curatedTagsError && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              <span>
-                Couldn&apos;t load the required Conflict and Capture source
-                options.
-              </span>
-              <button
-                type="button"
-                onClick={reloadCuratedTags}
-                className="shrink-0 font-medium text-orange-400 hover:underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          <TagPicker
-            tags={tags}
-            setTags={setTags}
-            curatedTags={curatedTags}
-            selectedTagIds={selectedTagIds}
-            setSelectedTagIds={setSelectedTagIds}
-            requireConflict
-            requireCaptureSource
-          />
+        {showGeoFields && curatedTagsError && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <span>
+              Couldn&apos;t load the required Conflict and Capture source options.
+            </span>
+            <button
+              type="button"
+              onClick={reloadCuratedTags}
+              className="shrink-0 font-medium text-orange-400 hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        <TagPicker
+          tags={tags}
+          setTags={setTags}
+          curatedTags={curatedTags}
+          selectedTagIds={selectedTagIds}
+          setSelectedTagIds={setSelectedTagIds}
+          requireConflict={showGeoFields}
+          requireCaptureSource={showGeoFields}
+        />
 
+        {showGeoFields && (
           <ProofEditorPanel
             importedFrom={importedFrom}
             importGen={importGen}
@@ -388,7 +453,9 @@ function NewGeolocationForm() {
             onChange={setProof}
             onUploadStateChange={setProofImageUploading}
           />
+        )}
 
+        {showGeoFields && (
           <DuplicateProbe
             lat={lat}
             lng={lng}
@@ -396,38 +463,58 @@ function NewGeolocationForm() {
             eventDate={eventDate}
             skip={lockedFromBounty}
           />
+        )}
 
-          {/* Errors render next to the button, not atop this long form, so
-              a failed submit is visible without scrolling up. Every `error`
-              here is set by handleSubmit, so the button is the right anchor. */}
-          {error && (
-            <div className={FORM_ERROR_BANNER} role="alert">
-              {error}
-            </div>
-          )}
+        {/* Errors render next to the button, not atop this long form, so a
+            failed submit is visible without scrolling up. */}
+        {error && (
+          <div className={FORM_ERROR_BANNER} role="alert">
+            {error}
+          </div>
+        )}
 
-          <div className="flex items-center gap-4">
-            <button
-              type="submit"
-              disabled={submitting || proofImageUploading}
-              className={`px-4 py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
-            >
-              {submitting
+        <div className="flex items-center gap-4">
+          <button
+            type="submit"
+            disabled={submitting || proofImageUploading}
+            className={`px-4 py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
+          >
+            {isBounty
+              ? submitting
+                ? "Posting…"
+                : "Post bounty"
+              : submitting
                 ? "Submitting…"
                 : proofImageUploading
                   ? "Image uploading…"
                   : lockedFromBounty
                     ? "Submit geolocation (archive bounty)"
                     : "Submit geolocation"}
-            </button>
-            <Link
-              href={lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
-              className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-            >
-              Cancel
-            </Link>
-          </div>
-        </form>
+          </button>
+          <Link
+            href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
+            className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+          >
+            Cancel
+          </Link>
+        </div>
+      </form>
+
+      {/* Import is a header action, not a field — a tweet pre-fills the whole
+          form, reviewed before submit. Modal keeps it out of the field flow. */}
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import from a tweet"
+        subtitle={FIELD_HELP.section_import}
+      >
+        <TweetImportBanner
+          onImported={applyTweetImport}
+          onClear={clearImportedTweet}
+          importedFrom={importedFrom}
+          linkedX={user?.external_links?.x ?? null}
+        />
+      </Modal>
     </PageShell>
   );
 }

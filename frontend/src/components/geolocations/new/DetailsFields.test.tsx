@@ -60,4 +60,11 @@ describe("DetailsFields", () => {
       "readonly"
     );
   });
+
+  it("hides the dates when showDates is false (bounty mode), keeping the source URL", () => {
+    render(<DetailsFields {...baseProps} showDates={false} />);
+    expect(screen.queryByText("Event date")).toBeNull();
+    expect(screen.queryByText("Source date")).toBeNull();
+    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toBeInTheDocument();
+  });
 });

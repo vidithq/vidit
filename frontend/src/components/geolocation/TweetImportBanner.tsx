@@ -5,8 +5,6 @@ import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import FieldHelp from "@/components/ui/FieldHelp";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -116,13 +114,7 @@ export function TweetImportBanner({
   const imported = importedFrom !== null;
   const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
-      <header>
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Paste a tweet URL
-          <FieldHelp text={FIELD_HELP.section_import} label="What does importing do?" />
-        </h2>
-      </header>
+    <div className="space-y-3">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {/* Pre-import nudge surfaces the no-linked-X signal before the analyst
           pastes; post-import, ``AuthorshipWarning`` covers it more pointedly. */}
@@ -153,7 +145,7 @@ export function TweetImportBanner({
           {imported ? "Imported!" : busy ? "Importing…" : "Import"}
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
