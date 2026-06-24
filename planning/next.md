@@ -124,9 +124,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. Priorities are relativ
 | P2 | Bounties | Claim TTL (7 days) + reaper | Once claim graphs accumulate. |
 | P2 | Bounties | Bounty-author marks a specific claimer's geo as "the answer" | Out of scope until queue ambiguity matters. |
 | P2 | UX | RBAC on tag creation (admin-only) | Once tags become curated taxonomy. |
-| P2 | UX | `/notifications` feed | Follows + report-status updates. |
-| P2 | UX | Landing roadmap: version labels + orange-cursor current, heading → "Roadmap" | On the landing roadmap ([`page.tsx`](../frontend/src/app/page.tsx)), drop the `Shipped` / `Now` / `Next` / `Later` status tags — label each card by its version (`v0.3` / `v0.4` / `v0.5` / `v1.0`) instead, and signal the *current* version with the orange marker rather than a `Now` tag. Rename the section heading **WHERE WE'RE GOING → Roadmap**. |
-| P2 | Seed | Real footage import flow (data-sharing agreement or CC-licensed sources) | Admin-page button reading a KMZ + posting. No standalone CLI. |
+| P2 | UX | `/notifications` feed | Follows + report-status updates. || P2 | Seed | Real footage import flow (data-sharing agreement or CC-licensed sources) | Admin-page button reading a KMZ + posting. No standalone CLI. |
 
 ---
 
