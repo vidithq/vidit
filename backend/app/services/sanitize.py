@@ -218,9 +218,7 @@ def _sanitize_node(
         clean_content = [
             c
             for c in (
-                _sanitize_node(
-                    child, depth=depth + 1, counter=counter, allow_images=allow_images
-                )
+                _sanitize_node(child, depth=depth + 1, counter=counter, allow_images=allow_images)
                 for child in raw_content
             )
             if c

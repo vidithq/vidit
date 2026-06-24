@@ -259,9 +259,7 @@ async def create_bounty(
     try:
         proof_data = json.loads(proof) if proof else None
     except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid JSON in 'proof': {exc.msg}"
-        ) from exc
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in 'proof': {exc.msg}") from exc
     if proof_data is not None and not isinstance(proof_data, dict):
         raise HTTPException(status_code=400, detail="'proof' must be a JSON object")
 
