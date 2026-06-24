@@ -34,8 +34,10 @@ export function EvidenceUploader({
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
       <header className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-200">
-          Source media {lockedMedia && <LockedHint />}
+        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
+          Source media
+          <FieldHelp text={FIELD_HELP.source_media} label="What is the source media?" />
+          {lockedMedia && <LockedHint />}
         </h2>
         <p className="text-xs text-neutral-500">
           {lockedMedia
@@ -74,7 +76,7 @@ export function EvidenceUploader({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label htmlFor="files" className={FORM_LABEL}>
-              Files <FieldHelp text={FIELD_HELP.source_media} label="What media to upload?" />
+              Files
             </label>
             <input
               id="files"

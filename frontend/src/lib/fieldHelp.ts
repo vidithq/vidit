@@ -25,4 +25,17 @@ export const FIELD_HELP = {
     "Open: waiting for an analyst to geolocate it. Fulfilled: a geolocation was submitted and the bounty archived. Closed: the author withdrew it.",
   detected_from:
     "The post this detection was imported from — its provenance, kept distinct from Source (the footage origin).",
+  // Section-level guidance (the `?` next to a section heading). The reader-
+  // facing sections mirror the detail page: import · source media · location ·
+  // details · tags · proof.
+  section_import:
+    "Paste a public tweet to pre-fill the form — title, source, date, media, and best-effort coordinates. You review everything before submitting.",
+  section_details:
+    "The headline facts: a factual title, when the event happened, and where the footage was first published.",
+  section_details_bounty:
+    "The headline facts: a factual title and where the footage was first published.",
+  section_tags:
+    "Conflict and capture source classify the event; add free tags so others can find it.",
+  section_proof:
+    "Your annotated cross-reference between the source media and satellite imagery — how the location was matched, so others can audit it.",
 } as const;

@@ -78,7 +78,10 @@ export function TagPicker({
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
       <header className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-200">Tags</h2>
+        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
+          Tags
+          <FieldHelp text={FIELD_HELP.section_tags} label="What goes in Tags?" />
+        </h2>
         <p className="text-xs text-neutral-500">{subtitle}</p>
       </header>
 

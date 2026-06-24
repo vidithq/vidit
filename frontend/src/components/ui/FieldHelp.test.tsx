@@ -1,7 +1,13 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import FieldHelp from "./FieldHelp";
+
+afterEach(() => {
+  // The hide preference lives in localStorage; reset it so one test's toggle
+  // can't leak into the next.
+  window.localStorage.clear();
+});
 
 describe("FieldHelp", () => {
   it("exposes a labelled help button and the explanation text", () => {
@@ -22,5 +28,12 @@ describe("FieldHelp", () => {
     expect(btn).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(btn);
     expect(btn).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("renders nothing when the user has hidden help (settings toggle)", () => {
+    window.localStorage.setItem("vidit:help-hidden", "1");
+    render(<FieldHelp text="help" label="Field help" />);
+    expect(screen.queryByRole("button", { name: "Field help" })).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });

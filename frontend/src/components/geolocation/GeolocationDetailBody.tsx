@@ -131,12 +131,18 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={label}>Event date</span>
         <span className={value}>{formatDate(geo.event_date)}</span>
       </div>
-      <div className={row}>
-        <span className={label}>Coordinates</span>
-        <span className={`${value} font-mono${compact ? " text-xs" : ""}`}>
-          {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-        </span>
-      </div>
+      {/* Panel only: the full page shows the coordinates under the Location
+          map instead (see ``geolocations/[id]``), so input (the form's
+          Location section) and output read alike. The panel has no map, so it
+          keeps the coordinate row. */}
+      {compact && (
+        <div className={row}>
+          <span className={label}>Coordinates</span>
+          <span className={`${value} font-mono text-xs`}>
+            {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+          </span>
+        </div>
+      )}
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
           Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />

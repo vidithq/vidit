@@ -79,6 +79,11 @@ export default function GeolocationPage() {
                 zoom={12}
               />
             </div>
+            {/* Coordinates sit with the map (not in Details), mirroring the
+                submit form's Location section. */}
+            <p className="mt-2 font-mono text-xs text-neutral-400">
+              {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+            </p>
           </div>
         </GeolocationDetailBody>
     </PageShell>

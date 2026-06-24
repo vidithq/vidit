@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 
+import { useHelpHidden } from "@/hooks/useHelpHidden";
+
 /**
  * A `?` help affordance next to a field label: surfaces a one-line explanation
  * on hover / focus, pinned on click (touch devices don't hover), closed by
@@ -26,6 +28,7 @@ export default function FieldHelp({
   const [pinned, setPinned] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
+  const hidden = useHelpHidden();
 
   useEffect(() => {
     if (!pinned) return;
@@ -44,6 +47,11 @@ export default function FieldHelp({
       document.removeEventListener("keydown", onKey);
     };
   }, [pinned]);
+
+  // Power-user opt-out: hide every `?` (toggle on the settings page). The
+  // section subtitles still carry the quick "what", so nothing essential is
+  // lost — this only removes the inline tooltips.
+  if (hidden) return null;
 
   return (
     <span

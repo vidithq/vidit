@@ -109,7 +109,10 @@ export default function NewBountyPage() {
               readers see. */}
           <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
             <header className="space-y-1">
-              <h2 className="text-sm font-medium text-neutral-200">Media</h2>
+              <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
+                Source media
+                <FieldHelp text={FIELD_HELP.source_media} label="What is the source media?" />
+              </h2>
               <p className="text-xs text-neutral-500">
                 Images (jpg, png, webp) or videos (mp4, webm). At least one
                 file — the evidence the next analyst will work from.
@@ -117,8 +120,7 @@ export default function NewBountyPage() {
             </header>
             <div className="space-y-1.5">
               <label htmlFor="files" className={FORM_LABEL}>
-                Files{" "}
-                <FieldHelp text={FIELD_HELP.source_media} label="What media to upload?" />
+                Files
               </label>
               <input
                 id="files"
@@ -134,7 +136,10 @@ export default function NewBountyPage() {
 
           <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
             <header className="space-y-1">
-              <h2 className="text-sm font-medium text-neutral-200">Details</h2>
+              <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
+                Details
+                <FieldHelp text={FIELD_HELP.section_details_bounty} label="What goes in Details?" />
+              </h2>
               <p className="text-xs text-neutral-500">
                 Title + the original source where the media was found.
               </p>

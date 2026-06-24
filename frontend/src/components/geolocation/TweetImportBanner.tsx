@@ -5,6 +5,8 @@ import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import FieldHelp from "@/components/ui/FieldHelp";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -116,8 +118,9 @@ export function TweetImportBanner({
   return (
     <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-4 space-y-3">
       <header className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-200">
+        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Paste a tweet URL
+          <FieldHelp text={FIELD_HELP.section_import} label="What does importing do?" />
         </h2>
         <p className="text-xs text-neutral-500">
           Pre-fills title, source, event date, media, and best-effort
