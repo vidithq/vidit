@@ -119,6 +119,20 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
+      {/* Panel only: coordinates lead the rows — on the full page they show
+          under the Location map, so they're prominent there too; the panel has
+          no map, so leading the rows keeps them first. */}
+      {compact && (
+        <div className={row}>
+          <span className={`${label} inline-flex items-center gap-1`}>
+            Coordinates{" "}
+            <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
+          </span>
+          <span className={`${value} font-mono text-xs`}>
+            {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+          </span>
+        </div>
+      )}
       {geo.state === "detected" && (
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
@@ -147,21 +161,6 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={label}>Submitted date</span>
         <span className={value}>{formatDate(geo.created_at)}</span>
       </div>
-      {/* Panel only: the full page shows the coordinates under the Location
-          map instead (see ``geolocations/[id]``), so input (the form's
-          Location section) and output read alike. The panel has no map, so it
-          keeps the coordinate row. */}
-      {compact && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Coordinates{" "}
-            <FieldHelp text={FIELD_HELP.coordinates} label="What are the coordinates?" />
-          </span>
-          <span className={`${value} font-mono text-xs`}>
-            {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-          </span>
-        </div>
-      )}
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
           Source <FieldHelp text={FIELD_HELP.source_url} label="What is the Source?" />

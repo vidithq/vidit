@@ -343,39 +343,39 @@ function SubmitForm() {
   return (
     <PageShell title={pageTitle} subtitle={subtitle}>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Toggle on the left, the import shortcut mirrored on the right at the
+            same height. Import is geolocation-only (a bounty has nothing to
+            pre-fill); inside `showToggle`, so it never shows in fulfilment. */}
         {showToggle && (
-          <div className="inline-flex rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
-            {(["geolocation", "bounty"] as const).map((t) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
+              {(["geolocation", "bounty"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setSubmitType(t)}
+                  aria-pressed={submitType === t}
+                  className={`px-3 py-1 text-sm rounded transition-colors ${
+                    submitType === t
+                      ? FILTER_CHIP_ACTIVE
+                      : "text-neutral-400 hover:text-neutral-200"
+                  }`}
+                >
+                  {t === "geolocation" ? "Geolocation" : "Bounty"}
+                </button>
+              ))}
+            </div>
+            {showGeoFields && (
               <button
-                key={t}
                 type="button"
-                onClick={() => setSubmitType(t)}
-                aria-pressed={submitType === t}
-                className={`px-3 py-1 text-sm rounded transition-colors ${
-                  submitType === t
-                    ? FILTER_CHIP_ACTIVE
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
+                onClick={() => setImportOpen(true)}
+                className="inline-flex h-9 items-center gap-2 px-3 rounded-md border border-orange-500/30 bg-orange-500/5 text-sm text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/50 transition-colors"
               >
-                {t === "geolocation" ? "Geolocation" : "Bounty"}
+                <XGlyph size={13} />
+                Import from a tweet
               </button>
-            ))}
+            )}
           </div>
-        )}
-
-        {/* Import pre-fills the geolocation form from a tweet — a shortcut, so
-            it sits at the top as its own affordance (with the source mark), not
-            a field. Geolocation-only: a bounty has no coordinates / proof to
-            pre-fill. */}
-        {showGeoFields && (
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-orange-500/30 bg-orange-500/5 text-sm text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/50 transition-colors"
-          >
-            <XGlyph size={13} />
-            Import from a tweet
-          </button>
         )}
 
         <p className="text-xs text-neutral-500">
