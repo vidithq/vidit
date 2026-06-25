@@ -19,7 +19,6 @@ Revisit when self-registration opens to anonymous traffic.
 
 from __future__ import annotations
 
-import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -35,6 +34,7 @@ from app.models.user import User
 from app.services.auth import (
     consume_invite_code,
     hash_password,
+    hash_token,
     maybe_promote_admin,
     validate_invite_code,
 )
@@ -87,10 +87,6 @@ class PendingMint:
 
     email: str
     raw_token: str
-
-
-def _hash(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _delete_expired(db: Session) -> int:
@@ -225,7 +221,7 @@ def create_pending_registration(
         username=username,
         password_hash=hash_password(password),
         invite_code_id=invite.id,
-        token_hash=_hash(raw_token),
+        token_hash=hash_token(raw_token),
         expires_at=datetime.now(UTC) + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES),
     )
     db.add(row)
@@ -274,7 +270,7 @@ def resend_pending_registration(
         return None
 
     raw_token = secrets.token_urlsafe(_TOKEN_BYTES)
-    row.token_hash = _hash(raw_token)
+    row.token_hash = hash_token(raw_token)
     row.expires_at = datetime.now(UTC) + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES)
     return PendingMint(email=row.email, raw_token=raw_token)
 
@@ -310,7 +306,7 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     stmt = (
         delete(PendingRegistration)
         .where(
-            PendingRegistration.token_hash == _hash(raw_token),
+            PendingRegistration.token_hash == hash_token(raw_token),
             PendingRegistration.expires_at >= now,
         )
         .returning(

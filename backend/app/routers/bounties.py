@@ -1,7 +1,6 @@
-import json
 import uuid
-from datetime import UTC, date, datetime
-from typing import NoReturn
+from datetime import UTC, datetime
+from typing import Any, NoReturn
 
 from fastapi import (
     APIRouter,
@@ -31,6 +30,12 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers._errors import raise_typed_error
+from app.routers._forms import (
+    parse_json_id_list,
+    parse_optional_iso_date,
+    parse_optional_json_object,
+)
 from app.schemas.bounty import BountyList, BountyRead
 from app.services import bounties as bounties_service
 from app.services import permissions
@@ -51,10 +56,7 @@ _BOUNTY_ERROR_STATUS: dict[str, int] = {
 
 
 def _raise_bounty_error(exc: EvidenceIntakeError) -> NoReturn:
-    raise HTTPException(
-        status_code=_BOUNTY_ERROR_STATUS.get(exc.code, 400),
-        detail={"code": exc.code, "message": str(exc)},
-    )
+    raise_typed_error(exc, _BOUNTY_ERROR_STATUS)
 
 
 # Detail page lists every claimer; the list endpoint card only needs a
@@ -169,6 +171,43 @@ def _serialize_detail(bounty: Bounty) -> BountyRead:
     )
 
 
+# Eager-loads the detail serializer reads: author, media, tags, the fulfilling
+# geolocation's author, and every claimer. Shared by the detail GET, the
+# post-create reload, and close — all return the full ``BountyRead``.
+_DETAIL_LOADS = (
+    joinedload(Bounty.author),
+    joinedload(Bounty.media),
+    joinedload(Bounty.tags),
+    joinedload(Bounty.fulfilled_by),
+    joinedload(Bounty.claims).joinedload(BountyClaim.user),
+)
+
+
+def _load_live_bounty(
+    db: Session,
+    bounty_id: uuid.UUID,
+    *,
+    options: tuple[Any, ...] = (),
+    for_update: bool = False,
+) -> Bounty:
+    """Load a non-deleted bounty by id, or 404.
+
+    ``options`` carries eager-loads (pass ``_DETAIL_LOADS`` for a full read);
+    ``for_update`` takes a row lock (``SELECT ... FOR UPDATE``) to serialise
+    against a concurrent fulfilment. The ``deleted_at IS NULL`` filter keeps
+    soft-deleted rows out of every caller.
+    """
+    query = db.query(Bounty).filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
+    if options:
+        query = query.options(*options)
+    if for_update:
+        query = query.with_for_update(of=Bounty)
+    bounty = query.first()
+    if bounty is None:
+        raise HTTPException(status_code=404, detail="Bounty not found")
+    return bounty
+
+
 @router.get("", response_model=list[BountyList])
 @limiter.limit("120/minute")
 def list_bounties(
@@ -207,20 +246,7 @@ def list_bounties(
 @router.get("/{bounty_id}", response_model=BountyRead)
 @limiter.limit("120/minute")
 def get_bounty(request: Request, bounty_id: uuid.UUID, db: Session = Depends(get_db)):
-    bounty = (
-        db.query(Bounty)
-        .options(
-            joinedload(Bounty.author),
-            joinedload(Bounty.media),
-            joinedload(Bounty.tags),
-            joinedload(Bounty.fulfilled_by),
-            joinedload(Bounty.claims).joinedload(BountyClaim.user),
-        )
-        .filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
-        .first()
-    )
-    if bounty is None:
-        raise HTTPException(status_code=404, detail="Bounty not found")
+    bounty = _load_live_bounty(db, bounty_id, options=_DETAIL_LOADS)
     return _serialize_detail(bounty)
 
 
@@ -256,40 +282,10 @@ async def create_bounty(
     if not source_url.strip():
         raise HTTPException(status_code=400, detail="source_url is required")
 
-    try:
-        proof_data = json.loads(proof) if proof else None
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in 'proof': {exc.msg}") from exc
-    if proof_data is not None and not isinstance(proof_data, dict):
-        raise HTTPException(status_code=400, detail="'proof' must be a JSON object")
-
-    try:
-        parsed_tag_ids = json.loads(tag_ids) if tag_ids else []
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid JSON in 'tag_ids': {exc.msg}"
-        ) from exc
-    if not isinstance(parsed_tag_ids, list):
-        raise HTTPException(status_code=400, detail="'tag_ids' must be a JSON array")
-
-    # Optional dates — empty / absent → None, 422 on garbage (same contract as
-    # the geolocation form's event_date).
-    parsed_event_date: date | None = None
-    if event_date:
-        try:
-            parsed_event_date = date.fromisoformat(event_date)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422, detail="event_date must be an ISO-8601 date (YYYY-MM-DD)"
-            ) from exc
-    parsed_source_date: date | None = None
-    if source_date:
-        try:
-            parsed_source_date = date.fromisoformat(source_date)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422, detail="source_date must be an ISO-8601 date (YYYY-MM-DD)"
-            ) from exc
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
+    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
 
     try:
         bounty = await bounties_service.create_with_evidence(
@@ -308,19 +304,10 @@ async def create_bounty(
     except EvidenceIntakeError as exc:
         _raise_bounty_error(exc)
 
-    # Reload with the relationships the detail serializer reads.
-    bounty = (
-        db.query(Bounty)
-        .options(
-            joinedload(Bounty.author),
-            joinedload(Bounty.media),
-            joinedload(Bounty.tags),
-            joinedload(Bounty.fulfilled_by),
-            joinedload(Bounty.claims).joinedload(BountyClaim.user),
-        )
-        .filter(Bounty.id == bounty.id)
-        .one()
-    )
+    # Reload with the relationships the detail serializer reads. Not via
+    # _load_live_bounty: the row was just created, so it can't be soft-deleted —
+    # .one() asserts that invariant instead of the helper's fetch-or-404.
+    bounty = db.query(Bounty).options(*_DETAIL_LOADS).filter(Bounty.id == bounty.id).one()
     return _serialize_detail(bounty)
 
 
@@ -342,14 +329,7 @@ def delete_bounty(
     # the lock both transactions read status=open at once and we'd end up
     # with a lost or fulfilled-but-deleted bounty depending on commit order;
     # with it, the loser observes the new state and 409s.
-    bounty = (
-        db.query(Bounty)
-        .filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
-        .with_for_update(of=Bounty)
-        .first()
-    )
-    if bounty is None:
-        raise HTTPException(status_code=404, detail="Bounty not found")
+    bounty = _load_live_bounty(db, bounty_id, for_update=True)
     permissions.ensure_author(bounty, current_user)
 
     # Deliberately no ``deleted_at.is_(None)`` filter: a soft-deleted
@@ -389,9 +369,7 @@ def claim_bounty(
     no-op, not a 409. Only open bounties accept new claims; once a
     bounty is fulfilled or closed, claiming is rejected with 409.
     """
-    bounty = db.query(Bounty).filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None)).first()
-    if bounty is None:
-        raise HTTPException(status_code=404, detail="Bounty not found")
+    bounty = _load_live_bounty(db, bounty_id)
     if bounty.status != STATUS_OPEN:
         raise HTTPException(
             status_code=409,
@@ -436,9 +414,7 @@ def unclaim_bounty(
     user-observable post-condition (caller not in the working set) is
     what we promise, not "exactly one row was deleted."
     """
-    bounty = db.query(Bounty).filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None)).first()
-    if bounty is None:
-        raise HTTPException(status_code=404, detail="Bounty not found")
+    bounty = _load_live_bounty(db, bounty_id)
 
     db.query(BountyClaim).filter(
         BountyClaim.bounty_id == bounty.id,
@@ -462,20 +438,7 @@ def close_bounty(
     on as an audit row showing the queue tried but didn't produce a
     geolocation.
     """
-    bounty = (
-        db.query(Bounty)
-        .options(
-            joinedload(Bounty.author),
-            joinedload(Bounty.media),
-            joinedload(Bounty.tags),
-            joinedload(Bounty.fulfilled_by),
-            joinedload(Bounty.claims).joinedload(BountyClaim.user),
-        )
-        .filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
-        .first()
-    )
-    if bounty is None:
-        raise HTTPException(status_code=404, detail="Bounty not found")
+    bounty = _load_live_bounty(db, bounty_id, options=_DETAIL_LOADS)
     permissions.ensure_author(bounty, current_user)
     if bounty.status != STATUS_OPEN:
         raise HTTPException(

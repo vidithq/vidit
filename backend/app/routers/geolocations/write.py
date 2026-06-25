@@ -1,9 +1,8 @@
 """Write endpoints — create a geolocation, and upload an inline proof image."""
 
-import json
 import logging
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -23,7 +22,13 @@ from app.models.bounty import Bounty
 from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.geolocations._common import _raise_geolocation_error
+from app.routers._forms import (
+    parse_iso_date,
+    parse_json_id_list,
+    parse_optional_iso_date,
+    parse_optional_json_object,
+)
+from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
 from app.schemas.geolocation import (
     GeolocationRead,
 )
@@ -190,24 +195,10 @@ async def create_geolocation(
     # value into ``Geolocation.event_date`` (Mapped[date]) would 500 at
     # flush, AFTER the S3 round-trips. 422 matches ``_parse_bbox`` /
     # ``_parse_filter_date`` so malformed-input rejections share a code.
-    try:
-        parsed_event_date = date.fromisoformat(event_date)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail="event_date must be an ISO-8601 date (YYYY-MM-DD)",
-        ) from exc
+    parsed_event_date = parse_iso_date(event_date, field="event_date")
 
     # Optional — empty string / absent → None. Same 422-on-garbage contract.
-    parsed_source_date: date | None = None
-    if source_date:
-        try:
-            parsed_source_date = date.fromisoformat(source_date)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail="source_date must be an ISO-8601 date (YYYY-MM-DD)",
-            ) from exc
+    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
 
     parsed_bounty_id: uuid.UUID | None = None
     if bounty_id:
@@ -216,21 +207,8 @@ async def create_geolocation(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="bounty_id must be a UUID") from exc
 
-    try:
-        proof_data = json.loads(proof) if proof else None
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in 'proof': {exc.msg}") from exc
-    if proof_data is not None and not isinstance(proof_data, dict):
-        raise HTTPException(status_code=400, detail="'proof' must be a JSON object")
-
-    try:
-        parsed_tag_ids = json.loads(tag_ids) if tag_ids else []
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid JSON in 'tag_ids': {exc.msg}"
-        ) from exc
-    if not isinstance(parsed_tag_ids, list):
-        raise HTTPException(status_code=400, detail="'tag_ids' must be a JSON array")
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
 
     try:
         geo = await geolocations_service.create_with_evidence(
@@ -264,26 +242,6 @@ async def create_geolocation(
             .first()
         )
 
-    return GeolocationRead(
-        id=geo.id,
-        title=geo.title,
-        lat=lat,
-        lng=lng,
-        source_url=geo.source_url,
-        proof=geo.proof,
-        event_date=geo.event_date,
-        source_date=geo.source_date,
-        created_at=geo.created_at,
-        updated_at=geo.updated_at,
-        is_demo=geo.is_demo,
-        state=geo.state,
-        detected_from_url=geo.detected_from_url,
-        author=geo.author,
-        media=geo.media,
-        tags=geo.tags,
-        # Pydantic ``from_attributes`` coerces the ``Bounty`` row into the
-        # nested schema at runtime; mypy doesn't follow it, so it sees
-        # ``Bounty | None`` where the schema declares
-        # ``_OriginatedFromBountyNested | None``.
-        originated_from_bounty=originated_from_bounty,  # type: ignore[arg-type]
+    return build_geolocation_read(
+        geo, lat=lat, lng=lng, originated_from_bounty=originated_from_bounty
     )

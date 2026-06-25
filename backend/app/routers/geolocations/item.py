@@ -19,7 +19,7 @@ from app.models.geolocation import Geolocation
 from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.geolocations._common import _raise_geolocation_error
+from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
 from app.schemas.geolocation import (
     GeolocationRead,
     GeolocationUpdate,
@@ -65,24 +65,8 @@ def _serialize_geolocation(db: Session, geo: Geolocation) -> GeolocationRead:
         .filter(Geolocation.id == geo.id)
         .one()
     )
-    return GeolocationRead(
-        id=geo.id,
-        title=geo.title,
-        lat=lat,
-        lng=lng,
-        source_url=geo.source_url,
-        proof=geo.proof,
-        event_date=geo.event_date,
-        source_date=geo.source_date,
-        created_at=geo.created_at,
-        updated_at=geo.updated_at,
-        is_demo=geo.is_demo,
-        state=geo.state,
-        detected_from_url=geo.detected_from_url,
-        author=geo.author,
-        media=geo.media,
-        tags=geo.tags,
-        originated_from_bounty=geo.originated_from_bounty,
+    return build_geolocation_read(
+        geo, lat=lat, lng=lng, originated_from_bounty=geo.originated_from_bounty
     )
 
 
@@ -108,25 +92,8 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         raise HTTPException(status_code=404, detail="Geolocation not found")
 
     geo, lat, lng = row
-
-    return GeolocationRead(
-        id=geo.id,
-        title=geo.title,
-        lat=lat,
-        lng=lng,
-        source_url=geo.source_url,
-        proof=geo.proof,
-        event_date=geo.event_date,
-        source_date=geo.source_date,
-        created_at=geo.created_at,
-        updated_at=geo.updated_at,
-        is_demo=geo.is_demo,
-        state=geo.state,
-        detected_from_url=geo.detected_from_url,
-        author=geo.author,
-        media=geo.media,
-        tags=geo.tags,
-        originated_from_bounty=geo.originated_from_bounty,
+    return build_geolocation_read(
+        geo, lat=lat, lng=lng, originated_from_bounty=geo.originated_from_bounty
     )
 
 
