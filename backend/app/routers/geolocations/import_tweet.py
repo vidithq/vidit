@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _scrub_log(value: str) -> str:
+    """Strip CR/LF before a user-supplied value enters a log line.
+
+    A crafted ``?u=`` / tweet URL carrying embedded newlines could otherwise
+    forge extra log entries (``py/log-injection``). Both the import and media
+    paths log the raw URL on failure, so every such interpolation goes through
+    this first.
+    """
+    return value.replace("\r", "").replace("\n", "")
+
+
 @router.post(
     "/import-from-tweet",
     response_model=TweetImportResponse,
@@ -67,7 +78,7 @@ def import_from_tweet(
         # Hide transport / schema-drift detail from the client (the frontend
         # shows a fixed "fill the form manually" banner on 502); log it so
         # the operator can spot a syndication-endpoint outage.
-        logger.warning("Tweet syndication fetch failed for %s: %s", body.url, exc)
+        logger.warning("Tweet syndication fetch failed for %s: %s", _scrub_log(body.url), exc)
         raise HTTPException(
             status_code=502, detail="Couldn't read tweet — fill the form manually"
         ) from exc
@@ -158,7 +169,11 @@ def import_from_tweet_media(
             u,
             timeout=15.0,
             headers={"User-Agent": "vidit-tweet-import/1.0"},
-            follow_redirects=True,
+            # Don't follow redirects: ``is_trusted_media_url`` only vetted the
+            # FIRST hop, so a trusted host answering 3xx → an internal target
+            # would slip past the allowlist (SSRF / open redirect). A redirecting
+            # media URL 502s below; the analyst falls back to the manual form.
+            follow_redirects=False,
         ) as upstream:
             if upstream.status_code == 404:
                 raise HTTPException(status_code=404, detail="Media not found")
@@ -170,7 +185,7 @@ def import_from_tweet_media(
                 logger.warning(
                     "Tweet media proxy got upstream %s for %s",
                     upstream.status_code,
-                    u,
+                    _scrub_log(u),
                 )
                 raise HTTPException(status_code=502, detail="Couldn't fetch media")
 
@@ -196,7 +211,7 @@ def import_from_tweet_media(
     except HTTPException:
         raise
     except httpx.HTTPError as exc:
-        logger.warning("Tweet media fetch failed for %s: %s", u, exc)
+        logger.warning("Tweet media fetch failed for %s: %s", _scrub_log(u), exc)
         raise HTTPException(status_code=502, detail="Couldn't fetch media") from exc
 
     return Response(

@@ -297,3 +297,39 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
     )
     assert response.status_code == 502
     assert response.json()["detail"] == "Media exceeded size cap"
+
+
+def test_media_proxy_does_not_follow_redirects(author, monkeypatch):
+    """SSRF guard: ``is_trusted_media_url`` only vets the first hop, so the proxy
+    must refuse to chase a 3xx to an unvetted host. Locks ``follow_redirects``
+    off so a revert can't silently reopen the bypass."""
+    import httpx
+
+    captured = {}
+
+    class _Ok:
+        status_code = 200
+        headers = {"content-type": "image/jpeg"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def iter_bytes(self):
+            yield b"x"
+
+    def _capture_stream(method, url, **kwargs):
+        captured.update(kwargs)
+        return _Ok()
+
+    monkeypatch.setattr(httpx, "stream", _capture_stream)
+
+    login_as(client, author)
+    response = client.get(
+        "/api/v1/geolocations/import-from-tweet/media",
+        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
+    )
+    assert response.status_code == 200
+    assert captured.get("follow_redirects") is False
