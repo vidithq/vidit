@@ -25,7 +25,6 @@ moving part (entropy, TTL, single-use-with-expiry, indexes); a ``purpose``
 column halves the migration + code surface with identical safety.
 """
 
-import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -37,14 +36,11 @@ from app.models.auth_token import (
     ALL_PURPOSES,
     AuthToken,
 )
+from app.services.auth import hash_token
 
 # 32 bytes = 256 bits of entropy → ~43 ASCII chars in the link;
 # comfortably above the 128-bit guess-resistance floor.
 _TOKEN_BYTES = 32
-
-
-def _hash(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def mint(
@@ -67,7 +63,7 @@ def mint(
     raw = secrets.token_urlsafe(_TOKEN_BYTES)
     row = AuthToken(
         user_id=user_id,
-        token_hash=_hash(raw),
+        token_hash=hash_token(raw),
         purpose=purpose,
         expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
     )
@@ -94,7 +90,7 @@ def consume(db: Session, raw_token: str, purpose: str) -> AuthToken | None:
     stmt = (
         update(AuthToken)
         .where(
-            AuthToken.token_hash == _hash(raw_token),
+            AuthToken.token_hash == hash_token(raw_token),
             AuthToken.purpose == purpose,
             AuthToken.consumed_at.is_(None),
             AuthToken.expires_at >= now,

@@ -32,6 +32,7 @@ from app.models.auth_event import (
 from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers._errors import raise_typed_error
 from app.schemas.auth import LoginRequest, RegisterRequest, RegisterResponse
 from app.schemas.recovery import (
     ChangePasswordRequest,
@@ -131,16 +132,8 @@ _REGISTRATION_ERROR_STATUS: dict[str, int] = {
 
 
 def _raise_registration_error(exc: registration.RegistrationError) -> NoReturn:
-    """Translate a typed registration error into a structured HTTP response.
-
-    ``detail`` is a ``{"code", "message"}`` dict so the frontend branches
-    on the stable ``code`` without prose substring-matching; ``message``
-    preserves the user-facing text for a generic renderer to show verbatim.
-    """
-    raise HTTPException(
-        status_code=_REGISTRATION_ERROR_STATUS.get(exc.code, 400),
-        detail={"code": exc.code, "message": str(exc)},
-    )
+    """Translate a typed registration error into a structured HTTP response."""
+    raise_typed_error(exc, _REGISTRATION_ERROR_STATUS)
 
 
 @router.post(

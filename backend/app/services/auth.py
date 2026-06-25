@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,17 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def hash_token(token: str) -> str:
+    """SHA-256 a single-use token for storage at rest.
+
+    Tokens are high-entropy random secrets (not user-chosen), so a fast hash
+    is enough — the point is that a read-only DB leak (logs, backups, snapshots)
+    hands over only digests, never working live tokens. No bcrypt: there's no
+    low-entropy password here to slow brute-forcing of.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # Pre-computed at import so /login always pays one bcrypt regardless of

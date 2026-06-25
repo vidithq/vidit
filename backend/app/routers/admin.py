@@ -8,6 +8,7 @@ from app.cache import points_cache
 from app.dependencies import get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers._errors import raise_typed_error
 from app.schemas.admin import (
     AdminGeolocationDeleteResponse,
     AdminInviteCodeCreate,
@@ -38,15 +39,8 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
 
 
 def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
-    """Translate a typed admin error into a structured HTTP response.
-
-    Same ``{"code", "message"}`` shape as the registration-error mapping
-    in routers/auth.py so the frontend's error renderer treats both alike.
-    """
-    raise HTTPException(
-        status_code=_ADMIN_ERROR_STATUS.get(exc.code, 400),
-        detail={"code": exc.code, "message": str(exc)},
-    )
+    """Translate a typed admin error into a structured HTTP response."""
+    raise_typed_error(exc, _ADMIN_ERROR_STATUS)
 
 
 @router.get("/me", response_model=AdminMeResponse)
