@@ -360,7 +360,7 @@ def test_points_cache_key_builder_is_separator_safe():
     via ``orjson`` before the hash, so colon-bearing inputs land in
     distinct keys.
     """
-    from app.routers.geolocations import _build_points_cache_key
+    from app.routers.geolocations.read import _build_points_cache_key
 
     colliding_a = _build_points_cache_key(
         conflict=["a:b"],
@@ -450,7 +450,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
     bucket needs the same guarantee — parametrised so a future refactor
     that sorts one but forgets another can't slip past CI.
     """
-    from app.routers.geolocations import _build_points_cache_key
+    from app.routers.geolocations.read import _build_points_cache_key
 
     buckets = ("conflict", "capture_source", "tag")
     forward = _build_points_cache_key(

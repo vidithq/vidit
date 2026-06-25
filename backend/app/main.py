@@ -130,7 +130,10 @@ async def add_hsts_header(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(bounties.router, prefix="/api/v1/bounties", tags=["bounties"])
-app.include_router(geolocations.router, prefix="/api/v1/geolocations", tags=["geolocations"])
+# geolocations ships several sub-routers (one per concern); mount each under the
+# shared prefix. Order is load-bearing — see ``routers/geolocations/__init__.py``.
+for _geo_router in geolocations.routers:
+    app.include_router(_geo_router, prefix="/api/v1/geolocations", tags=["geolocations"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])

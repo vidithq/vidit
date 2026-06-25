@@ -23,7 +23,7 @@ def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None, detections=None
     machine preview over the same cached tweet), so both are patched at the
     router module's binding to keep the test off the network.
     """
-    from app.routers import geolocations as geolocations_router
+    from app.routers.geolocations import import_tweet as geolocations_router
 
     def fake(url, *, client=None):
         if raises is not None:
@@ -215,7 +215,7 @@ def test_import_from_tweet_media_aborts_above_size_cap(author, monkeypatch):
     """
     import httpx
 
-    from app.routers import geolocations as geolocations_router
+    from app.routers.geolocations import import_tweet as geolocations_router
 
     cap = geolocations_router._MEDIA_PROXY_MAX_BYTES
     chunk_size = max(1, cap // 4)
@@ -271,7 +271,7 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
     the body stream (cheap pre-check)."""
     import httpx
 
-    from app.routers import geolocations as geolocations_router
+    from app.routers.geolocations import import_tweet as geolocations_router
 
     cap = geolocations_router._MEDIA_PROXY_MAX_BYTES
 
