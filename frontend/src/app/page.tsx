@@ -97,14 +97,14 @@ const ROADMAP: {
 }[] = [
   {
     version: "v0.3",
-    current: false,
+    current: true,
     title: "Open source launch",
     body: "Vidit is open source under AGPL-3.0 — the clearest answer to “closed / unknown tool”.",
     link: { href: GITHUB_URL, label: "View on GitHub" },
   },
   {
     version: "v0.4",
-    current: true,
+    current: false,
     title: "Curated onboarding",
     body: "Read opens to everyone — the map and the archive go public. Analysts join by claiming a profile assembled from their own public geolocations on X, with no manual re-entry.",
   },

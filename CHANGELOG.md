@@ -6,6 +6,13 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## v0.3.4 — 2026-06-25
+
+### Changed
+- **Landing roadmap: current marker on v0.3** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx)). Move the orange "current" highlight from `v0.4` to `v0.3`: the v0.3 series is what's live, while `v0.4` (curated onboarding) is still in progress, so highlighting it as current overstated where the project stands. ([#95](https://github.com/vidithq/vidit/pull/95))
+
+---
+
 ## v0.3.3 — 2026-06-25
 
 ### Changed
