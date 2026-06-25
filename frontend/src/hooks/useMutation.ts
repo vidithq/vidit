@@ -29,23 +29,24 @@ export function useMutation<R, A extends unknown[]>(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const run = useCallback(
-    async (...args: A): Promise<R | undefined> => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await fn(...args);
-        await options.onSuccess?.(result, ...args);
-        return result;
-      } catch (err) {
-        setError(options.onError?.(err) ?? errorMessage(err, options.fallback));
-        return undefined;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fn, options]
-  );
+  // A plain function, intentionally not memoized: it's only ever invoked from
+  // event handlers (never a dependency array), and the latest-ref trick that
+  // would let a `useCallback` keep a stable identity trips React Compiler's
+  // `react-hooks/refs` (no ref writes during render).
+  const run = async (...args: A): Promise<R | undefined> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fn(...args);
+      await options.onSuccess?.(result, ...args);
+      return result;
+    } catch (err) {
+      setError(options.onError?.(err) ?? errorMessage(err, options.fallback));
+      return undefined;
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const reset = useCallback(() => setError(null), []);
 

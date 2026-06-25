@@ -38,14 +38,15 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
       fallback: "Could not create tag.",
       onError: (e) => {
         // 409 = name already in the DB (case-sensitive). Other API errors
-        // surface their message; non-API throws fall back to `fallback`.
+        // surface their message; a non-API throw (e.g. a network TypeError)
+        // shows the fixed message, not a raw "Failed to fetch".
         if (e instanceof ApiError && e.status === 409) {
           return "That tag already exists.";
         }
         if (e instanceof ApiError) {
           return e.message;
         }
-        return undefined;
+        return "Could not create tag.";
       },
       onSuccess: (created) => {
         onCreated(created);

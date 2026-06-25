@@ -51,15 +51,23 @@ export default function BountyDetailPage() {
     fallback: "Close failed",
     onSuccess: () => refetch(),
   });
+  // `deleted` stays true through the post-delete navigation so the actions
+  // don't re-enable in the unmount window (the row is gone; a second click
+  // would 404). The old handler left its pending flag set instead of a finally.
+  const [deleted, setDeleted] = useState(false);
   const deleteMutation = useMutation(() => deleteBounty(bounty!.id), {
     fallback: "Delete failed",
-    onSuccess: () => router.push("/bounties"),
+    onSuccess: () => {
+      setDeleted(true);
+      router.push("/bounties");
+    },
   });
 
   const actionPending =
     toggleClaimMutation.loading ||
     closeMutation.loading ||
-    deleteMutation.loading;
+    deleteMutation.loading ||
+    deleted;
   const actionError =
     toggleClaimMutation.error ?? closeMutation.error ?? deleteMutation.error;
 
