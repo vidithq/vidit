@@ -6,6 +6,13 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## Unreleased
+
+### Added
+- **Owner review flow over machine `detected` geolocations — edit / validate / reject** ([`backend/app/routers/geolocations.py`](backend/app/routers/geolocations.py), [`backend/app/services/geolocations.py`](backend/app/services/geolocations.py), [`backend/app/schemas/geolocation.py`](backend/app/schemas/geolocation.py), [`backend/tests/test_geolocations.py`](backend/tests/test_geolocations.py), [`docs/api.md`](docs/api.md), [`docs/data-model.md`](docs/data-model.md), [`planning/next.md`](planning/next.md)). A machine `detected` row was visible on every surface but had no way to be completed or vouched for — the geolocations router carried only create / `import-from-tweet` / delete, no `PUT` / `PATCH`. Three owner-only, state-gated endpoints close that gap. **`PATCH /geolocations/{id}`** edits a `detected` row (title, coordinate — either axis patchable alone, event / source date, proof, tags; `source_url`, source media, `detected_from_url` and `state` are immutable and carry no field, so they can't be swapped; partial update, with `source_date: null` clearing it). **`POST /geolocations/{id}/validate`** transitions `detected → validated` and **freezes** the row, blocked until the row carries a human submit's evidence floor — at least one media and a `conflict` + `capture_source` tag (enforced here, not at creation, because machine rows are born tagless). **`POST /geolocations/{id}/reject`** **soft-deletes** the detection so a later re-import recreates it fresh (the assemble step's `recreate` verdict matches a soft-deleted pair), distinct from the hard `DELETE`. A `validated` row is frozen: all three 409 off `detected`. The curated-tag floor is extracted (`_require_submission_tags`) so the create and validate paths share one rule. 26 new tests cover the state × ownership × soft-delete matrix, the validate evidence gate, the post-validate freeze, and points-cache invalidation; `ruff` / `mypy` / `pytest` (632) green. The owner review-queue UI consumes these next. ([#96](https://github.com/vidithq/vidit/pull/96))
+
+---
+
 ## v0.3.4 — 2026-06-25
 
 ### Changed

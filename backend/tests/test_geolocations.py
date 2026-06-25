@@ -39,7 +39,7 @@ from shapely.geometry import Point
 from app.cache import points_cache
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
@@ -124,19 +124,32 @@ def _make_geo(
     event_date: date | None = None,
     deleted: bool = False,
     tags: list[Tag] | None = None,
+    state: str | None = None,
+    detected_from_url: str | None = None,
+    source_url: str = "https://example.com/source",
+    with_media: bool = False,
 ) -> Geolocation:
     geo = Geolocation(
         author_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
-        source_url="https://example.com/source",
+        source_url=source_url,
         event_date=event_date or date(2026, 5, 1),
     )
+    if state is not None:
+        geo.state = state
+    if detected_from_url is not None:
+        geo.detected_from_url = detected_from_url
     if deleted:
         geo.deleted_at = datetime.now(UTC)
     if tags:
         geo.tags = tags
     db.add(geo)
+    db.flush()
+    if with_media:
+        from app.models.media import Media
+
+        db.add(Media(geolocation_id=geo.id, storage_url="s3://x/m.jpg", media_type="image"))
     db.commit()
     db.refresh(geo)
     return geo
@@ -1893,3 +1906,329 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
     )
     assert response.status_code == 502
     assert response.json()["detail"] == "Media exceeded size cap"
+
+
+# ── Owner review flow: PATCH edit / POST validate / POST reject ────────────
+# All three are owner-only and state-gated to ``detected``; a ``validated``
+# row is frozen. The detected → validated freeze and the soft-delete-then-
+# re-import recreate seam (test_detection.py::
+# test_idempotency_recreates_soft_deleted_pair) are what these lock in.
+
+
+def _detected(db, author, **kwargs):
+    """A machine ``detected`` row — born tagless unless ``tags`` is passed."""
+    return _make_geo(
+        db,
+        author=author,
+        state=STATE_DETECTED,
+        detected_from_url="https://x.com/a/status/1",
+        source_url="https://x.com/a/status/1",
+        **kwargs,
+    )
+
+
+# ── PATCH /geolocations/{id} — edit ────────────────────────────────────────
+
+
+def test_update_requires_authentication(db, author):
+    geo = _detected(db, author)
+    response = client.patch(f"/api/v1/geolocations/{geo.id}", json={"title": "x"})
+    assert response.status_code == 401
+
+
+def test_update_returns_404_for_unknown_id(author):
+    response = client.patch(
+        f"/api/v1/geolocations/{uuid.uuid4()}",
+        json={"title": "x"},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 404
+
+
+def test_update_returns_404_for_soft_deleted(db, author):
+    geo = _detected(db, author, deleted=True)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"title": "x"},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 404
+
+
+def test_update_returns_403_when_not_author(db, author, second_user):
+    geo = _detected(db, author)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"title": "x"},
+        headers=login_as(client, second_user),
+    )
+    assert response.status_code == 403
+
+
+def test_update_rejects_validated_row(db, author):
+    """A validated row is frozen — edits 409 with the invalid_state code."""
+    geo = _make_geo(db, author=author)  # default state = validated
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"title": "nope"},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state"
+
+
+def test_update_edits_detected_fields(db, author, conflict_tag, capture_source_tag):
+    geo = _detected(db, author)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={
+            "title": "Completed title",
+            "lat": 50.25,
+            "lng": 30.5,
+            "event_date": "2026-07-01",
+            "source_date": "2026-06-30",
+            "tag_ids": [str(conflict_tag.id), str(capture_source_tag.id)],
+        },
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Completed title"
+    assert body["lat"] == 50.25
+    assert body["lng"] == 30.5
+    assert body["event_date"] == "2026-07-01"
+    assert body["source_date"] == "2026-06-30"
+    assert {t["id"] for t in body["tags"]} == {str(conflict_tag.id), str(capture_source_tag.id)}
+    # Stays detected — edit completes the row, validate is the separate step.
+    assert body["state"] == "detected"
+
+    db.expire_all()
+    refreshed = db.query(Geolocation).filter(Geolocation.id == geo.id).one()
+    assert refreshed.title == "Completed title"
+
+
+def test_update_ignores_immutable_fields(db, author):
+    """source_url / detected_from_url / state carry no field on the body, so a
+    caller sending them is silently ignored, not honoured."""
+    geo = _detected(db, author)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={
+            "title": "Edited",
+            "source_url": "https://evil.example/swap",
+            "detected_from_url": "https://evil.example/swap",
+            "state": "validated",
+        },
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Edited"
+    assert body["source_url"] == "https://x.com/a/status/1"
+    assert body["detected_from_url"] == "https://x.com/a/status/1"
+    assert body["state"] == "detected"
+
+
+def test_update_partial_coordinate_keeps_other_axis(db, author):
+    """A lat-only edit preserves the existing lng (and vice-versa)."""
+    geo = _detected(db, author, lat=48.5, lng=34.5)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"lat": 49.9},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["lat"] == 49.9
+    assert body["lng"] == 34.5
+
+
+def test_update_clears_source_date_with_null(db, author):
+    geo = _detected(db, author)
+    geo.source_date = date(2026, 6, 1)
+    db.commit()
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"source_date": None},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 200
+    assert response.json()["source_date"] is None
+
+
+def test_update_rejects_out_of_range_coordinate(db, author):
+    geo = _detected(db, author)
+    response = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"lat": 200.0},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_coordinates"
+
+
+def test_update_invalidates_points_cache(db, author):
+    geo = _detected(db, author)
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "MISS"
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "HIT"
+    client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"title": "Edited"},
+        headers=login_as(client, author),
+    )
+    after = client.get("/api/v1/geolocations/points")
+    assert after.headers.get("x-cache") == "MISS"
+
+
+# ── POST /geolocations/{id}/validate ───────────────────────────────────────
+
+
+def test_validate_requires_authentication(db, author):
+    geo = _detected(db, author)
+    response = client.post(f"/api/v1/geolocations/{geo.id}/validate")
+    assert response.status_code == 401
+
+
+def test_validate_returns_404_for_soft_deleted(db, author):
+    geo = _detected(db, author, deleted=True)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 404
+
+
+def test_validate_returns_403_when_not_author(db, author, second_user):
+    geo = _detected(db, author, with_media=True)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, second_user)
+    )
+    assert response.status_code == 403
+
+
+def test_validate_rejects_already_validated(db, author):
+    geo = _make_geo(db, author=author)  # already validated
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state"
+
+
+def test_validate_blocked_without_media(db, author, conflict_tag, capture_source_tag):
+    geo = _detected(db, author, tags=[conflict_tag, capture_source_tag], with_media=False)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "media_required"
+
+
+def test_validate_blocked_without_required_tags(db, author):
+    """A detected row is born tagless; validate enforces the conflict +
+    capture_source floor the create path skips for machine rows."""
+    geo = _detected(db, author, with_media=True)  # media but no tags
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "tag_requirements_not_met"
+
+
+def test_validate_blocked_with_partial_tags(db, author, conflict_tag):
+    """conflict alone isn't enough — capture_source is still required."""
+    geo = _detected(db, author, tags=[conflict_tag], with_media=True)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "tag_requirements_not_met"
+
+
+def test_validate_succeeds_and_freezes(db, author, conflict_tag, capture_source_tag):
+    geo = _detected(db, author, tags=[conflict_tag, capture_source_tag], with_media=True)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
+    )
+    assert response.status_code == 200
+    assert response.json()["state"] == "validated"
+
+    db.expire_all()
+    assert db.query(Geolocation).filter(Geolocation.id == geo.id).one().state == STATE_VALIDATED
+
+    # Frozen: a follow-up edit now 409s.
+    frozen = client.patch(
+        f"/api/v1/geolocations/{geo.id}",
+        json={"title": "after"},
+        headers=login_as(client, author),
+    )
+    assert frozen.status_code == 409
+
+
+def test_validate_invalidates_points_cache(db, author, conflict_tag, capture_source_tag):
+    geo = _detected(db, author, tags=[conflict_tag, capture_source_tag], with_media=True)
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "MISS"
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "HIT"
+    client.post(f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author))
+    after = client.get("/api/v1/geolocations/points")
+    assert after.headers.get("x-cache") == "MISS"
+
+
+# ── POST /geolocations/{id}/reject ─────────────────────────────────────────
+
+
+def test_reject_requires_authentication(db, author):
+    geo = _detected(db, author)
+    response = client.post(f"/api/v1/geolocations/{geo.id}/reject")
+    assert response.status_code == 401
+
+
+def test_reject_returns_404_for_soft_deleted(db, author):
+    geo = _detected(db, author, deleted=True)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/reject", headers=login_as(client, author)
+    )
+    assert response.status_code == 404
+
+
+def test_reject_returns_403_when_not_author(db, author, second_user):
+    geo = _detected(db, author)
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/reject", headers=login_as(client, second_user)
+    )
+    assert response.status_code == 403
+
+
+def test_reject_rejects_validated_row(db, author):
+    geo = _make_geo(db, author=author)  # validated — DELETE owns its removal
+    response = client.post(
+        f"/api/v1/geolocations/{geo.id}/reject", headers=login_as(client, author)
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state"
+
+
+def test_reject_soft_deletes_detected(db, author):
+    """Reject sets deleted_at (the row survives for a later re-import to
+    recreate — recreate seam covered in test_detection.py), and the row drops
+    off every public read."""
+    geo = _detected(db, author)
+    geo_id = geo.id
+    response = client.post(
+        f"/api/v1/geolocations/{geo_id}/reject", headers=login_as(client, author)
+    )
+    assert response.status_code == 204
+
+    db.expire_all()
+    row = db.query(Geolocation).filter(Geolocation.id == geo_id).one()
+    assert row.deleted_at is not None
+    # Gone from the public detail surface.
+    assert client.get(f"/api/v1/geolocations/{geo_id}").status_code == 404
+
+
+def test_reject_invalidates_points_cache(db, author):
+    geo = _detected(db, author)
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "MISS"
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "HIT"
+    client.post(f"/api/v1/geolocations/{geo.id}/reject", headers=login_as(client, author))
+    after = client.get("/api/v1/geolocations/points")
+    assert after.headers.get("x-cache") == "MISS"
