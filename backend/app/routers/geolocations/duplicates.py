@@ -1,3 +1,5 @@
+"""``GET /possible-duplicates`` — the submit-form duplicate probe (host + proximity legs)."""
+
 import re
 from datetime import date
 from urllib.parse import urlparse
@@ -22,6 +24,24 @@ from app.schemas.geolocation import (
 )
 
 router = APIRouter()
+
+# Possible-duplicate probe support — see `list_possible_duplicates`.
+#
+# Real DNS hostnames are letters / digits / dots / hyphens. Anything else
+# is either malformed or a SQL-LIKE meta-character (`%`, `_`, `\`) that
+# pollutes the match (`kashmir_news.com` matching `kashmir1news.com` via
+# the `_` wildcard) or widens the attack surface. Failing the pattern
+# drops the host leg — benign, since "no host match" == "no source URL".
+#
+# Two structural constraints on top of the character class:
+# - Leading char must be alphanumeric. Else ``urlparse('http://./x')
+#   .hostname == '.'`` passes and ILIKE-substring-matches every URL with
+#   a dot.
+# - At least one inner dot. Rejects single-label hosts (`co`, `me`,
+#   `localhost`); a two-char host makes the ILIKE leg unbounded (`'%co%'`
+#   matches every `.com` / `.co.uk`). Real sources (Twitter, Telegram,
+#   etc.) all carry a dot, so this only bites localhost dev — the host
+#   leg drops there, the date leg still fires.
 _HOST_SAFE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$")
 
 # Hard cap on candidates returned. The submit form renders all of

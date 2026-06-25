@@ -1,3 +1,5 @@
+"""Single-geolocation ops by id — detail, delete, and the ``detected`` review flow (edit / validate / reject)."""
+
 import uuid
 
 from fastapi import (

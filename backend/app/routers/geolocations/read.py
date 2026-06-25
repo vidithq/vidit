@@ -1,3 +1,5 @@
+"""Read endpoints — list, the compact ``/points`` payload, and the filter / bbox / cache-key helpers behind them."""
+
 import hashlib
 from datetime import date, timedelta
 
@@ -407,21 +409,3 @@ def list_geolocations(
         )
         for geo, lat, lng in rows
     ]
-
-
-# Possible-duplicate probe support — see `list_possible_duplicates`.
-#
-# Real DNS hostnames are letters / digits / dots / hyphens. Anything else
-# is either malformed or a SQL-LIKE meta-character (`%`, `_`, `\`) that
-# pollutes the match (`kashmir_news.com` matching `kashmir1news.com` via
-# the `_` wildcard) or widens the attack surface. Failing the pattern
-# drops the host leg — benign, since "no host match" == "no source URL".
-#
-# Two structural constraints on top of the character class:
-# - Leading char must be alphanumeric. Else ``urlparse('http://./x')
-#   .hostname == '.'`` passes and ILIKE-substring-matches every URL with
-#   a dot.
-# - At least one inner dot. Rejects single-label hosts (`co`, `me`,
-#   `localhost`); a two-char host makes the ILIKE leg unbounded (`'%co%'`
-#   matches every `.com` / `.co.uk`). Real sources (Twitter, Telegram,
-#   etc.) all carry a dot, so this only bites localhost dev — the host

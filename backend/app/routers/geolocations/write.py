@@ -1,3 +1,5 @@
+"""Write endpoints — create a geolocation, and upload an inline proof image."""
+
 import json
 import logging
 import uuid
