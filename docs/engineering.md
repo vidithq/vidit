@@ -158,7 +158,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/
+│   ├── tests/                      # pytest; geolocations/ is a sub-package (read/create/duplicates/import/review)
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
