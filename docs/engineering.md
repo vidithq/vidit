@@ -133,7 +133,7 @@ vidit/
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
 │   │   │   ├── bounties.py
-│   │   │   ├── geolocations.py
+│   │   │   ├── geolocations/         # Per-concern sub-routers (read/duplicates/import_tweet/write/item)
 │   │   │   ├── search.py
 │   │   │   ├── social.py           # Follow / unfollow / timeline
 │   │   │   ├── tags.py
