@@ -632,7 +632,7 @@ Create a geolocation.
 
 ### `DELETE /geolocations/{id}` 🔒
 
-Author-only delete. Cascades media.
+Author-only delete. Cascades media. A **hard** delete — distinct from `POST /geolocations/{id}/reject`, which soft-deletes a machine detection so a re-import can recreate it.
 
 **Response 204:** no body.
 
@@ -641,6 +641,66 @@ Author-only delete. Cascades media.
 |------|------|
 | 403 | Caller is not the author |
 | 404 | Geolocation not found |
+
+---
+
+### `PATCH /geolocations/{id}` 🔒
+
+Owner edit of a machine-`detected` geolocation — the review step that completes a detection before validating. Editable **only while `detected`**; a `validated` row is frozen. Partial update: only the fields present in the body are touched.
+
+**Request body (`application/json`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | 1–255 chars |
+| `lat` | float | Latitude (-90 to 90). Either axis can be patched alone; the other is kept. |
+| `lng` | float | Longitude (-180 to 180) |
+| `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
+| `source_date` | string (YYYY-MM-DD) \| null | When the source posted the media — **`null` clears it**, omitted leaves it untouched |
+| `proof` | object | Tiptap document (sanitised server-side) |
+| `tag_ids` | UUID[] | Replaces the tag set wholesale; `[]` clears it |
+
+`source_url`, the source media, `detected_from_url`, and `state` are **immutable** on a detection — they carry no field here, so a caller that sends them is ignored, not honoured.
+
+**Response 200:** same shape as `GET /geolocations/{id}`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Invalid coordinates (`invalid_coordinates`) or proof (`invalid_proof`) |
+| 403 | Caller is not the author |
+| 404 | Geolocation not found (incl. soft-deleted) |
+| 409 | Row is not `detected` — a `validated` row is frozen (`invalid_state`) |
+
+---
+
+### `POST /geolocations/{id}/validate` 🔒
+
+Owner-only. Transition a `detected` geolocation to `validated`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here — the owner adds the tags via `PATCH` during review.
+
+**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "validated"`).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | Evidence floor unmet — no media (`media_required`) or missing required tag (`tag_requirements_not_met`) |
+| 403 | Caller is not the author |
+| 404 | Geolocation not found (incl. soft-deleted) |
+| 409 | Row is not `detected` — already `validated` (`invalid_state`) |
+
+---
+
+### `POST /geolocations/{id}/reject` 🔒
+
+Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `validated` row is not rejectable here — use `DELETE`.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Caller is not the author |
+| 404 | Geolocation not found (incl. soft-deleted) |
+| 409 | Row is not `detected` (`invalid_state`) |
 
 ---
 

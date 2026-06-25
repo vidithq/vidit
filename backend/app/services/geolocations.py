@@ -17,19 +17,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import cast
 
 from fastapi import UploadFile
-from geoalchemy2.shape import from_shape
+from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
+from app.schemas.geolocation import GeolocationUpdate
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     MediaRequiredError,
@@ -70,6 +72,34 @@ class BountyNotFoundError(GeolocationError):
 
 class BountyNotOpenError(GeolocationError):
     code = "bounty_not_open"
+
+
+class GeolocationStateError(GeolocationError):
+    """The geolocation's lifecycle state forbids the requested transition.
+
+    Raised when an edit / validate / reject targets a row that isn't
+    ``detected`` (a ``validated`` row is frozen). Maps to 409 — the request is
+    well-formed but conflicts with the row's current state.
+    """
+
+    code = "invalid_state"
+
+
+def _require_submission_tags(tags: list[Tag]) -> None:
+    """Enforce the curated-tag floor: one ``conflict`` + one ``capture_source``.
+
+    Shared by the two paths a geolocation reaches a publishable state. A human
+    submit runs it at create; a machine ``detected`` row is born tagless and
+    runs it at validate — the owner adds the tags during review. Checked
+    against resolved ``Tag`` rows, so a bogus id payload fails like an empty
+    one. Both categories ship an escape value, so the rule is always
+    satisfiable.
+    """
+    categories = {t.category for t in tags}
+    if "conflict" not in categories:
+        raise TagRequirementsError("A conflict tag is required")
+    if "capture_source" not in categories:
+        raise TagRequirementsError("A capture source tag is required")
 
 
 async def create_with_evidence(
@@ -152,16 +182,11 @@ async def create_with_evidence(
 
     effective_tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
 
-    # Require at least one ``conflict`` and one ``capture_source`` tag.
-    # Both selectors are required on the submit form (each ships an escape
-    # value), so the rule is always satisfiable incl. via bounty fulfilment.
-    # Checked against the *resolved* tags' categories so a bogus tag_ids
-    # payload is rejected like an empty one. Runs before any upload.
-    tag_categories = {t.category for t in effective_tags}
-    if "conflict" not in tag_categories:
-        raise TagRequirementsError("A conflict tag is required")
-    if "capture_source" not in tag_categories:
-        raise TagRequirementsError("A capture source tag is required")
+    # Curated-tag floor (one conflict + one capture_source), satisfiable incl.
+    # via bounty fulfilment. Runs before any upload — a missing/free-tag-only
+    # selection 400s without paying an S3 round-trip. Same rule the detection
+    # validate path enforces; see ``_require_submission_tags``.
+    _require_submission_tags(effective_tags)
 
     # When fulfilling, `source_url` comes from the bounty row, never the
     # form: it's the EVIDENCE LINK the bounty was opened against, so a
@@ -235,3 +260,106 @@ async def create_with_evidence(
     db.refresh(geo)
     points_cache.invalidate()
     return geo
+
+
+def update_detected(db: Session, *, geo: Geolocation, payload: GeolocationUpdate) -> Geolocation:
+    """Apply an owner edit to a ``detected`` geolocation.
+
+    The router resolved the row and checked ownership; this owns the state
+    gate + field rules. Editable while ``detected``: title, coordinate, event /
+    source date, proof, tags — these are how the owner completes a detection
+    before validating. Immutable always (no field on :class:`GeolocationUpdate`):
+    ``source_url``, the source media, ``detected_from_url``, ``state``. A
+    ``validated`` row is frozen — nothing is editable.
+
+    Only the fields the request carries are touched. ``source_date`` is the one
+    nullable target (explicit ``null`` clears it); the required-on-row fields
+    apply only when sent non-null. ``tag_ids`` replaces the tag set wholesale.
+
+    Raises :class:`GeolocationStateError` (409) off ``detected``,
+    :class:`InvalidCoordinatesError` / :class:`InvalidProofError` on bad values.
+    Commits, invalidates the points cache, returns the refreshed row.
+    """
+    if geo.state != STATE_DETECTED:
+        raise GeolocationStateError("Only detected geolocations can be edited")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    # Coordinate: patch either axis against the row's current point, so a
+    # lat-only edit keeps the existing lng. Same range check as create.
+    if "lat" in data or "lng" in data:
+        current = cast(Point, to_shape(geo.location))
+        new_lat = data["lat"] if data.get("lat") is not None else current.y
+        new_lng = data["lng"] if data.get("lng") is not None else current.x
+        if not -90 <= new_lat <= 90:
+            raise InvalidCoordinatesError("Latitude must be between -90 and 90")
+        if not -180 <= new_lng <= 180:
+            raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+        geo.location = from_shape(Point(new_lng, new_lat), srid=4326)
+
+    if data.get("title") is not None:
+        geo.title = data["title"]
+    if data.get("event_date") is not None:
+        geo.event_date = data["event_date"]
+    # Nullable column — an explicit ``null`` clears it, absence leaves it.
+    if "source_date" in data:
+        geo.source_date = data["source_date"]
+    if data.get("proof") is not None:
+        try:
+            geo.proof = sanitize_tiptap_doc(data["proof"])
+        except ValueError as exc:
+            raise InvalidProofError(str(exc)) from exc
+    if data.get("tag_ids") is not None:
+        tag_ids = data["tag_ids"]
+        geo.tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+
+    db.commit()
+    db.refresh(geo)
+    points_cache.invalidate()
+    return geo
+
+
+def validate_detected(db: Session, *, geo: Geolocation) -> Geolocation:
+    """Transition a ``detected`` row to ``validated``, freezing it.
+
+    Owner-gated at the router. Blocked until the row carries the evidence a
+    human submit must have at create: at least one media, and the curated
+    ``conflict`` + ``capture_source`` tags. Machine detections are born tagless
+    and exempt from the create-time tag rule, so the floor is enforced here —
+    the owner adds the tags during review. On success the row is ``validated``
+    and the edit endpoint refuses it.
+
+    Raises :class:`GeolocationStateError` (409) off ``detected``,
+    :class:`MediaRequiredError` / :class:`TagRequirementsError` (400) when the
+    evidence floor isn't met. Commits, invalidates the points cache.
+    """
+    if geo.state != STATE_DETECTED:
+        raise GeolocationStateError("Only detected geolocations can be validated")
+    if not geo.media:
+        raise MediaRequiredError("At least one media file is required")
+    _require_submission_tags(list(geo.tags))
+
+    geo.state = STATE_VALIDATED
+    db.commit()
+    db.refresh(geo)
+    points_cache.invalidate()
+    return geo
+
+
+def reject_detected(db: Session, *, geo: Geolocation) -> None:
+    """Soft-delete a ``detected`` row — the owner rejects the detection.
+
+    Sets ``deleted_at`` rather than hard-deleting: re-importing the same tweet
+    later recreates it as a fresh ``detected`` (the assemble step's ``recreate``
+    verdict matches a soft-deleted pair — see ``detection._disposition``). A
+    ``validated`` row is not rejectable here; the hard ``DELETE`` endpoint owns
+    removing a row the owner already stood behind.
+
+    Raises :class:`GeolocationStateError` (409) off ``detected``. Commits,
+    invalidates the points cache.
+    """
+    if geo.state != STATE_DETECTED:
+        raise GeolocationStateError("Only detected geolocations can be rejected")
+    geo.deleted_at = datetime.now(UTC)
+    db.commit()
+    points_cache.invalidate()
