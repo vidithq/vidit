@@ -44,7 +44,12 @@ def parse_json_id_list(raw: str | None, *, field: str) -> list[Any]:
 
 
 def parse_iso_date(raw: str, *, field: str) -> date:
-    """Parse a required ISO-8601 (YYYY-MM-DD) date form field. 422 on garbage (incl. empty)."""
+    """Parse a required ISO-8601 (YYYY-MM-DD) date form field; 422 on garbage.
+
+    An empty string is garbage here (→ 422). ``parse_optional_iso_date``
+    short-circuits empty to ``None`` before delegating, so only required
+    callers reach this with an empty value.
+    """
     try:
         return date.fromisoformat(raw)
     except ValueError as exc:

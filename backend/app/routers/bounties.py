@@ -304,7 +304,9 @@ async def create_bounty(
     except EvidenceIntakeError as exc:
         _raise_bounty_error(exc)
 
-    # Reload with the relationships the detail serializer reads.
+    # Reload with the relationships the detail serializer reads. Not via
+    # _load_live_bounty: the row was just created, so it can't be soft-deleted —
+    # .one() asserts that invariant instead of the helper's fetch-or-404.
     bounty = db.query(Bounty).options(*_DETAIL_LOADS).filter(Bounty.id == bounty.id).one()
     return _serialize_detail(bounty)
 
