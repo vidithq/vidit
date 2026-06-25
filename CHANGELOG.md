@@ -6,7 +6,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## Unreleased
+## v0.3.3 — 2026-06-25
 
 ### Changed
 - **Landing roadmap shows versions, not status tags** ([`frontend/src/app/page.tsx`](frontend/src/app/page.tsx), [`planning/next.md`](planning/next.md)). The public roadmap cards drop the `Shipped` / `Now` / `Next` / `Later` status pills and lead with the version instead (`v0.3` / `v0.4` / `v0.5` / `v1.0`). The *current* version is the only orange-marked card (pill + border), so "where are we" reads at a glance without a separate `Now` tag. The inline version that duplicated the new pill is removed, and the section heading **Where we're going** becomes **Roadmap**. Closes the *Landing roadmap* tracker row. ([#93](https://github.com/vidithq/vidit/pull/93))
