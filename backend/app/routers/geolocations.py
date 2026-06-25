@@ -38,18 +38,20 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.geolocation import (
-    DetectedGeolocPreview,
     GeolocationList,
     GeolocationRead,
     GeolocationUpdate,
     PossibleDuplicateRead,
+)
+from app.schemas.media import MediaUploadResponse
+from app.schemas.tweet_import import (
+    DetectedGeolocPreview,
     TweetImportCoord,
     TweetImportMedia,
     TweetImportQuotedTweet,
     TweetImportRequest,
     TweetImportResponse,
 )
-from app.schemas.media import MediaUploadResponse
 from app.services import geolocations as geolocations_service
 from app.services import permissions
 from app.services.audit import extract_client_ip, extract_user_agent
