@@ -10,8 +10,10 @@ import {
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
+import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
+  FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
@@ -26,73 +28,90 @@ function TrustUserRow({
   onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
 }) {
   const [reason, setReason] = useState(user.trust_reason ?? "");
-  const [granting, setGranting] = useState(false);
   const [showReasonForm, setShowReasonForm] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"soft" | "hard" | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const grantMutation = useMutation(
+    () =>
+      setUserTrust(user.id, {
+        is_trusted: true,
+        trust_reason: reason.trim(),
+      }),
+    {
+      fallback: "Failed to grant trust",
+      onSuccess: (updated) => {
+        onUpdated(updated);
+        setShowReasonForm(false);
+      },
+    }
+  );
+
+  const revokeMutation = useMutation(
+    () =>
+      setUserTrust(user.id, {
+        is_trusted: false,
+        trust_reason: null,
+      }),
+    {
+      fallback: "Failed to revoke trust",
+      onSuccess: (updated) => {
+        onUpdated(updated);
+        setReason("");
+      },
+    }
+  );
+
+  const deleteMutation = useMutation(
+    (hard: boolean) => deleteUser(user.id, { hard }),
+    {
+      fallback: "Failed to delete user",
+      onSuccess: (response) => {
+        onDeleted(user.id, response);
+        setDeleteMode(null);
+        setConfirming(false);
+      },
+    }
+  );
+
+  const granting = grantMutation.loading || revokeMutation.loading;
+  const deleting = deleteMutation.loading;
+  // One shared error slot across the row's three actions; each action clears
+  // the others (mirrors the old single `setError(null)` per handler).
+  const error =
+    grantMutation.error ?? revokeMutation.error ?? deleteMutation.error;
 
   const trusted = user.is_trusted;
 
-  const submitGrant = async () => {
+  const submitGrant = () => {
+    revokeMutation.reset();
+    deleteMutation.reset();
     if (!reason.trim()) {
-      setError("A reason is required when granting trust.");
+      grantMutation.setError("A reason is required when granting trust.");
       return;
     }
-    setGranting(true);
-    setError(null);
-    try {
-      const updated = await setUserTrust(user.id, {
-        is_trusted: true,
-        trust_reason: reason.trim(),
-      });
-      onUpdated(updated);
-      setShowReasonForm(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to grant trust");
-    } finally {
-      setGranting(false);
-    }
+    void grantMutation.run();
   };
 
-  const submitRevoke = async () => {
-    setGranting(true);
-    setError(null);
-    try {
-      const updated = await setUserTrust(user.id, {
-        is_trusted: false,
-        trust_reason: null,
-      });
-      onUpdated(updated);
-      setReason("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to revoke trust");
-    } finally {
-      setGranting(false);
-    }
+  const submitRevoke = () => {
+    grantMutation.reset();
+    deleteMutation.reset();
+    void revokeMutation.run();
   };
 
-  const submitDelete = async () => {
+  const submitDelete = () => {
     if (deleteMode === null) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      const response = await deleteUser(user.id, { hard: deleteMode === "hard" });
-      onDeleted(user.id, response);
-      setDeleteMode(null);
-      setConfirming(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete user");
-    } finally {
-      setDeleting(false);
-    }
+    grantMutation.reset();
+    revokeMutation.reset();
+    void deleteMutation.run(deleteMode === "hard");
   };
 
   const cancelDelete = () => {
     setDeleteMode(null);
     setConfirming(false);
-    setError(null);
+    grantMutation.reset();
+    revokeMutation.reset();
+    deleteMutation.reset();
   };
 
   return (
@@ -190,7 +209,9 @@ function TrustUserRow({
               onClick={() => {
                 setShowReasonForm(false);
                 setReason(user.trust_reason ?? "");
-                setError(null);
+                grantMutation.reset();
+                revokeMutation.reset();
+                deleteMutation.reset();
               }}
               className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
             >
@@ -268,24 +289,21 @@ function TrustUserRow({
 export function TrustPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AdminUser[] | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(
     null
   );
 
+  const searchMutation = useMutation(() => searchUsers(query), {
+    fallback: "Search failed",
+    onSuccess: setResults,
+  });
+  const searching = searchMutation.loading;
+  const error = searchMutation.error;
+
   const onSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSearching(true);
-    setError(null);
     setLastDelete(null);
-    try {
-      setResults(await searchUsers(query));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed");
-    } finally {
-      setSearching(false);
-    }
+    await searchMutation.run();
   };
 
   const onUpdated = (u: AdminUser) => {
@@ -344,7 +362,7 @@ export function TrustPanel() {
       </form>
 
       {error && (
-        <div className="px-3 py-2 rounded-md text-xs text-red-300 bg-red-500/10 border border-red-500/30">
+        <div className={FORM_ERROR_BANNER_BOXED}>
           {error}
         </div>
       )}

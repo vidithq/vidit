@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -25,21 +26,17 @@ export default function LoginForm({ onSuccess }: Props) {
   const justReset = params.get("reset") === "ok";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  const submitLogin = useMutation(() => login(email, password), {
+    fallback: "Login failed",
+    onSuccess: () => onSuccess(),
+  });
+  const { error } = submitLogin;
+  const submitting = submitLogin.loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await login(email, password);
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setSubmitting(false);
-    }
+    await submitLogin.run();
   };
 
   return (

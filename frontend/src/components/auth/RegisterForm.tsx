@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -32,31 +33,39 @@ export default function RegisterForm({
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
   const inviteCodeLocked = initialInviteCode.length > 0;
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  const submitRegister = useMutation(
+    async () => {
+      try {
+        const result = await register(username, email, password, inviteCode);
+        return result.email;
+      } catch (err) {
+        // Already registered but unconfirmed (closed the tab / lost the
+        // email): recoverable, so route to the pending screen's Resend rather
+        // than a dead-end error. Branch on the backend's stable ``code`` (see
+        // ``RegistrationError`` in ``backend/app/services/registration.py``),
+        // not English prose. Resolving with the typed email funnels both
+        // paths through `onSuccess` — no error surfaces.
+        if (
+          err instanceof ApiError &&
+          err.code === "email_pending_confirmation"
+        ) {
+          return email;
+        }
+        throw err;
+      }
+    },
+    {
+      fallback: "Registration failed",
+      onSuccess: (resolvedEmail) => onSuccess(resolvedEmail),
+    }
+  );
+  const { error } = submitRegister;
+  const submitting = submitRegister.loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const result = await register(username, email, password, inviteCode);
-      onSuccess(result.email);
-    } catch (err) {
-      // Already registered but unconfirmed (closed the tab / lost the email):
-      // recoverable, so route to the pending screen's Resend rather than a
-      // dead-end error. Branch on the backend's stable ``code`` (see
-      // ``RegistrationError`` in ``backend/app/services/registration.py``),
-      // not English prose.
-      if (err instanceof ApiError && err.code === "email_pending_confirmation") {
-        onSuccess(email);
-        return;
-      }
-      const message = err instanceof Error ? err.message : "Registration failed";
-      setError(message);
-    } finally {
-      setSubmitting(false);
-    }
+    await submitRegister.run();
   };
 
   return (

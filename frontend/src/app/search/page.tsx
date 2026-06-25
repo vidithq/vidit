@@ -10,7 +10,7 @@ import {
   User as UserIcon,
   Users,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import DetectedBadge from "@/components/geolocation/DetectedBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
@@ -65,7 +65,7 @@ export default function SearchPage() {
 }
 
 function SearchPageBody() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -86,12 +86,6 @@ function SearchPageBody() {
   // alone missed the type-filter race — same `q`, different `type` could
   // land an older response over a newer one.
   const latestRequestId = useRef<number>(0);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [authLoading, user, router]);
 
   // Debounced commit: input → activeQuery + URL via `replace` (not `push`)
   // so the back button doesn't fill with intermediate query states.

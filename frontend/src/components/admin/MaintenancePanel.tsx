@@ -7,6 +7,7 @@ import {
   reapProofOrphans,
   type MaintenanceResponse,
 } from "@/lib/admin";
+import { useMutation } from "@/hooks/useMutation";
 
 export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
@@ -15,31 +16,29 @@ export function MaintenancePanel() {
   const [orphanResult, setOrphanResult] = useState<MaintenanceResponse | null>(
     null
   );
-  const [running, setRunning] = useState<"auth" | "orphans" | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const onReapAuth = async () => {
-    setError(null);
-    setRunning("auth");
-    try {
-      setAuthResult(await reapAuthTokens());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setRunning(null);
-    }
+  const reapAuth = useMutation(reapAuthTokens, {
+    fallback: "Failed",
+    onSuccess: setAuthResult,
+  });
+  const reapOrphans = useMutation(reapProofOrphans, {
+    fallback: "Failed",
+    onSuccess: setOrphanResult,
+  });
+
+  // Both actions share one error slot, cleared when either fires (the other's
+  // `reset()` mirrors the old single `setError(null)` at the top of each).
+  const error = reapAuth.error ?? reapOrphans.error;
+  const running = reapAuth.loading || reapOrphans.loading;
+
+  const onReapAuth = () => {
+    reapOrphans.reset();
+    void reapAuth.run();
   };
 
-  const onReapOrphans = async () => {
-    setError(null);
-    setRunning("orphans");
-    try {
-      setOrphanResult(await reapProofOrphans());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setRunning(null);
-    }
+  const onReapOrphans = () => {
+    reapAuth.reset();
+    void reapOrphans.run();
   };
 
   return (
@@ -55,10 +54,10 @@ export function MaintenancePanel() {
           <button
             type="button"
             onClick={onReapAuth}
-            disabled={running !== null}
+            disabled={running}
             className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
           >
-            {running === "auth" ? "Reaping…" : "Reap expired auth tokens"}
+            {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
           </button>
           {authResult && (
             <span className="text-xs text-neutral-400">
@@ -71,10 +70,10 @@ export function MaintenancePanel() {
           <button
             type="button"
             onClick={onReapOrphans}
-            disabled={running !== null}
+            disabled={running}
             className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
           >
-            {running === "orphans"
+            {reapOrphans.loading
               ? "Reaping…"
               : "Reap orphan proof images"}
           </button>

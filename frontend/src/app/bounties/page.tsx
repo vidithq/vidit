@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Clock, User, Users } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
 import { formatDate, safeHostname } from "@/lib/format";
@@ -34,8 +33,7 @@ const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
 ];
 
 export default function BountiesPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useRequireAuth();
 
   const [statusFilter, setStatusFilter] = useState<BountyStatus | "all">("open");
   const { data: bounties, error } = useApiResource<BountyListItem[]>(
@@ -43,12 +41,6 @@ export default function BountiesPage() {
       ? bountyListPath(statusFilter === "all" ? {} : { status: statusFilter })
       : null
   );
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [loading, user, router]);
 
   if (loading || !user) {
     return (
