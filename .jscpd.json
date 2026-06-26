@@ -1,0 +1,13 @@
+{
+  "threshold": 1,
+  "minTokens": 60,
+  "gitignore": true,
+  "ignore": [
+    "**/api-types.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/conftest.py",
+    "**/alembic/versions/**"
+  ],
+  "reporters": ["console"]
+}

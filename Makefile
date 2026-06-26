@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo gen-api-types
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo gen-api-types check-dup hygiene
 
 help:
 	@echo "Available commands:"
@@ -21,6 +21,7 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip) checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the closed-beta promo MP4 (see video/README.md)"
 
@@ -115,6 +116,12 @@ test:
 gen-api-types:
 	cd backend && uv run --no-sync python scripts/dump_openapi.py > ../frontend/openapi.json
 	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
+
+check-dup:
+	npx --yes jscpd@4 backend/app frontend/src
+
+hygiene: check-dup
+	cd frontend && npm run knip
 
 clean:
 	docker-compose down -v

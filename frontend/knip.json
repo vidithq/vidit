@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": ["src/lib/api-types.ts"],
+  "ignoreDependencies": ["@eslint/eslintrc", "geojson"],
+  "ignoreExportsUsedInFile": true
+}
