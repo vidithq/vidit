@@ -148,7 +148,7 @@ export interface PossibleDuplicate {
   author: Author;
 }
 
-interface Media {
+export interface Media {
   id: string;
   storage_url: string;
   media_type: MediaType;

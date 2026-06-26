@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useReviewQueue } from "@/contexts/ReviewQueueContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
 import {
@@ -132,6 +133,7 @@ export default function Sidebar() {
   const pathname = usePathname() ?? "";
   const { user, loading } = useAuth();
   const { isAdmin } = useAdmin();
+  const { count: reviewCount } = useReviewQueue();
 
   useEffect(() => {
     if (expanded) {
@@ -152,7 +154,9 @@ export default function Sidebar() {
   // Another analyst's profile is a deep destination, not "your" account.
   const profileActive =
     !!user &&
-    (pathname === "/profile" || pathname === `/profile/${user.username}`);
+    (pathname === "/profile" ||
+      pathname === `/profile/${user.username}` ||
+      pathname === `/profile/${user.username}/review`);
 
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item, pathname);
@@ -272,15 +276,28 @@ export default function Sidebar() {
         {user ? (
           <Link
             href={`/profile/${user.username}`}
-            title={!labelsVisible ? user.username : undefined}
+            title={
+              !labelsVisible
+                ? reviewCount > 0
+                  ? `${user.username} · ${reviewCount} to review`
+                  : user.username
+                : undefined
+            }
             className={`${ROW_CLASS} overflow-hidden ${
               profileActive
                 ? FILTER_CHIP_ACTIVE
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >
-            <span className="size-[18px] rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
+            <span className="relative size-[18px] rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
               <User size={11} strokeWidth={1.8} />
+              {/* Pending-review nudge — same dot the nav items use. */}
+              {reviewCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-orange-500 ring-2 ring-neutral-900"
+                />
+              )}
             </span>
             {labelsVisible && (
               <span className="truncate flex-1 inline-flex items-center gap-1 animate-label-in">
@@ -290,6 +307,11 @@ export default function Sidebar() {
                   trustReason={user.trust_reason}
                   size={12}
                 />
+              </span>
+            )}
+            {reviewCount > 0 && (
+              <span className="sr-only">
+                {reviewCount} geolocations awaiting review
               </span>
             )}
           </Link>

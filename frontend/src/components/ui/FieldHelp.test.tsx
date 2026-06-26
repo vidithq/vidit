@@ -31,6 +31,16 @@ describe("FieldHelp", () => {
     expect(btn).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("un-pins when the pointer leaves the trigger (dismisses naturally)", () => {
+    render(<FieldHelp concept="title" />);
+    const btn = screen.getByRole("button", { name: FIELD_HELP.title.label });
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute("aria-expanded", "true");
+    // Leaving the wrapper (the `?` + its tooltip) closes it on desktop.
+    fireEvent.mouseLeave(btn.parentElement as HTMLElement);
+    expect(btn).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("renders nothing when the user has hidden help (settings toggle)", () => {
     window.localStorage.setItem("vidit:help-hidden", "1");
     render(<FieldHelp concept="title" />);

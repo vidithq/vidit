@@ -15,6 +15,11 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
+// Compact (map side-panel) section eyebrow — same role as the page variant's
+// `h2`, denser and without the page's `mb-3` (the panel's `space-y` owns rhythm).
+const COMPACT_HEADING =
+  "text-xs text-neutral-500 uppercase tracking-wider inline-flex items-center gap-1.5";
+
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
   /**
@@ -93,12 +98,20 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   );
 
   if (compact) {
-    return <div className="space-y-2">{geo.media.length > 0 ? items : empty}</div>;
+    return (
+      <div className="space-y-2">
+        <h3 className={COMPACT_HEADING}>
+          Source media
+          <FieldHelp concept="source_media" />
+        </h3>
+        {geo.media.length > 0 ? items : empty}
+      </div>
+    );
   }
   return (
     <div>
       <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-        Media
+        Source media
         <FieldHelp concept="source_media" />
       </h2>
       {geo.media.length > 0 ? (
@@ -147,20 +160,6 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
-      {/* Panel only: coordinates lead the rows — on the full page they show
-          under the Location map, so they're prominent there too; the panel has
-          no map, so leading the rows keeps them first. */}
-      {compact && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Coordinates{" "}
-            <FieldHelp concept="coordinates" />
-          </span>
-          <span className={`${value} font-mono text-xs`}>
-            {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-          </span>
-        </div>
-      )}
       {geo.state === "detected" && (
         <div className={row}>
           <span className={`${label} inline-flex items-center gap-1`}>
@@ -261,12 +260,40 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   );
 
   if (compact) {
-    return <div className="space-y-2 text-sm">{rows}</div>;
+    // Same section structure as the page (the panel has no map, so Location is
+    // just the coordinates), so the side-panel reads like the full page, only
+    // denser. Two fragment siblings → the parent panel's `space-y` separates them.
+    return (
+      <>
+        <div className="space-y-2">
+          <h3 className={COMPACT_HEADING}>
+            Location
+            <FieldHelp concept="section_location" />
+          </h3>
+          <div className={`${row} text-sm`}>
+            <span className={`${label} inline-flex items-center gap-1`}>
+              Coordinates <FieldHelp concept="coordinates" />
+            </span>
+            <span className={`${value} font-mono text-xs`}>
+              {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+            </span>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className={COMPACT_HEADING}>
+            Details
+            <FieldHelp concept="section_details" />
+          </h3>
+          <div className="space-y-2 text-sm">{rows}</div>
+        </div>
+      </>
+    );
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
         Details
+        <FieldHelp concept="section_details" />
       </h2>
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800">
         {rows}
@@ -297,8 +324,9 @@ function ProofBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
+      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
         Proof
+        <FieldHelp concept="section_proof" />
       </h2>
       <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
         {body}

@@ -5,8 +5,11 @@ import uuid
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     HTTPException,
     Request,
+    UploadFile,
     status,
 )
 from geoalchemy2.functions import ST_X, ST_Y
@@ -15,17 +18,25 @@ from sqlalchemy.orm import Session, joinedload
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
 from app.models.bounty import Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import (
+    SOURCE_URL_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    Geolocation,
+)
 from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
-from app.schemas.geolocation import (
-    GeolocationRead,
-    GeolocationUpdate,
+from app.routers._forms import (
+    parse_iso_date,
+    parse_json_id_list,
+    parse_optional_iso_date,
+    parse_optional_json_object,
 )
+from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
+from app.schemas.geolocation import GeolocationRead
 from app.services import geolocations as geolocations_service
 from app.services import permissions
+from app.services.audit import extract_client_ip, extract_user_agent
 from app.services.evidence_intake import EvidenceIntakeError
 from app.services.storage import (
     sweep_keys,
@@ -144,23 +155,60 @@ def delete_geolocation(
 
 @router.patch("/{geolocation_id}", response_model=GeolocationRead)
 @limiter.limit("30/minute")
-def update_geolocation(
+async def update_geolocation(
     request: Request,
     geolocation_id: uuid.UUID,
-    payload: GeolocationUpdate,
+    # Multipart, mirroring create: the form posts the whole editable state and
+    # the service applies it atomically. ``max_length`` ceilings are the shared
+    # model constants (same as create) so over-length input is rejected before
+    # the files hit S3.
+    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
+    lat: float = Form(...),
+    lng: float = Form(...),
+    source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    event_date: str = Form(...),
+    source_date: str | None = Form(None),
+    proof: str | None = Form(None),
+    tag_ids: str | None = Form(None),
+    # Ids of existing media to drop (JSON array). New media ride in ``files``.
+    remove_media_ids: str | None = Form(None),
+    files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Owner edit of a ``detected`` geolocation (review flow).
 
-    Editable only while ``detected``; a ``validated`` row is frozen (409).
-    ``source_url`` / source media / ``detected_from_url`` / ``state`` are
-    immutable and carry no field on the body. Partial: only the fields the
-    request sends are touched. Soft-deleted rows read as 404.
+    Editable only while ``detected``; a ``validated`` row is frozen (409). The
+    owner curates the whole draft — title, coordinate, source URL, dates, proof,
+    tags, and the source media (``files`` added, ``remove_media_ids`` dropped).
+    Only ``detected_from_url`` (provenance) and ``state`` are immutable, so they
+    carry no field. Soft-deleted rows read as 404.
     """
+    files = files or []
+    parsed_event_date = parse_iso_date(event_date, field="event_date")
+    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
+
     geo = _resolve_owned_geolocation(db, geolocation_id, current_user)
     try:
-        updated = geolocations_service.update_detected(db, geo=geo, payload=payload)
+        updated = await geolocations_service.update_detected(
+            db,
+            geo=geo,
+            title=title,
+            lat=lat,
+            lng=lng,
+            source_url=source_url,
+            event_date=parsed_event_date,
+            source_date=parsed_source_date,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            remove_media_ids=parsed_remove_ids,
+            files=files,
+            uploaded_ip=extract_client_ip(request),
+            uploaded_user_agent=extract_user_agent(request),
+        )
     except EvidenceIntakeError as exc:
         _raise_geolocation_error(exc)
     return _serialize_geolocation(db, updated)

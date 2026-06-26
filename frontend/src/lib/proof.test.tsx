@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { renderProof } from "./proof";
+import { proofHasImage, renderProof } from "./proof";
 
 const doc = (...content: Record<string, unknown>[]) => ({
   type: "doc",
@@ -128,5 +128,28 @@ describe("renderProof", () => {
     );
     expect(container.querySelector("iframe")).toBeNull();
     expect(container).toHaveTextContent("safe");
+  });
+});
+
+describe("proofHasImage", () => {
+  const image = (src: string) => ({ type: "image", attrs: { src } });
+
+  it("is false for null / text-only proof", () => {
+    expect(proofHasImage(null)).toBe(false);
+    expect(proofHasImage(doc(paragraph(text("just words"))))).toBe(false);
+  });
+
+  it("is true for a top-level image node", () => {
+    expect(proofHasImage(doc(paragraph(text("see:")), image("https://x/y.jpg")))).toBe(
+      true
+    );
+  });
+
+  it("finds an image nested inside another node", () => {
+    expect(
+      proofHasImage(
+        doc({ type: "blockquote", content: [image("https://x/y.jpg")] })
+      )
+    ).toBe(true);
   });
 });

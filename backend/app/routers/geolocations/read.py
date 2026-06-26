@@ -15,17 +15,19 @@ from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y, ST_MakeEnvelope, ST_Within
 from sqlalchemy import and_
 from sqlalchemy.orm import Query as SAQuery
-from sqlalchemy.orm import Session, subqueryload
+from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from app.cache import points_cache
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.models.geolocation import STATE_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers.geolocations._common import build_geolocation_read
 from app.schemas.geolocation import (
     GeolocationList,
+    PaginatedGeolocationDetails,
 )
 
 router = APIRouter()
@@ -409,3 +411,68 @@ def list_geolocations(
         )
         for geo, lat, lng in rows
     ]
+
+
+@router.get("/review-queue", response_model=PaginatedGeolocationDetails)
+@limiter.limit("120/minute")
+def list_review_queue(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The caller's ``detected`` geolocations awaiting review, newest first.
+
+    Owner-scoped to ``current_user`` (never the ``{username}`` in any URL) — the
+    queue behind ``/profile/{username}/review`` where ``detected`` becomes
+    ``validated`` over time. Returns full ``GeolocationRead`` (media + tags) so
+    the queue shows the evidence and the frontend computes validation-readiness
+    (>=1 media + a ``conflict`` + a ``capture_source`` tag) with no per-row
+    round-trip. A ``detected`` row never originates from a bounty (fulfilments
+    are born ``validated``), so ``originated_from_bounty`` is always null here —
+    passed as such to skip the join. Ordered by ``created_at`` desc: the latest
+    import is the first thing to triage.
+    """
+    # Clamp rather than 422 — a too-large page/per_page is harmless and the
+    # per-user list clamps the same way. The lower-bound guard matters: page < 1
+    # would compute a negative OFFSET and per_page < 1 a non-positive LIMIT, both
+    # of which Postgres rejects (a 500).
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+
+    detected = (
+        Geolocation.author_id == current_user.id,
+        Geolocation.state == STATE_DETECTED,
+        Geolocation.deleted_at.is_(None),
+    )
+
+    total = db.query(Geolocation).filter(*detected).count()
+
+    rows = (
+        db.query(
+            Geolocation,
+            ST_Y(Geolocation.location).label("lat"),
+            ST_X(Geolocation.location).label("lng"),
+        )
+        # ``selectinload`` for the many-to-many / one-to-many sets — a
+        # ``joinedload`` would row-multiply against ``LIMIT`` and truncate the
+        # page; ``joinedload`` is safe only for the many-to-one author.
+        .options(
+            joinedload(Geolocation.author),
+            selectinload(Geolocation.tags),
+            selectinload(Geolocation.media),
+        )
+        .filter(*detected)
+        .order_by(Geolocation.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    items = [
+        build_geolocation_read(geo, lat=lat, lng=lng, originated_from_bounty=None)
+        for geo, lat, lng in rows
+    ]
+
+    return PaginatedGeolocationDetails(items=items, total=total, page=page, per_page=per_page)

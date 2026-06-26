@@ -40,6 +40,7 @@ Auth column: — anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/geolocations/{id}` | — | Full geolocation detail |
 | POST | `/geolocations` | 🔒 | Create a geolocation (multipart, uploads media) |
 | DELETE | `/geolocations/{id}` | 🔒 | Author-only delete + S3 sweep |
+| GET | `/geolocations/review-queue` | 🔒 | Your `detected` geolocations awaiting review (paginated) |
 | POST | `/geolocations/proof-images` | 🔒 | Upload an inline image referenced by the Tiptap proof |
 | **Bounties** | | | |
 | GET | `/bounties` | — | List bounties (newest first, soft-delete filtered) |
@@ -93,6 +94,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /geolocations/points` | 60/min |
 | `GET /geolocations/possible-duplicates` | 60/min |
 | `GET /geolocations/{id}` | 120/min |
+| `GET /geolocations/review-queue` | 120/min |
 | `POST /geolocations/import-from-tweet` | 30/min |
 | `GET /geolocations/import-from-tweet/media` | 60/min |
 | `POST /geolocations` | 30/min |
@@ -644,32 +646,65 @@ Author-only delete. Cascades media. A **hard** delete — distinct from `POST /g
 
 ---
 
+### `GET /geolocations/review-queue` 🔒
+
+The owner review queue: the caller's machine-`detected` geolocations awaiting validation, newest first (`created_at` desc). **Scoped to `current_user`** — it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/review`, where the owner edits / validates / rejects each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes validation-readiness (≥1 media + a `conflict` + a `capture_source` tag) client-side without a per-row fetch.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | int | Page number (default 1) |
+| `per_page` | int | Results per page (default 20, max 100) |
+
+**Response 200:** each item is the same shape as `GET /geolocations/{id}`.
+```json
+{
+  "items": [ { "id": "uuid", "state": "detected", "media": [], "tags": [] } ],
+  "total": 12,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+A `detected` row never originates from a bounty (fulfilments are born `validated`), so `originated_from_bounty` is always `null` here.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+
+---
+
 ### `PATCH /geolocations/{id}` 🔒
 
-Owner edit of a machine-`detected` geolocation — the review step that completes a detection before validating. Editable **only while `detected`**; a `validated` row is frozen. Partial update: only the fields present in the body are touched.
+Owner edit of a machine-`detected` geolocation — the review step. **Multipart**, mirroring `POST /geolocations`: the form posts the whole editable state and the server applies it **atomically** (field updates, media removals, and new-media uploads in one transaction). Editable **only while `detected`**; a `validated` row is frozen.
 
-**Request body (`application/json`):**
+**Request body (`multipart/form-data`):**
 | Field | Type | Description |
 |-------|------|-------------|
 | `title` | string | 1–255 chars |
-| `lat` | float | Latitude (-90 to 90). Either axis can be patched alone; the other is kept. |
+| `lat` | float | Latitude (-90 to 90) |
 | `lng` | float | Longitude (-180 to 180) |
+| `source_url` | string | ≤2000 chars — the footage origin (correct the machine's guess) |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
-| `source_date` | string (YYYY-MM-DD) \| null | When the source posted the media — **`null` clears it**, omitted leaves it untouched |
-| `proof` | object | Tiptap document (sanitised server-side) |
-| `tag_ids` | UUID[] | Replaces the tag set wholesale; `[]` clears it |
+| `source_date` | string (YYYY-MM-DD) | When the source posted the media; empty / omitted clears it |
+| `proof` | JSON string | Tiptap document (sanitised); inline proof images upload via `POST /geolocations/proof-images` |
+| `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
+| `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
+| `files` | file[] | New source media to add (same allowlist + size limits as create) |
 
-`source_url`, the source media, `detected_from_url`, and `state` are **immutable** on a detection — they carry no field here, so a caller that sends them is ignored, not honoured.
+`detected_from_url` (the provenance anchor — the post the detection was imported from) and `state` are the only **immutable** fields: they carry no field, so a caller that sends them is ignored.
 
 **Response 200:** same shape as `GET /geolocations/{id}`.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Invalid coordinates (`invalid_coordinates`) or proof (`invalid_proof`) |
+| 400 | Invalid coordinates (`invalid_coordinates`), proof (`invalid_proof`), or a rejected file (`invalid_file` / `evidence_processing_failed`) |
 | 403 | Caller is not the author |
 | 404 | Geolocation not found (incl. soft-deleted) |
 | 409 | Row is not `detected` — a `validated` row is frozen (`invalid_state`) |
+| 422 | Over the file-count cap (`too_many_files`) |
 
 ---
 

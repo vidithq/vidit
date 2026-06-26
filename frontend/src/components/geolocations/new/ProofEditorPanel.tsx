@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 
 import FieldHelp from "@/components/ui/FieldHelp";
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 
 const ProofEditor = dynamic(
@@ -22,6 +23,8 @@ interface ProofEditorPanelProps {
    *  geolocation), so it's optional and image-free — see ProofEditor. */
   allowImages?: boolean;
   optional?: boolean;
+  /** Flag the section as a missing required field (red outline). */
+  invalid?: boolean;
 }
 
 /** The "Proof" section: the dynamically-loaded Tiptap editor where the
@@ -34,9 +37,14 @@ export function ProofEditorPanel({
   onUploadStateChange,
   allowImages = true,
   optional = false,
+  invalid = false,
 }: ProofEditorPanelProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <section
+      className={`bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4${
+        invalid ? ` ${FORM_INVALID_FIELD}` : ""
+      }`}
+    >
       <header>
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Proof

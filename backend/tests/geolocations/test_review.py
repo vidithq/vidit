@@ -8,6 +8,7 @@ live in `conftest.py`; `client` / `_make_geo` in `_helpers.py`.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date
 
@@ -99,19 +100,33 @@ def _detected(db, author, **kwargs):
     )
 
 
-# ── PATCH /geolocations/{id} — edit ────────────────────────────────────────
+# ── PATCH /geolocations/{id} — edit (multipart full edit, like submit) ─────
+
+
+def _edit_form(**overrides):
+    """A complete edit form — the PATCH posts the whole editable state, like
+    submit. Override per test; ``tag_ids`` / ``remove_media_ids`` are JSON."""
+    form = {
+        "title": "Edited title",
+        "lat": "50.0",
+        "lng": "30.0",
+        "source_url": "https://x.com/a/status/1",
+        "event_date": "2026-05-01",
+    }
+    form.update(overrides)
+    return form
 
 
 def test_update_requires_authentication(db, author):
     geo = _detected(db, author)
-    response = client.patch(f"/api/v1/geolocations/{geo.id}", json={"title": "x"})
+    response = client.patch(f"/api/v1/geolocations/{geo.id}", data=_edit_form())
     assert response.status_code == 401
 
 
 def test_update_returns_404_for_unknown_id(author):
     response = client.patch(
         f"/api/v1/geolocations/{uuid.uuid4()}",
-        json={"title": "x"},
+        data=_edit_form(),
         headers=login_as(client, author),
     )
     assert response.status_code == 404
@@ -121,7 +136,7 @@ def test_update_returns_404_for_soft_deleted(db, author):
     geo = _detected(db, author, deleted=True)
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"title": "x"},
+        data=_edit_form(),
         headers=login_as(client, author),
     )
     assert response.status_code == 404
@@ -131,7 +146,7 @@ def test_update_returns_403_when_not_author(db, author, second_user):
     geo = _detected(db, author)
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"title": "x"},
+        data=_edit_form(),
         headers=login_as(client, second_user),
     )
     assert response.status_code == 403
@@ -142,7 +157,7 @@ def test_update_rejects_validated_row(db, author):
     geo = _make_geo(db, author=author)  # default state = validated
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"title": "nope"},
+        data=_edit_form(),
         headers=login_as(client, author),
     )
     assert response.status_code == 409
@@ -153,14 +168,14 @@ def test_update_edits_detected_fields(db, author, conflict_tag, capture_source_t
     geo = _detected(db, author)
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={
-            "title": "Completed title",
-            "lat": 50.25,
-            "lng": 30.5,
-            "event_date": "2026-07-01",
-            "source_date": "2026-06-30",
-            "tag_ids": [str(conflict_tag.id), str(capture_source_tag.id)],
-        },
+        data=_edit_form(
+            title="Completed title",
+            lat="50.25",
+            lng="30.5",
+            event_date="2026-07-01",
+            source_date="2026-06-30",
+            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+        ),
         headers=login_as(client, author),
     )
     assert response.status_code == 200
@@ -179,49 +194,37 @@ def test_update_edits_detected_fields(db, author, conflict_tag, capture_source_t
     assert refreshed.title == "Completed title"
 
 
-def test_update_ignores_immutable_fields(db, author):
-    """source_url / detected_from_url / state carry no field on the body, so a
-    caller sending them is silently ignored, not honoured."""
+def test_update_applies_source_url_but_ignores_provenance_and_state(db, author):
+    """The owner curates the draft: ``source_url`` is editable. Only
+    ``detected_from_url`` (provenance) and ``state`` have no field, so sending
+    them is silently ignored, not honoured."""
     geo = _detected(db, author)
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={
-            "title": "Edited",
-            "source_url": "https://evil.example/swap",
-            "detected_from_url": "https://evil.example/swap",
-            "state": "validated",
-        },
+        data=_edit_form(
+            title="Edited",
+            source_url="https://example.com/new-source",
+            detected_from_url="https://evil.example/swap",  # ignored — no field
+            state="validated",  # ignored — no field
+        ),
         headers=login_as(client, author),
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["title"] == "Edited"
-    assert body["source_url"] == "https://x.com/a/status/1"
-    assert body["detected_from_url"] == "https://x.com/a/status/1"
-    assert body["state"] == "detected"
+    assert body["source_url"] == "https://example.com/new-source"  # now editable
+    assert body["detected_from_url"] == "https://x.com/a/status/1"  # immutable
+    assert body["state"] == "detected"  # immutable
 
 
-def test_update_partial_coordinate_keeps_other_axis(db, author):
-    """A lat-only edit preserves the existing lng (and vice-versa)."""
-    geo = _detected(db, author, lat=48.5, lng=34.5)
-    response = client.patch(
-        f"/api/v1/geolocations/{geo.id}",
-        json={"lat": 49.9},
-        headers=login_as(client, author),
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["lat"] == 49.9
-    assert body["lng"] == 34.5
-
-
-def test_update_clears_source_date_with_null(db, author):
+def test_update_clears_source_date_when_omitted(db, author):
+    """Source date is part of the full edit — omitting it from the form clears
+    it (the form posts the whole state)."""
     geo = _detected(db, author)
     geo.source_date = date(2026, 6, 1)
     db.commit()
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"source_date": None},
+        data=_edit_form(),  # no source_date
         headers=login_as(client, author),
     )
     assert response.status_code == 200
@@ -232,7 +235,7 @@ def test_update_rejects_out_of_range_coordinate(db, author):
     geo = _detected(db, author)
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"lat": 200.0},
+        data=_edit_form(lat="200.0"),
         headers=login_as(client, author),
     )
     assert response.status_code == 400
@@ -245,11 +248,10 @@ def test_update_invalidates_points_cache(db, author):
     assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "HIT"
     client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"title": "Edited"},
+        data=_edit_form(),
         headers=login_as(client, author),
     )
-    after = client.get("/api/v1/geolocations/points")
-    assert after.headers.get("x-cache") == "MISS"
+    assert client.get("/api/v1/geolocations/points").headers.get("x-cache") == "MISS"
 
 
 # ── POST /geolocations/{id}/validate ───────────────────────────────────────
@@ -330,7 +332,7 @@ def test_validate_succeeds_and_freezes(db, author, conflict_tag, capture_source_
     # Frozen: a follow-up edit now 409s.
     frozen = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        json={"title": "after"},
+        data=_edit_form(),
         headers=login_as(client, author),
     )
     assert frozen.status_code == 409

@@ -27,6 +27,11 @@ export const FORM_INPUT_COMPACT =
 export const FORM_INPUT_LOCKED =
   "w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-md text-neutral-400 text-sm cursor-not-allowed";
 
+// Red outline for a field / section flagged by `IncompleteFormNotice`. The `!`
+// overrides the element's own `border-*` (inputs and section cards already carry
+// one); the faint ring lifts it off the dark card. Append to the existing class.
+export const FORM_INVALID_FIELD = "!border-red-500/80 ring-1 ring-red-500/30";
+
 export const FORM_ERROR_BANNER =
   "bg-red-900/40 border border-red-700/60 text-red-300 px-4 py-3 rounded-md text-sm";
 

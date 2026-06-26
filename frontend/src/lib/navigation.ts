@@ -1,18 +1,27 @@
 /**
  * Smart back-navigation helper.
  *
- * Not `router.back()`: it calls `window.history.back()`, which walks off
- * our origin (e.g. back to the X.com post) and is a no-op on a fresh tab.
- * Not `document.referrer`: it only updates on full-page loads, and Next.js
- * client nav uses `history.pushState`, which never touches it — so in a
- * long SPA flow it stays whatever it was at first entry.
+ * Not `router.back()` / `window.history.back()`: they walk off our origin
+ * (e.g. back to the X.com post) and are a no-op on a fresh tab. Not
+ * `document.referrer`: it only updates on full-page loads, and Next.js client
+ * nav uses `history.pushState`, which never touches it — so in a long SPA flow
+ * it stays whatever it was at first entry.
  *
- * Instead, `PathTracker` (mounted in the root providers) stamps the
- * previous same-origin pathname into `sessionStorage` on every route
- * change. `smartBack` routes to that, falling through to a default when
- * there's none (fresh tab, direct entry from a shared link).
+ * Instead, `PathTracker` (mounted in the root providers) maintains a back-stack
+ * of same-origin pathnames in `sessionStorage`: it pushes the path being left on
+ * each forward navigation, and `smartBack` pops it. A single "prev" slot can't
+ * do this — `smartBack` navigates with `push` (a forward nav), so the tracker
+ * would immediately re-record the page just left, and the button would
+ * ping-pong between the last two pages instead of walking the chain
+ * (Map → Profile → Review then back should go Review → Profile → Map). A
+ * one-shot "going back" flag, set by `smartBack` and consumed by the tracker,
+ * stops that re-record so the walk stays honest.
  */
-const PREV_PATH_KEY = "vidit:prev-internal-path";
+const NAV_STACK_KEY = "vidit:nav-stack";
+const GOING_BACK_KEY = "vidit:nav-going-back";
+// Cap the stack so a long session can't grow sessionStorage without bound; the
+// deep tail of a back-stack is never reached in practice.
+const MAX_STACK = 50;
 
 /**
  * Sanitise the `?next=` query param before honouring it as a post-login
@@ -55,26 +64,68 @@ export function safeNext(raw: string | null): string {
   return url.pathname + url.search + url.hash;
 }
 
-/** Called by `PathTracker` on every Next.js route change. */
-export function setPreviousInternalPath(path: string): void {
+function readStack(): string[] {
+  try {
+    const raw = window.sessionStorage.getItem(NAV_STACK_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((p): p is string => typeof p === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStack(stack: string[]): void {
+  window.sessionStorage.setItem(
+    NAV_STACK_KEY,
+    JSON.stringify(stack.slice(-MAX_STACK))
+  );
+}
+
+/**
+ * Called by `PathTracker` on every Next.js route change, with the pathname being
+ * left. Pushes it onto the back-stack — unless the change was triggered by
+ * `smartBack` (the one-shot flag), in which case the stack was already popped
+ * and re-pushing would defeat the back walk.
+ */
+export function recordNavigation(leftPath: string): void {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(PREV_PATH_KEY, path);
+  if (window.sessionStorage.getItem(GOING_BACK_KEY) === "1") {
+    window.sessionStorage.removeItem(GOING_BACK_KEY);
+    return;
+  }
+  const stack = readStack();
+  // Skip a duplicate of the current top (effect re-runs, repeated nav to the
+  // same path) so the stack mirrors the real visit chain.
+  if (stack[stack.length - 1] !== leftPath) {
+    stack.push(leftPath);
+    writeStack(stack);
+  }
 }
 
 export function smartBack(
-  router: { back: () => void; push: (href: string) => void },
+  router: { push: (href: string) => void },
   fallback = "/"
 ): void {
   if (typeof window === "undefined") {
     router.push(fallback);
     return;
   }
-  const prev = window.sessionStorage.getItem(PREV_PATH_KEY);
-  // `prev !== current` guards a same-page reload looping us back to
-  // ourselves, a worse failure mode than the fallback.
-  if (prev && prev !== window.location.pathname) {
-    router.push(prev);
-    return;
+  const stack = readStack();
+  // Pop the first entry that isn't where we already are (defensive against a
+  // reload or a duplicate push looping us back to ourselves).
+  let target: string | undefined;
+  while (stack.length > 0) {
+    const candidate = stack.pop();
+    if (candidate && candidate !== window.location.pathname) {
+      target = candidate;
+      break;
+    }
   }
-  router.push(fallback);
+  writeStack(stack);
+  // Flag the upcoming route change as this back-nav so `PathTracker` doesn't
+  // re-push the page we're leaving (the ping-pong this whole module avoids).
+  window.sessionStorage.setItem(GOING_BACK_KEY, "1");
+  router.push(target ?? fallback);
 }

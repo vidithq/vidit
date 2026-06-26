@@ -15,6 +15,21 @@
       transform: translateX(0);
     }
   }
+
+  /* Entrance for the incomplete-form notice: a small drop + a single nudge so a
+     blocked submit reads as a fresh, deliberate response rather than static text. */
+  --animate-notice-in: notice-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1.4) both;
+
+  @keyframes notice-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 /*

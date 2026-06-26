@@ -10,7 +10,7 @@ const baseProps = {
   setEventDate: () => {},
   sourceDate: "",
   setSourceDate: () => {},
-  lockedFromBounty: false,
+  sourceUrlLocked: false,
 };
 
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
@@ -54,7 +54,7 @@ describe("DetailsFields", () => {
 
   it("locks the source URL in bounty-fulfilment mode", () => {
     render(
-      <DetailsFields {...baseProps} lockedFromBounty sourceUrl="https://t.me/c/1" />
+      <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
     );
     expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
       "readonly"

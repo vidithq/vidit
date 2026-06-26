@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import type { GeolocationState } from "@/types";
 
 // Ghost orange, icon-only — mirrors the sidebar's icon shortcuts (square,
 // hover-bg) so share reads as a light affordance, not a primary CTA competing
@@ -18,6 +19,9 @@ interface ShareButtonsProps {
   eventDate: string;
   lat: number;
   lng: number;
+  /** A `detected` row is a machine draft its owner can still edit, so a shared
+   *  link's content may change — surfaced as a caveat next to the share row. */
+  state: GeolocationState;
 }
 
 // Inline X logo — lucide doesn't ship one, and the legacy Twitter bird reads
@@ -43,6 +47,7 @@ export default function ShareButtons({
   eventDate,
   lat,
   lng,
+  state,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
   // Tracked so a second click within the 1.5s window doesn't queue a duplicate
@@ -91,7 +96,18 @@ export default function ShareButtons({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
+      {/* A detection is a machine draft its owner can still edit — a terse
+          inline flag, with the full caveat on hover, before anyone shares a link
+          whose content may still change. */}
+      {state === "detected" && (
+        <span
+          className="text-[10px] text-amber-400/80 cursor-default"
+          title="Machine-detected — its owner can still edit it, so this link's content may change."
+        >
+          editable draft
+        </span>
+      )}
       <button
         type="button"
         onClick={onCopy}
