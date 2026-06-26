@@ -18,6 +18,12 @@ EVENT_REGISTER_CONFIRMED = "register_confirmed"
 EVENT_PASSWORD_RESET_REQUESTED = "password_reset_requested"
 EVENT_PASSWORD_RESET_COMPLETED = "password_reset_completed"
 EVENT_PASSWORD_CHANGED = "password_changed"
+# X OAuth ("Continue with X"): an owner claims a machine-assembled profile,
+# links a handle to an existing account, or registers a new X-only account.
+# (Signing in with X to an already-claimed profile reuses ``EVENT_LOGIN``.)
+EVENT_X_OAUTH_CLAIM = "x_oauth_claim"
+EVENT_X_LINKED = "x_linked"
+EVENT_X_REGISTERED = "x_registered"
 
 
 class AuthEvent(Base):

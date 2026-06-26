@@ -7,6 +7,8 @@ import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { ContinueWithX } from "@/components/auth/ContinueWithX";
+import { xErrorMessage } from "@/lib/xOauth";
 import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
@@ -24,6 +26,8 @@ export default function LoginForm({ onSuccess }: Props) {
   // Set by /reset-password on success — surfaces a one-time confirmation that
   // the new password is live.
   const justReset = params.get("reset") === "ok";
+  // Set by a failed /auth/x/callback redirect (?x_error=<code>).
+  const xError = xErrorMessage(params.get("x_error"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -42,15 +46,13 @@ export default function LoginForm({ onSuccess }: Props) {
   return (
     <AuthCard title="Sign in to Vidit" subtitle="OSINT/GEOINT geolocation platform">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {justReset && !error && (
+        {justReset && !error && !xError && (
           <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
             Password reset — sign in with your new password.
           </div>
         )}
-        {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
-            {error}
-          </div>
+        {(error || xError) && (
+          <div className={FORM_ERROR_BANNER_COMPACT}>{error ?? xError}</div>
         )}
 
         <div>
@@ -100,6 +102,8 @@ export default function LoginForm({ onSuccess }: Props) {
           {submitting ? "Signing in..." : "Sign in"}
         </button>
       </form>
+
+      <ContinueWithX />
 
       <p className="text-center text-xs text-neutral-400">
         No account?{" "}

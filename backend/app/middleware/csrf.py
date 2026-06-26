@@ -42,6 +42,10 @@ CSRF_EXEMPT_PATHS = frozenset(
         "/api/v1/auth/resend-confirmation",
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
+        # Register-with-X: the user isn't signed in yet (the only auth is the
+        # signed handoff cookie), so any stale vidit_session/csrf pair on the
+        # wire is presumed dead — same lockout reasoning as /register.
+        "/api/v1/auth/x/register",
     }
 )
 

@@ -267,8 +267,11 @@ A few rules live in one backend home so the two sides can't drift:
 - **Upload MIME allowlist** — `services/storage.ALLOWED_IMAGE_TYPES` / `ALLOWED_VIDEO_TYPES` (the EXIF-strip set is *derived* from the image allowlist). Frontend mirror: `lib/mediaTypes.ts`.
 - **Coordinate bounds** — `services/geolocations.validate_coordinates` (the create + edit paths share it). Frontend mirror: `lib/coordinates.ts`.
 - **Password length** — `schemas/auth.PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH`. Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH`.
+- **Handle normalization** — `services/handles.normalize_handle` (lowercase, strip `@`). The sole writer-side normalizer for `users.x_handle`, shared by the OAuth claim/link/register flow and the detection backfill so the UNIQUE column can't mint case/`@`-variant duplicates.
 
 The frontend mirrors are hand-kept: change a backend value, change its mirror.
+
+The "Continue with X" OAuth round-trip carries its pre-user state (PKCE `state` + verifier, and the verified-handle handoff) in **short-lived signed JWT cookies**, not `auth_tokens` rows — that table keys on a NOT-NULL `user_id`, but the round-trip happens before any user exists. The cookies are HttpOnly, ~10-min TTL, signed with `JWT_SECRET`.
 
 ---
 

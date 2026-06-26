@@ -89,6 +89,24 @@ class Settings(BaseSettings):
     # ``admin@vidit.app`` in prod.
     admin_emails: str = ""
 
+    # ── X (Twitter) OAuth 2.0 — handle-ownership proof ──────────────────────
+    # One-shot Authorization Code + PKCE flow that proves control of an
+    # @handle, then discards the token. Confidential client (we hold the
+    # secret). Empty by default → the feature is dark (`x_oauth_enabled` False,
+    # the /auth/x/* routes 503): the whole flow is MockTransport-tested with no
+    # real X dev-app. Light it in prod by provisioning the app + setting the
+    # trio below; nothing else (invite + email/password auth) depends on it.
+    x_client_id: str = ""
+    x_client_secret: str = ""
+    # Must EXACTLY match a callback URL registered in the X dev-app, e.g.
+    # https://api.vidit.app/api/v1/auth/x/callback (+ a localhost variant).
+    x_redirect_uri: str = ""
+    # Overridable so tests point the flow at a MockTransport host; prod keeps
+    # the live X endpoints.
+    x_authorize_url: str = "https://twitter.com/i/oauth2/authorize"
+    x_token_url: str = "https://api.twitter.com/2/oauth2/token"
+    x_userinfo_url: str = "https://api.twitter.com/2/users/me"
+
     model_config = {"env_file": ".env"}
 
     @property
@@ -98,6 +116,16 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def x_oauth_enabled(self) -> bool:
+        """True only when all three X OAuth credentials are configured.
+
+        Gates the ``/auth/x/*`` routes (503 when False) and the frontend
+        button. With the trio empty the feature is dark and the flow is
+        exercised only by the MockTransport tests.
+        """
+        return bool(self.x_client_id and self.x_client_secret and self.x_redirect_uri)
 
     @field_validator("database_url", mode="after")
     @classmethod
@@ -136,6 +164,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 "S3_BUCKET is set but STORAGE_BACKEND is not 's3' — refusing to ship a "
                 "half-configured storage layer. Set STORAGE_BACKEND=s3 or unset S3_BUCKET."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_x_oauth(self) -> "Settings":
+        # All-or-nothing, same fail-fast shape as storage: a half-set trio
+        # (id without secret, say) builds an authorize URL that fails opaquely
+        # at the token exchange. Make the misconfig a boot error instead.
+        trio = {
+            "x_client_id": self.x_client_id,
+            "x_client_secret": self.x_client_secret,
+            "x_redirect_uri": self.x_redirect_uri,
+        }
+        if sum(1 for v in trio.values() if v) not in (0, 3):
+            missing = [name.upper() for name, value in trio.items() if not value]
+            raise ValueError(
+                "X OAuth is half-configured — set all of "
+                f"{', '.join(k.upper() for k in trio)} or none "
+                f"(missing: {', '.join(missing)})"
             )
         return self
 

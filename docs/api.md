@@ -8,7 +8,7 @@ All responses are JSON.
 
 **Transport security.** Every response carries `Strict-Transport-Security: max-age=15768000`. The header has no `includeSubDomains` or `preload` directives.
 
-**Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT — an audit failure never breaks the auth flow.
+**Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). The `/auth/x/*` flow adds `x_oauth_claim` (an owner claims a machine-assembled profile), `x_linked` (a logged-in user links their handle), and `x_registered` (a new X-only account); a returning owner signing in with X reuses `login`. Writes are best-effort inside a SAVEPOINT — an audit failure never breaks the auth flow.
 
 **Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string** — `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array** — `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope** — `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `bounty_not_found`, `bounty_not_open`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof` — geolocations and bounties share the file/media codes via `services/evidence_intake`). The `code` is the stable contract surface — branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
@@ -31,6 +31,10 @@ Auth column: — anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/forgot-password` | — | Email a single-use reset token (always 204) |
 | POST | `/auth/reset-password` | — | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
+| GET | `/auth/x/start` | — | Begin "Continue with X" (redirects to X consent) |
+| GET | `/auth/x/callback` | — | Finish OAuth: prove handle → claim/login/link, or hand off to register |
+| GET | `/auth/x/pending` | — | Verified handle for the register-with-X form (from the signed handoff cookie) |
+| POST | `/auth/x/register` | — | Create an X-only account (verified handle + chosen username) |
 | **Geolocations** | | | |
 | GET | `/geolocations` | — | List geolocations for the map (lightweight format) |
 | GET | `/geolocations/points` | — | Compact map-points tuples (cached) |
@@ -89,6 +93,8 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /auth/forgot-password` | 5/hour |
 | `POST /auth/reset-password` | 10/hour |
 | `POST /auth/change-password` | 10/hour (keyed per session) |
+| `GET /auth/x/start` | 20/hour |
+| `POST /auth/x/register` | 10/hour |
 | **Geolocations** | |
 | `GET /geolocations` | 120/min |
 | `GET /geolocations/points` | 60/min |
@@ -317,6 +323,35 @@ Authenticated password rotation from the settings page. Requires re-asserting th
 | 422 | `new_password` shorter than 8 characters |
 
 Rate-limited to 10/hour per session.
+
+---
+
+### Continue with X (`/auth/x/*`)
+
+One-shot X (Twitter) OAuth 2.0 (Authorization Code + PKCE, confidential client) that proves control of an `@handle`. A single "Continue with X" button does **login + claim + link + register**, routed by the backend on whether a profile for the proven handle exists. The access token is read once for the handle and **discarded**; scope is `tweet.read users.read` (X requires `tweet.read` alongside `users.read` for `/2/users/me` — we never read a tweet) with **no `offline.access`**, so X issues no refresh token and **no X credential is ever stored** — only the verified `user ↔ handle` binding (`users.x_handle` + `claimed_at`).
+
+The whole feature is **dark unless configured**: with `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_REDIRECT_URI` unset (`settings.x_oauth_enabled` false) every `/auth/x/*` endpoint returns `503`. The frontend hides the button behind `NEXT_PUBLIC_X_OAUTH_ENABLED`.
+
+All four endpoints are anonymous. `start` and `callback` are top-level browser redirects (`307`); `callback` carries the PKCE `state` + verifier in a short-lived signed `vidit_x_oauth` cookie (HttpOnly, ~10 min) it validates and clears. Handle normalization (lowercase, strip `@`) goes through `services/handles.normalize_handle` so `x_handle` never mints case/`@`-variant duplicates.
+
+**`GET /auth/x/start`** → `307` to X's consent screen; sets the signed `vidit_x_oauth` cookie.
+
+**`GET /auth/x/callback`** → validates `state`, exchanges the code, reads the handle, then routes by the binding matrix (`307` in every case):
+
+| Caller | Existing profile (`x_handle`) | Action | Redirect |
+|--------|-------------------------------|--------|----------|
+| anonymous | unclaimed (`claimed_at IS NULL`) | **claim** (stamp `claimed_at`) + session | `/profile/{username}/review` |
+| anonymous | claimed | **login** + session | `/map` |
+| anonymous | none | **→ register-with-X**: set signed `vidit_x_register` cookie | `/register?x=1` |
+| logged-in (no handle) | none | **link** (`x_handle = handle`) + re-issue session | `/profile/{username}` |
+| logged-in (no handle) | another user's | conflict | `/login?x_error=x_handle_conflict` |
+| logged-in (other handle) | — | conflict | `/login?x_error=x_handle_already_set` |
+
+Failures redirect to `/login?x_error=<code>` (never a 500): `oauth_refused` (user declined on X), `invalid_state` (missing/expired/tampered state), `x_oauth_failed` (token-exchange or userinfo failure — one opaque code, the failing step isn't revealed), plus the two conflict codes above. The frontend maps each to human copy ([`lib/xOauth.ts`](../frontend/src/lib/xOauth.ts)).
+
+**`GET /auth/x/pending`** → `{"handle": "..."}` read from the signed `vidit_x_register` cookie (display only — the cookie is the authority); `404` when absent/expired.
+
+**`POST /auth/x/register`** (body `{"username": "..."}`) → creates an **X-only** account from the verified-handle cookie + chosen username: `claimed_at` set, **no password, no email** (login is always re-OAuth). Returns `201` `UserRead` + session cookies. CSRF-exempt (the caller has no session yet — same reasoning as `/auth/register`). Typed-envelope errors: `username_already_taken` (`409` — the form lets the user pick another), `x_handle_conflict` (`409` — the handle was claimed since the callback), `x_register_expired` (`400` — handoff cookie missing/expired).
 
 ---
 

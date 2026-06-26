@@ -91,7 +91,10 @@ class UserRead(BaseModel):
 
     id: uuid.UUID
     username: str
-    email: str
+    # Nullable: an X-only account (claimed via OAuth) and an unclaimed
+    # assembled profile both carry no email. Email/password auth still requires
+    # one — this only reflects that the column can legitimately be absent.
+    email: str | None
     is_trusted: bool
     trust_reason: str | None
     bio: str | None

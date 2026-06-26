@@ -22,7 +22,10 @@ export interface ExternalLinks {
 export interface User {
   id: string;
   username: string;
-  email: string;
+  // Null for an X-only account (claimed via OAuth, no password/email). Email
+  // + password auth still requires one; this only reflects the column can be
+  // legitimately absent. Mirrors backend `UserRead.email: str | None`.
+  email: string | null;
   is_trusted: boolean;
   trust_reason: string | null;
   bio: string | null;

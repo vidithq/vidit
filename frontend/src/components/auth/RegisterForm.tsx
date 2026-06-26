@@ -6,6 +6,7 @@ import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { ContinueWithX } from "@/components/auth/ContinueWithX";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
@@ -163,6 +164,8 @@ export default function RegisterForm({
           {submitting ? "Sending confirmation..." : "Continue"}
         </button>
       </form>
+
+      <ContinueWithX label="Sign up with" />
     </AuthCard>
   );
 }

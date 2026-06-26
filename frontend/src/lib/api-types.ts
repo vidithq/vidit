@@ -482,6 +482,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/x/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * X Callback
+         * @description Finish the flow: validate, exchange, read the handle, route the binding.
+         */
+        get: operations["x_callback_api_v1_auth_x_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/x/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * X Pending
+         * @description Return the verified handle for the register-with-X page to display.
+         */
+        get: operations["x_pending_api_v1_auth_x_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/x/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * X Register
+         * @description Create the X-only account from the verified-handle cookie + username.
+         *
+         *     The handle is authoritative from the signed cookie; ``body`` carries only
+         *     the chosen username. Issues a session on success.
+         */
+        post: operations["x_register_api_v1_auth_x_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/x/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * X Start
+         * @description Begin the flow: stash PKCE state in a signed cookie, redirect to X.
+         */
+        get: operations["x_start_api_v1_auth_x_start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bounties": {
         parameters: {
             query?: never;
@@ -2090,7 +2173,7 @@ export interface components {
              */
             created_at: string;
             /** Email */
-            email: string;
+            email: string | null;
             /** External Links */
             external_links: {
                 [key: string]: string | null;
@@ -2138,6 +2221,23 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * XPendingResponse
+         * @description The verified handle, for the register-with-X page to display.
+         */
+        XPendingResponse: {
+            /** Handle */
+            handle: string;
+        };
+        /**
+         * XRegisterRequest
+         * @description Body for ``POST /auth/x/register`` — the chosen username for the
+         *     X-only account. Mirrors the ``username`` bounds of ``RegisterRequest``.
+         */
+        XRegisterRequest: {
+            /** Username */
+            username: string;
         };
         /** _FulfilledByNested */
         _FulfilledByNested: {
@@ -2971,6 +3071,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    x_callback_api_v1_auth_x_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    x_pending_api_v1_auth_x_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XPendingResponse"];
+                };
+            };
+        };
+    };
+    x_register_api_v1_auth_x_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["XRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    x_start_api_v1_auth_x_start_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

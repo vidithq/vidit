@@ -196,9 +196,9 @@ erDiagram
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
-| `email` | `VARCHAR(255)` | UNIQUE, nullable — NULL on an assembled profile (built from an X handle before login); set when its owner claims it. Every self-registered / claimed account carries it. |
+| `email` | `VARCHAR(255)` | UNIQUE, nullable — NULL on an assembled profile (built from an X handle before login), and on an **X-only** account claimed/created via "Continue with X" (login is re-OAuth). Self-registered / email-claimed accounts carry it. |
 | `password_hash` | `VARCHAR(255)` | nullable — NULL until claimed, same reason as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable — the X handle an assembled profile was built from (lowercased, no `@`). Pre-claim identity anchor and the dedup key so re-consent reuses the existing profile. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable — the X handle an assembled profile was built from (lowercased, no `@`). Pre-claim identity anchor and the dedup key so re-consent reuses the existing profile. Written (normalized via `services/handles.normalize_handle`) by the assembly pipeline and the OAuth claim/link/register flow. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false` — auto-flipped on login/register if email matches `ADMIN_EMAILS` |
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false` — substantiated trust mark (toggle UI lands later; column ships now) |

@@ -82,7 +82,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <span className={FORM_LABEL}>Email</span>
-              <p className="text-neutral-100 mt-0.5">{user.email}</p>
+              <p className="text-neutral-100 mt-0.5">{user.email ?? "—"}</p>
             </div>
           </div>
         </div>

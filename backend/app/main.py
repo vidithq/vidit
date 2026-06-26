@@ -14,6 +14,7 @@ from app.ratelimit import limiter
 from app.routers import (
     admin,
     auth,
+    auth_x,
     bounties,
     geolocations,
     search,
@@ -128,6 +129,7 @@ async def add_hsts_header(request: Request, call_next):
 
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(auth_x.router, prefix="/api/v1/auth/x", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(bounties.router, prefix="/api/v1/bounties", tags=["bounties"])
 # geolocations ships several sub-routers (one per concern); mount each under the

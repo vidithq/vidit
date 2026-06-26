@@ -98,6 +98,36 @@ def test_default_jwt_secret_with_unparseable_host_fails(monkeypatch):
         Settings()
 
 
+def test_x_oauth_disabled_by_default(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    _clear_x_env(monkeypatch)
+    settings = Settings()
+    assert settings.x_oauth_enabled is False
+
+
+def test_x_oauth_half_configured_fails(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    _clear_x_env(monkeypatch)
+    monkeypatch.setenv("X_CLIENT_ID", "id-without-the-rest")
+    with pytest.raises(ValidationError, match="half-configured"):
+        Settings()
+
+
+def test_x_oauth_full_config_enables(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    _clear_x_env(monkeypatch)
+    monkeypatch.setenv("X_CLIENT_ID", "id")
+    monkeypatch.setenv("X_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("X_REDIRECT_URI", "https://api.test/api/v1/auth/x/callback")
+    settings = Settings()
+    assert settings.x_oauth_enabled is True
+
+
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def _clear_x_env(monkeypatch):
+    for var in ("X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"):
         monkeypatch.delenv(var, raising=False)

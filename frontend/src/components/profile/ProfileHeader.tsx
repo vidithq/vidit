@@ -15,8 +15,9 @@ import type { ProfileEditState } from "./useProfileEdit";
 interface ProfileHeaderProps {
   profile: PublicProfile;
   isOwn: boolean;
-  /** Signed-in user's email — rendered only on the own profile. */
-  email?: string;
+  /** Signed-in user's email — rendered only on the own profile. Null for an
+   *  X-only account (no email). */
+  email?: string | null;
   edit: ProfileEditState;
 }
 
@@ -57,7 +58,7 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
                 size={14}
               />
             </h2>
-            {isOwn && (
+            {isOwn && email && (
               <p className="text-sm text-neutral-400 mt-0.5 truncate">
                 {email}
               </p>
