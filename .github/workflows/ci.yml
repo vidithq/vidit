@@ -204,10 +204,11 @@ jobs:
       - name: Fail if the committed types drifted from the spec
         run: git diff --exit-code frontend/src/lib/api-types.ts
 
-  # The audit-hygiene gates: jscpd refuses a new copy-paste block (the #1 thing
-  # the dedup audit found), knip refuses dead frontend code (unused files /
-  # exports). Both are calibrated to pass the current tree (see `.jscpd.json` /
-  # `frontend/knip.json`) — they fail only on NEW duplication / dead code.
+  # The audit-hygiene gates. jscpd caps total duplication at 1% — the current
+  # tree is ~0.5%, so it fails when a contributor adds a meaningful chunk of
+  # copy-paste (it's a ceiling, not a zero-new-clones ratchet). knip refuses
+  # dead frontend code (unused files / exports). Both pass the current tree
+  # (see `.jscpd.json` / `frontend/knip.json`).
   hygiene:
     name: Hygiene — duplication & dead code
     runs-on: ubuntu-latest
@@ -222,7 +223,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Duplication (jscpd)
-        run: npx --yes jscpd@4 backend/app frontend/src
+        run: npx --yes jscpd@4.2.5 backend/app frontend/src
 
       - name: Install frontend dependencies
         run: npm ci

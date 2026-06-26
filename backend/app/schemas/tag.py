@@ -19,7 +19,7 @@ class TagCreate(BaseModel):
     # Deliberately ``str``, not ``TagCategory``: the router validates the value
     # against ``USER_CREATABLE_CATEGORIES`` and returns 403 with a specific
     # message for a non-creatable or unknown category. Narrowing this to the
-    # Literal would shift "evil" from that 403 to a generic Pydantic 422 — a
+    # Literal would shift an unknown category like "evil" to a Pydantic 422 — a
     # behaviour change. Only the Read side (``TagRead``) carries the enum, which
     # is what the OpenAPI spec → frontend type derive from.
     category: str

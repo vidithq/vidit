@@ -118,7 +118,7 @@ gen-api-types:
 	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
 
 check-dup:
-	npx --yes jscpd@4 backend/app frontend/src
+	npx --yes jscpd@4.2.5 backend/app frontend/src
 
 hygiene: check-dup
 	cd frontend && npm run knip
