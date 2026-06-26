@@ -6,6 +6,11 @@
 const CSRF_COOKIE = "vidit_csrf";
 export const CSRF_HEADER = "X-CSRF-Token";
 
+// Minimum password length, mirroring the backend PASSWORD_MIN_LENGTH in
+// schemas/auth.py so the client-side guard + `minLength` attrs read from one
+// source instead of a scattered literal `8`.
+export const PASSWORD_MIN_LENGTH = 8;
+
 export function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const prefix = `${CSRF_COOKIE}=`;
@@ -46,8 +51,8 @@ export function validatePasswordChange(
   confirm: string,
   label = "New password"
 ): string | null {
-  if (password.length < 8) {
-    return `${label} must be at least 8 characters.`;
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `${label} must be at least ${PASSWORD_MIN_LENGTH} characters.`;
   }
   if (password !== confirm) {
     return `${label}s don't match.`;

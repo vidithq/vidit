@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { validatePasswordChange } from "@/lib/auth";
+import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -81,7 +81,7 @@ function ResetPasswordInner() {
   return (
     <AuthCard
       title="Set a new password"
-      subtitle="Pick something at least 8 characters long. The link is single-use, so finish here."
+      subtitle={`Pick something at least ${PASSWORD_MIN_LENGTH} characters long. The link is single-use, so finish here.`}
       footer={
         <Link href="/login" className="text-orange-400 hover:underline">
           Back to sign in
@@ -103,7 +103,7 @@ function ResetPasswordInner() {
             id="password"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className={FORM_INPUT}
@@ -118,7 +118,7 @@ function ResetPasswordInner() {
             id="confirm"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             className={FORM_INPUT}

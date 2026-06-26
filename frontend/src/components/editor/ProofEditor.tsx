@@ -5,6 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
@@ -135,7 +136,7 @@ export default function ProofEditor({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept={ACCEPTED_IMAGE_MIME}
               onChange={handleImageUpload}
               className="hidden"
             />

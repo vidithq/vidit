@@ -27,13 +27,16 @@ from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from app.services.storage import ALLOWED_IMAGE_TYPES
+
 logger = logging.getLogger(__name__)
 
 
-# Mirrors ``ALLOWED_IMAGE_TYPES`` in ``services/storage.py`` — its own
-# constant because the storage module isn't a natural home for the EXIF
-# strip contract.
-_STRIPPABLE_IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+# Derived from the accepted-image allowlist (``ALLOWED_IMAGE_TYPES`` in
+# ``services/storage.py``): today every accepted image type is EXIF-strippable,
+# so the strip contract is exactly that set. Split them if an accepted image
+# type is ever not EXIF-strippable.
+_STRIPPABLE_IMAGE_TYPES = frozenset(ALLOWED_IMAGE_TYPES)
 
 # Hard cap on decoded image dimensions. A decompression bomb is a small file
 # (e.g. 2 MB JPEG) that decodes to a huge raster (12000 × 12000 ≈ 580 MB RGB
