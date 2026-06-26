@@ -52,17 +52,13 @@ def log_auth_event(
                     user_agent=user_agent,
                 )
             )
-    except Exception as exc:  # noqa: BLE001 — see module docstring.
-        # Log the exception *type*, not the full message: a raw DB exception
-        # string can echo the INSERT's bound parameters (ip / user_agent),
-        # and the exception class (IntegrityError, DataError, …) is the
-        # actionable part anyway. Keeps request-derived data out of the log.
-        logger.warning(
-            "auth_event log failed: event=%s user_id=%s err=%s",
-            event,
-            user_id,
-            type(exc).__name__,
-        )
+    except Exception:  # noqa: BLE001 — see module docstring.
+        # Log only the untainted event + user_id, never the exception object: a
+        # raw DB exception string can echo the INSERT's bound parameters (the
+        # request-derived ip / user_agent), which is request data we keep out of
+        # logs. The savepoint rollback already protects the transaction; this
+        # line just records *that* the audit write failed, for which action.
+        logger.warning("auth_event log failed: event=%s user_id=%s", event, user_id)
 
 
 def log_auth_event_from_request(
