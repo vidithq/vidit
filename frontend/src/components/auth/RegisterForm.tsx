@@ -7,6 +7,7 @@ import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
+import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
@@ -147,7 +148,7 @@ export default function RegisterForm({
             id="password"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className={FORM_INPUT}

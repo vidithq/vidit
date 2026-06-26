@@ -3,6 +3,7 @@
 import type { ChangeEvent } from "react";
 
 import { displayUrlsFor } from "@/lib/mediaUrls";
+import { ACCEPTED_MEDIA_MIME } from "@/lib/mediaTypes";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { FilePreviewGrid } from "@/components/ui/FilePreviewGrid";
@@ -59,7 +60,7 @@ export function EvidenceUploader({
         id="files"
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+        accept={ACCEPTED_MEDIA_MIME}
         onChange={handleFiles}
         className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-sm file:border-0 file:bg-neutral-700 file:text-neutral-300 file:cursor-pointer"
       />

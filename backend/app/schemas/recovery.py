@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 from app.schemas import NormalizedEmail
+from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 
 # Tokens are `secrets.token_urlsafe(32)` → 43 ASCII chars. Cap at 64 leaves
 # headroom for an entropy bump without accepting arbitrary-length input that
@@ -14,7 +15,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=10, max_length=_TOKEN_MAX)
-    new_password: str = Field(min_length=8, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class ConfirmRegistrationRequest(BaseModel):
@@ -46,4 +47,4 @@ class ChangePasswordRequest(BaseModel):
     """
 
     current_password: str = Field(min_length=1, max_length=200)
-    new_password: str = Field(min_length=8, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)

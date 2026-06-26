@@ -85,6 +85,15 @@ class GeolocationStateError(GeolocationError):
     code = "invalid_state"
 
 
+def validate_coordinates(lat: float, lng: float) -> None:
+    """Reject out-of-range coordinates — the single bounds check shared by the
+    human create + edit paths."""
+    if not -90 <= lat <= 90:
+        raise InvalidCoordinatesError("Latitude must be between -90 and 90")
+    if not -180 <= lng <= 180:
+        raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+
+
 def _require_submission_tags(tags: list[Tag]) -> None:
     """Enforce the curated-tag floor: one ``conflict`` + one ``capture_source``.
 
@@ -144,10 +153,7 @@ async def create_with_evidence(
     key that landed before it. Returns the persisted ``Geolocation``,
     refreshed from the row.
     """
-    if not -90 <= lat <= 90:
-        raise InvalidCoordinatesError("Latitude must be between -90 and 90")
-    if not -180 <= lng <= 180:
-        raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+    validate_coordinates(lat, lng)
 
     enforce_file_count(files)
 
@@ -291,10 +297,7 @@ def update_detected(db: Session, *, geo: Geolocation, payload: GeolocationUpdate
         current = cast(Point, to_shape(geo.location))
         new_lat = data["lat"] if data.get("lat") is not None else current.y
         new_lng = data["lng"] if data.get("lng") is not None else current.x
-        if not -90 <= new_lat <= 90:
-            raise InvalidCoordinatesError("Latitude must be between -90 and 90")
-        if not -180 <= new_lng <= 180:
-            raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+        validate_coordinates(new_lat, new_lng)
         geo.location = from_shape(Point(new_lng, new_lat), srid=4326)
 
     if data.get("title") is not None:

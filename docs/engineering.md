@@ -259,6 +259,16 @@ GeolocationRead     → output (API response)
 GeolocationList     → simplified output (map, lists)
 ```
 
+### Shared validation constants
+
+A few rules live in one backend home so the two sides can't drift:
+
+- **Upload MIME allowlist** — `services/storage.ALLOWED_IMAGE_TYPES` / `ALLOWED_VIDEO_TYPES` (the EXIF-strip set is *derived* from the image allowlist). Frontend mirror: `lib/mediaTypes.ts`.
+- **Coordinate bounds** — `services/geolocations.validate_coordinates` (the create + edit paths share it). Frontend mirror: `lib/coordinates.ts`.
+- **Password length** — `schemas/auth.PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH`. Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH`.
+
+The frontend mirrors are hand-kept: change a backend value, change its mirror.
+
 ---
 
 ## Code comments

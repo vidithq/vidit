@@ -4,11 +4,14 @@ from pydantic import BaseModel, Field
 
 from app.schemas import NormalizedEmail
 
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 200
+
 
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=1, max_length=50)
     email: NormalizedEmail
-    password: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     invite_code: str = Field(min_length=1, max_length=64)
 
 

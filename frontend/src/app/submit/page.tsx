@@ -8,6 +8,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
 import { createBounty, getBounty } from "@/lib/bounties";
+import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { FORM_ERROR_BANNER, FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
 import type { BountyDetail, Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
@@ -243,11 +244,11 @@ function SubmitForm() {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
 
-    if (isNaN(latNum) || latNum < -90 || latNum > 90) {
+    if (isNaN(latNum) || latNum < LAT_MIN || latNum > LAT_MAX) {
       geolocationMutation.setError("Latitude must be a number between -90 and 90");
       return;
     }
-    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+    if (isNaN(lngNum) || lngNum < LNG_MIN || lngNum > LNG_MAX) {
       geolocationMutation.setError("Longitude must be a number between -180 and 180");
       return;
     }
