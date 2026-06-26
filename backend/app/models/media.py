@@ -1,11 +1,17 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+# Media kind domain. The alias is the value-domain source of truth — the column,
+# the Read schema, the tweet-import ``kind`` field, and the generated frontend
+# type all derive from it.
+MediaType = Literal["image", "video"]
 
 
 class Media(Base):
@@ -27,7 +33,7 @@ class Media(Base):
         ForeignKey("bounties.id", ondelete="CASCADE"), nullable=True
     )
     storage_url: Mapped[str] = mapped_column(Text, nullable=False)
-    media_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    media_type: Mapped[MediaType] = mapped_column(String(10), nullable=False)
     # Hex-encoded SHA-256 of the uploaded bytes — a queryable content
     # fingerprint that survives storage-class changes and copies, unlike the S3
     # ETag (MD5 for non-multipart uploads, not stable across copies; see

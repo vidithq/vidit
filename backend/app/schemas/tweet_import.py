@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.media import MediaType
+
 
 class TweetImportRequest(BaseModel):
     """Body of ``POST /geolocations/import-from-tweet``."""
@@ -25,7 +27,7 @@ class TweetImportCoord(BaseModel):
 
 
 class TweetImportMedia(BaseModel):
-    kind: Literal["image", "video"]
+    kind: MediaType
     # Upstream X CDN URL — the frontend fetches it directly when CORS permits
     # (usually it doesn't) or proxies via ``GET /geolocations/import-from-tweet/media``.
     remote_url: str

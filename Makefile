@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo gen-api-types
 
 help:
 	@echo "Available commands:"
@@ -20,6 +20,7 @@ help:
 	@echo "  make dev-frontend  - Run Next.js dev server (port 3000)"
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
+	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the closed-beta promo MP4 (see video/README.md)"
 
@@ -106,6 +107,14 @@ dev:
 
 test:
 	cd backend && uv run pytest
+
+# Generate the frontend's API types from the backend OpenAPI spec. The dumped
+# spec (frontend/openapi.json) is a gitignored intermediate; the generated
+# src/lib/api-types.ts IS committed. CI re-runs this and `git diff --exit-code`s
+# the result, so a backend schema change that wasn't regenerated fails the build.
+gen-api-types:
+	cd backend && uv run --no-sync python scripts/dump_openapi.py > ../frontend/openapi.json
+	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
 
 clean:
 	docker-compose down -v
