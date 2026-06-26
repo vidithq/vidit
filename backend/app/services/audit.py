@@ -53,7 +53,16 @@ def log_auth_event(
                 )
             )
     except Exception as exc:  # noqa: BLE001 — see module docstring.
-        logger.warning("auth_event log failed: event=%s user_id=%s err=%s", event, user_id, exc)
+        # Log the exception *type*, not the full message: a raw DB exception
+        # string can echo the INSERT's bound parameters (ip / user_agent),
+        # and the exception class (IntegrityError, DataError, …) is the
+        # actionable part anyway. Keeps request-derived data out of the log.
+        logger.warning(
+            "auth_event log failed: event=%s user_id=%s err=%s",
+            event,
+            user_id,
+            type(exc).__name__,
+        )
 
 
 def log_auth_event_from_request(
