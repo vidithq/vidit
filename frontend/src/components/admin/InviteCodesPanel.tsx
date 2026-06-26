@@ -10,8 +10,11 @@ import {
   type InviteCode,
   type InviteCodeStatus,
 } from "@/lib/admin";
+import { errorMessage } from "@/lib/api";
+import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
+  FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
@@ -119,10 +122,24 @@ function InviteCodeRow({
 
 export function InviteCodesPanel() {
   const [codes, setCodes] = useState<InviteCode[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
-  const [creating, setCreating] = useState(false);
+
+  // The mint action owns the one error slot; the loader and revoke (which has
+  // no loading of its own — the row owns that) write to it via `setError`, so
+  // the panel keeps a single shared error like before.
+  const createMutation = useMutation(
+    () =>
+      createInviteCode({
+        expires_in_days: expiresInDays === "" ? null : expiresInDays,
+      }),
+    {
+      fallback: "Failed to mint invite code",
+      onSuccess: () => refresh(),
+    }
+  );
+  const { error, setError } = createMutation;
+  const creating = createMutation.loading;
 
   const refresh = async () => {
     try {
@@ -130,7 +147,7 @@ export function InviteCodesPanel() {
       setCodes(rows);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load invite codes");
+      setError(errorMessage(err, "Failed to load invite codes"));
     }
   };
 
@@ -140,18 +157,7 @@ export function InviteCodesPanel() {
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreating(true);
-    setError(null);
-    try {
-      await createInviteCode({
-        expires_in_days: expiresInDays === "" ? null : expiresInDays,
-      });
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mint invite code");
-    } finally {
-      setCreating(false);
-    }
+    await createMutation.run();
   };
 
   const onRevoke = async (id: string) => {
@@ -159,7 +165,7 @@ export function InviteCodesPanel() {
       await revokeInviteCode(id);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to revoke invite code");
+      setError(errorMessage(err, "Failed to revoke invite code"));
     }
   };
 
@@ -206,7 +212,7 @@ export function InviteCodesPanel() {
       </form>
 
       {error && (
-        <div className="px-3 py-2 rounded-md text-xs text-red-300 bg-red-500/10 border border-red-500/30">
+        <div className={FORM_ERROR_BANNER_BOXED}>
           {error}
         </div>
       )}

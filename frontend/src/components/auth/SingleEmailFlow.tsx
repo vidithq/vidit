@@ -2,14 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
+import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
-
-type FlowState = "idle" | "sending" | "sent" | "failed";
 
 interface SingleEmailFlowProps {
   /** POST target; receives `{ email }` (trimmed). */
@@ -35,15 +34,29 @@ export function SingleEmailFlow({
   renderSent,
 }: SingleEmailFlowProps) {
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<FlowState>("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
-  if (state === "sent") {
+  const submit = useMutation(
+    () =>
+      apiFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim() }),
+      }),
+    {
+      fallback: "Request failed",
+      onSuccess: () => setSent(true),
+    }
+  );
+  const sending = submit.loading;
+  const errorMessage = submit.error;
+
+  if (sent) {
     return (
       <>
         {renderSent(email.trim(), () => {
           setEmail("");
-          setState("idle");
+          setSent(false);
+          submit.reset();
         })}
       </>
     );
@@ -51,23 +64,12 @@ export function SingleEmailFlow({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
-    setState("sending");
-    try {
-      await apiFetch(endpoint, {
-        method: "POST",
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      setState("sent");
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Request failed");
-      setState("failed");
-    }
+    await submit.run();
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {state === "failed" && errorMessage && (
+      {errorMessage && (
         <div className={FORM_ERROR_BANNER_COMPACT}>{errorMessage}</div>
       )}
 
@@ -89,10 +91,10 @@ export function SingleEmailFlow({
 
       <button
         type="submit"
-        disabled={state === "sending"}
+        disabled={sending}
         className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
       >
-        {state === "sending" ? "Sending..." : submitLabel}
+        {sending ? "Sending..." : submitLabel}
       </button>
     </form>
   );

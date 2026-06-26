@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { updateMyProfile, type PublicProfile } from "@/lib/users";
+import { useMutation } from "@/hooks/useMutation";
 import type { ExternalLinks } from "@/types";
 
 export const BIO_MAX_LEN = 500;
@@ -55,15 +56,42 @@ export function useProfileEdit({
   const [draftBio, setDraftBio] = useState("");
   const [draftAvatarUrl, setDraftAvatarUrl] = useState("");
   const [draftLinks, setDraftLinks] = useState<ExternalLinks>({});
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const saveMutation = useMutation(
+    () =>
+      // Backend wholesale-replaces `external_links`. Send every platform
+      // explicitly (null for empty) so cleared ones aren't left stale in JSONB.
+      updateMyProfile({
+        bio: draftBio,
+        avatar_url: draftAvatarUrl,
+        external_links: {
+          x: draftLinks.x ?? null,
+          discord: draftLinks.discord ?? null,
+          website: draftLinks.website ?? null,
+          github: draftLinks.github ?? null,
+        },
+      }),
+    {
+      fallback: "Failed to save",
+      onSuccess: async () => {
+        await refreshAuth();
+        refetchProfile();
+        setEditing(false);
+      },
+    }
+  );
+  const saving = saveMutation.loading;
+  const saveError = saveMutation.error;
+  // Stable `useState` setter — safe to omit from effect deps, like the old
+  // local `setSaveError`.
+  const setSaveError = saveMutation.setError;
 
   // Drop edit mode when the profile switches usernames, so unsaved drafts
   // don't leak into another profile.
   useEffect(() => {
     setEditing(false);
     setSaveError(null);
-  }, [username]);
+  }, [username, setSaveError]);
 
   const startEditing = () => {
     // The edit affordance renders only once the profile loads; guard keeps the
@@ -82,29 +110,7 @@ export function useProfileEdit({
   };
 
   const saveEdits = async () => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      // Backend wholesale-replaces `external_links`. Send every platform
-      // explicitly (null for empty) so cleared ones aren't left stale in JSONB.
-      await updateMyProfile({
-        bio: draftBio,
-        avatar_url: draftAvatarUrl,
-        external_links: {
-          x: draftLinks.x ?? null,
-          discord: draftLinks.discord ?? null,
-          website: draftLinks.website ?? null,
-          github: draftLinks.github ?? null,
-        },
-      });
-      await refreshAuth();
-      refetchProfile();
-      setEditing(false);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
+    await saveMutation.run();
   };
 
   const bioRemaining = BIO_MAX_LEN - draftBio.length;

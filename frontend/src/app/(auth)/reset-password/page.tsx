@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { validatePasswordChange } from "@/lib/auth";
+import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
@@ -26,8 +28,22 @@ function ResetPasswordInner() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const resetPassword = useMutation(
+    () =>
+      apiFetch("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: password }),
+      }),
+    {
+      fallback: "Reset failed — request a new link.",
+      onSuccess: () => {
+        router.push("/login?reset=ok");
+      },
+    }
+  );
+  const { error, setError } = resetPassword;
+  const submitting = resetPassword.loading;
 
   const tokenMissing = token.length < 10;
 
@@ -35,29 +51,13 @@ function ResetPasswordInner() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirm) {
-      setError("Passwords don't match.");
+    const validationError = validatePasswordChange(password, confirm, "Password");
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    setSubmitting(true);
-    try {
-      await apiFetch("/auth/reset-password", {
-        method: "POST",
-        body: JSON.stringify({ token, new_password: password }),
-      });
-      router.push("/login?reset=ok");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Reset failed — request a new link.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    await resetPassword.run();
   };
 
   if (tokenMissing) {

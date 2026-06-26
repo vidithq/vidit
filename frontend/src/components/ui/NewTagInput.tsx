@@ -2,6 +2,7 @@
 
 import { useState, type KeyboardEvent } from "react";
 
+import { useMutation } from "@/hooks/useMutation";
 import { FORM_INPUT } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -24,16 +25,42 @@ interface Props {
 
 export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
   const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const trimmed = name.trim();
+
+  const create = useMutation(
+    () =>
+      apiFetch<Tag>("/tags", {
+        method: "POST",
+        body: JSON.stringify({ name: trimmed, category: "free" }),
+      }),
+    {
+      fallback: "Could not create tag.",
+      onError: (e) => {
+        // 409 = name already in the DB (case-sensitive). Other API errors
+        // surface their message; a non-API throw (e.g. a network TypeError)
+        // shows the fixed message, not a raw "Failed to fetch".
+        if (e instanceof ApiError && e.status === 409) {
+          return "That tag already exists.";
+        }
+        if (e instanceof ApiError) {
+          return e.message;
+        }
+        return "Could not create tag.";
+      },
+      onSuccess: (created) => {
+        onCreated(created);
+        setName("");
+      },
+    }
+  );
+
+  const busy = create.loading;
+  const error = create.error;
   const canSubmit = !disabled && !busy && trimmed.length > 0;
 
   async function submit() {
     if (!canSubmit) return;
-    setBusy(true);
-    setError(null);
 
     // Already in the local list: skip the round-trip and auto-select. Matched
     // exact + case-sensitive (the backend uniqueness rule) so a near-match
@@ -42,30 +69,13 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
       (t) => t.name === trimmed && t.category === "free",
     );
     if (local) {
+      create.setError(null);
       onCreated(local);
       setName("");
-      setBusy(false);
       return;
     }
 
-    try {
-      const created = await apiFetch<Tag>("/tags", {
-        method: "POST",
-        body: JSON.stringify({ name: trimmed, category: "free" }),
-      });
-      onCreated(created);
-      setName("");
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        setError("That tag already exists.");
-      } else if (e instanceof ApiError) {
-        setError(e.message);
-      } else {
-        setError("Could not create tag.");
-      }
-    } finally {
-      setBusy(false);
-    }
+    await create.run();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -83,7 +93,7 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
           value={name}
           onChange={(e) => {
             setName(e.target.value);
-            if (error) setError(null);
+            if (error) create.setError(null);
           }}
           onKeyDown={onKeyDown}
           disabled={disabled || busy}

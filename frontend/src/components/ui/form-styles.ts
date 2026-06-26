@@ -32,3 +32,9 @@ export const FORM_ERROR_BANNER =
 
 export const FORM_ERROR_BANNER_COMPACT =
   "bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 rounded-sm text-xs";
+
+// Boxed inline error — admin panels. Lighter red than `FORM_ERROR_BANNER`, for
+// a panel-level action error that sits inside a card rather than under a form
+// field. (The form banners use `red-900/40`; this card variant uses `red-500/10`.)
+export const FORM_ERROR_BANNER_BOXED =
+  "bg-red-500/10 border border-red-500/30 text-red-300 px-3 py-2 rounded-md text-xs";

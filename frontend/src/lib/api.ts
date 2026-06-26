@@ -34,6 +34,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Extract a user-facing message from an unknown thrown value. ``apiFetch``
+ * throws ``ApiError`` (an ``Error``), so its ``.message`` surfaces; any
+ * non-Error throw falls back. The idiom every mutation handler repeated inline
+ * — pair with ``useMutation``.
+ */
+export function errorMessage(err: unknown, fallback = "Something went wrong."): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 interface ParsedDetail {
   message: string;
   code: string | null;

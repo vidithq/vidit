@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { validatePasswordChange } from "@/lib/auth";
+import { useMutation } from "@/hooks/useMutation";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
@@ -17,22 +18,35 @@ import { setHelpHidden } from "@/lib/helpPreference";
 
 
 export default function SettingsPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useRequireAuth();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const helpHidden = useHelpHidden();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
+  const changePassword = useMutation(
+    () =>
+      apiFetch("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      }),
+    {
+      fallback: "Password change failed.",
+      onSuccess: () => {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setSuccess(true);
+      },
     }
-  }, [loading, user, router]);
+  );
+  const { error, setError } = changePassword;
+  const submitting = changePassword.loading;
 
   if (loading || !user) {
     return (
@@ -47,33 +61,13 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(false);
 
-    if (newPassword.length < 8) {
-      setError("New password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError("New passwords don't match.");
+    const validationError = validatePasswordChange(newPassword, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    setSubmitting(true);
-    try {
-      await apiFetch("/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({
-          current_password: currentPassword,
-          new_password: newPassword,
-        }),
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Password change failed.");
-    } finally {
-      setSubmitting(false);
-    }
+    await changePassword.run();
   };
 
   return (

@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useMutation } from "@/hooks/useMutation";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
 import { createBounty, getBounty } from "@/lib/bounties";
 import { FORM_ERROR_BANNER, FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
@@ -52,7 +53,7 @@ export default function SubmitPage() {
 }
 
 function SubmitForm() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bountyIdParam = searchParams.get("bounty_id");
@@ -102,8 +103,6 @@ function SubmitForm() {
   } = useApiResource<Tag[]>("/tags?curated=true");
   const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [proofImageUploading, setProofImageUploading] = useState(false);
 
   const {
@@ -124,12 +123,6 @@ function SubmitForm() {
     setFiles,
     setProof,
   });
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [authLoading, user, router]);
 
   useEffect(() => {
     apiFetch<Tag[]>("/tags")
@@ -174,22 +167,11 @@ function SubmitForm() {
   // No type toggle while fulfilling a bounty: that path is always a geolocation.
   const showToggle = !bountyIdParam;
 
-  const submitBounty = async () => {
-    if (!title.trim()) {
-      setError("Title is required");
-      return;
-    }
-    if (!sourceUrl.trim()) {
-      setError("Source URL is required");
-      return;
-    }
-    if (files.length === 0) {
-      setError("At least one media file is required");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const created = await createBounty({
+  // Bounty + geolocation are mutually-exclusive submit paths sharing one error
+  // banner; each mutation clears the other so the single-slot behaviour holds.
+  const bountyMutation = useMutation(
+    () =>
+      createBounty({
         title: title.trim(),
         source_url: sourceUrl.trim(),
         proof: bountyProof,
@@ -197,70 +179,17 @@ function SubmitForm() {
         source_date: sourceDate || undefined,
         tag_ids: selectedTagIds,
         files,
-      });
-      router.push(`/bounties/${created.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed");
-    } finally {
-      setSubmitting(false);
+      }),
+    {
+      fallback: "Submission failed",
+      onSuccess: (created) => router.push(`/bounties/${created.id}`),
     }
-  };
+  );
 
-  const submitGeolocation = async () => {
-    const latNum = parseFloat(lat);
-    const lngNum = parseFloat(lng);
-
-    if (isNaN(latNum) || latNum < -90 || latNum > 90) {
-      setError("Latitude must be a number between -90 and 90");
-      return;
-    }
-    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
-      setError("Longitude must be a number between -180 and 180");
-      return;
-    }
-    // When fulfilling a bounty, its media transfers in, so no new files
-    // are required; otherwise at least one file is required.
-    if (!lockedFromBounty && files.length === 0) {
-      setError("At least one media file is required");
-      return;
-    }
-    if (!proof) {
-      setError("Proof is required");
-      return;
-    }
-    if (proofImageUploading) {
-      setError("An image is still uploading — please wait before submitting.");
-      return;
-    }
-    // Mirrors the server check in `routers/geolocations.py`, inline so the
-    // analyst sees it before upload instead of as a 400. Empty taxonomy
-    // (failed load) gets a recoverable message, distinct from "didn't pick one".
-    if (curatedTags.length === 0) {
-      setError(
-        curatedTagsError
-          ? "Couldn’t load the required Conflict and Capture source options. Use Retry above, or reload the page."
-          : "Still loading the required tag options. Give it a moment and try again."
-      );
-      return;
-    }
-    const selectedSet = new Set(selectedTagIds);
-    const hasConflict = curatedTags.some(
-      (t) => t.category === "conflict" && selectedSet.has(t.id)
-    );
-    const hasCaptureSource = curatedTags.some(
-      (t) => t.category === "capture_source" && selectedSet.has(t.id)
-    );
-    if (!hasConflict) {
-      setError("Select a conflict (use “Other” if it isn’t listed).");
-      return;
-    }
-    if (!hasCaptureSource) {
-      setError("Select a capture source (use “Unknown” if unsure).");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
+  const geolocationMutation = useMutation(
+    () => {
+      const latNum = parseFloat(lat);
+      const lngNum = parseFloat(lng);
       const formData = new FormData();
       formData.append("title", title);
       formData.append("lat", latNum.toString());
@@ -280,22 +209,98 @@ function SubmitForm() {
       for (const file of files) {
         formData.append("files", file);
       }
-
-      const result = await apiFetch<{ id: string }>("/geolocations", {
+      return apiFetch<{ id: string }>("/geolocations", {
         method: "POST",
         body: formData,
       });
-      router.push(`/geolocations/${result.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed");
-    } finally {
-      setSubmitting(false);
+    },
+    {
+      fallback: "Submission failed",
+      onSuccess: (result) => router.push(`/geolocations/${result.id}`),
     }
+  );
+
+  const error = bountyMutation.error ?? geolocationMutation.error;
+  const submitting = bountyMutation.loading || geolocationMutation.loading;
+
+  const submitBounty = async () => {
+    if (!title.trim()) {
+      bountyMutation.setError("Title is required");
+      return;
+    }
+    if (!sourceUrl.trim()) {
+      bountyMutation.setError("Source URL is required");
+      return;
+    }
+    if (files.length === 0) {
+      bountyMutation.setError("At least one media file is required");
+      return;
+    }
+    await bountyMutation.run();
+  };
+
+  const submitGeolocation = async () => {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+
+    if (isNaN(latNum) || latNum < -90 || latNum > 90) {
+      geolocationMutation.setError("Latitude must be a number between -90 and 90");
+      return;
+    }
+    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+      geolocationMutation.setError("Longitude must be a number between -180 and 180");
+      return;
+    }
+    // When fulfilling a bounty, its media transfers in, so no new files
+    // are required; otherwise at least one file is required.
+    if (!lockedFromBounty && files.length === 0) {
+      geolocationMutation.setError("At least one media file is required");
+      return;
+    }
+    if (!proof) {
+      geolocationMutation.setError("Proof is required");
+      return;
+    }
+    if (proofImageUploading) {
+      geolocationMutation.setError(
+        "An image is still uploading — please wait before submitting."
+      );
+      return;
+    }
+    // Mirrors the server check in `routers/geolocations.py`, inline so the
+    // analyst sees it before upload instead of as a 400. Empty taxonomy
+    // (failed load) gets a recoverable message, distinct from "didn't pick one".
+    if (curatedTags.length === 0) {
+      geolocationMutation.setError(
+        curatedTagsError
+          ? "Couldn’t load the required Conflict and Capture source options. Use Retry above, or reload the page."
+          : "Still loading the required tag options. Give it a moment and try again."
+      );
+      return;
+    }
+    const selectedSet = new Set(selectedTagIds);
+    const hasConflict = curatedTags.some(
+      (t) => t.category === "conflict" && selectedSet.has(t.id)
+    );
+    const hasCaptureSource = curatedTags.some(
+      (t) => t.category === "capture_source" && selectedSet.has(t.id)
+    );
+    if (!hasConflict) {
+      geolocationMutation.setError("Select a conflict (use “Other” if it isn’t listed).");
+      return;
+    }
+    if (!hasCaptureSource) {
+      geolocationMutation.setError("Select a capture source (use “Unknown” if unsure).");
+      return;
+    }
+
+    await geolocationMutation.run();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    bountyMutation.reset();
+    geolocationMutation.reset();
     if (isBounty) {
       await submitBounty();
     } else {

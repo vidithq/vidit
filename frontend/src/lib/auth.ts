@@ -33,3 +33,24 @@ export function hasSessionCookie(): boolean {
   const prefix = `${CSRF_COOKIE}=`;
   return document.cookie.split("; ").some((part) => part.startsWith(prefix));
 }
+
+/**
+ * Client-side guard for a password-change form: the password must be at least
+ * 8 characters and match its confirmation. Returns the message to show, or
+ * `null` when both checks pass. Mirrors the backend length rule so the user sees
+ * it before a round-trip. `label` names the field in the message — the
+ * change-password form says "New password", the reset-password form "Password".
+ */
+export function validatePasswordChange(
+  password: string,
+  confirm: string,
+  label = "New password"
+): string | null {
+  if (password.length < 8) {
+    return `${label} must be at least 8 characters.`;
+  }
+  if (password !== confirm) {
+    return `${label}s don't match.`;
+  }
+  return null;
+}

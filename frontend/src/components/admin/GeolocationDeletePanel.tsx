@@ -7,8 +7,10 @@ import {
   deleteGeolocation,
   type AdminGeolocationDeleteResponse,
 } from "@/lib/admin";
+import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
+  FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
@@ -17,17 +19,28 @@ export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
   const [mode, setMode] = useState<"soft" | "hard">("soft");
   const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<AdminGeolocationDeleteResponse | null>(
     null
   );
-  const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setConfirming(false);
     setId("");
     setMode("soft");
   };
+
+  const deleteMutation = useMutation(
+    () => deleteGeolocation(id.trim(), { hard: mode === "hard" }),
+    {
+      fallback: "Delete failed",
+      onSuccess: (response) => {
+        setResult(response);
+        reset();
+      },
+    }
+  );
+  const { error, setError } = deleteMutation;
+  const submitting = deleteMutation.loading;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,19 +50,7 @@ export function GeolocationDeletePanel() {
       setError(null);
       return;
     }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const response = await deleteGeolocation(id.trim(), {
-        hard: mode === "hard",
-      });
-      setResult(response);
-      reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    } finally {
-      setSubmitting(false);
-    }
+    await deleteMutation.run();
   };
 
   return (
@@ -114,7 +115,7 @@ export function GeolocationDeletePanel() {
         </fieldset>
 
         {error && (
-          <div className="px-3 py-2 rounded-md text-xs text-red-300 bg-red-500/10 border border-red-500/30">
+          <div className={FORM_ERROR_BANNER_BOXED}>
             {error}
           </div>
         )}

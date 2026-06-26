@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MapPin, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useMutation } from "@/hooks/useMutation";
 import {
   claimBounty,
   closeBounty,
@@ -40,8 +41,35 @@ export default function BountyDetailPage() {
   } = useApiResource<BountyDetail>(
     typeof params.id === "string" ? `/bounties/${params.id}` : null
   );
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionPending, setActionPending] = useState(false);
+  // The three author/claim actions share one error + one pending flag, so each
+  // mutation clears the others (mirrors the old single `setActionError(null)`).
+  const toggleClaimMutation = useMutation(
+    () => (isClaimedByMe ? unclaimBounty(bounty!.id) : claimBounty(bounty!.id)),
+    { fallback: "Action failed", onSuccess: () => refetch() }
+  );
+  const closeMutation = useMutation(() => closeBounty(bounty!.id), {
+    fallback: "Close failed",
+    onSuccess: () => refetch(),
+  });
+  // `deleted` stays true through the post-delete navigation so the actions
+  // don't re-enable in the unmount window (the row is gone; a second click
+  // would 404). The old handler left its pending flag set instead of a finally.
+  const [deleted, setDeleted] = useState(false);
+  const deleteMutation = useMutation(() => deleteBounty(bounty!.id), {
+    fallback: "Delete failed",
+    onSuccess: () => {
+      setDeleted(true);
+      router.push("/bounties");
+    },
+  });
+
+  const actionPending =
+    toggleClaimMutation.loading ||
+    closeMutation.loading ||
+    deleteMutation.loading ||
+    deleted;
+  const actionError =
+    toggleClaimMutation.error ?? closeMutation.error ?? deleteMutation.error;
 
   const error = loadError ?? actionError;
 
@@ -93,49 +121,25 @@ export default function BountyDetailPage() {
     ) : null;
 
   const handleToggleClaim = async () => {
-    setActionPending(true);
-    setActionError(null);
-    try {
-      if (isClaimedByMe) {
-        await unclaimBounty(bounty.id);
-      } else {
-        await claimBounty(bounty.id);
-      }
-      refetch();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Action failed");
-    } finally {
-      setActionPending(false);
-    }
+    closeMutation.reset();
+    deleteMutation.reset();
+    await toggleClaimMutation.run();
   };
 
   const handleClose = async () => {
     if (!confirm("Close this bounty? Other analysts will no longer be able to geolocate it.")) {
       return;
     }
-    setActionPending(true);
-    setActionError(null);
-    try {
-      await closeBounty(bounty.id);
-      refetch();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Close failed");
-    } finally {
-      setActionPending(false);
-    }
+    toggleClaimMutation.reset();
+    deleteMutation.reset();
+    await closeMutation.run();
   };
 
   const handleDelete = async () => {
     if (!confirm("Delete this bounty? This cannot be undone.")) return;
-    setActionPending(true);
-    setActionError(null);
-    try {
-      await deleteBounty(bounty.id);
-      router.push("/bounties");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Delete failed");
-      setActionPending(false);
-    }
+    toggleClaimMutation.reset();
+    closeMutation.reset();
+    await deleteMutation.run();
   };
 
   return (

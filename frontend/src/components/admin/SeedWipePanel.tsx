@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_INPUT_COMPACT,
@@ -40,41 +41,39 @@ export function SeedWipePanel<S, W>({
   renderWipeSummary,
 }: SeedWipePanelProps<S, W>) {
   const [count, setCount] = useState(defaultCount);
-  const [seeding, setSeeding] = useState(false);
-  const [wiping, setWiping] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [lastSeed, setLastSeed] = useState<S | null>(null);
   const [lastWipe, setLastWipe] = useState<W | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const onSeed = async () => {
-    setError(null);
-    setSeeding(true);
-    try {
-      setLastSeed(await seed(count));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to seed");
-    } finally {
-      setSeeding(false);
-    }
+  const seedMutation = useMutation((c: number) => seed(c), {
+    fallback: "Failed to seed",
+    onSuccess: setLastSeed,
+  });
+  const wipeMutation = useMutation(wipe, {
+    fallback: "Failed to wipe",
+    onSuccess: setLastWipe,
+  });
+
+  const seeding = seedMutation.loading;
+  const wiping = wipeMutation.loading;
+  // One shared error slot, cleared whenever the other action fires (mirrors
+  // the old single `setError(null)` at the top of each handler).
+  const error = seedMutation.error ?? wipeMutation.error;
+
+  const onSeed = () => {
+    wipeMutation.reset();
+    void seedMutation.run(count);
   };
 
-  const onWipe = async () => {
+  const onWipe = () => {
     if (!confirmWipe) {
       setConfirmWipe(true);
       window.setTimeout(() => setConfirmWipe(false), 3000);
       return;
     }
-    setError(null);
-    setWiping(true);
     setConfirmWipe(false);
-    try {
-      setLastWipe(await wipe());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to wipe");
-    } finally {
-      setWiping(false);
-    }
+    seedMutation.reset();
+    void wipeMutation.run();
   };
 
   return (
