@@ -43,6 +43,7 @@ from app.models.bounty import (
     STATUS_OPEN,
     Bounty,
     BountyClaim,
+    BountyStatus,
     bounty_tags,
 )
 from app.models.geolocation import Geolocation
@@ -802,7 +803,7 @@ DEMO_BOUNTY_STATUS_WEIGHTS = (
 )
 
 
-def _pick_demo_bounty_status() -> str:
+def _pick_demo_bounty_status() -> BountyStatus:
     """Weighted draw from ``DEMO_BOUNTY_STATUS_WEIGHTS``.
 
     Explicit loop rather than ``random.choices`` so the weights stay

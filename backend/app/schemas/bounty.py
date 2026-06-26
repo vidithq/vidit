@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.models.bounty import BountyStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -25,7 +26,7 @@ class BountyRead(BaseModel):
     # the source posted the media. Null when the poster didn't supply them.
     event_date: date | None = None
     source_date: date | None = None
-    status: str
+    status: BountyStatus
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None
@@ -47,7 +48,7 @@ class BountyList(BaseModel):
     id: uuid.UUID
     title: str
     source_url: str
-    status: str
+    status: BountyStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef

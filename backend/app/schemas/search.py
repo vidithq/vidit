@@ -14,6 +14,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from app.models.bounty import BountyStatus
+from app.models.geolocation import GeolocationState
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -30,7 +32,7 @@ class SearchGeolocationHit(BaseModel):
     event_date: date
     is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
-    state: str
+    state: GeolocationState
     author: AuthorRef
     tags: list[TagRead]
 
@@ -42,7 +44,7 @@ class SearchBountyHit(BaseModel):
     title: str
     title_highlight: str
     source_url: str
-    status: str
+    status: BountyStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef

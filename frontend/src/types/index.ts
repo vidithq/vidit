@@ -1,3 +1,5 @@
+import type { components } from "@/lib/api-types";
+
 interface Author {
   id: string;
   username: string;
@@ -29,7 +31,7 @@ export interface User {
   created_at: string;
 }
 
-export type TagCategory = "conflict" | "capture_source" | "free";
+export type TagCategory = components["schemas"]["TagRead"]["category"];
 
 export interface Tag {
   id: string;
@@ -40,7 +42,7 @@ export interface Tag {
 /** Lifecycle state. ``validated`` = human submit / bounty fulfilment (the
  *  norm); ``detected`` = machine-produced, rendered marked everywhere until
  *  its owner validates it. */
-export type GeolocationState = "validated" | "detected";
+export type GeolocationState = components["schemas"]["GeolocationRead"]["state"];
 
 interface GeolocationListItem {
   id: string;
@@ -72,8 +74,13 @@ export interface TweetImportCoord {
   lng: number;
 }
 
+/** Media file kind, shared by attachment payloads (a tweet-import media's
+ *  ``kind`` and a stored ``Media``'s ``media_type``). Derived from the backend
+ *  ``MediaType`` literal via the OpenAPI spec. */
+export type MediaType = components["schemas"]["MediaRead"]["media_type"];
+
 export interface TweetImportMedia {
-  kind: "image" | "video";
+  kind: MediaType;
   remote_url: string;
   content_type: string;
   /** ``op`` = analyst's own attachment (→ proof imagery), ``quote`` = the
@@ -144,7 +151,7 @@ export interface PossibleDuplicate {
 interface Media {
   id: string;
   storage_url: string;
-  media_type: "image" | "video";
+  media_type: MediaType;
   /** Hex-encoded SHA-256 of the uploaded bytes. `null` on pre-column
    *  rows and demo-pool references that don't go through an upload pass. */
   sha256?: string | null;
@@ -176,7 +183,7 @@ export interface GeolocationDetail extends GeolocationListItem {
   } | null;
 }
 
-export type BountyStatus = "open" | "fulfilled" | "closed";
+export type BountyStatus = components["schemas"]["BountyRead"]["status"];
 
 export interface BountyListItem {
   id: string;

@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -11,10 +11,13 @@ from app.database import Base
 # Lifecycle values. Plain strings (mirrors `auth_events.event`) so a new state
 # needs no migration. `open` set on insert; `fulfilled` as a side-effect of
 # `POST /geolocations bounty_id=…`; `closed` by `POST /bounties/{id}/close`
-# (author-only).
-STATUS_OPEN = "open"
-STATUS_FULFILLED = "fulfilled"
-STATUS_CLOSED = "closed"
+# (author-only). The alias is the value-domain source of truth — column, Read
+# schemas, and the generated frontend type all derive from it. The constants
+# carry the alias type so assigning them to the column type-checks.
+BountyStatus = Literal["open", "fulfilled", "closed"]
+STATUS_OPEN: BountyStatus = "open"
+STATUS_FULFILLED: BountyStatus = "fulfilled"
+STATUS_CLOSED: BountyStatus = "closed"
 
 
 bounty_tags = Table(
@@ -89,7 +92,7 @@ class Bounty(Base):
     # an unfinished geolocation, so both may be unknown at posting time.
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(
+    status: Mapped[BountyStatus] = mapped_column(
         String(20), nullable=False, default=STATUS_OPEN, server_default=STATUS_OPEN
     )
     created_at: Mapped[datetime] = mapped_column(

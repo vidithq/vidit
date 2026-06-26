@@ -22,6 +22,11 @@ node_modules/
 .vercel/
 *.tsbuildinfo
 
+# OpenAPI codegen intermediate — dumped from the backend spec, consumed by
+# `make gen-api-types` to regenerate `frontend/src/lib/api-types.ts` (which IS
+# committed). Rebuilt each run, never hand-edited.
+frontend/openapi.json
+
 # OS
 .DS_Store
 Thumbs.db
