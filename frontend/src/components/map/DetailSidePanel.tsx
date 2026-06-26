@@ -72,6 +72,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
               eventDate={detail.event_date}
               lat={detail.lat}
               lng={detail.lng}
+              state={detail.state}
             />
             <Link
               href={`/geolocations/${detail.id}`}

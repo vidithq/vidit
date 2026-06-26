@@ -4,23 +4,26 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
-import { createBounty, getBounty } from "@/lib/bounties";
-import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
-import { FORM_ERROR_BANNER, FORM_INPUT, FORM_LABEL } from "@/components/ui/form-styles";
+import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
+import { missingGeolocationFields } from "@/lib/geolocations";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { Modal } from "@/components/ui/Modal";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
-import FieldHelp from "@/components/ui/FieldHelp";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
+import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
+import { TitleField } from "@/components/geolocations/TitleField";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
@@ -105,6 +108,15 @@ function SubmitForm() {
   const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [proofImageUploading, setProofImageUploading] = useState(false);
+
+  // Incomplete-form feedback (shared notice + in-form red outlines).
+  const {
+    missingFields,
+    invalidKeys,
+    validationAttempt,
+    flagIncomplete,
+    clearIncomplete,
+  } = useIncompleteForm();
 
   const {
     importedFrom,
@@ -225,52 +237,23 @@ function SubmitForm() {
   const submitting = bountyMutation.loading || geolocationMutation.loading;
 
   const submitBounty = async () => {
-    if (!title.trim()) {
-      bountyMutation.setError("Title is required");
-      return;
-    }
-    if (!sourceUrl.trim()) {
-      bountyMutation.setError("Source URL is required");
-      return;
-    }
-    if (files.length === 0) {
-      bountyMutation.setError("At least one media file is required");
+    const missing = missingBountyFields({
+      title,
+      sourceUrl,
+      mediaCount: files.length,
+    });
+    if (missing.length) {
+      flagIncomplete(missing);
       return;
     }
     await bountyMutation.run();
   };
 
   const submitGeolocation = async () => {
-    const latNum = parseFloat(lat);
-    const lngNum = parseFloat(lng);
-
-    if (isNaN(latNum) || latNum < LAT_MIN || latNum > LAT_MAX) {
-      geolocationMutation.setError("Latitude must be a number between -90 and 90");
-      return;
-    }
-    if (isNaN(lngNum) || lngNum < LNG_MIN || lngNum > LNG_MAX) {
-      geolocationMutation.setError("Longitude must be a number between -180 and 180");
-      return;
-    }
-    // When fulfilling a bounty, its media transfers in, so no new files
-    // are required; otherwise at least one file is required.
-    if (!lockedFromBounty && files.length === 0) {
-      geolocationMutation.setError("At least one media file is required");
-      return;
-    }
-    if (!proof) {
-      geolocationMutation.setError("Proof is required");
-      return;
-    }
-    if (proofImageUploading) {
-      geolocationMutation.setError(
-        "An image is still uploading — please wait before submitting."
-      );
-      return;
-    }
-    // Mirrors the server check in `routers/geolocations.py`, inline so the
-    // analyst sees it before upload instead of as a 400. Empty taxonomy
-    // (failed load) gets a recoverable message, distinct from "didn't pick one".
+    // The required Conflict / Capture-source options must be loaded before we
+    // can tell "didn't pick one" from "couldn't load the choices". A failed or
+    // pending load is a recoverable state, not a missing field — surface it in
+    // the single-line banner (with Retry above) instead of the field list.
     if (curatedTags.length === 0) {
       geolocationMutation.setError(
         curatedTagsError
@@ -280,21 +263,37 @@ function SubmitForm() {
       return;
     }
     const selectedSet = new Set(selectedTagIds);
-    const hasConflict = curatedTags.some(
-      (t) => t.category === "conflict" && selectedSet.has(t.id)
+    // Mirrors the server submission check, inline so the analyst fixes the whole
+    // form in one pass instead of as a 400. When fulfilling a bounty its media
+    // transfers in, so staged files aren't required.
+    const missing = missingGeolocationFields(
+      {
+        title,
+        lat,
+        lng,
+        sourceUrl,
+        eventDate,
+        proof,
+        mediaCount: files.length,
+        hasConflictTag: curatedTags.some(
+          (t) => t.category === "conflict" && selectedSet.has(t.id)
+        ),
+        hasCaptureSourceTag: curatedTags.some(
+          (t) => t.category === "capture_source" && selectedSet.has(t.id)
+        ),
+      },
+      { requireMedia: !lockedFromBounty }
     );
-    const hasCaptureSource = curatedTags.some(
-      (t) => t.category === "capture_source" && selectedSet.has(t.id)
-    );
-    if (!hasConflict) {
-      geolocationMutation.setError("Select a conflict (use “Other” if it isn’t listed).");
+    if (missing.length) {
+      flagIncomplete(missing);
       return;
     }
-    if (!hasCaptureSource) {
-      geolocationMutation.setError("Select a capture source (use “Unknown” if unsure).");
+    if (proofImageUploading) {
+      geolocationMutation.setError(
+        "An image is still uploading — please wait before submitting."
+      );
       return;
     }
-
     await geolocationMutation.run();
   };
 
@@ -302,6 +301,7 @@ function SubmitForm() {
     e.preventDefault();
     bountyMutation.reset();
     geolocationMutation.reset();
+    clearIncomplete();
     if (isBounty) {
       await submitBounty();
     } else {
@@ -364,7 +364,10 @@ function SubmitForm() {
 
   return (
     <PageShell title={pageTitle} subtitle={subtitle}>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* `noValidate`: the shared IncompleteFormNotice owns required-field
+          feedback, so the browser's one-bubble-at-a-time native validation must
+          not preempt it. */}
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         {/* Toggle on the left, the import shortcut mirrored on the right at the
             same height. Import is geolocation-only (a bounty has nothing to
             pre-fill); inside `showToggle`, so it never shows in fulfilment. */}
@@ -411,35 +414,38 @@ function SubmitForm() {
         </p>
 
         {/* Title leads, mirroring the detail page where it's the heading. */}
-        <div className="space-y-1.5">
-          <label htmlFor="title" className={FORM_LABEL}>
-            Title <FieldHelp concept="title" />
-          </label>
-          <input
-            id="title"
-            type="text"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Strike on ammunition depot, Donetsk"
-            className={FORM_INPUT}
-          />
-        </div>
-
-        {/* One "Location" block in both modes: source media + coordinates for a
-            geolocation, source media alone for a bounty (no point yet). */}
-        <LocationPicker
-          lockedMedia={bounty ? bounty.media : null}
-          files={files}
-          setFiles={setFiles}
-          lat={lat}
-          setLat={setLat}
-          lng={lng}
-          setLng={setLng}
-          extraCoordCandidates={extraCoordCandidates}
-          onSwapCandidate={swapCoordCandidate}
-          showCoords={showGeoFields}
+        <TitleField
+          value={title}
+          onChange={setTitle}
+          invalid={invalidKeys.has("title")}
         />
+
+        {/* Source media is its own block; coordinates get the Location block
+            (a bounty has no point yet, so Location is geolocation-only). */}
+        <SourceMediaField
+          existing={bounty ? bounty.media : []}
+          locked={lockedFromBounty}
+          invalid={invalidKeys.has("source_media")}
+          staged={lockedFromBounty ? [] : files}
+          onAddFiles={lockedFromBounty ? undefined : (f) => setFiles([...files, ...f])}
+          onRemoveStaged={
+            lockedFromBounty
+              ? undefined
+              : (i) => setFiles(files.filter((_, idx) => idx !== i))
+          }
+        />
+
+        {showGeoFields && (
+          <LocationPicker
+            lat={lat}
+            setLat={setLat}
+            lng={lng}
+            setLng={setLng}
+            extraCoordCandidates={extraCoordCandidates}
+            onSwapCandidate={swapCoordCandidate}
+            invalid={invalidKeys.has("coordinates")}
+          />
+        )}
 
         <DetailsFields
           sourceUrl={sourceUrl}
@@ -448,8 +454,10 @@ function SubmitForm() {
           setEventDate={setEventDate}
           sourceDate={sourceDate}
           setSourceDate={setSourceDate}
-          lockedFromBounty={lockedFromBounty}
+          sourceUrlLocked={lockedFromBounty}
           eventDateRequired={showGeoFields}
+          eventDateInvalid={invalidKeys.has("event_date")}
+          sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 
         {showGeoFields && curatedTagsError && (
@@ -474,6 +482,8 @@ function SubmitForm() {
           setSelectedTagIds={setSelectedTagIds}
           requireConflict={showGeoFields}
           requireCaptureSource={showGeoFields}
+          conflictInvalid={invalidKeys.has("conflict_tag")}
+          captureSourceInvalid={invalidKeys.has("capture_source_tag")}
         />
 
         {showGeoFields ? (
@@ -484,6 +494,7 @@ function SubmitForm() {
             proof={proof}
             onChange={setProof}
             onUploadStateChange={setProofImageUploading}
+            invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
           />
         ) : (
           // Same Proof section, harmonised: a bounty's proof is a geolocation
@@ -512,8 +523,14 @@ function SubmitForm() {
           />
         )}
 
-        {/* Errors render next to the button, not atop this long form, so a
-            failed submit is visible without scrolling up. */}
+        {/* Validation + errors render next to the button, not atop this long
+            form, so a blocked submit is visible without scrolling up. The notice
+            lists every missing field at once; the banner carries server / load
+            failures. They're mutually exclusive in practice. */}
+        <IncompleteFormNotice
+          key={validationAttempt}
+          missing={missingFields.map((m) => m.label)}
+        />
         {error && (
           <div className={FORM_ERROR_BANNER} role="alert">
             {error}

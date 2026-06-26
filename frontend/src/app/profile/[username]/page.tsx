@@ -15,8 +15,10 @@ import {
   RecentSubmissions,
   type PaginatedSubmissions,
 } from "@/components/profile/RecentSubmissions";
+import { ReviewQueueEntry } from "@/components/profile/ReviewQueueEntry";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { useReviewQueue } from "@/contexts/ReviewQueueContext";
 
 export default function ProfilePage() {
   const params = useParams();
@@ -39,6 +41,10 @@ export default function ProfilePage() {
       : null
   );
   const submissions = submissionsData?.items ?? [];
+  // Shared with the sidebar dot via the provider — owner-scoped server-side, so
+  // it's the signed-in user's pending count regardless of whose profile this is
+  // (gated to the own-profile render below).
+  const { count: reviewCount } = useReviewQueue();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -119,6 +125,10 @@ export default function ProfilePage() {
         <BioCard profile={profile} edit={edit} />
 
         <LinkedAccountsCard profile={profile} edit={edit} />
+
+        {isOwn && reviewCount > 0 && (
+          <ReviewQueueEntry username={profile.username} count={reviewCount} />
+        )}
 
         <RecentSubmissions
           profile={profile}

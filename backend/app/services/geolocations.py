@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import cast
 
 from fastapi import UploadFile
-from geoalchemy2.shape import from_shape, to_shape
+from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session, joinedload
 
@@ -31,15 +30,16 @@ from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
 from app.models.user import User
-from app.schemas.geolocation import GeolocationUpdate
 from app.services.evidence_intake import (
+    MAX_FILES_PER_SUBMISSION,
     EvidenceIntakeError,
     MediaRequiredError,
+    TooManyFilesError,
     attach_media_and_commit,
     enforce_file_count,
 )
 from app.services.sanitize import EMPTY_TIPTAP_DOC, extract_image_srcs, sanitize_tiptap_doc
-from app.services.storage import get_storage, upload_file
+from app.services.storage import derivative_key, get_storage, sweep_keys, upload_file
 
 
 class GeolocationError(EvidenceIntakeError):
@@ -268,55 +268,101 @@ async def create_with_evidence(
     return geo
 
 
-def update_detected(db: Session, *, geo: Geolocation, payload: GeolocationUpdate) -> Geolocation:
-    """Apply an owner edit to a ``detected`` geolocation.
+async def update_detected(
+    db: Session,
+    *,
+    geo: Geolocation,
+    title: str,
+    lat: float,
+    lng: float,
+    source_url: str,
+    event_date: date,
+    source_date: date | None,
+    proof_data: dict | None,
+    tag_ids: list,
+    remove_media_ids: list,
+    files: list[UploadFile],
+    uploaded_ip: str | None,
+    uploaded_user_agent: str | None,
+) -> Geolocation:
+    """Apply an owner edit to a ``detected`` geolocation — the review step.
 
-    The router resolved the row and checked ownership; this owns the state
-    gate + field rules. Editable while ``detected``: title, coordinate, event /
-    source date, proof, tags — these are how the owner completes a detection
-    before validating. Immutable always (no field on :class:`GeolocationUpdate`):
-    ``source_url``, the source media, ``detected_from_url``, ``state``. A
-    ``validated`` row is frozen — nothing is editable.
+    Mirrors :func:`create_with_evidence`: a full multipart edit (the form posts
+    the whole current state), applied atomically. The owner curates everything —
+    title, coordinate, source URL, event / source date, proof, tags, and the
+    source media (new ``files`` added, ``remove_media_ids`` dropped). Only
+    ``detected_from_url`` (the provenance anchor) and ``state`` are immutable. A
+    ``validated`` row is frozen.
 
-    Only the fields the request carries are touched. ``source_date`` is the one
-    nullable target (explicit ``null`` clears it); the required-on-row fields
-    apply only when sent non-null. ``tag_ids`` replaces the tag set wholesale.
+    The field updates, the media removals, and the new-media uploads commit in a
+    single transaction; a failed upload rolls everything back and sweeps the keys
+    that landed (the removals revert with the txn, so their S3 stays). The
+    removed media's S3 objects are swept after the commit succeeds.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``,
-    :class:`InvalidCoordinatesError` / :class:`InvalidProofError` on bad values.
-    Commits, invalidates the points cache, returns the refreshed row.
+    :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
+    values, :class:`TooManyFilesError` over the file-count cap, or a
+    file-validation error. Returns the refreshed row.
     """
     if geo.state != STATE_DETECTED:
         raise GeolocationStateError("Only detected geolocations can be edited")
 
-    data = payload.model_dump(exclude_unset=True)
+    validate_coordinates(lat, lng)
 
-    # Coordinate: patch either axis against the row's current point, so a
-    # lat-only edit keeps the existing lng. Same range check as create.
-    if "lat" in data or "lng" in data:
-        current = cast(Point, to_shape(geo.location))
-        new_lat = data["lat"] if data.get("lat") is not None else current.y
-        new_lng = data["lng"] if data.get("lng") is not None else current.x
-        validate_coordinates(new_lat, new_lng)
-        geo.location = from_shape(Point(new_lng, new_lat), srid=4326)
+    # File-count cap counts what survives the edit: kept existing + new uploads.
+    # Compare on the string form — ids arrive as JSON strings from the form.
+    removing = {str(x) for x in remove_media_ids}
+    kept = [m for m in geo.media if str(m.id) not in removing]
+    if len(kept) + len(files) > MAX_FILES_PER_SUBMISSION:
+        raise TooManyFilesError(f"At most {MAX_FILES_PER_SUBMISSION} files per geolocation")
 
-    if data.get("title") is not None:
-        geo.title = data["title"]
-    if data.get("event_date") is not None:
-        geo.event_date = data["event_date"]
-    # Nullable column — an explicit ``null`` clears it, absence leaves it.
-    if "source_date" in data:
-        geo.source_date = data["source_date"]
-    if data.get("proof") is not None:
+    if proof_data is not None:
         try:
-            geo.proof = sanitize_tiptap_doc(data["proof"])
+            proof_data = sanitize_tiptap_doc(proof_data)
         except ValueError as exc:
             raise InvalidProofError(str(exc)) from exc
-    if data.get("tag_ids") is not None:
-        tag_ids = data["tag_ids"]
-        geo.tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
 
-    db.commit()
+    effective_tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+
+    geo.title = title
+    geo.location = from_shape(Point(lng, lat), srid=4326)
+    geo.source_url = source_url
+    geo.event_date = event_date
+    geo.source_date = source_date
+    if proof_data is not None:
+        geo.proof = proof_data
+    geo.tags = effective_tags
+
+    # Drop the media flagged for removal: snapshot their S3 keys, delete the rows
+    # (pending — committed atomically with the field updates + uploads below).
+    storage = get_storage()
+    removed_keys: list[str] = []
+    for m in list(geo.media):
+        if str(m.id) not in removing:
+            continue
+        key = storage.key_from_url(m.storage_url)
+        if key is not None:
+            removed_keys.append(key)
+            if m.media_type == "image":
+                removed_keys.append(derivative_key(key, "hero"))
+                removed_keys.append(derivative_key(key, "thumb"))
+        db.delete(m)
+
+    # Upload new files + commit everything atomically; rollback-sweeps the new
+    # uploads on failure. Empty ``files`` still commits the field + removal edits.
+    await attach_media_and_commit(
+        db,
+        owner_id=geo.id,
+        fk_field="geolocation_id",
+        files=files,
+        upload=upload_file,
+        uploaded_ip=uploaded_ip,
+        uploaded_user_agent=uploaded_user_agent,
+        sweep_context=f"geolocation {geo.id} edit rollback",
+    )
+
+    # Committed — sweep the removed media's S3 objects (best-effort).
+    sweep_keys(removed_keys, context=f"geolocation {geo.id} edit media removal")
     db.refresh(geo)
     points_cache.invalidate()
     return geo

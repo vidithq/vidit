@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.dependencies import get_current_user, get_db
 from app.models.bounty import Bounty
+from app.models.geolocation import SOURCE_URL_MAX_LENGTH, TITLE_MAX_LENGTH
 from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.ratelimit import limiter
@@ -165,13 +166,13 @@ async def upload_proof_image_endpoint(
 @limiter.limit("30/minute")
 async def create_geolocation(
     request: Request,
-    # ``max_length`` ceilings match the DB columns (title String(255),
-    # source_url String(2000)) so over-length input is rejected at the
-    # boundary, not at flush time AFTER the attached files hit S3.
-    title: str = Form(..., min_length=1, max_length=255),
+    # ``max_length`` ceilings (shared with the edit form via the model module) so
+    # over-length input is rejected at the boundary, not at flush time AFTER the
+    # attached files hit S3.
+    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
-    source_url: str = Form(..., max_length=2000),
+    source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
     # No ``max_length`` on ``event_date``: ``date.fromisoformat`` is the
     # source of truth (and implicitly bounds length). Capping at 10 would
     # reject a valid ``2026-05-01T00:00:00`` with a generic Pydantic 422

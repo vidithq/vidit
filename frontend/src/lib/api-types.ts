@@ -754,6 +754,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/geolocations/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review Queue
+         * @description The caller's ``detected`` geolocations awaiting review, newest first.
+         *
+         *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL) — the
+         *     queue behind ``/profile/{username}/review`` where ``detected`` becomes
+         *     ``validated`` over time. Returns full ``GeolocationRead`` (media + tags) so
+         *     the queue shows the evidence and the frontend computes validation-readiness
+         *     (>=1 media + a ``conflict`` + a ``capture_source`` tag) with no per-row
+         *     round-trip. A ``detected`` row never originates from a bounty (fulfilments
+         *     are born ``validated``), so ``originated_from_bounty`` is always null here —
+         *     passed as such to skip the join. Ordered by ``created_at`` desc: the latest
+         *     import is the first thing to triage.
+         */
+        get: operations["list_review_queue_api_v1_geolocations_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/geolocations/{geolocation_id}": {
         parameters: {
             query?: never;
@@ -773,10 +803,11 @@ export interface paths {
          * Update Geolocation
          * @description Owner edit of a ``detected`` geolocation (review flow).
          *
-         *     Editable only while ``detected``; a ``validated`` row is frozen (409).
-         *     ``source_url`` / source media / ``detected_from_url`` / ``state`` are
-         *     immutable and carry no field on the body. Partial: only the fields the
-         *     request sends are touched. Soft-deleted rows read as 404.
+         *     Editable only while ``detected``; a ``validated`` row is frozen (409). The
+         *     owner curates the whole draft — title, coordinate, source URL, dates, proof,
+         *     tags, and the source media (``files`` added, ``remove_media_ids`` dropped).
+         *     Only ``detected_from_url`` (provenance) and ``state`` are immutable, so they
+         *     carry no field. Soft-deleted rows read as 404.
          */
         patch: operations["update_geolocation_api_v1_geolocations__geolocation_id__patch"];
         trace?: never;
@@ -1354,6 +1385,29 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Body_update_geolocation_api_v1_geolocations__geolocation_id__patch */
+        Body_update_geolocation_api_v1_geolocations__geolocation_id__patch: {
+            /** Event Date */
+            event_date: string;
+            /** Files */
+            files?: string[] | null;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Proof */
+            proof?: string | null;
+            /** Remove Media Ids */
+            remove_media_ids?: string | null;
+            /** Source Date */
+            source_date?: string | null;
+            /** Source Url */
+            source_url: string;
+            /** Tag Ids */
+            tag_ids?: string | null;
+            /** Title */
+            title: string;
+        };
         /** Body_upload_proof_image_endpoint_api_v1_geolocations_proof_images_post */
         Body_upload_proof_image_endpoint_api_v1_geolocations_proof_images_post: {
             /** File */
@@ -1599,38 +1653,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * GeolocationUpdate
-         * @description Owner edit of a ``detected`` geolocation (review flow).
-         *
-         *     Partial update — the service applies only the fields the request actually
-         *     carries (``model_dump(exclude_unset=True)``). The immutable fields on a
-         *     detection (``source_url``, the source media, ``detected_from_url``,
-         *     ``state``) have no field here, so they can't be expressed and can't be
-         *     changed. ``source_date`` is the one nullable target: send it as ``null``
-         *     to clear it, omit it to leave it untouched. The required-on-row fields
-         *     (``title`` / ``lat`` / ``lng`` / ``event_date`` / ``proof``) are applied
-         *     only when sent non-null. ``tag_ids`` replaces the tag set wholesale; ``[]``
-         *     clears it.
-         */
-        GeolocationUpdate: {
-            /** Event Date */
-            event_date?: string | null;
-            /** Lat */
-            lat?: number | null;
-            /** Lng */
-            lng?: number | null;
-            /** Proof */
-            proof?: {
-                [key: string]: unknown;
-            } | null;
-            /** Source Date */
-            source_date?: string | null;
-            /** Tag Ids */
-            tag_ids?: string[] | null;
-            /** Title */
-            title?: string | null;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1671,6 +1693,26 @@ export interface components {
             sha256: string;
             /** Url */
             url: string;
+        };
+        /**
+         * PaginatedGeolocationDetails
+         * @description Full-detail paginated geolocations — the owner review-queue payload.
+         *
+         *     Mirrors ``PaginatedGeolocations`` but carries ``GeolocationRead`` items
+         *     (media + tags + provenance) rather than the lightweight ``GeolocationList``
+         *     card: the review queue needs the media to judge a detection and the tags to
+         *     compute validation-readiness (>=1 media + a ``conflict`` + a
+         *     ``capture_source`` tag) without a per-row round-trip.
+         */
+        PaginatedGeolocationDetails: {
+            /** Items */
+            items: components["schemas"]["GeolocationRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total: number;
         };
         /** PaginatedGeolocations */
         PaginatedGeolocations: {
@@ -3414,6 +3456,40 @@ export interface operations {
             };
         };
     };
+    list_review_queue_api_v1_geolocations_review_queue_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedGeolocationDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_geolocation_api_v1_geolocations__geolocation_id__get: {
         parameters: {
             query?: never;
@@ -3489,7 +3565,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GeolocationUpdate"];
+                "multipart/form-data": components["schemas"]["Body_update_geolocation_api_v1_geolocations__geolocation_id__patch"];
             };
         };
         responses: {

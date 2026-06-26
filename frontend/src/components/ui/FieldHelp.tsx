@@ -60,6 +60,11 @@ export default function FieldHelp({
   return (
     <span
       ref={wrapperRef}
+      // Leaving the `?` (and its tooltip) un-pins it, so on desktop a click-then-
+      // move-away dismisses naturally instead of lingering until an outside click.
+      // Touch never fires mouseleave, so there a tap pins and an outside tap (the
+      // document handler above) dismisses — both paths covered.
+      onMouseLeave={() => setPinned(false)}
       className={`relative inline-flex items-center align-middle group ${className}`}
     >
       <button

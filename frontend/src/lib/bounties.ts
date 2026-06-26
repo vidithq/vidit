@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import type { MissingField } from "./geolocations";
 import type { BountyDetail, BountyListItem, BountyStatus } from "@/types";
 
 export interface BountyListParams {
@@ -62,6 +63,25 @@ export function createBounty(input: CreateBountyInput): Promise<BountyDetail> {
 
 export function deleteBounty(id: string): Promise<void> {
   return apiFetch<void>(`/bounties/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Every still-unmet required field for a bounty, as human labels for
+ * `IncompleteFormNotice`. A bounty is an unfinished geolocation, so its floor is
+ * a subset of the geolocation one (no coordinates, dates, proof, or tags) —
+ * just enough to be actionable: a title, the source, and the footage. Mirrors
+ * the server `POST /bounties` requirements.
+ */
+export function missingBountyFields(s: {
+  title: string;
+  sourceUrl: string;
+  mediaCount: number;
+}): MissingField[] {
+  const missing: MissingField[] = [];
+  if (!s.title.trim()) missing.push({ key: "title", label: "Title" });
+  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
+  if (s.mediaCount === 0) missing.push({ key: "source_media", label: "Source media" });
+  return missing;
 }
 
 /** Caller joins the "I'm working on this" set. Idempotent — re-claiming

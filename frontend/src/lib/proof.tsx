@@ -170,3 +170,13 @@ export function renderProof(proof: Record<string, unknown>): ReactNode {
   }
   return null;
 }
+
+/** True when the proof document carries at least one image node (anywhere in
+ *  the tree). A geolocation's proof is a source-media ↔ satellite cross-
+ *  reference, so it must show the imagery — text alone can't be audited. */
+export function proofHasImage(proof: Record<string, unknown> | null): boolean {
+  if (!proof) return false;
+  const hasImage = (node: TiptapNode): boolean =>
+    node.type === "image" || (node.content?.some(hasImage) ?? false);
+  return hasImage(proof as TiptapNode);
+}

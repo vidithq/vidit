@@ -60,6 +60,7 @@ export default function GeolocationPage() {
           eventDate={geo.event_date}
           lat={geo.lat}
           lng={geo.lng}
+          state={geo.state}
         />
       }
     >

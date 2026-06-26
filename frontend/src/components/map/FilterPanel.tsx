@@ -5,6 +5,8 @@ import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import type { MapPoint, Tag } from "@/types";
 import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "@/components/ui/styles";
+import FieldHelp from "@/components/ui/FieldHelp";
+import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
@@ -59,6 +61,7 @@ function rangeSummary(from: string, to: string): string {
  */
 function FilterSection({
   title,
+  concept,
   summary,
   active,
   open,
@@ -66,22 +69,36 @@ function FilterSection({
   children,
 }: {
   title: string;
+  /** Shared `?` concept for this filter (same registry as the forms / detail
+   *  page). Omit for filter-only controls with no domain concept. */
+  concept?: Concept;
   summary: string;
   active: boolean;
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
 }) {
+  // The header is a row, not one button: the `?` is its own button (a button
+  // can't nest inside another), so the title + the summary/chevron each toggle
+  // the section while the `?` opens its tooltip independently.
   return (
     <div className="border-b border-neutral-800 last:border-b-0">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between py-2.5 group"
-      >
-        <span className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors">
-          {title}
+      <div className="w-full flex items-center justify-between py-2.5 group">
+        <span className="flex items-center gap-1 min-w-0">
+          <button
+            onClick={onToggle}
+            aria-expanded={open}
+            className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
+          >
+            {title}
+          </button>
+          {concept && <FieldHelp concept={concept} size={12} />}
         </span>
-        <span className="flex items-center gap-1.5 min-w-0">
+        <button
+          onClick={onToggle}
+          aria-label={`Toggle ${title}`}
+          className="flex items-center gap-1.5 min-w-0"
+        >
           {!open && (
             <span
               className={`text-[11px] truncate max-w-[150px] ${
@@ -96,8 +113,8 @@ function FilterSection({
           ) : (
             <ChevronDown size={13} className="text-neutral-500 shrink-0" />
           )}
-        </span>
-      </button>
+        </button>
+      </div>
       {open && <div className="pb-3">{children}</div>}
     </div>
   );
@@ -279,6 +296,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
           {conflictTags.length > 0 && (
             <FilterSection
               title="Conflict"
+              concept="conflict"
               summary={chipSummary(selectedConflicts)}
               active={selectedConflicts.length > 0}
               open={!!openSections["Conflict"]}
@@ -291,6 +309,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
           {captureSourceTags.length > 0 && (
             <FilterSection
               title="Capture source"
+              concept="capture_source"
               summary={chipSummary(selectedCaptureSources)}
               active={selectedCaptureSources.length > 0}
               open={!!openSections["Capture source"]}
@@ -301,13 +320,14 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
           )}
 
           <FilterSection
-            title="Media"
+            title="Source media"
+            concept="source_media"
             summary={chipSummary(
               selectedMediaTypes.map((m) => m[0].toUpperCase() + m.slice(1)),
             )}
             active={selectedMediaTypes.length > 0}
-            open={!!openSections["Media"]}
-            onToggle={() => toggleSection("Media")}
+            open={!!openSections["Source media"]}
+            onToggle={() => toggleSection("Source media")}
           >
             <div className="flex flex-wrap gap-1.5">
               {MEDIA_TYPES.map(([value, lbl]) => (
@@ -326,6 +346,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
 
           <FilterSection
             title="Event date"
+            concept="event_date"
             summary={rangeSummary(eventStart, eventEnd)}
             active={eventActive}
             open={!!openSections["Event date"]}
@@ -346,6 +367,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
 
           <FilterSection
             title="Submitted date"
+            concept="submitted_date"
             summary={rangeSummary(submittedStart, submittedEnd)}
             active={submittedActive}
             open={!!openSections["Submitted date"]}

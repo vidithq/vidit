@@ -1,0 +1,225 @@
+import { apiFetch } from "./api";
+import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
+import { proofHasImage } from "./proof";
+import type { GeolocationDetail, TagCategory } from "@/types";
+
+/** A required field a create/edit form is still missing. `key` drives the
+ *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
+ *  the geolocation + bounty validators so both feed the same notice + highlight
+ *  plumbing. */
+export type MissingFieldKey =
+  | "title"
+  | "coordinates"
+  | "source_url"
+  | "event_date"
+  | "proof"
+  | "proof_image"
+  | "source_media"
+  | "conflict_tag"
+  | "capture_source_tag";
+
+export interface MissingField {
+  key: MissingFieldKey;
+  label: string;
+}
+
+/** Page size for the owner review queue. Matches the backend default
+ *  (`per_page=20`, capped at 100). */
+const REVIEW_QUEUE_PER_PAGE = 20;
+
+/** Shape of `GET /geolocations/review-queue` — full-detail items (media +
+ *  tags) so the queue renders the evidence and computes validation-readiness
+ *  without a per-row round-trip. Mirrors the backend
+ *  `PaginatedGeolocationDetails`. */
+export interface PaginatedGeolocationDetails {
+  items: GeolocationDetail[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export function reviewQueuePath(page = 1, perPage = REVIEW_QUEUE_PER_PAGE): string {
+  return `/geolocations/review-queue?page=${page}&per_page=${perPage}`;
+}
+
+/**
+ * Full edit of a `detected` geolocation — `PATCH /geolocations/{id}`, multipart,
+ * mirroring submit: the form posts the whole editable state, applied atomically.
+ * New media ride in `files`; existing media are dropped via `remove_media_ids`.
+ * Only `detected_from_url` (the provenance anchor) and `state` are immutable.
+ */
+export interface GeolocationEditInput {
+  title: string;
+  lat: number;
+  lng: number;
+  source_url: string;
+  /** ISO `YYYY-MM-DD`. */
+  event_date: string;
+  /** ISO `YYYY-MM-DD`; empty / omitted clears it. */
+  source_date?: string;
+  proof?: Record<string, unknown> | null;
+  /** Replaces the tag set wholesale. */
+  tag_ids: string[];
+  /** Ids of existing media to drop. */
+  remove_media_ids: string[];
+  /** New media to upload. */
+  files: File[];
+}
+
+export function updateGeolocation(
+  id: string,
+  input: GeolocationEditInput
+): Promise<GeolocationDetail> {
+  const fd = new FormData();
+  fd.append("title", input.title);
+  fd.append("lat", String(input.lat));
+  fd.append("lng", String(input.lng));
+  fd.append("source_url", input.source_url);
+  fd.append("event_date", input.event_date);
+  if (input.source_date) fd.append("source_date", input.source_date);
+  if (input.proof) fd.append("proof", JSON.stringify(input.proof));
+  if (input.tag_ids.length > 0) fd.append("tag_ids", JSON.stringify(input.tag_ids));
+  if (input.remove_media_ids.length > 0) {
+    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
+  }
+  for (const file of input.files) {
+    fd.append("files", file);
+  }
+  return apiFetch<GeolocationDetail>(`/geolocations/${id}`, {
+    method: "PATCH",
+    body: fd,
+  });
+}
+
+/** `detected → validated`, freezing the row. 400s if the evidence floor isn't
+ *  met (see `validationReadiness`), 409 if the row isn't `detected`. */
+export function validateGeolocation(id: string): Promise<GeolocationDetail> {
+  return apiFetch<GeolocationDetail>(`/geolocations/${id}/validate`, {
+    method: "POST",
+  });
+}
+
+/** Soft-delete a `detected` row (re-importable later), distinct from the hard
+ *  `DELETE`. The review queue surfaces this as "Delete" — to the owner the row
+ *  just disappears; the soft/tombstone distinction only matters to the
+ *  re-import idempotency on the backend. */
+export function rejectGeolocation(id: string): Promise<void> {
+  return apiFetch<void>(`/geolocations/${id}/reject`, { method: "POST" });
+}
+
+export interface ValidationReadiness {
+  isReady: boolean;
+  /** Validate-floor fields still missing — the labels shown in the queue card's
+   *  "Needs:" line. Empty when ready. */
+  missing: string[];
+}
+
+/**
+ * Whether a `detected` row would pass the review form's **Validate** gate,
+ * computed client-side so the queue shows the owner exactly what's left before
+ * they open it. Delegates to `missingGeolocationFields` (requireMedia +
+ * requireTags) — the *same* call the Validate button makes — so the queue's
+ * "Needs:" line can never drift from what validation actually enforces. (The
+ * backend floor is the narrower media + `conflict` + `capture_source` tags; the
+ * form adds the core fields and a proof image on top — see `missingGeolocationFields`.)
+ */
+export function validationReadiness(geo: {
+  title: string;
+  lat: number;
+  lng: number;
+  source_url: string;
+  event_date: string;
+  proof: Record<string, unknown> | null;
+  media: readonly unknown[];
+  tags: readonly { category: TagCategory }[];
+}): ValidationReadiness {
+  const missing = missingGeolocationFields(
+    {
+      title: geo.title,
+      lat: String(geo.lat),
+      lng: String(geo.lng),
+      sourceUrl: geo.source_url,
+      eventDate: geo.event_date,
+      proof: geo.proof,
+      mediaCount: geo.media.length,
+      hasConflictTag: geo.tags.some((t) => t.category === "conflict"),
+      hasCaptureSourceTag: geo.tags.some((t) => t.category === "capture_source"),
+    },
+    { requireMedia: true, requireTags: true }
+  ).map((m) => m.label);
+
+  return { isReady: missing.length === 0, missing };
+}
+
+/** The editable state a geolocation create/edit form validates before it lets
+ *  the analyst submit or validate. Strings are the raw input values. */
+export interface GeolocationFieldsState {
+  title: string;
+  lat: string;
+  lng: string;
+  sourceUrl: string;
+  eventDate: string;
+  proof: Record<string, unknown> | null;
+  /** Source-media count after staging (kept existing + newly staged). */
+  mediaCount: number;
+  hasConflictTag: boolean;
+  hasCaptureSourceTag: boolean;
+}
+
+export interface GeolocationFieldsOptions {
+  /** Require >=1 source media. False when a bounty supplies the media, or for a
+   *  partial draft save. Default true. */
+  requireMedia?: boolean;
+  /** Require the conflict + capture-source tag floor. False for a partial draft
+   *  save (Save changes), true for submit + validate. Default true. */
+  requireTags?: boolean;
+}
+
+/**
+ * Every still-unmet required field for a geolocation, as `{key, label}` for
+ * `IncompleteFormNotice` (the labels) and the in-form highlight (the keys) — the
+ * whole list at once, not the first miss. Drives both the submit form and the
+ * review/validate form (the validate floor is a superset of the save floor,
+ * toggled via the options). Coordinate, media, and tag rules mirror the backend;
+ * keep them in step with `validationReadiness` (the queue's inline readiness)
+ * and the server submission check. Proof must carry an image (`proofHasImage`):
+ * a geolocation's proof is a source ↔ satellite cross-reference, so text alone
+ * can't be audited.
+ */
+export function missingGeolocationFields(
+  s: GeolocationFieldsState,
+  { requireMedia = true, requireTags = true }: GeolocationFieldsOptions = {}
+): MissingField[] {
+  const lat = parseFloat(s.lat);
+  const lng = parseFloat(s.lng);
+  const coordsValid =
+    !isNaN(lat) &&
+    lat >= LAT_MIN &&
+    lat <= LAT_MAX &&
+    !isNaN(lng) &&
+    lng >= LNG_MIN &&
+    lng <= LNG_MAX;
+
+  const missing: MissingField[] = [];
+  if (!s.title.trim()) missing.push({ key: "title", label: "Title" });
+  if (!coordsValid) missing.push({ key: "coordinates", label: "Coordinates" });
+  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
+  if (!s.eventDate) missing.push({ key: "event_date", label: "Event date" });
+  // Proof must exist *and* contain an image. "Proof" (none at all) and "Proof
+  // image" (text-only) are distinct misses so the notice says which.
+  if (!s.proof) {
+    missing.push({ key: "proof", label: "Proof" });
+  } else if (!proofHasImage(s.proof)) {
+    missing.push({ key: "proof_image", label: "Proof image" });
+  }
+  if (requireMedia && s.mediaCount === 0) {
+    missing.push({ key: "source_media", label: "Source media" });
+  }
+  if (requireTags && !s.hasConflictTag) {
+    missing.push({ key: "conflict_tag", label: "Conflict tag" });
+  }
+  if (requireTags && !s.hasCaptureSourceTag) {
+    missing.push({ key: "capture_source_tag", label: "Capture source tag" });
+  }
+  return missing;
+}

@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.geolocation import GeolocationState
 from app.schemas.media import MediaRead
@@ -74,27 +74,20 @@ class PaginatedGeolocations(BaseModel):
     per_page: int
 
 
-class GeolocationUpdate(BaseModel):
-    """Owner edit of a ``detected`` geolocation (review flow).
+class PaginatedGeolocationDetails(BaseModel):
+    """Full-detail paginated geolocations — the owner review-queue payload.
 
-    Partial update — the service applies only the fields the request actually
-    carries (``model_dump(exclude_unset=True)``). The immutable fields on a
-    detection (``source_url``, the source media, ``detected_from_url``,
-    ``state``) have no field here, so they can't be expressed and can't be
-    changed. ``source_date`` is the one nullable target: send it as ``null``
-    to clear it, omit it to leave it untouched. The required-on-row fields
-    (``title`` / ``lat`` / ``lng`` / ``event_date`` / ``proof``) are applied
-    only when sent non-null. ``tag_ids`` replaces the tag set wholesale; ``[]``
-    clears it.
+    Mirrors ``PaginatedGeolocations`` but carries ``GeolocationRead`` items
+    (media + tags + provenance) rather than the lightweight ``GeolocationList``
+    card: the review queue needs the media to judge a detection and the tags to
+    compute validation-readiness (>=1 media + a ``conflict`` + a
+    ``capture_source`` tag) without a per-row round-trip.
     """
 
-    title: str | None = Field(None, min_length=1, max_length=255)
-    lat: float | None = None
-    lng: float | None = None
-    event_date: date | None = None
-    source_date: date | None = None
-    proof: dict[str, Any] | None = None
-    tag_ids: list[uuid.UUID] | None = None
+    items: list[GeolocationRead]
+    total: int
+    page: int
+    per_page: int
 
 
 class PossibleDuplicateRead(BaseModel):

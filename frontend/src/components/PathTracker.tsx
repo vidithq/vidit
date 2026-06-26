@@ -2,22 +2,23 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { setPreviousInternalPath } from "@/lib/navigation";
+import { recordNavigation } from "@/lib/navigation";
 
 /**
- * Records the previous same-origin pathname into sessionStorage on each route
- * change, so `smartBack` (in `lib/navigation.ts`) can land the user back on it.
- * Mounted once at the root via `Providers`. Side-effect only — renders nothing.
+ * Pushes the same-origin pathname being left onto the `smartBack` back-stack
+ * (in `lib/navigation.ts`) on each route change. Mounted once at the root via
+ * `Providers`. Side-effect only — renders nothing.
  */
 export default function PathTracker() {
   const pathname = usePathname();
   const previousRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Stamp the *previous* pathname (still in the ref), not the current one:
-    // by the time `smartBack` fires, the current path is the page being left.
+    // Record the *previous* pathname (still in the ref), not the current one:
+    // it's the page being left. `recordNavigation` no-ops when the change was a
+    // `smartBack` pop, so the back walk doesn't re-grow the stack.
     if (previousRef.current && previousRef.current !== pathname) {
-      setPreviousInternalPath(previousRef.current);
+      recordNavigation(previousRef.current);
     }
     previousRef.current = pathname;
   }, [pathname]);

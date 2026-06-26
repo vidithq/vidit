@@ -19,13 +19,21 @@ GeolocationState = Literal["validated", "detected"]
 STATE_VALIDATED: GeolocationState = "validated"
 STATE_DETECTED: GeolocationState = "detected"
 
+# Field-length ceilings for the create / edit multipart forms, kept next to the
+# columns so a Form(...) ``max_length`` can't drift from them. ``TITLE`` is the
+# ``title`` column width (used in ``String(...)`` below); ``SOURCE_URL`` is an
+# input ceiling only — the column is unbounded ``Text``, but the API caps
+# accepted input so over-length data is rejected at the boundary.
+TITLE_MAX_LENGTH = 255
+SOURCE_URL_MAX_LENGTH = 2000
+
 
 class Geolocation(Base):
     __tablename__ = "geolocations"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
     location = mapped_column(Geometry("POINT", srid=4326), nullable=False, index=True)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     # NOT NULL: every row carries a proof document. Human submits supply the

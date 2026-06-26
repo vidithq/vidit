@@ -78,6 +78,15 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a bounty it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
+  // Edit-form actions — the two buttons do different things, spelled out here.
+  action_save_draft: {
+    text: "Saves your edits and keeps this a draft. It stays unpublished and you can keep editing — nothing is shown publicly yet.",
+    label: "What does Save changes do?",
+  },
+  action_validate: {
+    text: "Publishes the geolocation and freezes it. Once validated it can't be edited, so review everything first.",
+    label: "What does Validate do?",
+  },
 } as const;
 
 /** A concept key — the single argument every `<FieldHelp>` takes. */

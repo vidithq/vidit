@@ -51,7 +51,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
 }
 
 describe("GeolocationDetailBody", () => {
-  it("panel variant: thumbnail media, no bounty/author rows, no section headings", () => {
+  it("panel variant: thumbnail media, section headings, no bounty/author rows", () => {
     const geo = geoFixture();
     render(<GeolocationDetailBody geo={geo} variant="panel" />);
     const img = screen.getByRole("img");
@@ -65,8 +65,10 @@ describe("GeolocationDetailBody", () => {
     // Not just the row label — the author's username must not appear
     // anywhere in the panel body (it lives in the panel header).
     expect(screen.queryByText("ana")).not.toBeInTheDocument();
-    expect(screen.queryByText("Media")).not.toBeInTheDocument();
-    expect(screen.queryByText("Details")).not.toBeInTheDocument();
+    // The panel carries the same section headings as the page (denser).
+    expect(screen.getByText("Source media")).toBeInTheDocument();
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(screen.getByText("Details")).toBeInTheDocument();
     // Shared fields + proof render
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("48.015883, 37.802411")).toBeInTheDocument();
@@ -114,7 +116,7 @@ describe("GeolocationDetailBody", () => {
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(geo.media[0]).hero
     );
-    expect(screen.getByText("Media")).toBeInTheDocument();
+    expect(screen.getByText("Source media")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText("Bounty")).toBeInTheDocument();
     const bountyLink = screen.getByRole("link", {

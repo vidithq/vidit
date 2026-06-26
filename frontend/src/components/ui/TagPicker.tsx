@@ -22,6 +22,10 @@ interface TagPickerProps {
    *  Hint only — enforcement lives in the parent's submit handler. */
   requireConflict?: boolean;
   requireCaptureSource?: boolean;
+  /** Flag a curated group as a missing required field (red label + outline)
+   *  when the form's submit/validate was blocked on it. */
+  conflictInvalid?: boolean;
+  captureSourceInvalid?: boolean;
 }
 
 /**
@@ -40,7 +44,11 @@ export function TagPicker({
   setSelectedTagIds,
   requireConflict = false,
   requireCaptureSource = false,
+  conflictInvalid = false,
+  captureSourceInvalid = false,
 }: TagPickerProps) {
+  // Red label + ring around the chips when the group blocked a submit/validate.
+  const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
   const conflictTags = curatedTags.filter((t) => t.category === "conflict");
   const captureSourceTags = curatedTags.filter(
     (t) => t.category === "capture_source"
@@ -75,11 +83,11 @@ export function TagPicker({
 
       {conflictTags.length > 0 && (
         <div className="space-y-2">
-          <span className={FORM_LABEL}>
+          <span className={`${FORM_LABEL}${conflictInvalid ? " !text-red-400" : ""}`}>
             Conflict <FieldHelp concept="conflict" />{" "}
             {!requireConflict && <OptionalHint />}
           </span>
-          <div className="flex flex-wrap gap-2">
+          <div className={`flex flex-wrap gap-2${conflictInvalid ? ` ${invalidChips}` : ""}`}>
             {conflictTags.map((tag) => (
               <TagChip
                 key={tag.id}
@@ -94,12 +102,12 @@ export function TagPicker({
 
       {captureSourceTags.length > 0 && (
         <div className="space-y-2">
-          <span className={FORM_LABEL}>
+          <span className={`${FORM_LABEL}${captureSourceInvalid ? " !text-red-400" : ""}`}>
             Capture source{" "}
             <FieldHelp concept="capture_source" />{" "}
             {!requireCaptureSource && <OptionalHint />}
           </span>
-          <div className="flex flex-wrap gap-2">
+          <div className={`flex flex-wrap gap-2${captureSourceInvalid ? ` ${invalidChips}` : ""}`}>
             {captureSourceTags.map((tag) => (
               <TagChip
                 key={tag.id}
