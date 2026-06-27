@@ -1,16 +1,16 @@
 # Backups
 
-The production Postgres DB on Railway is backed up once a week to S3 by a dedicated cron service. Custom-format `pg_dump` to a private, versioned, lifecycle-bounded bucket; cron credentials are write-only, restore reads go through a separate admin profile.
+The production Postgres DB on Railway is backed up once a week to S3 by a dedicated cron service. Custom-format `pg_dump` to a private, versioned, lifecycle-bounded bucket; cron credentials are write-only; restore reads go through a separate admin profile.
 
 ---
 
 ## Weekly automated backups
 
-A dedicated Railway service `backend-backup` (image built from [`docker/backup/`](../docker/backup/)) runs every Monday at 00:00 UTC (cron expression `0 0 * * MON`), takes a `pg_dump --format=custom --no-owner --no-acl`, inspects the dump's TOC with `pg_restore --list`, and uploads to `s3://<backup-bucket>/YYYY/MM/DD/vidit-<UTC-timestamp>.dump`. The TOC check catches corruption of the TOC itself, not mid-DATA truncation, only the quarterly drill verifies restorability.
+A dedicated Railway service `backend-backup` (image built from [`docker/backup/`](../docker/backup/)) runs every Monday at 00:00 UTC (cron expression `0 0 * * MON`), takes a `pg_dump --format=custom --no-owner --no-acl`, inspects the dump's TOC with `pg_restore --list`, and uploads to `s3://<backup-bucket>/YYYY/MM/DD/vidit-<UTC-timestamp>.dump`. The TOC check catches corruption of the TOC itself, not mid-DATA truncation; only the quarterly drill verifies restorability.
 
 The bucket has versioning + SSE-S3 + all-public-access blocked; lifecycle clears noncurrent versions after 30 days, aborted multipart uploads after 7, and current objects after 365.
 
-The cron container's `pg_dump` is pinned to PG 16 to match the production server. **Don't bump this without bumping prod first**, `pg_dump` 18 writes archive format 1.16 which PG 16's `pg_restore` refuses to read.
+The cron container's `pg_dump` is pinned to PG 16 to match the production server. **Don't bump this without bumping prod first**: `pg_dump` 18 writes archive format 1.16 which PG 16's `pg_restore` refuses to read.
 
 The service writes through a dedicated IAM user `<backup-iam-user>` whose only S3 permissions are `PutObject` / `AbortMultipartUpload` / `ListMultipartUploadParts` on `<backup-bucket>/*`, no `Get`, no `Delete`.
 
@@ -18,7 +18,7 @@ The service writes through a dedicated IAM user `<backup-iam-user>` whose only S
 
 | Var | Source |
 |-----|--------|
-| `DATABASE_URL` | Railway reference: `${{backend.DATABASE_URL}}` (internal `*.railway.internal` host). Reference `backend.DATABASE_URL`, not `postgres-db.DATABASE_URL`, Railway injects it on consumers, not the DB service. |
+| `DATABASE_URL` | Railway reference: `${{backend.DATABASE_URL}}` (internal `*.railway.internal` host). Reference `backend.DATABASE_URL`, not `postgres-db.DATABASE_URL`: Railway injects it on consumers, not the DB service. |
 | `BACKUP_S3_BUCKET` | `<backup-bucket>` |
 | `AWS_ACCESS_KEY_ID` | from `<backup-iam-user>` IAM user |
 | `AWS_SECRET_ACCESS_KEY` | from `<backup-iam-user>` IAM user |
@@ -45,14 +45,14 @@ The target DB must have the same extensions installed as production. Today the d
 
 ## How you find out the cron failed
 
-A 403 on `PutObject` exits non-zero, Railway logs it on the `backend-backup` deployment view. No alert on a missed Monday dump (Sentry catches runtime exceptions only). Discovery is manual:
+A 403 on `PutObject` exits non-zero; Railway logs it on the `backend-backup` deployment view. No alert on a missed Monday dump (Sentry catches runtime exceptions only). Discovery is manual:
 
 1. **Mondays after 00:00 UTC**, eyeball the bucket:
    ```bash
    aws --profile <s3-admin> s3 ls s3://<backup-bucket>/ --recursive | tail -3
    ```
    A fresh `.dump` under today's `YYYY/MM/DD/` prefix means the cron ran. If the latest dump is from the prior week, read the `backend-backup` deployment logs in Railway.
-2. **At the quarterly restore drill**, re-list the bucket, gaps in the weekly cadence catch any failure mode that the script's own exit code missed (e.g. a successful upload of a corrupt dump).
+2. **At the quarterly restore drill**, re-list the bucket; gaps in the weekly cadence catch any failure mode that the script's own exit code missed (e.g. a successful upload of a corrupt dump).
 
 ---
 
@@ -110,7 +110,7 @@ The release ritual around a deploy that ships a migration. Migrations run as a R
 
 Two constraints shape how this works (see [`engineering.md`](engineering.md) → *Deployment* and *Particularities*): prod DB **public networking is off**; and the backend container ships only `libpq5`, **not** the `pg_dump` / `pg_restore` client binaries (those live in the `backend-backup` cron image, `postgres:16`).
 
-**1. Snapshot before deploying.** Don't wait for the Monday run, trigger the `backend-backup` service on demand:
+**1. Snapshot before deploying.** Don't wait for the Monday run; trigger the `backend-backup` service on demand:
 
 ```
 Railway dashboard → project `vidit` → service `backend-backup` → Deployments → Redeploy
@@ -120,11 +120,11 @@ Confirm a fresh object lands under today's `YYYY/MM/DD/` prefix before deploying
 
 **If a deploy goes wrong, recover in this order:**
 
-- **2a, Code-only rollback** (no schema change involved): re-run the [`deploy` workflow](../.github/workflows/deploy.yml) with the previous tag, or hit "Redeploy previous" on the Railway `backend` service. No DB touch.
-- **2b, Schema downgrade** (undo one migration, keep data): run Alembic inside the app container, where the internal `DATABASE_URL` already points at the live DB and `alembic` is installed (it's the pre-deploy hook):
+- **2a. Code-only rollback** (no schema change involved): re-run the [`deploy` workflow](../.github/workflows/deploy.yml) with the previous tag, or hit "Redeploy previous" on the Railway `backend` service. No DB touch.
+- **2b. Schema downgrade** (undo one migration, keep data): run Alembic inside the app container, where the internal `DATABASE_URL` already points at the live DB and `alembic` is installed (it's the pre-deploy hook):
   ```bash
   railway ssh --service backend -- 'uv run alembic downgrade -1'
   ```
-- **2c, Full restore** (data corruption, or downgrade isn't safe): the [restore drill](#one-time-restore-drill) below is the validated `pg_restore` procedure. Live restore: run `pg_restore` from a one-off `postgres:16` container on the Railway network, or temporarily open public DB networking. `pg_restore --clean --if-exists` **wipes anything added since the snapshot**; for partial recovery, restore into a scratch DB and copy specific tables out.
+- **2c. Full restore** (data corruption, or downgrade isn't safe): the [restore drill](#one-time-restore-drill) below is the validated `pg_restore` procedure. Live restore: run `pg_restore` from a one-off `postgres:16` container on the Railway network, or temporarily open public DB networking. `pg_restore --clean --if-exists` **wipes anything added since the snapshot**; for partial recovery, restore into a scratch DB and copy specific tables out.
 
 A dedicated restore job is not yet scheduled.

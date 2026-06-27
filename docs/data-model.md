@@ -209,8 +209,8 @@ erDiagram
 | `email_verified_at` | `TIMESTAMPTZ` | nullable, set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every geolocation they authored. Hard-delete (the GDPR escape hatch) drops the row + cascade-drops their geolocations + sweeps S3. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff created by the admin Demo data seeder (5 fixed `demo-analyst-N` accounts with unloggable hashes + `@vidit.invalid` emails). The wipe button drops every flagged user + their geolocations in one go. |
-| `token_version` | `INTEGER` | NOT NULL, default `0`, monotonic session-invalidation counter. The session JWT embeds this as a `tv` claim; `get_current_user` 401s on mismatch. Bumped on logout, password change, password reset, and soft-delete so every outstanding JWT for the user becomes invalid at once. Pre-migration cookies (no `tv`) 401 too, the migration's one-time forced logout is intended. |
-| `bio` | `TEXT` | nullable, short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint, cap changes don't need migrations). |
+| `token_version` | `INTEGER` | NOT NULL, default `0`, monotonic session-invalidation counter. The session JWT embeds this as a `tv` claim; `get_current_user` 401s on mismatch. Bumped on logout, password change, password reset, and soft-delete so every outstanding JWT for the user becomes invalid at once. Pre-migration cookies (no `tv`) 401 too; the migration's one-time forced logout is intended. |
+| `bio` | `TEXT` | nullable, short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint, so cap changes don't need migrations). |
 | `avatar_url` | `TEXT` | nullable, public avatar URL. Validated as http(s) at the API layer to keep `javascript:` URLs out of the `<img src>` render path. No upload pipeline yet (free-form URL, analysts paste a Gravatar / CDN link). |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`, Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge conflicts with the whole-panel form submit. |
 | `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()`, the moment an owner took control. Defaults to insert time so owned-at-creation paths (registration, seeder, future sign-up) are correct without stamping it; the assembly pipeline inserts an explicit NULL for an unclaimed profile, so `claimed_at IS NULL` means "assembled, not yet claimed" (identified by `x_handle` alone). Existing rows backfilled to `created_at`. |
@@ -223,7 +223,7 @@ Indexes:
 - `ix_users_demo` on `(id) WHERE is_demo = true`, partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
 - `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))`, backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight
 
-The credential-less assembled-profile model, nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row, shipped in `v0.3.1`; see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
+The credential-less assembled-profile model (nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row) shipped in `v0.3.1`; see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
 
 ---
 
@@ -356,7 +356,7 @@ Indexes:
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-**Temporal fields, four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
+**Temporal fields: four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
 
 ```
 event happens ──▶ source posts the media ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
@@ -366,12 +366,12 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
-| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date NOT NULL; time optional, the hour is often unknown |
+| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date NOT NULL; time optional (the hour is often unknown) |
 | `source_posted_at` | when the source posted the media | analyst, or detection (tweet timestamp) | NOT NULL, a post always has a time |
 | `detected_post_at` | when the analyst posted the geolocation on X | detection only (the imported tweet's time) | NULL for human submits |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 
-`event_date` is *editorial*, a real-world event, often known only to the day and with no canonical zone, so it's a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants*, known to the minute when present, and UTC, so they're full timestamps. All entered times follow the UTC convention.
+`event_date` is *editorial*: a real-world event, often known only to the day and with no canonical zone, so it's a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants*: known to the minute when present, and UTC, so they're full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
 - `GIST(location)`, required for geospatial queries (bounding-box filtering, proximity sort)

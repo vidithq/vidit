@@ -4,47 +4,47 @@ Base URL: `/api/v1`
 
 All responses are JSON.
 
-**Auth.** Endpoints marked 🔒 require a logged-in session: the `vidit_session` cookie (set by `POST /auth/login`, `HttpOnly; Secure; SameSite=Lax`) plus, for state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`), the `X-CSRF-Token` header echoing the JS-readable `vidit_csrf` cookie. There is no `Authorization: Bearer` flow, the cookie + CSRF pair is the only authenticated channel into the backend. Endpoints marked 🛡️ additionally require `is_admin=true` on the caller (returns 403 otherwise).
+**Auth.** Endpoints marked 🔒 require a logged-in session: the `vidit_session` cookie (set by `POST /auth/login`, `HttpOnly; Secure; SameSite=Lax`) plus, for state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`), the `X-CSRF-Token` header echoing the JS-readable `vidit_csrf` cookie. There is no `Authorization: Bearer` flow; the cookie + CSRF pair is the only authenticated channel into the backend. Endpoints marked 🛡️ additionally require `is_admin=true` on the caller (returns 403 otherwise).
 
 **Transport security.** Every response carries `Strict-Transport-Security: max-age=15768000`. The header has no `includeSubDomains` or `preload` directives.
 
-**Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT, an audit failure never breaks the auth flow.
+**Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `bounty_not_found`, `bounty_not_open`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof`, geolocations and bounties share the file/media codes via `services/evidence_intake`). The `code` is the stable contract surface, branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `bounty_not_found`, `bounty_not_open`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof`; geolocations and bounties share the file/media codes via `services/evidence_intake`). The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
 ## Endpoints at a glance
 
-Auth column: anonymous, 🔒 logged-in, 🛡️ admin-only.
+Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | **Auth** | | | |
-| POST | `/auth/register` |, | Stage a pending registration; sends confirmation email |
-| POST | `/auth/confirm-registration` |, | Confirm a pending registration (creates user, signs in) |
-| GET | `/auth/invites/{code}/check` |, | Advisory invite-code probe for the registration form |
-| POST | `/auth/resend-confirmation` |, | Re-send the confirmation email; invalidates previous token |
-| POST | `/auth/login` |, | Email + password → session + CSRF cookies |
-| POST | `/auth/logout` |, | Clear session cookies (idempotent) |
+| POST | `/auth/register` | 🌐 | Stage a pending registration; sends confirmation email |
+| POST | `/auth/confirm-registration` | 🌐 | Confirm a pending registration (creates user, signs in) |
+| GET | `/auth/invites/{code}/check` | 🌐 | Advisory invite-code probe for the registration form |
+| POST | `/auth/resend-confirmation` | 🌐 | Re-send the confirmation email; invalidates previous token |
+| POST | `/auth/login` | 🌐 | Email + password → session + CSRF cookies |
+| POST | `/auth/logout` | 🌐 | Clear session cookies (idempotent) |
 | GET | `/auth/me` | 🔒 | Current user |
-| POST | `/auth/forgot-password` |, | Email a single-use reset token (always 204) |
-| POST | `/auth/reset-password` |, | Consume reset token, set new password |
+| POST | `/auth/forgot-password` | 🌐 | Email a single-use reset token (always 204) |
+| POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
 | **Geolocations** | | | |
-| GET | `/geolocations` |, | List geolocations for the map (lightweight format) |
-| GET | `/geolocations/points` |, | Compact map-points tuples (cached) |
+| GET | `/geolocations` | 🌐 | List geolocations for the map (lightweight format) |
+| GET | `/geolocations/points` | 🌐 | Compact map-points tuples (cached) |
 | GET | `/geolocations/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/geolocations/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/geolocations/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
-| GET | `/geolocations/{id}` |, | Full geolocation detail |
+| GET | `/geolocations/{id}` | 🌐 | Full geolocation detail |
 | POST | `/geolocations` | 🔒 | Create a geolocation (multipart, uploads media) |
 | DELETE | `/geolocations/{id}` | 🔒 | Author-only delete + S3 sweep |
 | GET | `/geolocations/review-queue` | 🔒 | Your `detected` geolocations awaiting review (paginated) |
 | POST | `/geolocations/proof-images` | 🔒 | Upload an inline image referenced by the Tiptap proof |
 | **Bounties** | | | |
-| GET | `/bounties` |, | List bounties (newest first, soft-delete filtered) |
-| GET | `/bounties/{id}` |, | Bounty detail |
+| GET | `/bounties` | 🌐 | List bounties (newest first, soft-delete filtered) |
+| GET | `/bounties/{id}` | 🌐 | Bounty detail |
 | POST | `/bounties` | 🔒 | Post a bounty (multipart) |
 | DELETE | `/bounties/{id}` | 🔒 | Author hard-delete; cascades media + claims |
 | POST | `/bounties/{id}/claim` | 🔒 | "I'm working on this" (idempotent, multi-claimer) |
@@ -53,12 +53,12 @@ Auth column: anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Search** | | | |
 | GET | `/search` | 🔒 | Free-text search across geolocations / bounties / users |
 | **Tags** | | | |
-| GET | `/tags` |, | List tags (defaults to ones referenced by live geos) |
+| GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
 | **Users** | | | |
-| GET | `/users/{username}` |, | Public analyst profile |
+| GET | `/users/{username}` | 🌐 | Public analyst profile |
 | PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
-| GET | `/users/{username}/geolocations` |, | List an analyst's geolocations |
+| GET | `/users/{username}/geolocations` | 🌐 | List an analyst's geolocations |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Timeline** | | | |
@@ -126,7 +126,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 
 ### `POST /auth/register`
 
-Stage a registration. Anonymous. **No `users` row is created here**, the submission lives in `pending_registrations` until the user proves they own the email by clicking the link in the confirmation message. The invite code is referenced by the pending row but not consumed; an abandoned signup does not burn the invite.
+Stage a registration. Anonymous. **No `users` row is created here**: the submission lives in `pending_registrations` until the user proves they own the email by clicking the link in the confirmation message. The invite code is referenced by the pending row but not consumed; an abandoned signup does not burn the invite.
 
 **Request body:**
 ```json
@@ -255,7 +255,7 @@ Returns the current user.
 }
 ```
 
-`is_trusted` / `trust_reason` are public on purpose, the trust mark is a credibility signal and the reason is what makes it credible. The profile fields (`bio`, `avatar_url`, `external_links`) ship with the self-payload so the sidebar avatar and "edit profile" form can render without a second fetch. **`is_admin` is not on this shape**; the admin role only surfaces via `GET /admin/me`. `email_verified_at` is not exposed: the pre-creation flow means there's no unverified-user state.
+`is_trusted` / `trust_reason` are public on purpose: the trust mark is a credibility signal, and the reason is what makes it credible. The profile fields (`bio`, `avatar_url`, `external_links`) ship with the self-payload so the sidebar avatar and "edit profile" form can render without a second fetch. **`is_admin` is not on this shape**; the admin role only surfaces via `GET /admin/me`. `email_verified_at` is not exposed: the pre-creation flow means there's no unverified-user state.
 
 ---
 
@@ -447,7 +447,7 @@ Inputs are tolerated gracefully:
 
 Parse a public tweet URL into a pre-fill payload for the submit form. Read-only, never creates a row; the analyst submits the form. Rate-limited to 30/min/IP.
 
-Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated, undocumented, the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"). Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
+Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated and undocumented; the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"). Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
 
 **Request body:**
 ```json
@@ -499,8 +499,8 @@ Every field is best-effort. `parsed_coords` runs four extractors over `tweet_tex
 
 `source_url` resolution priority:
 
-1. **Quoted tweet's URL**, when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body.
-2. **First non-X URL in the OP's `entities.urls`**, catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` (or a Facebook / YouTube / Mastodon link) in the body. `x.com`, `twitter.com`, and bare `t.co` shortlinks are skipped.
+1. **Quoted tweet's URL**: when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body.
+2. **First non-X URL in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` (or a Facebook / YouTube / Mastodon link) in the body. `x.com`, `twitter.com`, and bare `t.co` shortlinks are skipped.
 3. **OP's own URL** as a fallback so the form is at least filled; the analyst is expected to override when neither of the above applies.
 
 `original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
@@ -714,7 +714,7 @@ Owner edit of a machine-`detected` geolocation, the review step. **Multipart**, 
 
 ### `POST /geolocations/{id}/validate` 🔒
 
-Owner-only. Transition a `detected` geolocation to `human`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here, the owner adds the tags via `PATCH` during review.
+Owner-only. Transition a `detected` geolocation to `human`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here; the owner adds the tags via `PATCH` during review.
 
 **Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "human"`).
 
@@ -762,9 +762,9 @@ Upload a single inline image referenced by the proof Tiptap document. Inserts a 
 
 `sha256` is the hex-encoded SHA-256 of the bytes that landed on S3, useful for clients that want to verify integrity post-upload without re-downloading, and for any auditor cross-referencing later. The same hash is persisted on the `proof_images` row.
 
-**EXIF strip.** Image uploads (`image/jpeg`, `image/png`, `image/webp`) are decoded by Pillow and re-encoded **without** EXIF / IPTC / XMP / ICC profile / GPS coordinates / camera-make-and-model / thumbnails before they touch S3. The `sha256` therefore reflects the post-strip bytes; an auditor downloading the public URL gets a file whose hash matches what we recorded. Corrupt / undecodable images, decompression bombs (>60 MP), and animated images surface as 400 before any storage write. **The same strip applies to image uploads under `POST /geolocations` and `POST /bounties` multipart bodies**, only videos pass through untouched (mp4-side metadata strip is a separate slice, not yet implemented).
+**EXIF strip.** Image uploads (`image/jpeg`, `image/png`, `image/webp`) are decoded by Pillow and re-encoded **without** EXIF / IPTC / XMP / ICC profile / GPS coordinates / camera-make-and-model / thumbnails before they touch S3. The `sha256` therefore reflects the post-strip bytes; an auditor downloading the public URL gets a file whose hash matches what we recorded. Corrupt / undecodable images, decompression bombs (>60 MP), and animated images surface as 400 before any storage write. **The same strip applies to image uploads under `POST /geolocations` and `POST /bounties` multipart bodies**; only videos pass through untouched (mp4-side metadata strip is a separate slice, not yet implemented).
 
-**Display derivatives.** Image uploads under `POST /geolocations` and `POST /bounties` produce three S3 objects per file: the EXIF-stripped original at `<key>.<ext>`, a JPEG hero derivative at `<key_stem>_hero.jpg` (max-dim 1280, q80) for detail-page renders, and a JPEG thumbnail at `<key_stem>_thumb.jpg` (max-dim 400, q80) for map popups / index cards. The frontend resolves the right derivative URL via `frontend/src/lib/mediaUrls.ts`, the API response still carries only the original URL on the `media.storage_url` field. Inline proof-image uploads (`POST /geolocations/proof-images`) intentionally **skip** derivative production because the Tiptap renderer consumes the raw URL directly. Video uploads never produce derivatives (first-frame extraction is tracked separately).
+**Display derivatives.** Image uploads under `POST /geolocations` and `POST /bounties` produce three S3 objects per file: the EXIF-stripped original at `<key>.<ext>`, a JPEG hero derivative at `<key_stem>_hero.jpg` (max-dim 1280, q80) for detail-page renders, and a JPEG thumbnail at `<key_stem>_thumb.jpg` (max-dim 400, q80) for map popups / index cards. The frontend resolves the right derivative URL via `frontend/src/lib/mediaUrls.ts`; the API response still carries only the original URL on the `media.storage_url` field. Inline proof-image uploads (`POST /geolocations/proof-images`) intentionally **skip** derivative production because the Tiptap renderer consumes the raw URL directly. Video uploads never produce derivatives (first-frame extraction is tracked separately).
 
 **Rate limits:** 30/min/IP (slowapi) plus a per-user rolling-24h ceiling enforced against the DB (`MAX_PROOF_IMAGES_PER_USER_PER_DAY`).
 
@@ -780,7 +780,7 @@ Upload a single inline image referenced by the proof Tiptap document. Inserts a 
 
 A bounty is an unfinished geolocation: media + a source the poster couldn't place.
 
-**Statuses:** `open` (default on insert), `fulfilled` (a geolocation was submitted from this bounty), `closed` (author withdrew). The "claimed" state is intentionally absent, "I'm working on this" is a parallel multi-analyst signal via `POST /bounties/{id}/claim`, not a lifecycle state.
+**Statuses:** `open` (default on insert), `fulfilled` (a geolocation was submitted from this bounty), `closed` (author withdrew). The "claimed" state is intentionally absent: "I'm working on this" is a parallel multi-analyst signal via `POST /bounties/{id}/claim`, not a lifecycle state.
 
 **Trace:** the pointer from a fulfilled bounty to the resulting geolocation lives on `geolocations.originated_from_bounty_id`.
 
@@ -1076,7 +1076,7 @@ Create a tag. Only `free` tags are creatable; `conflict` / `capture_source` are 
 }
 ```
 
-**Validation.** `name` is stripped of leading / trailing whitespace before any check or DB write, then bounded `1 <= len(name) <= 100` (the `String(100)` column cap on `tags.name`). Empty or whitespace-only names return 422. Duplicate-name detection is **case-sensitive** to match the DB unique constraint, `Drone` and `drone` are distinct rows, so two analysts using different casing will create two tags.
+**Validation.** `name` is stripped of leading / trailing whitespace before any check or DB write, then bounded `1 <= len(name) <= 100` (the `String(100)` column cap on `tags.name`). Empty or whitespace-only names return 422. Duplicate-name detection is **case-sensitive** to match the DB unique constraint: `Drone` and `drone` are distinct rows, so two analysts using different casing will create two tags.
 
 **Response 201:**
 ```json
@@ -1332,9 +1332,9 @@ Case-insensitive substring match on username or email. Empty `q` returns `[]`. C
 
 Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-soft-deletes every live geolocation **and bounty** they authored); pass `?hard=true` for GDPR-grade erasure (drops the user + cascade-drops their geolocations + bounties + sweeps S3). Both modes invalidate the points cache. Audited via `admin_events` (`action = "user_soft_deleted"` / `"user_hard_deleted"`).
 
-**Soft delete**, the user can no longer log in (opaque 401 like wrong credentials); their public profile 404s; their author handle still renders on geolocations preserved in the audit trail. Idempotent: re-soft-deleting preserves the original timestamp.
+**Soft delete**: the user can no longer log in (opaque 401 like wrong credentials); their public profile 404s; their author handle still renders on geolocations preserved in the audit trail. Idempotent: re-soft-deleting preserves the original timestamp.
 
-**Hard delete**, drops the user row, cascade-drops every geolocation **and bounty** they authored (which cascade to media + proof_images + bounty_claims + bounty_tags), then sweeps the S3 objects (geolocation media + bounty media + proof images). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. Geolocations *fulfilling* the deleted user's bounties (potentially authored by other analysts) keep their rows, only the `originated_from_bounty_id` trace pointer flips to NULL via the FK's SET NULL. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
+**Hard delete**: drops the user row, cascade-drops every geolocation **and bounty** they authored (which cascade to media + proof_images + bounty_claims + bounty_tags), then sweeps the S3 objects (geolocation media + bounty media + proof images). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. Geolocations *fulfilling* the deleted user's bounties (potentially authored by other analysts) keep their rows, only the `originated_from_bounty_id` trace pointer flips to NULL via the FK's SET NULL. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
 
 **Response 200:**
 ```json
@@ -1358,9 +1358,9 @@ For `mode = "hard"`, `deleted_at` is `null` and `media_count` / `proof_image_cou
 
 Remove a geolocation. Default is soft delete (sets `deleted_at`); pass `?hard=true` for GDPR-grade erasure. Both modes invalidate the `/geolocations/points` cache. Audited via `admin_events` (`action = "geolocation_soft_deleted"` / `"geolocation_hard_deleted"`).
 
-**Soft delete** (`?hard=false` or omitted), the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
+**Soft delete** (`?hard=false` or omitted): the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
 
-**Hard delete** (`?hard=true`), drops the row (cascade kills `media` and `proof_images` rows) and best-effort-deletes the corresponding S3 objects. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (orphaned objects are picked up by the proof-image reaper).
+**Hard delete** (`?hard=true`): drops the row (cascade kills `media` and `proof_images` rows) and best-effort-deletes the corresponding S3 objects. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (orphaned objects are picked up by the proof-image reaper).
 
 **Response 200:**
 ```json
@@ -1417,7 +1417,7 @@ Capped at 5000 per click.
 
 ### `DELETE /admin/seed-demo-bounties` 🛡️
 
-Drop every `is_demo=true` bounty in one bulk DELETE. Demo users and demo geolocations are NOT touched, those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_bounties_wiped`.
+Drop every `is_demo=true` bounty in one bulk DELETE. Demo users and demo geolocations are NOT touched; those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_bounties_wiped`.
 
 **Response 200:**
 ```json
@@ -1446,7 +1446,7 @@ Generate synthetic demo geolocations attributed to the demo author pool (`demo-a
 
 ### `DELETE /admin/seed-demo` 🛡️
 
-Drop every `is_demo=true` geolocation + user. The `demo-pool/` S3 objects are NOT touched, they're shared assets for re-seeding. Audited as `demo_wiped`. Invalidates the points cache.
+Drop every `is_demo=true` geolocation + user. The `demo-pool/` S3 objects are NOT touched; they're shared assets for re-seeding. Audited as `demo_wiped`. Invalidates the points cache.
 
 **Response 200:**
 ```json
