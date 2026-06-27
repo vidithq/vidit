@@ -18,7 +18,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.database import SessionLocal
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_HUMAN, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -159,7 +159,7 @@ async def test_validated_pair_is_skipped(db, owner):
         source_url="https://example.com/footage",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
-        state=STATE_VALIDATED,
+        state=STATE_HUMAN,
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)

@@ -675,7 +675,7 @@ export interface paths {
          *     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
          *     scrubbers and filters the windows client-side (no refetch per drag).
          *     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-         *     validated row — a flag, not the state string, to keep the payload small.
+         *     human row — a flag, not the state string, to keep the payload small.
          *     Cached in-memory for 60s per unique filter combination.
          */
         get: operations["list_points_api_v1_geolocations_points_get"];
@@ -767,11 +767,11 @@ export interface paths {
          *
          *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL) — the
          *     queue behind ``/profile/{username}/review`` where ``detected`` becomes
-         *     ``validated`` over time. Returns full ``GeolocationRead`` (media + tags) so
+         *     ``human`` over time. Returns full ``GeolocationRead`` (media + tags) so
          *     the queue shows the evidence and the frontend computes validation-readiness
          *     (>=1 media + a ``conflict`` + a ``capture_source`` tag) with no per-row
          *     round-trip. A ``detected`` row never originates from a bounty (fulfilments
-         *     are born ``validated``), so ``originated_from_bounty`` is always null here —
+         *     are born ``human``), so ``originated_from_bounty`` is always null here —
          *     passed as such to skip the join. Ordered by ``created_at`` desc: the latest
          *     import is the first thing to triage.
          */
@@ -803,7 +803,7 @@ export interface paths {
          * Update Geolocation
          * @description Owner edit of a ``detected`` geolocation (review flow).
          *
-         *     Editable only while ``detected``; a ``validated`` row is frozen (409). The
+         *     Editable only while ``detected``; a ``human`` row is frozen (409). The
          *     owner curates the whole draft — title, coordinate, source URL, dates, proof,
          *     tags, and the source media (``files`` added, ``remove_media_ids`` dropped).
          *     Only ``detected_from_url`` (provenance) and ``state`` are immutable, so they
@@ -827,7 +827,7 @@ export interface paths {
          *
          *     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
          *     distinct from the hard ``DELETE`` that removes a row for good. Off
-         *     ``detected`` → 409 (a ``validated`` row goes through ``DELETE``).
+         *     ``detected`` → 409 (a ``human`` row goes through ``DELETE``).
          *     Soft-deleted → 404.
          */
         post: operations["reject_geolocation_api_v1_geolocations__geolocation_id__reject_post"];
@@ -1606,7 +1606,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "validated" | "detected";
+            state: "human" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1660,7 +1660,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "validated" | "detected";
+            state: "human" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1885,7 +1885,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "validated" | "detected";
+            state: "human" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */

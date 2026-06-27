@@ -149,9 +149,9 @@ def delete_geolocation(
 
 
 # ── Owner review flow over machine ``detected`` rows ───────────────────────
-# Edit completes a detection, validate freezes it (detected → validated),
+# Edit completes a detection, validate freezes it (detected → human),
 # reject soft-deletes it. All three are owner-only and state-gated to
-# ``detected``; a ``validated`` row is immutable (409). See ``api.md``.
+# ``detected``; a ``human`` row is immutable (409). See ``api.md``.
 
 
 @router.patch("/{geolocation_id}", response_model=GeolocationRead)
@@ -180,7 +180,7 @@ async def update_geolocation(
 ):
     """Owner edit of a ``detected`` geolocation (review flow).
 
-    Editable only while ``detected``; a ``validated`` row is frozen (409). The
+    Editable only while ``detected``; a ``human`` row is frozen (409). The
     owner curates the whole draft — title, coordinate, source URL, dates, proof,
     tags, and the source media (``files`` added, ``remove_media_ids`` dropped).
     Only ``detected_from_url`` (provenance) and ``state`` are immutable, so they
@@ -252,7 +252,7 @@ def reject_geolocation(
 
     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
     distinct from the hard ``DELETE`` that removes a row for good. Off
-    ``detected`` → 409 (a ``validated`` row goes through ``DELETE``).
+    ``detected`` → 409 (a ``human`` row goes through ``DELETE``).
     Soft-deleted → 404.
     """
     geo = _resolve_owned_geolocation(db, geolocation_id, current_user)

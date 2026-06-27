@@ -270,7 +270,7 @@ def list_points(
     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
     scrubbers and filters the windows client-side (no refetch per drag).
     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-    validated row — a flag, not the state string, to keep the payload small.
+    human row — a flag, not the state string, to keep the payload small.
     Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
@@ -426,11 +426,11 @@ def list_review_queue(
 
     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL) — the
     queue behind ``/profile/{username}/review`` where ``detected`` becomes
-    ``validated`` over time. Returns full ``GeolocationRead`` (media + tags) so
+    ``human`` over time. Returns full ``GeolocationRead`` (media + tags) so
     the queue shows the evidence and the frontend computes validation-readiness
     (>=1 media + a ``conflict`` + a ``capture_source`` tag) with no per-row
     round-trip. A ``detected`` row never originates from a bounty (fulfilments
-    are born ``validated``), so ``originated_from_bounty`` is always null here —
+    are born ``human``), so ``originated_from_bounty`` is always null here —
     passed as such to skip the join. Ordered by ``created_at`` desc: the latest
     import is the first thing to triage.
     """

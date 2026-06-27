@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, Circle, Film, MapPin, Pencil, X } from "lucide-react";
+import { Check, Film, MapPin, Pencil, X } from "lucide-react";
 
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import SourceLabel from "@/components/ui/SourceLabel";
@@ -126,20 +126,11 @@ export default function ReviewQueueCard({
                 <Check size={12} /> Ready to validate.
               </span>
             ) : (
-              // The validate floor, as a neutral checklist — it reads as "what's
-              // left", the concrete reason a review is needed, not a warning.
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-neutral-500">To validate:</span>
-                {readiness.missing.map((m) => (
-                  <span
-                    key={m}
-                    className="inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/60 px-2 py-0.5 text-[10px] text-neutral-400"
-                  >
-                    <Circle size={8} />
-                    {m}
-                  </span>
-                ))}
-              </div>
+              // The validate floor as a single neutral line — the concrete
+              // reason a review is needed, kept light (no chips).
+              <span className="text-[11px] text-neutral-500">
+                To validate: {readiness.missing.join(", ")}
+              </span>
             )}
           </div>
 

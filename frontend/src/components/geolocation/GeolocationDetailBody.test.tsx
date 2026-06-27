@@ -15,7 +15,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     is_demo: false,
-    state: "validated",
+    state: "human",
     detected_from_url: null,
     detected_post_at: null,
     author: {
@@ -132,11 +132,11 @@ describe("GeolocationDetailBody", () => {
     );
   });
 
-  it("validated geo shows the Validated status, not detected markers", () => {
+  it("human geo shows the Human status, not detected markers", () => {
     render(<GeolocationDetailBody geo={geoFixture()} variant="page" />);
-    // Status is always shown now; a validated row reads "Validated".
+    // Status is always shown now; a human (non-detected) row reads "Human".
     expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Validated")).toBeInTheDocument();
+    expect(screen.getByText("Human")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
     expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
   });

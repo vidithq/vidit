@@ -39,9 +39,9 @@ export interface Tag {
   category: TagCategory;
 }
 
-/** Lifecycle state. ``validated`` = human submit / bounty fulfilment (the
- *  norm); ``detected`` = machine-produced, rendered marked everywhere until
- *  its owner validates it. */
+/** Lifecycle state. ``human`` = a person submitted or vouched for it (the norm,
+ *  not an independent-verification claim); ``detected`` = machine-produced,
+ *  rendered marked everywhere until its owner validates it. */
 export type GeolocationState = components["schemas"]["GeolocationRead"]["state"];
 
 interface GeolocationListItem {

@@ -348,7 +348,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
     "lng": 37.456,
     "event_date": "2026-03-15",
     "is_demo": false,
-    "state": "validated",
+    "state": "human",
     "author": {
       "id": "uuid",
       "username": "kalush",
@@ -364,13 +364,13 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 ]
 ```
 
-`state` is `validated` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
+`state` is `human` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
 
 ---
 
 ### `GET /geolocations/points`
 
-Compact `[id, lat, lng, event_date, submitted_date, detected]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a validated row — a flag, not the state string, to keep the no-LIMIT catalog payload small.
+Compact `[id, lat, lng, event_date, submitted_date, detected]` tuples for client-side clustering — no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a human row — a flag, not the state string, to keep the no-LIMIT catalog payload small.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -563,7 +563,7 @@ Full detail for a single geolocation.
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
-  "state": "validated",
+  "state": "human",
   "detected_from_url": null,
   "detected_post_at": null,
   "author": {
@@ -669,7 +669,7 @@ The owner review queue: the caller's machine-`detected` geolocations awaiting va
 }
 ```
 
-A `detected` row never originates from a bounty (fulfilments are born `validated`), so `originated_from_bounty` is always `null` here.
+A `detected` row never originates from a bounty (fulfilments are born `human`), so `originated_from_bounty` is always `null` here.
 
 **Errors:**
 | Code | Case |
@@ -680,7 +680,7 @@ A `detected` row never originates from a bounty (fulfilments are born `validated
 
 ### `PATCH /geolocations/{id}` 🔒
 
-Owner edit of a machine-`detected` geolocation — the review step. **Multipart**, mirroring `POST /geolocations`: the form posts the whole editable state and the server applies it **atomically** (field updates, media removals, and new-media uploads in one transaction). Editable **only while `detected`**; a `validated` row is frozen.
+Owner edit of a machine-`detected` geolocation — the review step. **Multipart**, mirroring `POST /geolocations`: the form posts the whole editable state and the server applies it **atomically** (field updates, media removals, and new-media uploads in one transaction). Editable **only while `detected`**; a `human` row is frozen.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -707,16 +707,16 @@ Owner edit of a machine-`detected` geolocation — the review step. **Multipart*
 | 400 | Invalid coordinates (`invalid_coordinates`), proof (`invalid_proof`), or a rejected file (`invalid_file` / `evidence_processing_failed`) |
 | 403 | Caller is not the author |
 | 404 | Geolocation not found (incl. soft-deleted) |
-| 409 | Row is not `detected` — a `validated` row is frozen (`invalid_state`) |
+| 409 | Row is not `detected` — a `human` row is frozen (`invalid_state`) |
 | 422 | Over the file-count cap (`too_many_files`) |
 
 ---
 
 ### `POST /geolocations/{id}/validate` 🔒
 
-Owner-only. Transition a `detected` geolocation to `validated`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here — the owner adds the tags via `PATCH` during review.
+Owner-only. Transition a `detected` geolocation to `human`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here — the owner adds the tags via `PATCH` during review.
 
-**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "validated"`).
+**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "human"`).
 
 **Errors:**
 | Code | Case |
@@ -724,13 +724,13 @@ Owner-only. Transition a `detected` geolocation to `validated`, which **freezes*
 | 400 | Evidence floor unmet — no media (`media_required`) or missing required tag (`tag_requirements_not_met`) |
 | 403 | Caller is not the author |
 | 404 | Geolocation not found (incl. soft-deleted) |
-| 409 | Row is not `detected` — already `validated` (`invalid_state`) |
+| 409 | Row is not `detected` — already `human` (`invalid_state`) |
 
 ---
 
 ### `POST /geolocations/{id}/reject` 🔒
 
-Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `validated` row is not rejectable here — use `DELETE`.
+Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `human` row is not rejectable here — use `DELETE`.
 
 **Response 204:** no body.
 
@@ -993,7 +993,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
       "is_demo": false,
-      "state": "validated",
+      "state": "human",
       "author": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
       "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
     }

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_HUMAN, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
@@ -78,7 +78,7 @@ class GeolocationStateError(GeolocationError):
     """The geolocation's lifecycle state forbids the requested transition.
 
     Raised when an edit / validate / reject targets a row that isn't
-    ``detected`` (a ``validated`` row is frozen). Maps to 409 — the request is
+    ``detected`` (a ``human`` row is frozen). Maps to 409 — the request is
     well-formed but conflicts with the row's current state.
     """
 
@@ -295,7 +295,7 @@ async def update_detected(
     title, coordinate, source URL, event date + time, source post time, proof, tags, and the
     source media (new ``files`` added, ``remove_media_ids`` dropped). Only
     ``detected_from_url`` (the provenance anchor) and ``state`` are immutable. A
-    ``validated`` row is frozen.
+    ``human`` row is frozen.
 
     The field updates, the media removals, and the new-media uploads commit in a
     single transaction; a failed upload rolls everything back and sweeps the keys
@@ -373,13 +373,13 @@ async def update_detected(
 
 
 def validate_detected(db: Session, *, geo: Geolocation) -> Geolocation:
-    """Transition a ``detected`` row to ``validated``, freezing it.
+    """Transition a ``detected`` row to ``human``, freezing it.
 
     Owner-gated at the router. Blocked until the row carries the evidence a
     human submit must have at create: at least one media, and the curated
     ``conflict`` + ``capture_source`` tags. Machine detections are born tagless
     and exempt from the create-time tag rule, so the floor is enforced here —
-    the owner adds the tags during review. On success the row is ``validated``
+    the owner adds the tags during review. On success the row is ``human``
     and the edit endpoint refuses it.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``,
@@ -392,7 +392,7 @@ def validate_detected(db: Session, *, geo: Geolocation) -> Geolocation:
         raise MediaRequiredError("At least one media file is required")
     _require_submission_tags(list(geo.tags))
 
-    geo.state = STATE_VALIDATED
+    geo.state = STATE_HUMAN
     db.commit()
     db.refresh(geo)
     points_cache.invalidate()
@@ -405,7 +405,7 @@ def reject_detected(db: Session, *, geo: Geolocation) -> None:
     Sets ``deleted_at`` rather than hard-deleting: re-importing the same tweet
     later recreates it as a fresh ``detected`` (the assemble step's ``recreate``
     verdict matches a soft-deleted pair — see ``detection._disposition``). A
-    ``validated`` row is not rejectable here; the hard ``DELETE`` endpoint owns
+    ``human`` row is not rejectable here; the hard ``DELETE`` endpoint owns
     removing a row the owner already stood behind.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``. Commits,

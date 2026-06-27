@@ -41,7 +41,7 @@ class GeolocationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_demo: bool
-    # ``validated`` (human submits + bounty fulfilments) vs ``detected``
+    # ``human`` (human submits + bounty fulfilments) vs ``detected``
     # (machine-produced, rendered marked). See ``models.geolocation.STATE_*``.
     state: GeolocationState
     # The post a machine detection was imported from — a provenance link

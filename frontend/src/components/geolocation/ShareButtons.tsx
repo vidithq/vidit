@@ -130,7 +130,8 @@ export default function ShareButtons({
           confirming re-click. */}
       {armed && (
         <span className="text-[10px] text-neutral-400">
-          Draft — click again to {armed === "copy" ? "copy" : "share"}
+          Detected — may still change. Click again to{" "}
+          {armed === "copy" ? "copy" : "share"}.
         </span>
       )}
       <button

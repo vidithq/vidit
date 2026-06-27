@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_HUMAN, Geolocation
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -205,7 +205,7 @@ def test_update_applies_source_url_but_ignores_provenance_and_state(db, author):
             title="Edited",
             source_url="https://example.com/new-source",
             detected_from_url="https://evil.example/swap",  # ignored — no field
-            state="validated",  # ignored — no field
+            state="human",  # ignored — no field
         ),
         headers=login_as(client, author),
     )
@@ -322,10 +322,10 @@ def test_validate_succeeds_and_freezes(db, author, conflict_tag, capture_source_
         f"/api/v1/geolocations/{geo.id}/validate", headers=login_as(client, author)
     )
     assert response.status_code == 200
-    assert response.json()["state"] == "validated"
+    assert response.json()["state"] == "human"
 
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.id == geo.id).one().state == STATE_VALIDATED
+    assert db.query(Geolocation).filter(Geolocation.id == geo.id).one().state == STATE_HUMAN
 
     # Frozen: a follow-up edit now 409s.
     frozen = client.patch(

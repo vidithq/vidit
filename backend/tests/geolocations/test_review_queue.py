@@ -9,7 +9,7 @@ in ``conftest.py``; ``client`` / ``_make_geo`` in ``_helpers.py``.
 
 from __future__ import annotations
 
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED
+from app.models.geolocation import STATE_DETECTED, STATE_HUMAN
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -45,7 +45,7 @@ def test_review_queue_returns_only_callers_live_detected(db, author, second_user
     soft-deleted one, and not another analyst's detection — the endpoint scopes
     to ``current_user`` regardless of any URL username."""
     mine = _detected(db, author)
-    _make_geo(db, author=author, state=STATE_VALIDATED)  # validated — excluded
+    _make_geo(db, author=author, state=STATE_HUMAN)  # validated — excluded
     _detected(db, author, deleted=True)  # soft-deleted — excluded
     _detected(db, second_user)  # another analyst — excluded
 
