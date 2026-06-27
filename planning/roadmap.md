@@ -49,7 +49,7 @@ Work breakdown: [`next.md`](next.md) → *v0.3*.
 
 ## v0.4 — Curated onboarding (read-only)
 
-Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand — coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: an analyst proves their handle, imports their published history in one step, and keeps it current by tagging a Vidit bot, so joining costs them a yes, not hours of re-entering work they've already done.
+Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand — coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: an analyst imports their published history in one step and keeps it current by tagging a Vidit bot, so joining costs them a yes, not hours of re-entering work they've already done.
 
 The shape inverts the closed beta: **read opens to everyone; write stays gated.** The curated on-ramp becomes a second path to a writing account alongside the existing invite-gated registration. What stays deferred to v0.5 is *open* self-registration (sign up with no invite) and the open-write stack it needs: upload moderation, CSAM scanning, registration anti-abuse.
 
@@ -57,11 +57,11 @@ The decisions that bound it:
 
 - **Two self-serve channels, one shared core.** The analyst **uploads their official X archive** (the "Download your data" export — full history, no API, no cap) for a one-time backfill, and **tags a Vidit bot** on each new geolocation tweet for ongoing sync. Both feed one extraction core; re-uploading a fresh archive is a free catch-up.
 - **Consent is the action.** The upload and the tag *are* the consent — in-product, self-serve, scoped to the analyst's own posts. Nothing is fetched, processed, or published for anyone who hasn't acted; there is no out-of-band ask.
-- **Ownership is proven, not assumed.** Control of a handle is established by a one-shot OAuth that reads only the public profile and keeps nothing reusable — nothing is attributed to a handle publicly until ownership is proven.
+- **Attribution is provisional; ownership is not verified in v0.4.** An import attributes work to a `@handle` without proving the uploader controls it — X's OAuth consent is too broad for a privacy-conscious audience and X offers no lighter identity integration (no OIDC; OAuth 1.0a is worse). The exposure is bounded: everything lands `detected` (draft, clearly marked), nothing is publicly vouched without a later validate, and the beta stays invite-gated. Handle-ownership proof + a claim/dispute pipeline move to v0.5.
 - **Detection is deterministic.** A parseable coordinate marks a geolocation tweet; there is no LLM classifier. The work is robust coordinate and media extraction, not training a model.
 - **Machine output is provisional but public.** Imported and bot-ingested geolocations land `detected` and appear on **every** public surface (map, search, timeline, profile), **always clearly marked**; the owner reviews and **validates** them, which removes the marker and freezes the row. A direct submission or a bounty fulfilment is born `validated`.
 
-This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the extraction core, the archive intake, handle-ownership proof, the `detected → validated` review flow, and an author identity decoupled from the auth account (shipped). The bot replies in-thread with dedup and coordinate-vs-image warnings, and a value layer — image-coordinate cross-checks and near-duplicate media matching — is what makes the import worth the analyst's while. Going public is gated on a legal review — a reduced surface, since only the analyst's own consented work is ever processed.
+This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the extraction core, the archive intake, the `detected → validated` review flow, and an author identity decoupled from the auth account (shipped). The bot replies in-thread with dedup and coordinate-vs-image warnings, and a value layer — image-coordinate cross-checks and near-duplicate media matching — is what makes the import worth the analyst's while. Going public is gated on a legal review — a reduced surface, since only the analyst's own consented work is ever processed.
 
 Work breakdown: [`next.md`](next.md) → *v0.4*.
 
@@ -76,6 +76,8 @@ Three layers protect quality:
 - **Trusted-contributor flag** as a reader-facing filter — single bit, admin-granted with a required `trust_reason`, visible and filterable across map / timeline / search / bounty index.
 
 Asymmetric design: read is open, write is open after registration, the trust mark is a curated quality filter on top.
+
+Plus **handle-ownership verification + a claim/dispute pipeline**, deferred from v0.4: before content is publicly attributed to a real analyst, they must prove control of the `@handle` — likely **verify-by-post** (a one-time code in a public tweet, read back via the free syndication path; Keybase-style, zero OAuth consent), since X's OAuth screen proved too broad for the audience. A dispute path covers contested attribution (e.g. a geolocation stolen and imported under the wrong handle).
 
 Plus the legal foundation (DSA compliance, DPA agreements, professional insurance) the public-facing entity needs.
 

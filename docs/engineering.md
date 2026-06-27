@@ -80,6 +80,7 @@ Client pages load read-only API data through `useApiResource<T>(path)` ([`fronte
 - Task queue (Celery, etc.) — no async processing in the MVP
 - Multi-region S3 / cross-region replication — single-region for closed beta
 - Monitoring / observability — UptimeRobot liveness checks on the API health endpoint + a Sentry SDK on both tiers (backend + frontend), opt-in via a DSN env var (shipped v0.1.0 — see [Observability](#observability--whats-wired-and-how-to-turn-it-on)). No full APM / tracing pipeline yet.
+- Handle-ownership verification — the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse), so imports land as `detected` drafts and ownership proof + a claim/dispute path are deferred (tracked in [`planning/next.md`](../planning/next.md)).
 
 ---
 
