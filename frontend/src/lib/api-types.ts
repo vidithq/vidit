@@ -1349,12 +1349,14 @@ export interface components {
         Body_create_bounty_api_v1_bounties_post: {
             /** Event Date */
             event_date?: string | null;
+            /** Event Time */
+            event_time?: string | null;
             /** Files */
             files: string[];
             /** Proof */
             proof?: string | null;
-            /** Source Date */
-            source_date?: string | null;
+            /** Source Posted At */
+            source_posted_at: string;
             /** Source Url */
             source_url: string;
             /** Tag Ids */
@@ -1368,6 +1370,8 @@ export interface components {
             bounty_id?: string | null;
             /** Event Date */
             event_date: string;
+            /** Event Time */
+            event_time?: string | null;
             /** Files */
             files?: string[] | null;
             /** Lat */
@@ -1376,8 +1380,8 @@ export interface components {
             lng: number;
             /** Proof */
             proof?: string | null;
-            /** Source Date */
-            source_date?: string | null;
+            /** Source Posted At */
+            source_posted_at: string;
             /** Source Url */
             source_url: string;
             /** Tag Ids */
@@ -1389,6 +1393,8 @@ export interface components {
         Body_update_geolocation_api_v1_geolocations__geolocation_id__patch: {
             /** Event Date */
             event_date: string;
+            /** Event Time */
+            event_time?: string | null;
             /** Files */
             files?: string[] | null;
             /** Lat */
@@ -1399,8 +1405,8 @@ export interface components {
             proof?: string | null;
             /** Remove Media Ids */
             remove_media_ids?: string | null;
-            /** Source Date */
-            source_date?: string | null;
+            /** Source Posted At */
+            source_posted_at: string;
             /** Source Url */
             source_url: string;
             /** Tag Ids */
@@ -1460,6 +1466,8 @@ export interface components {
             created_at: string;
             /** Event Date */
             event_date?: string | null;
+            /** Event Time */
+            event_time?: string | null;
             fulfilled_by: components["schemas"]["_FulfilledByNested"] | null;
             /**
              * Id
@@ -1474,8 +1482,11 @@ export interface components {
             proof: {
                 [key: string]: unknown;
             } | null;
-            /** Source Date */
-            source_date?: string | null;
+            /**
+             * Source Posted At
+             * Format: date-time
+             */
+            source_posted_at: string;
             /** Source Url */
             source_url: string;
             /**
@@ -1611,11 +1622,15 @@ export interface components {
             created_at: string;
             /** Detected From Url */
             detected_from_url?: string | null;
+            /** Detected Post At */
+            detected_post_at?: string | null;
             /**
              * Event Date
              * Format: date
              */
             event_date: string;
+            /** Event Time */
+            event_time?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1634,8 +1649,11 @@ export interface components {
             proof: {
                 [key: string]: unknown;
             } | null;
-            /** Source Date */
-            source_date?: string | null;
+            /**
+             * Source Posted At
+             * Format: date-time
+             */
+            source_posted_at: string;
             /** Source Url */
             source_url: string;
             /**

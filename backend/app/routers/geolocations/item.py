@@ -28,8 +28,9 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
     parse_iso_date,
+    parse_iso_datetime,
     parse_json_id_list,
-    parse_optional_iso_date,
+    parse_optional_iso_time,
     parse_optional_json_object,
 )
 from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
@@ -167,7 +168,8 @@ async def update_geolocation(
     lng: float = Form(...),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
     event_date: str = Form(...),
-    source_date: str | None = Form(None),
+    event_time: str | None = Form(None),
+    source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     # Ids of existing media to drop (JSON array). New media ride in ``files``.
@@ -186,7 +188,8 @@ async def update_geolocation(
     """
     files = files or []
     parsed_event_date = parse_iso_date(event_date, field="event_date")
-    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
@@ -201,7 +204,8 @@ async def update_geolocation(
             lng=lng,
             source_url=source_url,
             event_date=parsed_event_date,
-            source_date=parsed_source_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
             remove_media_ids=parsed_remove_ids,

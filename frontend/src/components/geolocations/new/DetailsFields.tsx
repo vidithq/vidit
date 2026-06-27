@@ -18,8 +18,13 @@ interface DetailsFieldsProps {
   setSourceUrl?: (v: string) => void;
   eventDate: string;
   setEventDate: (v: string) => void;
-  sourceDate: string;
-  setSourceDate: (v: string) => void;
+  /** Optional event time-of-day ("HH:MM", UTC). */
+  eventTime: string;
+  setEventTime: (v: string) => void;
+  /** When the source posted the media — a datetime-local value
+   *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
+  sourcePostedAt: string;
+  setSourcePostedAt: (v: string) => void;
   /** Render the source URL read-only — it's inherited from the bounty on a
    *  fulfilment (shows a "from bounty" hint). The detection edit form leaves it
    *  editable (`false`). */
@@ -29,10 +34,12 @@ interface DetailsFieldsProps {
    *  the submit form omits it. */
   detectedFromUrl?: string | null;
   /** Geolocation requires the event date; on a bounty (an unfinished
-   *  geolocation) it's optional. The source date is always optional. */
+   *  geolocation) it's optional. Event time is always optional; the source post
+   *  time is always required. */
   eventDateRequired?: boolean;
-  /** Flag the event-date / source-URL inputs as missing required fields. */
+  /** Flag the event-date / source-time / source-URL inputs as missing. */
   eventDateInvalid?: boolean;
+  sourcePostedAtInvalid?: boolean;
   sourceUrlInvalid?: boolean;
 }
 
@@ -45,12 +52,15 @@ export function DetailsFields({
   setSourceUrl,
   eventDate,
   setEventDate,
-  sourceDate,
-  setSourceDate,
+  eventTime,
+  setEventTime,
+  sourcePostedAt,
+  setSourcePostedAt,
   sourceUrlLocked,
   detectedFromUrl,
   eventDateRequired = true,
   eventDateInvalid = false,
+  sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
   return (
@@ -78,19 +88,31 @@ export function DetailsFields({
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="source_date" className={FORM_LABEL}>
-            Source date{" "}
-            <FieldHelp concept="source_date" />{" "}
-            <OptionalHint />
+          <label htmlFor="event_time" className={FORM_LABEL}>
+            Event time <FieldHelp concept="event_time" /> <OptionalHint />
           </label>
           <input
-            id="source_date"
-            type="date"
-            value={sourceDate}
-            onChange={(e) => setSourceDate(e.target.value)}
+            id="event_time"
+            type="time"
+            value={eventTime}
+            onChange={(e) => setEventTime(e.target.value)}
             className={FORM_INPUT}
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="source_posted_at" className={FORM_LABEL}>
+          Source posted (UTC) <FieldHelp concept="source_posted_at" />
+        </label>
+        <input
+          id="source_posted_at"
+          type="datetime-local"
+          required
+          value={sourcePostedAt}
+          onChange={(e) => setSourcePostedAt(e.target.value)}
+          className={`${FORM_INPUT}${sourcePostedAtInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
+        />
       </div>
 
       <div className="space-y-1.5">

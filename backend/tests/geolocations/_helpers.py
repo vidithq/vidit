@@ -31,6 +31,7 @@ def _make_geo(
     lng: float = 34.5,
     title: str | None = None,
     event_date: date | None = None,
+    source_posted_at: datetime | None = None,
     deleted: bool = False,
     tags: list[Tag] | None = None,
     state: str | None = None,
@@ -44,6 +45,7 @@ def _make_geo(
         location=from_shape(Point(lng, lat), srid=4326),
         source_url=source_url,
         event_date=event_date or date(2026, 5, 1),
+        source_posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
     )
     if state is not None:
         geo.state = state

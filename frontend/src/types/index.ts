@@ -162,14 +162,20 @@ export interface Media {
 
 export interface GeolocationDetail extends GeolocationListItem {
   source_url: string;
-  /** The date the original source posted the media — distinct from
-   *  ``event_date`` (when the event happened) and ``created_at`` (submission).
-   *  Null when unknown / not provided. ISO ``YYYY-MM-DD``. */
-  source_date: string | null;
+  /** Optional time-of-day for ``event_date`` (UTC, ``HH:MM:SS``); null when the
+   *  hour is unknown. */
+  event_time: string | null;
+  /** When the original source posted the media — a real post instant (UTC),
+   *  always present. ISO datetime. Distinct from ``event_date`` (when the event
+   *  happened) and ``created_at`` (submission). */
+  source_posted_at: string;
   /** For a ``detected`` row, the post it was imported from — a provenance
    *  link distinct from ``source_url`` (footage origin). Null for human
    *  submits. */
   detected_from_url: string | null;
+  /** When the analyst posted this geolocation on X (the imported tweet's time);
+   *  null for human submits. The "who geolocated first" precedence signal. */
+  detected_post_at: string | null;
   proof: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -211,10 +217,13 @@ export interface BountyDetail {
   /** The in-progress proof (Tiptap JSON), mirroring a geolocation's `proof`.
    *  Optional and image-free. Null when the poster left it empty. */
   proof: Record<string, unknown> | null;
-  /** Optional, ISO YYYY-MM-DD. When the event happened / when the source
-   *  posted the media. Null when the poster didn't supply them. */
+  /** When the event happened — date (ISO YYYY-MM-DD) + optional UTC time-of-day.
+   *  Nullable: a bounty is an unfinished geolocation. */
   event_date: string | null;
-  source_date: string | null;
+  event_time: string | null;
+  /** When the source posted the media — a real post instant (UTC), always
+   *  present (the bounty's source_url is required). ISO datetime. */
+  source_posted_at: string;
   status: BountyStatus;
   created_at: string;
   updated_at: string;

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel
@@ -32,9 +32,12 @@ class GeolocationRead(BaseModel):
     source_url: str
     proof: dict[str, Any] | None
     event_date: date
-    # When the original source posted the media — distinct from ``event_date``
-    # (when the event happened) and ``created_at`` (submission). Nullable.
-    source_date: date | None = None
+    # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
+    event_time: time | None = None
+    # When the original source posted the media — a real post instant (UTC),
+    # always present. Distinct from ``event_date`` (when the event happened) and
+    # ``created_at`` (submission).
+    source_posted_at: datetime
     created_at: datetime
     updated_at: datetime
     is_demo: bool
@@ -44,6 +47,9 @@ class GeolocationRead(BaseModel):
     # The post a machine detection was imported from — a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None = None
+    # When the analyst posted this geolocation on X (the imported tweet's time);
+    # NULL for human submits. The "who geolocated first" precedence signal.
+    detected_post_at: datetime | None = None
     author: AuthorRef
     media: list[MediaRead]
     tags: list[TagRead]

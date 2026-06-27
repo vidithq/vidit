@@ -13,7 +13,7 @@ each one into a ``Geolocation`` row, owns persistence, evidence, and the
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
 from .records import TweetRecord
@@ -38,6 +38,10 @@ class DetectedGeoloc:
     # at validation. ``event_date`` is NOT NULL on the model, so a detection
     # always carries one.
     event_date: date
+    # The head tweet's post instant (UTC). The caller maps it to both
+    # ``source_posted_at`` (the tweet is the source on the machine path) and
+    # ``detected_post_at`` (when the analyst posted the geolocation).
+    posted_at: datetime
     media: list[ParsedMedia] = field(default_factory=list)
 
 
@@ -59,7 +63,8 @@ def detect(thread: list[TweetRecord]) -> list[DetectedGeoloc]:
     title = derive_title(full_text)
     proof_text = clean_proof_text(full_text)
     media = [m for r in thread for m in r.media]
-    event_date = _event_date(head.created_at)
+    posted_at = _posted_at(head.created_at)
+    event_date = posted_at.date()
 
     return [
         DetectedGeoloc(
@@ -69,25 +74,23 @@ def detect(thread: list[TweetRecord]) -> list[DetectedGeoloc]:
             detected_from_url=head.permalink,
             owner_handle=head.handle,
             event_date=event_date,
+            posted_at=posted_at,
             media=media,
         )
         for coord in coords
     ]
 
 
-def _event_date(created_at: str) -> date:
-    """Date from the head tweet's ISO 8601 timestamp.
+def _posted_at(created_at: str) -> datetime:
+    """Aware UTC datetime from the head tweet's ISO 8601 timestamp.
 
-    Acquire adapters normalize ``created_at`` to ISO 8601, which always carries
-    a leading ``YYYY-MM-DD``; the slice keeps this robust against a trailing
-    ``Z`` that older Python rejects. A malformed value falls back to the epoch
-    date — a visibly-wrong sentinel the owner fixes at validation, never a
-    silent "today".
+    Acquire adapters normalize ``created_at`` to ISO 8601. ``event_date`` is just
+    this instant's UTC date, so both come from one parse and can't drift. A
+    malformed value falls back to the epoch instant — a visibly-wrong sentinel
+    the owner fixes at validation, never a silent "now".
     """
     try:
-        return date.fromisoformat(created_at[:10])
+        parsed = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
     except ValueError:
-        try:
-            return datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
-        except ValueError:
-            return date(1970, 1, 1)
+        return datetime(1970, 1, 1, tzinfo=UTC)
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)

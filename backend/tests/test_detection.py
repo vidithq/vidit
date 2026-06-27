@@ -79,6 +79,7 @@ def _dto(
         detected_from_url=url,
         owner_handle="own",
         event_date=date(2025, 11, 12),
+        posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         media=media or [],
     )
 
@@ -156,6 +157,7 @@ async def test_validated_pair_is_skipped(db, owner):
         title="Human submit",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
         state=STATE_VALIDATED,
         detected_from_url="https://x.com/own/status/1",

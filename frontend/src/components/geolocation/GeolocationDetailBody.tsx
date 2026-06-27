@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import type { GeolocationDetail } from "@/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
@@ -172,17 +172,15 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={`${label} inline-flex items-center gap-1`}>
           Event date <FieldHelp concept="event_date" />
         </span>
-        <span className={value}>{formatDate(geo.event_date)}</span>
+        <span className={value}>{formatEventDate(geo.event_date, geo.event_time)}</span>
       </div>
-      {geo.source_date && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Source date{" "}
-            <FieldHelp concept="source_date" />
-          </span>
-          <span className={value}>{formatDate(geo.source_date)}</span>
-        </div>
-      )}
+      <div className={row}>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Source posted{" "}
+          <FieldHelp concept="source_posted_at" />
+        </span>
+        <span className={value}>{formatInstant(geo.source_posted_at)}</span>
+      </div>
       {/* The three dates read as one block: event → source → submitted. */}
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>

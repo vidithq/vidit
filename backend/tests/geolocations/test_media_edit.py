@@ -37,6 +37,7 @@ def _form(**overrides):
         "lng": "30.0",
         "source_url": "https://x.com/a/status/1",
         "event_date": "2026-05-01",
+        "source_posted_at": "2026-05-01T12:00",
     }
     form.update(overrides)
     return form

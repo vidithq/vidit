@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
 
 from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
 from tests.conftest import login_as
@@ -112,6 +111,7 @@ def _edit_form(**overrides):
         "lng": "30.0",
         "source_url": "https://x.com/a/status/1",
         "event_date": "2026-05-01",
+        "source_posted_at": "2026-05-01T12:00",
     }
     form.update(overrides)
     return form
@@ -173,7 +173,7 @@ def test_update_edits_detected_fields(db, author, conflict_tag, capture_source_t
             lat="50.25",
             lng="30.5",
             event_date="2026-07-01",
-            source_date="2026-06-30",
+            source_posted_at="2026-06-30T07:45",
             tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
         ),
         headers=login_as(client, author),
@@ -184,7 +184,7 @@ def test_update_edits_detected_fields(db, author, conflict_tag, capture_source_t
     assert body["lat"] == 50.25
     assert body["lng"] == 30.5
     assert body["event_date"] == "2026-07-01"
-    assert body["source_date"] == "2026-06-30"
+    assert body["source_posted_at"].startswith("2026-06-30T07:45")
     assert {t["id"] for t in body["tags"]} == {str(conflict_tag.id), str(capture_source_tag.id)}
     # Stays detected — edit completes the row, validate is the separate step.
     assert body["state"] == "detected"
@@ -216,19 +216,17 @@ def test_update_applies_source_url_but_ignores_provenance_and_state(db, author):
     assert body["state"] == "detected"  # immutable
 
 
-def test_update_clears_source_date_when_omitted(db, author):
-    """Source date is part of the full edit — omitting it from the form clears
-    it (the form posts the whole state)."""
+def test_update_source_posted_at_round_trips(db, author):
+    """source_posted_at is part of the full edit and round-trips — it's required
+    (a post always has a time), so it can't be cleared."""
     geo = _detected(db, author)
-    geo.source_date = date(2026, 6, 1)
-    db.commit()
     response = client.patch(
         f"/api/v1/geolocations/{geo.id}",
-        data=_edit_form(),  # no source_date
+        data=_edit_form(source_posted_at="2026-06-30T13:20"),
         headers=login_as(client, author),
     )
     assert response.status_code == 200
-    assert response.json()["source_date"] is None
+    assert response.json()["source_posted_at"].startswith("2026-06-30T13:20")
 
 
 def test_update_rejects_out_of_range_coordinate(db, author):

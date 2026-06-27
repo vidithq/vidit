@@ -12,10 +12,12 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     lat: 48.015883,
     lng: 37.802411,
     event_date: "2026-06-01",
-    source_date: null,
+    event_time: null,
+    source_posted_at: "2026-05-30T14:32:00Z",
     is_demo: false,
     state: "validated",
     detected_from_url: null,
+    detected_post_at: null,
     author: {
       id: "u1",
       username: "ana",
@@ -225,17 +227,14 @@ describe("GeolocationDetailBody", () => {
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
   });
 
-  it("shows the Source date row only when set", () => {
-    const { rerender } = render(
-      <GeolocationDetailBody geo={geoFixture({ source_date: null })} variant="page" />
-    );
-    expect(screen.queryByText("Source date")).not.toBeInTheDocument();
-    rerender(
+  it("always shows the Source posted row (a post always has a time)", () => {
+    render(
       <GeolocationDetailBody
-        geo={geoFixture({ source_date: "2026-05-03" })}
+        geo={geoFixture({ source_posted_at: "2026-05-03T09:15:00Z" })}
         variant="page"
       />
     );
-    expect(screen.getByText("Source date")).toBeInTheDocument();
+    expect(screen.getByText("Source posted")).toBeInTheDocument();
+    expect(screen.getByText("3 May 2026, 09:15 UTC")).toBeInTheDocument();
   });
 });

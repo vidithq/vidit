@@ -45,7 +45,7 @@ def build_geolocation_read(
     ``lat`` / ``lng`` are passed in (re-projected from the PostGIS point by the
     caller, or already in hand from a create) rather than re-queried here, so the
     three response sites — create, detail, and the review-flow mutations — build
-    an identical 19-field shape from one place.
+    an identical shape from one place.
     """
     return GeolocationRead(
         id=geo.id,
@@ -55,12 +55,14 @@ def build_geolocation_read(
         source_url=geo.source_url,
         proof=geo.proof,
         event_date=geo.event_date,
-        source_date=geo.source_date,
+        event_time=geo.event_time,
+        source_posted_at=geo.source_posted_at,
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
         state=geo.state,
         detected_from_url=geo.detected_from_url,
+        detected_post_at=geo.detected_post_at,
         author=geo.author,
         media=geo.media,
         tags=geo.tags,

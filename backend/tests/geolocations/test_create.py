@@ -41,6 +41,7 @@ def test_create_rejects_missing_files(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     # FastAPI's `File(...)` requirement triggers 422 (validation), not
@@ -65,6 +66,7 @@ def test_create_rejects_invalid_latitude(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files=files,
     )
@@ -91,6 +93,7 @@ def test_create_rejects_invalid_event_date(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "not-a-date",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files=files,
     )
@@ -127,6 +130,7 @@ def test_create_rejects_too_many_files(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files=files,
     )
@@ -151,6 +155,7 @@ def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_sourc
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
         },
         files={"files": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")},
@@ -173,6 +178,7 @@ def test_create_rejects_invalid_proof_json(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "proof": "{not valid json",
         },
         files=files,
@@ -196,6 +202,7 @@ def test_create_rejects_no_tags(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files=files,
     )
@@ -217,6 +224,7 @@ def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(capture_source_tag.id)]),
         },
         files=files,
@@ -239,6 +247,7 @@ def test_create_rejects_missing_capture_source_tag(author, conflict_tag):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(conflict_tag.id)]),
         },
         files=files,
@@ -265,6 +274,7 @@ def test_create_rejects_free_tag_only(author, free_tag):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(free_tag.id)]),
         },
         files=files,
@@ -290,6 +300,7 @@ def test_create_succeeds_with_both_required_tags(
             "lng": "34.5",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
         },
         files={"files": ("ok.jpg", TINY_JPEG, "image/jpeg")},
@@ -300,33 +311,35 @@ def test_create_succeeds_with_both_required_tags(
     assert {"conflict", "capture_source"} <= categories
 
 
-def test_create_accepts_optional_source_date(
+def test_create_round_trips_source_posted_at_and_event_time(
     db, author, conflict_tag, capture_source_tag, tmp_path, monkeypatch
 ):
-    """``source_date`` is optional: supplied → round-trips on the read model;
-    omitted → the row's source_date is null."""
+    """``source_posted_at`` (required) and the optional ``event_time`` round-trip
+    on the read model; ``event_time`` omitted → null."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
 
     base = {
-        "title": "with source date",
+        "title": "with source time",
         "lat": "48.5",
         "lng": "34.5",
         "source_url": "https://t.me/c/1",
         "event_date": "2026-05-01",
+        "source_posted_at": "2026-05-03T08:15",
         "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
     }
 
-    with_date = client.post(
+    with_time = client.post(
         "/api/v1/geolocations",
         headers=login_as(client, author),
-        data={**base, "source_date": "2026-05-03"},
+        data={**base, "event_time": "14:30"},
         files={"files": ("ok.jpg", TINY_JPEG, "image/jpeg")},
     )
-    assert with_date.status_code == 201, with_date.text
-    assert with_date.json()["source_date"] == "2026-05-03"
+    assert with_time.status_code == 201, with_time.text
+    assert with_time.json()["source_posted_at"].startswith("2026-05-03T08:15")
+    assert with_time.json()["event_time"] == "14:30:00"
 
     without = client.post(
         "/api/v1/geolocations",
@@ -335,11 +348,11 @@ def test_create_accepts_optional_source_date(
         files={"files": ("ok.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert without.status_code == 201, without.text
-    assert without.json()["source_date"] is None
+    assert without.json()["event_time"] is None
 
 
-def test_create_rejects_invalid_source_date(author):
-    """Garbage ``source_date`` → 422 before any S3 round-trip (same contract
+def test_create_rejects_invalid_source_posted_at(author):
+    """Garbage ``source_posted_at`` → 422 before any S3 round-trip (same contract
     as ``event_date``)."""
     response = client.post(
         "/api/v1/geolocations",
@@ -350,12 +363,12 @@ def test_create_rejects_invalid_source_date(author):
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
-            "source_date": "not-a-date",
+            "source_posted_at": "not-a-date",
         },
         files={"files": ("tiny.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert response.status_code == 422
-    assert "source_date" in response.json()["detail"].lower()
+    assert "source_posted_at" in response.json()["detail"].lower()
 
 
 # ── POST /geolocations/proof-images — sha256 contract ──────────────────────
@@ -445,6 +458,7 @@ def test_create_geolocation_cleans_up_s3_on_mid_batch_failure(
             "lng": "0.0",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
         },
         files=[

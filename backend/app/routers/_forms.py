@@ -1,13 +1,13 @@
 """Multipart form-field parsers shared by the geolocation + bounty create routers.
 
 Both create endpoints take the same loose ``str`` form fields — a JSON ``proof``
-document, a JSON array of ``tag_ids``, and ISO dates — and parse them into clean
-Python types. Keeping the parsers here means the ``{status, message}`` contract
-for malformed input lives in one place instead of being recopied per form.
+document, a JSON array of ``tag_ids``, and ISO dates / times — and parse them
+into clean Python types. Keeping the parsers here means the ``{status, message}``
+contract for malformed input lives in one place instead of being recopied per form.
 """
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 from fastapi import HTTPException
@@ -63,3 +63,33 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
     if not raw:
         return None
     return parse_iso_date(raw, field=field)
+
+
+def parse_optional_iso_time(raw: str | None, *, field: str) -> time | None:
+    """Parse an optional ISO-8601 (HH:MM[:SS]) time form field. Empty → ``None``; 422 on garbage."""
+    if not raw:
+        return None
+    try:
+        return time.fromisoformat(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"{field} must be an ISO-8601 time (HH:MM)"
+        ) from exc
+
+
+def parse_iso_datetime(raw: str, *, field: str) -> datetime:
+    """Parse a required ISO-8601 datetime form field into an aware UTC datetime; 422 on garbage.
+
+    The submit / edit forms post an ``<input type="datetime-local">`` value
+    (``YYYY-MM-DDTHH:MM``, no zone). Analyst-entered times follow the project's
+    UTC wall-clock convention, so a naive value gets ``tzinfo=UTC`` and an
+    already-aware value is normalised to UTC.
+    """
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} must be an ISO-8601 datetime (YYYY-MM-DDTHH:MM)",
+        ) from exc
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)

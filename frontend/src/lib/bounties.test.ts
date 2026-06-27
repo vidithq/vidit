@@ -12,22 +12,26 @@ describe("missingBountyFields", () => {
       labels({
         title: "Unplaced footage",
         sourceUrl: "https://t.me/c/1",
+        sourcePostedAt: "2026-01-01T00:00",
         mediaCount: 1,
       })
     ).toEqual([]);
   });
 
   it("lists the bounty floor (no coords / dates / proof / tags) at once", () => {
-    expect(labels({ title: "", sourceUrl: "", mediaCount: 0 })).toEqual([
-      "Title",
-      "Source URL",
-      "Source media",
-    ]);
+    expect(
+      labels({ title: "", sourceUrl: "", sourcePostedAt: "", mediaCount: 0 })
+    ).toEqual(["Title", "Source URL", "Source post time", "Source media"]);
   });
 
   it("treats a blank-string title as missing", () => {
     expect(
-      labels({ title: "   ", sourceUrl: "https://t.me/c/1", mediaCount: 1 })
+      labels({
+        title: "   ",
+        sourceUrl: "https://t.me/c/1",
+        sourcePostedAt: "2026-01-01T00:00",
+        mediaCount: 1,
+      })
     ).toEqual(["Title"]);
   });
 });

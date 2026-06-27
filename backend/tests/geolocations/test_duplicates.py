@@ -38,6 +38,7 @@ def _make_geo_with_source(
         title=f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(lng, lat), srid=4326),
         source_url=source_url,
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=event_date_value,
     )
     db.add(geo)
@@ -57,6 +58,7 @@ def test_possible_duplicates_requires_auth():
             "lng": 34.5,
             "source_url": "https://example.com/x",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 401
@@ -145,6 +147,7 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/99999",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -193,6 +196,7 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
             # ``twitter.com`` and surface the unrelated row.
             "source_url": "https://%.com/x",
             "event_date": "2025-01-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -219,6 +223,7 @@ def test_possible_duplicates_excludes_soft_deleted(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/99999",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -302,6 +307,7 @@ def test_possible_duplicates_orders_by_distance(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/ccc",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200

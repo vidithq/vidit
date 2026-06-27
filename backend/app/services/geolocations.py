@@ -16,7 +16,7 @@ when adding a code.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 
 from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
@@ -120,7 +120,8 @@ async def create_with_evidence(
     lng: float,
     source_url: str,
     event_date: date,
-    source_date: date | None = None,
+    event_time: time | None = None,
+    source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
     bounty_id: uuid.UUID | None,
@@ -207,7 +208,8 @@ async def create_with_evidence(
         # NULL. ``proof_data`` stays None for the inline-image adoption below.
         proof=proof_data if proof_data is not None else EMPTY_TIPTAP_DOC,
         event_date=event_date,
-        source_date=source_date,
+        event_time=event_time,
+        source_posted_at=source_posted_at,
         originated_from_bounty_id=bounty.id if bounty else None,
     )
 
@@ -277,7 +279,8 @@ async def update_detected(
     lng: float,
     source_url: str,
     event_date: date,
-    source_date: date | None,
+    event_time: time | None,
+    source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
     remove_media_ids: list,
@@ -289,7 +292,7 @@ async def update_detected(
 
     Mirrors :func:`create_with_evidence`: a full multipart edit (the form posts
     the whole current state), applied atomically. The owner curates everything —
-    title, coordinate, source URL, event / source date, proof, tags, and the
+    title, coordinate, source URL, event date + time, source post time, proof, tags, and the
     source media (new ``files`` added, ``remove_media_ids`` dropped). Only
     ``detected_from_url`` (the provenance anchor) and ``state`` are immutable. A
     ``validated`` row is frozen.
@@ -328,7 +331,8 @@ async def update_detected(
     geo.location = from_shape(Point(lng, lat), srid=4326)
     geo.source_url = source_url
     geo.event_date = event_date
-    geo.source_date = source_date
+    geo.event_time = event_time
+    geo.source_posted_at = source_posted_at
     if proof_data is not None:
         geo.proof = proof_data
     geo.tags = effective_tags

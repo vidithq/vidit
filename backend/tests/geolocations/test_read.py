@@ -9,7 +9,7 @@ validation. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from geoalchemy2.shape import from_shape
@@ -245,6 +245,7 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
         title="Detected geo",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         state=STATE_DETECTED,
         detected_from_url="https://x.com/a/status/1",

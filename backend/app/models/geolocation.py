@@ -1,9 +1,9 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Literal
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String, Text, Time, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,11 +43,26 @@ class Geolocation(Base):
     # than importing ``EMPTY_TIPTAP_DOC`` (models must not depend on services).
     proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # The date the original source (a Telegram channel, an X account, …) posted
-    # the media. Distinct from ``event_date`` (when the event happened) and
-    # ``created_at`` (when it was submitted to Vidit). Nullable — not always
-    # known, and unrecoverable for pre-existing rows.
-    source_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Optional time-of-day for ``event_date``, in UTC. NULL when the hour is
+    # unknown — common, since the event date is often inferred from context or
+    # from footage with no timestamp. A real-world event differs from a post:
+    # its date may be known only to the day (contrast ``source_posted_at``).
+    event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # When the original source (a Telegram channel, an X account, …) posted the
+    # media — a real post instant, hence a full UTC timestamp and NOT NULL: a
+    # post always has a time. Distinct from ``event_date`` (when the event
+    # happened), ``detected_post_at`` (when the analyst posted the geolocation),
+    # and ``created_at`` (submission to Vidit). On the machine path it equals the
+    # imported tweet's timestamp (``source_url`` is the tweet there).
+    source_posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the analyst published THIS geolocation on X — the post time of
+    # ``detected_from_url``. The authorship / precedence signal for "who
+    # geolocated this first", consumed by the v0.5 claim/dispute pipeline;
+    # captured now because the originating tweet may be deleted before then.
+    # NULL for human submits (no X import).
+    detected_post_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Lifecycle state — ``validated`` (default) vs ``detected`` (machine path).
     # See ``STATE_*``. server_default so every non-machine insert stays correct
     # without setting it; the machine path passes ``state=STATE_DETECTED``.

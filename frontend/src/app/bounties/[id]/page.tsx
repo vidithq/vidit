@@ -13,7 +13,7 @@ import {
   deleteBounty,
   unclaimBounty,
 } from "@/lib/bounties";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import SourceLabel from "@/components/ui/SourceLabel";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
@@ -225,20 +225,18 @@ export default function BountyDetailPage() {
                   Event date <FieldHelp concept="event_date" />
                 </span>
                 <span className="text-sm text-neutral-200">
-                  {formatDate(bounty.event_date)}
+                  {formatEventDate(bounty.event_date, bounty.event_time)}
                 </span>
               </div>
             )}
-            {bounty.source_date && (
-              <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                  Source date <FieldHelp concept="source_date" />
-                </span>
-                <span className="text-sm text-neutral-200">
-                  {formatDate(bounty.source_date)}
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                Source posted <FieldHelp concept="source_posted_at" />
+              </span>
+              <span className="text-sm text-neutral-200">
+                {formatInstant(bounty.source_posted_at)}
+              </span>
+            </div>
             <div className="flex justify-between px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
                 Posted <FieldHelp concept="submitted_date" />

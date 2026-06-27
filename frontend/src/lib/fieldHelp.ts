@@ -37,9 +37,13 @@ export const FIELD_HELP = {
     text: "When the depicted event happened (from the chyron or context). Not the post date or the date you submit it here.",
     label: "What is the event date?",
   },
-  source_date: {
-    text: "When the source posted the media (the Telegram / X post date). Not when the event happened, nor when you submitted it here.",
-    label: "What is the source date?",
+  event_time: {
+    text: "Optional time-of-day the event happened (UTC), if known from the footage or context. Leave blank when only the day is known.",
+    label: "What is the event time?",
+  },
+  source_posted_at: {
+    text: "When the source posted the media (the Telegram / X post date and time, UTC). A post always has a time. Not when the event happened, nor when you submitted it here.",
+    label: "What is the source post time?",
   },
   submitted_date: {
     text: "When this was added to Vidit. Not when the event happened, nor when the source posted the media.",

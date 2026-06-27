@@ -24,6 +24,7 @@ interface TweetImportFormBindings {
   setLng: (v: string) => void;
   setSourceUrl: (v: string) => void;
   setEventDate: (v: string) => void;
+  setSourcePostedAt: (v: string) => void;
   setFiles: (files: File[]) => void;
   setProof: (proof: Record<string, unknown> | null) => void;
 }
@@ -85,6 +86,9 @@ export function useTweetImport(form: TweetImportFormBindings) {
       const d = new Date(parsed.posted_at);
       if (!Number.isNaN(d.getTime())) {
         form.setEventDate(d.toISOString().slice(0, 10));
+        // The imported tweet is the source on this path, so its post time
+        // pre-fills the (required) source instant.
+        form.setSourcePostedAt(d.toISOString().slice(0, 16));
       }
     }
     if (parsed.parsed_coords.length > 0) {
@@ -140,6 +144,7 @@ export function useTweetImport(form: TweetImportFormBindings) {
     form.setLng("");
     form.setSourceUrl("");
     form.setEventDate("");
+    form.setSourcePostedAt("");
     form.setFiles([]);
     form.setProof(null);
   };

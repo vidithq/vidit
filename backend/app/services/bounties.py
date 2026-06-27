@@ -17,7 +17,7 @@ envelope in `routers/bounties.py`.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -57,7 +57,8 @@ async def create_with_evidence(
     source_url: str,
     proof_data: dict | None,
     event_date: date | None = None,
-    source_date: date | None = None,
+    event_time: time | None = None,
+    source_posted_at: datetime,
     tag_ids: list,
     files: list[UploadFile],
     uploaded_ip: str | None,
@@ -104,7 +105,8 @@ async def create_with_evidence(
         source_url=source_url,
         proof=proof_data,
         event_date=event_date,
-        source_date=source_date,
+        event_time=event_time,
+        source_posted_at=source_posted_at,
         status=STATUS_OPEN,
     )
     if tag_ids:

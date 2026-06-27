@@ -558,12 +558,14 @@ Full detail for a single geolocation.
   "source_url": "https://t.me/channel/12345",
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
-  "source_date": "2026-03-14",
+  "event_time": "14:30:00",
+  "source_posted_at": "2026-03-14T18:05:00Z",
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
   "state": "validated",
   "detected_from_url": null,
+  "detected_post_at": null,
   "author": {
     "id": "uuid",
     "username": "kalush"
@@ -609,7 +611,8 @@ Create a geolocation.
 | `lng` | float | yes | Longitude (-180 to 180) |
 | `source_url` | string | yes | Original source URL — ignored when `bounty_id` is set (see below) |
 | `event_date` | string (YYYY-MM-DD) | yes | When the depicted event happened |
-| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media — distinct from `event_date` and the submission time. Omitted / empty → stored NULL. |
+| `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media — a full instant, read as UTC. Required: a post always has a time. Distinct from `event_date` and the submission time. |
 | `proof` | string (JSON) | no | Serialized Tiptap document |
 | `tag_ids` | string (JSON array) | conditional | `["uuid1", "uuid2"]`. The fulfilling analyst's tag picks go on the geolocation — independent from the bounty's own tags. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
 | `bounty_id` | UUID | no | Fulfilment trace. See *Fulfilling a bounty* below. |
@@ -628,7 +631,7 @@ Create a geolocation.
 | 404 | `bounty_id` references an unknown / soft-deleted bounty |
 | 409 | `bounty_id` references a bounty that's no longer open (`fulfilled` or `closed`) |
 | 413 | Request body exceeds the platform body-size cap (`max(max_video_size, 12 × max_image_size) + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
-| 422 | Malformed input: `event_date` or `source_date` (not a YYYY-MM-DD date), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
+| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
 
 ---
 
@@ -687,7 +690,8 @@ Owner edit of a machine-`detected` geolocation — the review step. **Multipart*
 | `lng` | float | Longitude (-180 to 180) |
 | `source_url` | string | ≤2000 chars — the footage origin (correct the machine's guess) |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
-| `source_date` | string (YYYY-MM-DD) | When the source posted the media; empty / omitted clears it |
+| `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media — a full instant (UTC). Required: a post always has a time |
 | `proof` | JSON string | Tiptap document (sanitised); inline proof images upload via `POST /geolocations/proof-images` |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
@@ -845,7 +849,8 @@ Full detail for one bounty.
   "source_url": "https://t.me/channel/12345",
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-05-10",
-  "source_date": "2026-05-11",
+  "event_time": null,
+  "source_posted_at": "2026-05-11T16:20:00Z",
   "status": "fulfilled",
   "created_at": "2026-05-12T09:42:00Z",
   "updated_at": "2026-05-12T09:42:00Z",
@@ -881,7 +886,8 @@ Post a bounty.
 | `source_url` | string | yes | URL where the media was found. Max 2000 chars. |
 | `proof` | string (JSON) | no | In-progress proof (Tiptap document), mirroring a geolocation's `proof`; sanitised server-side and image-free (inline images dropped) |
 | `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Optional — a bounty is an unfinished geolocation. |
-| `source_date` | string (YYYY-MM-DD) | no | When the original source posted the media. Optional. |
+| `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media — a full instant (UTC). Required: the bounty's `source_url` is, so its post time is too. |
 | `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]` |
 | `files` | File[] | yes | At least one image or video. Capped at **12 files per submission**. |
 
@@ -894,7 +900,7 @@ Multipart parsing + JSON-shape checks live in the router; business rules + the S
 |------|------|
 | 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`, malformed `proof` / `tag_ids` JSON) **or** a typed `{code, message}` business-rule branch: `media_required` (no files), `invalid_proof` (sanitiser rejection), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`. |
 | 413 | Request body exceeds the platform body-size cap — same middleware + `max(max_video_size, 12 × max_image_size) + 10 MB` headroom as `POST /geolocations`. |
-| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), malformed `event_date` / `source_date` (not a YYYY-MM-DD date), or **more than 12 files** (`too_many_files` typed envelope). |
+| 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, `event_time` without `event_date`, or **more than 12 files** (`too_many_files` typed envelope). |
 
 ---
 

@@ -8,8 +8,10 @@ const baseProps = {
   setSourceUrl: () => {},
   eventDate: "",
   setEventDate: () => {},
-  sourceDate: "",
-  setSourceDate: () => {},
+  eventTime: "",
+  setEventTime: () => {},
+  sourcePostedAt: "",
+  setSourcePostedAt: () => {},
   sourceUrlLocked: false,
 };
 
@@ -20,20 +22,21 @@ describe("DetailsFields", () => {
     render(<DetailsFields {...baseProps} />);
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText("Event date")).toBeInTheDocument();
-    expect(screen.getByText("Source date")).toBeInTheDocument();
+    expect(screen.getByText("Event time")).toBeInTheDocument();
+    expect(screen.getByText("Source posted (UTC)")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "What is the event date?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is the source date?" })
+      screen.getByRole("button", { name: "What is the source post time?" })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "What is the source?" })
     ).toBeInTheDocument();
   });
 
-  it("marks the source date optional (it is the only optional field here)", () => {
+  it("marks the event time optional (the only optional field by default)", () => {
     render(<DetailsFields {...baseProps} />);
     expect(screen.getByText("optional")).toBeInTheDocument();
   });
@@ -63,7 +66,7 @@ describe("DetailsFields", () => {
 
   it("marks the event date optional too when eventDateRequired is false (bounty)", () => {
     render(<DetailsFields {...baseProps} eventDateRequired={false} />);
-    // Both the event date and the source date now carry the optional marker.
+    // Both the event date and the event time now carry the optional marker.
     expect(screen.getAllByText("optional")).toHaveLength(2);
   });
 });

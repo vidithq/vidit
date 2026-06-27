@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel
@@ -22,10 +22,12 @@ class BountyRead(BaseModel):
     title: str
     source_url: str
     proof: dict[str, Any] | None
-    # Optional dates, mirroring a geolocation: when the event happened, and when
-    # the source posted the media. Null when the poster didn't supply them.
+    # When the event happened (date + optional hour) — nullable, a bounty is an
+    # unfinished geolocation. ``source_posted_at`` is the source's post instant
+    # (UTC), required: the bounty's ``source_url`` is, so its post time is too.
     event_date: date | None = None
-    source_date: date | None = None
+    event_time: time | None = None
+    source_posted_at: datetime
     status: BountyStatus
     created_at: datetime
     updated_at: datetime

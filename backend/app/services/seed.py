@@ -28,7 +28,7 @@ import math
 import random
 import uuid
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from geoalchemy2.shape import from_shape
@@ -423,6 +423,14 @@ def _random_event_date() -> date:
     return (datetime.now(UTC) - timedelta(days=days_back)).date()
 
 
+def _random_source_posted_at(event_date: date) -> datetime:
+    """Demo source post instant: the event day at a random UTC time. Real rows
+    carry the analyst's entered time or the imported tweet's timestamp."""
+    return datetime.combine(
+        event_date, time(random.randint(0, 23), random.randint(0, 59)), tzinfo=UTC
+    )
+
+
 def _media_type_from_key(key: str) -> str:
     ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
     if ext in ("mp4", "webm", "mov"):
@@ -684,13 +692,15 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         # flushing — saves a per-geo flush just to read the auto-assigned id.
         geo_id = uuid.uuid4()
 
+        event_date = _random_event_date()
         geo = Geolocation(
             id=geo_id,
             author_id=author_id,
             title=DEMO_TITLE,
             location=from_shape(Point(lon, lat), srid=4326),
             source_url="https://vidit.app/demo-data",
-            event_date=_random_event_date(),
+            event_date=event_date,
+            source_posted_at=_random_source_posted_at(event_date),
             is_demo=True,
         )
 
@@ -889,6 +899,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             source_url=DEMO_BOUNTY_SOURCE_URL,
             status=status,
             closed_at=closed_at,
+            source_posted_at=_random_source_posted_at(_random_event_date()),
             is_demo=True,
         )
         db.add(bounty)
@@ -906,13 +917,15 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             fulfiller_id = random.choice(other_authors) if other_authors else author_id
             lat, lon = _pick_point_for(region)
             geo_id = uuid.uuid4()
+            event_date = _random_event_date()
             geo = Geolocation(
                 id=geo_id,
                 author_id=fulfiller_id,
                 title=DEMO_TITLE,
                 location=from_shape(Point(lon, lat), srid=4326),
                 source_url="https://vidit.app/demo-data",
-                event_date=_random_event_date(),
+                event_date=event_date,
+                source_posted_at=_random_source_posted_at(event_date),
                 is_demo=True,
                 originated_from_bounty_id=bounty_id,
             )

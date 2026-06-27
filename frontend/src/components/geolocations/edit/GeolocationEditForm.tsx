@@ -26,6 +26,7 @@ import {
   validateGeolocation,
   type GeolocationFieldsState,
 } from "@/lib/geolocations";
+import { toDatetimeLocalUTC } from "@/lib/format";
 import type { GeolocationDetail, Tag } from "@/types";
 
 /**
@@ -54,7 +55,10 @@ export function GeolocationEditForm({
   const [lng, setLng] = useState(String(geo.lng));
   const [sourceUrl, setSourceUrl] = useState(geo.source_url);
   const [eventDate, setEventDate] = useState(geo.event_date);
-  const [sourceDate, setSourceDate] = useState(geo.source_date ?? "");
+  const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
+  const [sourcePostedAt, setSourcePostedAt] = useState(
+    toDatetimeLocalUTC(geo.source_posted_at)
+  );
   const [proof, setProof] = useState<Record<string, unknown> | null>(geo.proof);
   const [proofImageUploading, setProofImageUploading] = useState(false);
 
@@ -94,7 +98,8 @@ export function GeolocationEditForm({
     lng: parseFloat(lng),
     source_url: sourceUrl.trim(),
     event_date: eventDate,
-    source_date: sourceDate || undefined,
+    event_time: eventTime || undefined,
+    source_posted_at: sourcePostedAt,
     proof,
     tag_ids: selectedTagIds,
     remove_media_ids: [...removedIds],
@@ -144,6 +149,7 @@ export function GeolocationEditForm({
     lng,
     sourceUrl,
     eventDate,
+    sourcePostedAt,
     proof,
     mediaCount: keptMediaCount,
     hasConflictTag: selectedCurated.some((t) => t.category === "conflict"),
@@ -258,11 +264,14 @@ export function GeolocationEditForm({
           setSourceUrl={setSourceUrl}
           eventDate={eventDate}
           setEventDate={setEventDate}
-          sourceDate={sourceDate}
-          setSourceDate={setSourceDate}
+          eventTime={eventTime}
+          setEventTime={setEventTime}
+          sourcePostedAt={sourcePostedAt}
+          setSourcePostedAt={setSourcePostedAt}
           sourceUrlLocked={false}
           detectedFromUrl={geo.detected_from_url}
           eventDateInvalid={invalidKeys.has("event_date")}
+          sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 

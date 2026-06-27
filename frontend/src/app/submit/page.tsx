@@ -10,6 +10,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
 import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
 import { missingGeolocationFields } from "@/lib/geolocations";
+import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
@@ -80,9 +81,11 @@ function SubmitForm() {
   const [lng, setLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [eventDate, setEventDate] = useState("");
-  // Optional: the date the source posted the media. Independent of the tweet
-  // import (a source is often a Telegram link, not the imported tweet).
-  const [sourceDate, setSourceDate] = useState("");
+  // Optional event time-of-day (HH:MM, UTC).
+  const [eventTime, setEventTime] = useState("");
+  // When the source posted the media — a datetime-local value (UTC). Required:
+  // a post always has a time.
+  const [sourcePostedAt, setSourcePostedAt] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   // Separate from the geolocation proof: a bounty's proof is the same idea but
   // in progress (else it'd be a geolocation), optional, and stored on
@@ -133,6 +136,7 @@ function SubmitForm() {
     setLng,
     setSourceUrl,
     setEventDate,
+    setSourcePostedAt,
     setFiles,
     setProof,
   });
@@ -166,7 +170,8 @@ function SubmitForm() {
         // after the bounty loads (Loading guard below), so the proof editor
         // picks `proof` up as its initial content.
         setEventDate(b.event_date ?? "");
-        setSourceDate(b.source_date ?? "");
+        setEventTime(b.event_time?.slice(0, 5) ?? "");
+        setSourcePostedAt(toDatetimeLocalUTC(b.source_posted_at));
         setProof(b.proof ?? null);
         setSelectedTagIds(b.tags.map((t) => t.id));
       })
@@ -189,7 +194,8 @@ function SubmitForm() {
         source_url: sourceUrl.trim(),
         proof: bountyProof,
         event_date: eventDate || undefined,
-        source_date: sourceDate || undefined,
+        event_time: eventTime || undefined,
+        source_posted_at: sourcePostedAt,
         tag_ids: selectedTagIds,
         files,
       }),
@@ -209,9 +215,10 @@ function SubmitForm() {
       formData.append("lng", lngNum.toString());
       formData.append("source_url", sourceUrl);
       formData.append("event_date", eventDate);
-      if (sourceDate) {
-        formData.append("source_date", sourceDate);
+      if (eventTime) {
+        formData.append("event_time", eventTime);
       }
+      formData.append("source_posted_at", sourcePostedAt);
       formData.append("proof", JSON.stringify(proof));
       if (selectedTagIds.length > 0) {
         formData.append("tag_ids", JSON.stringify(selectedTagIds));
@@ -240,6 +247,7 @@ function SubmitForm() {
     const missing = missingBountyFields({
       title,
       sourceUrl,
+      sourcePostedAt,
       mediaCount: files.length,
     });
     if (missing.length) {
@@ -273,6 +281,7 @@ function SubmitForm() {
         lng,
         sourceUrl,
         eventDate,
+        sourcePostedAt,
         proof,
         mediaCount: files.length,
         hasConflictTag: curatedTags.some(
@@ -452,11 +461,14 @@ function SubmitForm() {
           setSourceUrl={setSourceUrl}
           eventDate={eventDate}
           setEventDate={setEventDate}
-          sourceDate={sourceDate}
-          setSourceDate={setSourceDate}
+          eventTime={eventTime}
+          setEventTime={setEventTime}
+          sourcePostedAt={sourcePostedAt}
+          setSourcePostedAt={setSourcePostedAt}
           sourceUrlLocked={lockedFromBounty}
           eventDateRequired={showGeoFields}
           eventDateInvalid={invalidKeys.has("event_date")}
+          sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 

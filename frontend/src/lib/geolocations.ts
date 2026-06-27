@@ -12,6 +12,7 @@ export type MissingFieldKey =
   | "coordinates"
   | "source_url"
   | "event_date"
+  | "source_posted_at"
   | "proof"
   | "proof_image"
   | "source_media"
@@ -55,8 +56,10 @@ export interface GeolocationEditInput {
   source_url: string;
   /** ISO `YYYY-MM-DD`. */
   event_date: string;
-  /** ISO `YYYY-MM-DD`; empty / omitted clears it. */
-  source_date?: string;
+  /** Optional ISO `HH:MM`; empty / omitted clears it. */
+  event_time?: string;
+  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required — a post always has a time. */
+  source_posted_at: string;
   proof?: Record<string, unknown> | null;
   /** Replaces the tag set wholesale. */
   tag_ids: string[];
@@ -76,7 +79,8 @@ export function updateGeolocation(
   fd.append("lng", String(input.lng));
   fd.append("source_url", input.source_url);
   fd.append("event_date", input.event_date);
-  if (input.source_date) fd.append("source_date", input.source_date);
+  if (input.event_time) fd.append("event_time", input.event_time);
+  fd.append("source_posted_at", input.source_posted_at);
   if (input.proof) fd.append("proof", JSON.stringify(input.proof));
   if (input.tag_ids.length > 0) fd.append("tag_ids", JSON.stringify(input.tag_ids));
   if (input.remove_media_ids.length > 0) {
@@ -129,6 +133,7 @@ export function validationReadiness(geo: {
   lng: number;
   source_url: string;
   event_date: string;
+  source_posted_at: string;
   proof: Record<string, unknown> | null;
   media: readonly unknown[];
   tags: readonly { category: TagCategory }[];
@@ -140,6 +145,7 @@ export function validationReadiness(geo: {
       lng: String(geo.lng),
       sourceUrl: geo.source_url,
       eventDate: geo.event_date,
+      sourcePostedAt: geo.source_posted_at,
       proof: geo.proof,
       mediaCount: geo.media.length,
       hasConflictTag: geo.tags.some((t) => t.category === "conflict"),
@@ -159,6 +165,8 @@ export interface GeolocationFieldsState {
   lng: string;
   sourceUrl: string;
   eventDate: string;
+  /** ISO datetime (datetime-local value, UTC). Required. */
+  sourcePostedAt: string;
   proof: Record<string, unknown> | null;
   /** Source-media count after staging (kept existing + newly staged). */
   mediaCount: number;
@@ -205,6 +213,9 @@ export function missingGeolocationFields(
   if (!coordsValid) missing.push({ key: "coordinates", label: "Coordinates" });
   if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
   if (!s.eventDate) missing.push({ key: "event_date", label: "Event date" });
+  if (!s.sourcePostedAt) {
+    missing.push({ key: "source_posted_at", label: "Source post time" });
+  }
   // Proof must exist *and* contain an image. "Proof" (none at all) and "Proof
   // image" (text-only) are distinct misses so the notice says which.
   if (!s.proof) {

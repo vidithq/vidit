@@ -363,6 +363,7 @@ def geolocation(db, regular_user):
         title=f"Test geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     db.add(geo)
@@ -822,6 +823,7 @@ def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
         author_id=author_id,
         title=f"Bounty {uuid.uuid4().hex[:8]}",
         source_url="https://example.com/post",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_OPEN,
     )
     db.add(bounty)

@@ -7,7 +7,7 @@ Shared fixtures live in `conftest.py`; `client` / `_make_geo` in `_helpers.py`.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from app.models.geolocation import Geolocation
 from tests.conftest import login_as
@@ -110,6 +110,7 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
                 detected_from_url="https://x.com/handle/status/1",
                 owner_handle="handle",
                 event_date=date(2025, 11, 12),
+                posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
                 media=[
                     ParsedMedia(
                         kind="image",

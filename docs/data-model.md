@@ -85,7 +85,9 @@ erDiagram
         TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
         DATE event_date
-        DATE source_date "nullable, when the source posted the media"
+        TIME event_time "nullable, optional UTC hour"
+        TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
+        TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
         VARCHAR state "validated | detected"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo row"
@@ -101,7 +103,8 @@ erDiagram
         TEXT source_url
         JSONB proof "nullable, Tiptap, image-free"
         DATE event_date "nullable, when the event happened"
-        DATE source_date "nullable, when the source posted"
+        TIME event_time "nullable, optional UTC hour"
+        TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
         VARCHAR status "open|fulfilled|closed"
         TIMESTAMPTZ closed_at "nullable"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
@@ -343,13 +346,32 @@ Indexes:
 | `detected_from_url` | `TEXT` | nullable — the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL — Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
 | `event_date` | `DATE` | NOT NULL — when the depicted event happened. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at validation. |
-| `source_date` | `DATE` | nullable — when the original source posted the media (a Telegram / X post date). Distinct from `event_date` (when the event happened) and `created_at` (when it was submitted to Vidit). NULL when unknown; unrecoverable for rows created before the column. |
+| `event_time` | `TIME` | nullable — optional time-of-day for `event_date` (UTC). NULL when the hour is unknown (often: an event date is inferred from context or undated footage). |
+| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL — when the original source posted the media (a Telegram / X post): a real post instant, so a full UTC timestamp, not a bare date — a post always has a time. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
+| `detected_post_at` | `TIMESTAMPTZ` | nullable — when the analyst published this geolocation on X (the post time of `detected_from_url`). The authorship / precedence signal ("who geolocated it first") for the v0.5 claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
 | `state` | `VARCHAR(20)` | NOT NULL, `server_default 'validated'` — `validated` (human submits + bounty fulfilments, immutable) vs `detected` (machine-produced, rendered marked on every surface until its owner validates it). Plain string, no DB enum (mirrors `bounties.status`); the default keeps every non-machine insert correct with no code change. Owner transitions over a `detected` row — edit, `validate` (freezes it), `reject` (soft-deletes for re-import) — live in [`api.md`](api.md). |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false` — TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
 | `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable — provenance trace populated when a geolocation is promoted from a bounty. `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+**Temporal fields — four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
+
+```
+event happens ──▶ source posts the media ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
+ event_date           source_posted_at            detected_post_at                 created_at
+ (+ event_time)       (UTC instant)               (UTC instant, machine path)      (UTC instant)
+```
+
+| Field | Meaning | Filled by | Null? |
+|---|---|---|---|
+| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date NOT NULL; time optional — the hour is often unknown |
+| `source_posted_at` | when the source posted the media | analyst, or detection (tweet timestamp) | NOT NULL — a post always has a time |
+| `detected_post_at` | when the analyst posted the geolocation on X | detection only (the imported tweet's time) | NULL for human submits |
+| `created_at` | when it was submitted to Vidit | system | NOT NULL |
+
+`event_date` is *editorial* — a real-world event, often known only to the day and with no canonical zone, so it's a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants* — known to the minute when present, and UTC — so they're full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
 - `GIST(location)` — required for geospatial queries (bounding-box filtering, proximity sort)
@@ -379,7 +401,8 @@ An **unfinished geolocation**: media + a source URL someone couldn't place. Life
 | `source_url` | `TEXT` | NOT NULL — required because a bounty is evidence in search of a location |
 | `proof` | `JSONB` | nullable — the in-progress proof (Tiptap / ProseMirror JSON), mirroring `geolocations.proof`. Sanitised server-side on insert and image-free (inline images dropped — a bounty proof image has no `proof_images` row to anchor it) |
 | `event_date` | `DATE` | nullable — when the depicted event happened, carried into the geolocation on fulfilment. Optional: a bounty is an unfinished geolocation, so it may be unknown |
-| `source_date` | `DATE` | nullable — when the original source posted the media. Same optional, carried-over rationale as `event_date` |
+| `event_time` | `TIME` | nullable — optional time-of-day for `event_date` (UTC) |
+| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL — when the source posted the media (a UTC instant). Required: the bounty's `source_url` is, so its post time is too |
 | `status` | `VARCHAR(20)` | NOT NULL, default `'open'` — one of `open`, `fulfilled`, `closed`. Plain string (no DB enum) so adding a state doesn't require a migration |
 | `closed_at` | `TIMESTAMPTZ` | nullable — set when status transitions to `fulfilled` or `closed` |
 | `deleted_at` | `TIMESTAMPTZ` | nullable — soft-delete; filtered from every public read (admin path acts on the raw model) |
