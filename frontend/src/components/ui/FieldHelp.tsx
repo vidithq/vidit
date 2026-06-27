@@ -1,20 +1,28 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { HelpCircle } from "lucide-react";
 
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
 
+// Matches `max-w-xs` below — used to clamp the portaled tooltip into the viewport.
+const TOOLTIP_MAX_WIDTH = 320;
+
 /**
  * A `?` help affordance next to a field or section: surfaces a one-line
  * explanation on hover / focus, pinned on click (touch devices don't hover),
- * closed by outside-click or Escape. Mirrors TrustBadge's popover mechanics.
+ * closed by outside-click, Escape, scroll, or pointer-leave.
+ *
+ * The tooltip is shown from JS hover state on the icon itself (not a CSS
+ * `group-hover`) so a surrounding `.group` — e.g. the map filter-panel rows —
+ * can't trigger it; and it's rendered in a portal with `position: fixed` so an
+ * `overflow` ancestor (e.g. the map detail side panel) can't clip it.
  *
  * Takes a single `concept` key — the explanation text and the accessible label
  * both come from the one registry in `lib/fieldHelp.ts`, so the same concept
- * reads identically everywhere it appears (submit form, detail page, map panel)
- * and never drifts between them.
+ * reads identically everywhere it appears and never drifts between them.
  *
  * Neutral, not orange: it's meta help, not a content action — orange stays
  * reserved for primary affordances.
@@ -30,27 +38,71 @@ export default function FieldHelp({
 }) {
   const { text, label } = FIELD_HELP[concept];
   const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tooltipId = useId();
   const hidden = useHelpHidden();
 
+  const open = pinned || hovered;
+
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  // A short grace period so the pointer can cross the gap from the icon to the
+  // tooltip (the tooltip is portaled, not a DOM child, so there's no shared
+  // hover region) without it vanishing mid-move; the tooltip's own mouseenter
+  // cancels it.
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setHovered(false), 80);
+  };
+
+  // Position the portaled tooltip under the icon, clamped into the viewport.
+  // ``useEffect`` (not layout) keeps it SSR-safe; the tooltip only renders once
+  // ``coords`` is set, so it appears already positioned, not at 0,0.
   useEffect(() => {
-    if (!pinned) return;
-    const onClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setPinned(false);
-      }
+    if (!open || !buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - TOOLTIP_MAX_WIDTH - 8));
+    setCoords({ top: r.bottom + 6, left });
+  }, [open]);
+
+  // While open: dismiss on outside click (the portaled tooltip counts as inside),
+  // Escape, scroll, or resize. Keyed on ``open`` so a hover-only tooltip is
+  // dismissable too (e.g. a stray touch that set hover without a pin).
+  useEffect(() => {
+    if (!open) return;
+    const close = () => {
+      setPinned(false);
+      setHovered(false);
+    };
+    const onPointer = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!wrapperRef.current?.contains(t) && !tooltipRef.current?.contains(t)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPinned(false);
+      if (e.key === "Escape") close();
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onPointer);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, [pinned]);
+  }, [open]);
+
+  useEffect(() => () => cancelClose(), []);
 
   // Power-user opt-out: hide every `?` (toggle on the settings page). Sections
   // carry no always-on subtitle, so with help hidden the form is just labels
@@ -60,18 +112,27 @@ export default function FieldHelp({
   return (
     <span
       ref={wrapperRef}
-      // Leaving the `?` (and its tooltip) un-pins it, so on desktop a click-then-
-      // move-away dismisses naturally instead of lingering until an outside click.
-      // Touch never fires mouseleave, so there a tap pins and an outside tap (the
-      // document handler above) dismisses — both paths covered.
-      onMouseLeave={() => setPinned(false)}
-      className={`relative inline-flex items-center align-middle group ${className}`}
+      // Hover lives on the wrapper (just the icon — the tooltip is portaled out).
+      // Leaving un-pins so a desktop click-then-move-away dismisses naturally;
+      // touch never fires mouseleave, so a tapped pin stays until an outside tap.
+      onMouseEnter={() => {
+        cancelClose();
+        setHovered(true);
+      }}
+      onMouseLeave={() => {
+        setPinned(false);
+        scheduleClose();
+      }}
+      className={`inline-flex items-center align-middle ${className}`}
     >
       <button
+        ref={buttonRef}
         type="button"
         aria-label={label}
-        aria-describedby={tooltipId}
+        aria-describedby={open ? tooltipId : undefined}
         aria-expanded={pinned}
+        onFocus={() => setHovered(true)}
+        onBlur={() => setHovered(false)}
         onClick={(e) => {
           // The help icon often sits inside a clickable card / label — don't
           // let the click bubble to the parent.
@@ -83,20 +144,22 @@ export default function FieldHelp({
       >
         <HelpCircle size={size} strokeWidth={1.8} />
       </button>
-      {/* Left-anchored (the icon sits at the start of a label, near the left
-          edge): extending rightward keeps the tooltip on-screen where centering
-          would clip it off the panel's left. */}
-      <span
-        role="tooltip"
-        id={tooltipId}
-        className={`absolute left-0 top-full mt-1.5 z-20 w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg transition-opacity duration-150 ${
-          pinned
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100"
-        }`}
-      >
-        {text}
-      </span>
+      {open &&
+        coords &&
+        createPortal(
+          <span
+            ref={tooltipRef}
+            role="tooltip"
+            id={tooltipId}
+            onMouseEnter={cancelClose}
+            onMouseLeave={() => setHovered(false)}
+            style={{ position: "fixed", top: coords.top, left: coords.left }}
+            className="z-[2000] w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg"
+          >
+            {text}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }
