@@ -132,10 +132,12 @@ describe("GeolocationDetailBody", () => {
     );
   });
 
-  it("validated geo shows no detected markers", () => {
+  it("validated geo shows the Validated status, not detected markers", () => {
     render(<GeolocationDetailBody geo={geoFixture()} variant="page" />);
+    // Status is always shown now; a validated row reads "Validated".
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("Validated")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
-    expect(screen.queryByText("Status")).not.toBeInTheDocument();
     expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
   });
 

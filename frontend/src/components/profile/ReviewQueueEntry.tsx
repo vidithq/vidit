@@ -5,7 +5,7 @@ import { ArrowRight, Bot } from "lucide-react";
  * Own-profile entry point into the review queue. Surfaces the count of
  * machine-`detected` geolocations awaiting the owner's validation and links to
  * `/profile/{username}/review`. The parent renders it only when `count > 0`, so
- * a clean profile stays clean. Amber to match `DetectedBadge` — the same
+ * a clean profile stays clean. Amber to match `StatusBadge` — the same
  * "machine, pending" signal.
  */
 export function ReviewQueueEntry({

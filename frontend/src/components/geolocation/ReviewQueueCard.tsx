@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, Film, MapPin, Pencil, X } from "lucide-react";
+import { Check, Circle, Film, MapPin, Pencil, X } from "lucide-react";
 
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import SourceLabel from "@/components/ui/SourceLabel";
 import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
@@ -77,7 +77,7 @@ export default function ReviewQueueCard({
           >
             {geo.title}
           </Link>
-          <DetectedBadge state={geo.state} />
+          <StatusBadge state={geo.state} />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
@@ -119,16 +119,29 @@ export default function ReviewQueueCard({
             always rendered (ready or not) so the card height stays uniform; when
             blocked it's the nudge (machine rows are born tagless → edit to add
             the curated tags, then validate). */}
-        <div className="flex items-center justify-between gap-3 pt-0.5">
-          <p className="text-[11px] min-w-0">
+        <div className="flex items-start justify-between gap-3 pt-0.5">
+          <div className="min-w-0">
             {readiness.isReady ? (
-              <span className="text-neutral-400">Ready to validate.</span>
-            ) : (
-              <span className="text-amber-400/90">
-                Needs: {readiness.missing.join(", ")}
+              <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
+                <Check size={12} /> Ready to validate.
               </span>
+            ) : (
+              // The validate floor, as a neutral checklist — it reads as "what's
+              // left", the concrete reason a review is needed, not a warning.
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-neutral-500">To validate:</span>
+                {readiness.missing.map((m) => (
+                  <span
+                    key={m}
+                    className="inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/60 px-2 py-0.5 text-[10px] text-neutral-400"
+                  >
+                    <Circle size={8} />
+                    {m}
+                  </span>
+                ))}
+              </div>
             )}
-          </p>
+          </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Link

@@ -9,7 +9,7 @@ import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
@@ -160,14 +160,12 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
-      {geo.state === "detected" && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Status <FieldHelp concept="status" />
-          </span>
-          <DetectedBadge state={geo.state} />
-        </div>
-      )}
+      <div className={row}>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Status <FieldHelp concept="status" />
+        </span>
+        <StatusBadge state={geo.state} />
+      </div>
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
           Event date <FieldHelp concept="event_date" />

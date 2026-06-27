@@ -50,15 +50,33 @@ export default function ShareButtons({
   state,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
+  // A `detected` link points at an editable draft, so sharing it asks for a
+  // confirming re-click first (mirrors the review queue's two-click delete).
+  // `armed` is which action is awaiting that re-click; it auto-disarms.
+  const [armed, setArmed] = useState<null | "copy" | "share">(null);
   // Tracked so a second click within the 1.5s window doesn't queue a duplicate
   // timer (flipping "Link copied" back early), and unmount clears it.
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+      if (armResetTimer.current) clearTimeout(armResetTimer.current);
     };
   }, []);
+
+  // Validated links act on the first click; a draft arms first, then acts.
+  const needsConfirm = state === "detected";
+  const arm = (which: "copy" | "share") => {
+    setArmed(which);
+    if (armResetTimer.current) clearTimeout(armResetTimer.current);
+    armResetTimer.current = setTimeout(() => setArmed(null), 3000);
+  };
+  const disarm = () => {
+    setArmed(null);
+    if (armResetTimer.current) clearTimeout(armResetTimer.current);
+  };
 
   // window is undefined during SSR; the function shape keeps this safe to call
   // from any render-time path even though handlers only fire in the browser.
@@ -75,6 +93,11 @@ export default function ShareButtons({
     ].join("\n");
 
   const onCopy = async () => {
+    if (needsConfirm && armed !== "copy") {
+      arm("copy");
+      return;
+    }
+    disarm();
     try {
       await navigator.clipboard.writeText(url());
       setCopied(true);
@@ -87,6 +110,11 @@ export default function ShareButtons({
   };
 
   const onShareX = () => {
+    if (needsConfirm && armed !== "share") {
+      arm("share");
+      return;
+    }
+    disarm();
     // twitter.com/intent/tweet still serves the composer post-rebrand and is
     // the documented domain, so it won't be redirected away.
     const intent = new URL("https://twitter.com/intent/tweet");
@@ -97,33 +125,47 @@ export default function ShareButtons({
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* A detection is a machine draft its owner can still edit — a terse
-          inline flag, with the full caveat on hover, before anyone shares a link
-          whose content may still change. */}
-      {state === "detected" && (
-        <span
-          className="text-[10px] text-amber-400/80 cursor-default"
-          title="Machine-detected — its owner can still edit it, so this link's content may change."
-        >
-          editable draft
+      {/* A detection is an editable draft, so a share/copy arms on the first
+          click; this neutral nudge (site DA, not a warning colour) asks for the
+          confirming re-click. */}
+      {armed && (
+        <span className="text-[10px] text-neutral-400">
+          Draft — click again to {armed === "copy" ? "copy" : "share"}
         </span>
       )}
       <button
         type="button"
         onClick={onCopy}
-        className={SHARE_BUTTON}
-        title={copied ? "Link copied" : "Copy link"}
+        className={`${SHARE_BUTTON}${armed === "copy" ? " bg-neutral-800 ring-1 ring-neutral-500" : ""}`}
+        title={
+          armed === "copy"
+            ? "Click again to copy this draft link"
+            : copied
+              ? "Link copied"
+              : "Copy link"
+        }
       >
         {copied ? <Check size={15} /> : <Copy size={15} />}
         {/* sr-only name + aria-live: a bare icon needs an accessible label, and
             a label change isn't announced reliably without the live region. */}
         <span className="sr-only" aria-live="polite">
-          {copied ? "Link copied" : "Copy link"}
+          {copied
+            ? "Link copied"
+            : armed === "copy"
+              ? "Click again to copy draft"
+              : "Copy link"}
         </span>
       </button>
-      <button type="button" onClick={onShareX} className={SHARE_BUTTON} title="Share on X">
+      <button
+        type="button"
+        onClick={onShareX}
+        className={`${SHARE_BUTTON}${armed === "share" ? " bg-neutral-800 ring-1 ring-neutral-500" : ""}`}
+        title={armed === "share" ? "Click again to share this draft" : "Share on X"}
+      >
         <XLogo size={14} />
-        <span className="sr-only">Share on X</span>
+        <span className="sr-only">
+          {armed === "share" ? "Click again to share draft" : "Share on X"}
+        </span>
       </button>
     </div>
   );

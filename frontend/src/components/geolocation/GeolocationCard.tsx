@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ExternalLink, MapPin } from "lucide-react";
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import { TAG_CHIP, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { formatDate } from "@/lib/format";
@@ -86,7 +86,7 @@ export default function GeolocationCard({
             {geo.title}
           </p>
           <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-            {geo.state && <DetectedBadge state={geo.state} />}
+            {geo.state && <StatusBadge state={geo.state} />}
             {conflictTags.slice(0, 1).map((t) => (
               <span
                 key={t.id}
@@ -149,7 +149,7 @@ export default function GeolocationCard({
 
       <div className="flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {geo.state && <DetectedBadge state={geo.state} />}
+          {geo.state && <StatusBadge state={geo.state} />}
           {conflictTags.map((t) => (
             <span
               key={t.id}
