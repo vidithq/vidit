@@ -7,9 +7,6 @@ import { HelpCircle } from "lucide-react";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
 
-// Matches `max-w-xs` below — used to clamp the portaled tooltip into the viewport.
-const TOOLTIP_MAX_WIDTH = 320;
-
 /**
  * A `?` help affordance next to a field or section: surfaces a one-line
  * explanation on hover / focus, pinned on click (touch devices don't hover),
@@ -64,14 +61,28 @@ export default function FieldHelp({
     closeTimer.current = setTimeout(() => setHovered(false), 80);
   };
 
-  // Position the portaled tooltip under the icon, clamped into the viewport.
-  // ``useEffect`` (not layout) keeps it SSR-safe; the tooltip only renders once
-  // ``coords`` is set, so it appears already positioned, not at 0,0.
+  // Position the portaled tooltip, clamped into the viewport on every edge so it
+  // can never be truncated. The tooltip first renders hidden (so it is
+  // measurable); this effect then places it under the icon, flips it above when
+  // it would overflow the bottom, and clamps left/right against its real width.
+  // ``useEffect`` (not layout) keeps it SSR-safe; hidden-until-measured means no
+  // flash at 0,0.
   useEffect(() => {
-    if (!open || !buttonRef.current) return;
-    const r = buttonRef.current.getBoundingClientRect();
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - TOOLTIP_MAX_WIDTH - 8));
-    setCoords({ top: r.bottom + 6, left });
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const b = buttonRef.current?.getBoundingClientRect();
+    const tip = tooltipRef.current?.getBoundingClientRect();
+    if (!b || !tip) return;
+    const margin = 8;
+    const left = Math.max(margin, Math.min(b.left, window.innerWidth - tip.width - margin));
+    let top = b.bottom + 6;
+    if (top + tip.height > window.innerHeight - margin) {
+      const above = b.top - tip.height - 6;
+      top = above >= margin ? above : Math.max(margin, window.innerHeight - tip.height - margin);
+    }
+    setCoords({ top, left });
   }, [open]);
 
   // While open: dismiss on outside click (the portaled tooltip counts as inside),
@@ -145,7 +156,6 @@ export default function FieldHelp({
         <HelpCircle size={size} strokeWidth={1.8} />
       </button>
       {open &&
-        coords &&
         createPortal(
           <span
             ref={tooltipRef}
@@ -153,7 +163,14 @@ export default function FieldHelp({
             id={tooltipId}
             onMouseEnter={cancelClose}
             onMouseLeave={() => setHovered(false)}
-            style={{ position: "fixed", top: coords.top, left: coords.left }}
+            // Hidden until the effect has measured + placed it (see above), so it
+            // never flashes at 0,0 and is never truncated at a viewport edge.
+            style={{
+              position: "fixed",
+              top: coords?.top ?? 0,
+              left: coords?.left ?? 0,
+              visibility: coords ? "visible" : "hidden",
+            }}
             className="z-[2000] w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg"
           >
             {text}
