@@ -1,7 +1,7 @@
 import { apiFetch } from "./api";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
-import type { GeolocationDetail, TagCategory } from "@/types";
+import type { GeolocationDetail, GeolocationState, TagCategory } from "@/types";
 
 /** A required field a create/edit form is still missing. `key` drives the
  *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
@@ -22,6 +22,17 @@ export type MissingFieldKey =
 export interface MissingField {
   key: MissingFieldKey;
   label: string;
+}
+
+/** Whether a row's source renders as the inert "synthetic" placeholder instead
+ *  of its real link. Demo rows carry a non-resolving `source_url`, so it's
+ *  hidden. A `detected` row is the exception: its source IS its provenance post
+ *  (the imported tweet), a realistic link worth showing even in demo data. */
+export function sourceIsSynthetic(g: {
+  is_demo: boolean;
+  state: GeolocationState;
+}): boolean {
+  return g.is_demo && g.state !== "detected";
 }
 
 /** Page size for the owner review queue. Matches the backend default

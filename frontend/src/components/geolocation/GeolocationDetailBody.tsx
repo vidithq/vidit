@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { GeolocationDetail } from "@/types";
 import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
+import { sourceIsSynthetic } from "@/lib/geolocations";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
 import StatusBadge from "@/components/geolocation/StatusBadge";
@@ -191,14 +192,14 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           Source <FieldHelp concept="source_url" />
         </span>
         <SourceLabel
-          isDemo={geo.is_demo}
+          isDemo={sourceIsSynthetic(geo)}
           url={geo.source_url}
           variant="link"
           maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
           className={compact ? "ml-4" : "text-sm ml-4"}
         />
       </div>
-      {/* The post a detection was imported from — distinct from Source (the
+      {/* The post a detection was imported from, distinct from Source (the
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
         <div className={row}>
@@ -207,10 +208,11 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             <FieldHelp concept="detected_from" />
           </span>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
-              host (and shows "synthetic" for demo rows), so the two provenance
-              rows read alike rather than one host-reduced, one truncated-full. */}
+              host, so the two provenance rows read alike rather than one
+              host-reduced, one truncated-full. A detected row's provenance link
+              shows even in demo data (see sourceIsSynthetic). */}
           <SourceLabel
-            isDemo={geo.is_demo}
+            isDemo={sourceIsSynthetic(geo)}
             url={geo.detected_from_url}
             variant="link"
             maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}

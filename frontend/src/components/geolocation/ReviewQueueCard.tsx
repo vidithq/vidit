@@ -11,7 +11,7 @@ import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
-import { rejectGeolocation, validationReadiness } from "@/lib/geolocations";
+import { rejectGeolocation, sourceIsSynthetic, validationReadiness } from "@/lib/geolocations";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { GeolocationDetail } from "@/types";
 
@@ -90,7 +90,7 @@ export default function ReviewQueueCard({
             <span className="inline-flex items-center gap-1">
               from
               <SourceLabel
-                isDemo={geo.is_demo}
+                isDemo={sourceIsSynthetic(geo)}
                 url={geo.detected_from_url}
                 variant="link"
                 maxWidthClass="max-w-[160px]"
