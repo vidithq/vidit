@@ -84,7 +84,7 @@ export function DetailsFields({
             required={eventDateRequired}
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            className={`${FORM_INPUT}${eventDateInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
+            className={`${FORM_INPUT}${eventDate ? " has-value" : ""}${eventDateInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
           />
         </div>
         <div className="space-y-1.5">
@@ -96,7 +96,7 @@ export function DetailsFields({
             type="time"
             value={eventTime}
             onChange={(e) => setEventTime(e.target.value)}
-            className={FORM_INPUT}
+            className={`${FORM_INPUT}${eventTime ? " has-value" : ""}`}
           />
         </div>
       </div>
@@ -111,7 +111,7 @@ export function DetailsFields({
           required
           value={sourcePostedAt}
           onChange={(e) => setSourcePostedAt(e.target.value)}
-          className={`${FORM_INPUT}${sourcePostedAtInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
+          className={`${FORM_INPUT}${sourcePostedAt ? " has-value" : ""}${sourcePostedAtInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
         />
       </div>
 
