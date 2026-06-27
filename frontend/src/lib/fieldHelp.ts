@@ -50,7 +50,7 @@ export const FIELD_HELP = {
     label: "What is the submitted date?",
   },
   status: {
-    text: "Human: submitted or vouched for by a person — not independently verified. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
+    text: "Human: submitted or vouched for by a person, not independently verified. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
     label: "What does the status mean?",
   },
   bounty_status: {
@@ -84,7 +84,7 @@ export const FIELD_HELP = {
   },
   // Edit-form actions — the two buttons do different things, spelled out here.
   action_save_draft: {
-    text: "Saves your edits and keeps this a draft. It stays unpublished and you can keep editing — nothing is shown publicly yet.",
+    text: "Saves your edits and keeps this a draft. It stays unpublished and you can keep editing. Nothing is shown publicly yet.",
     label: "What does Save changes do?",
   },
   action_validate: {
