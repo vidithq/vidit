@@ -50,7 +50,7 @@ export const FIELD_HELP = {
     label: "What is the submitted date?",
   },
   status: {
-    text: "Validated: submitted or vouched for by a human. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
+    text: "Human: submitted or vouched for by a person — not independently verified. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
     label: "What does the status mean?",
   },
   bounty_status: {
