@@ -9,6 +9,7 @@ import { bountyListPath } from "@/lib/bounties";
 import { formatDate, safeHostname } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { BountyListItem, BountyStatus } from "@/types";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
@@ -16,9 +17,6 @@ import {
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
   PRIMARY_BUTTON,
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
   TAG_CHIP,
   TAPPABLE_HOVER,
 } from "@/components/ui/styles";
@@ -216,7 +214,7 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
           )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <StatusBadge status={bounty.status} />
+          <BountyStatusBadge status={bounty.status} />
           {bounty.claimer_count > 0 && (
             <span
               className="inline-flex items-center gap-1 text-[10px] text-neutral-400"
@@ -239,20 +237,5 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
         </div>
       </div>
     </Link>
-  );
-}
-
-function StatusBadge({ status }: { status: BountyStatus }) {
-  const classes: Record<BountyStatus, string> = {
-    open: STATUS_PILL_ACTIVE,
-    fulfilled: STATUS_PILL_FULFILLED,
-    closed: STATUS_PILL_CLOSED,
-  };
-  return (
-    <span
-      className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold ${classes[status]}`}
-    >
-      {status}
-    </span>
   );
 }

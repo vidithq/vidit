@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
-import type { GeolocationState } from "@/types";
+import type { GeolocationStatus } from "@/types";
 
 // Ghost orange, icon-only — mirrors the sidebar's icon shortcuts (square,
 // hover-bg) so share reads as a light affordance, not a primary CTA competing
@@ -21,7 +21,7 @@ interface ShareButtonsProps {
   lng: number;
   /** A `detected` row is a machine draft its owner can still edit, so a shared
    *  link's content may change — surfaced as a caveat next to the share row. */
-  state: GeolocationState;
+  status: GeolocationStatus;
 }
 
 // Inline X logo — lucide doesn't ship one, and the legacy Twitter bird reads
@@ -47,7 +47,7 @@ export default function ShareButtons({
   eventDate,
   lat,
   lng,
-  state,
+  status,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
   // A `detected` link points at an editable draft, so sharing it asks for a
@@ -67,7 +67,7 @@ export default function ShareButtons({
   }, []);
 
   // Validated links act on the first click; a draft arms first, then acts.
-  const needsConfirm = state === "detected";
+  const needsConfirm = status === "detected";
   const arm = (which: "copy" | "share") => {
     setArmed(which);
     if (armResetTimer.current) clearTimeout(armResetTimer.current);

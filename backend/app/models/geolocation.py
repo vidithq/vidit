@@ -19,9 +19,9 @@ from app.database import Base
 # The alias is the single source of truth for the value domain: the ORM column,
 # the Read schemas, and (via the OpenAPI spec) the generated frontend type all
 # derive from it, so adding a state is a one-line change here.
-GeolocationState = Literal["submitted", "detected"]
-STATE_SUBMITTED: GeolocationState = "submitted"
-STATE_DETECTED: GeolocationState = "detected"
+GeolocationStatus = Literal["submitted", "detected"]
+STATUS_SUBMITTED: GeolocationStatus = "submitted"
+STATUS_DETECTED: GeolocationStatus = "detected"
 
 # Field-length ceilings for the create / edit multipart forms, kept next to the
 # columns so a Form(...) ``max_length`` can't drift from them. ``TITLE`` is the
@@ -67,11 +67,11 @@ class Geolocation(Base):
     detected_post_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Lifecycle state: ``submitted`` (default) vs ``detected`` (machine path).
-    # See ``STATE_*``. server_default so every non-machine insert stays correct
-    # without setting it; the machine path passes ``state=STATE_DETECTED``.
-    state: Mapped[GeolocationState] = mapped_column(
-        String(20), nullable=False, default=STATE_SUBMITTED, server_default=text("'submitted'")
+    # Lifecycle status: ``submitted`` (default) vs ``detected`` (machine path).
+    # See ``STATUS_*``. server_default so every non-machine insert stays correct
+    # without setting it; the machine path passes ``status=STATUS_DETECTED``.
+    status: Mapped[GeolocationStatus] = mapped_column(
+        String(20), nullable=False, default=STATUS_SUBMITTED, server_default=text("'submitted'")
     )
     # The post a machine detection was imported from — the assemble idempotency
     # anchor and a provenance link, distinct from ``source_url`` (footage origin).

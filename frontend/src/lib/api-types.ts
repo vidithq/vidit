@@ -845,7 +845,7 @@ export interface paths {
          *     The owner posts the whole form (title, coordinate, source URL, dates, proof,
          *     tags, and the source media: ``files`` added, ``remove_media_ids`` dropped),
          *     and on success the row is written and frozen as ``submitted``. Only
-         *     ``detected_from_url`` (provenance) and ``state`` carry no field. Blocked until
+         *     ``detected_from_url`` (provenance) and ``status`` carry no field. Blocked until
          *     the evidence floor is met (at least one media and the ``conflict`` +
          *     ``capture_source`` tags, 400 otherwise). Off ``detected`` → 409. Soft-deleted
          *     rows read as 404.
@@ -1599,10 +1599,10 @@ export interface components {
             /** Lng */
             lng: number;
             /**
-             * State
+             * Status
              * @enum {string}
              */
-            state: "submitted" | "detected";
+            status: "submitted" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1653,10 +1653,10 @@ export interface components {
             /** Source Url */
             source_url: string;
             /**
-             * State
+             * Status
              * @enum {string}
              */
-            state: "submitted" | "detected";
+            status: "submitted" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1878,10 +1878,10 @@ export interface components {
             /** Lng */
             lng: number;
             /**
-             * State
+             * Status
              * @enum {string}
              */
-            state: "submitted" | "detected";
+            status: "submitted" | "detected";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */

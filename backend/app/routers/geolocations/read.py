@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
@@ -306,7 +306,7 @@ def list_points(
         ST_X(Geolocation.location).label("lng"),
         Geolocation.event_date,
         Geolocation.created_at,
-        Geolocation.state,
+        Geolocation.status,
     )
     q = _apply_filters(
         q,
@@ -334,7 +334,7 @@ def list_points(
             float(r.lng),
             r.event_date.isoformat(),
             r.created_at.date().isoformat(),
-            1 if r.state == STATE_DETECTED else 0,
+            1 if r.status == STATUS_DETECTED else 0,
         ]
         for r in rows
     ]
@@ -405,7 +405,7 @@ def list_geolocations(
             lng=lng,
             event_date=geo.event_date,
             is_demo=geo.is_demo,
-            state=geo.state,
+            status=geo.status,
             author=geo.author,
             tags=geo.tags,
         )
@@ -444,7 +444,7 @@ def list_detections(
 
     detected = (
         Geolocation.author_id == current_user.id,
-        Geolocation.state == STATE_DETECTED,
+        Geolocation.status == STATUS_DETECTED,
         Geolocation.deleted_at.is_(None),
     )
 

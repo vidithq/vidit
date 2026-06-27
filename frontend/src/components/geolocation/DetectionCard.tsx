@@ -77,7 +77,7 @@ export default function DetectionCard({
           >
             {geo.title}
           </Link>
-          <StatusBadge state={geo.state} />
+          <StatusBadge status={geo.status} />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">

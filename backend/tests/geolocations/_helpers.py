@@ -34,7 +34,7 @@ def _make_geo(
     source_posted_at: datetime | None = None,
     deleted: bool = False,
     tags: list[Tag] | None = None,
-    state: str | None = None,
+    status: str | None = None,
     detected_from_url: str | None = None,
     source_url: str = "https://example.com/source",
     with_media: bool = False,
@@ -47,8 +47,8 @@ def _make_geo(
         event_date=event_date or date(2026, 5, 1),
         source_posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
     )
-    if state is not None:
-        geo.state = state
+    if status is not None:
+        geo.status = status
     if detected_from_url is not None:
         geo.detected_from_url = detected_from_url
     if deleted:

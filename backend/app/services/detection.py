@@ -22,7 +22,7 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
@@ -174,7 +174,7 @@ async def _persist_one(
             event_date=dto.event_date,
             source_posted_at=dto.posted_at,
             detected_post_at=dto.posted_at,
-            state=STATE_DETECTED,
+            status=STATUS_DETECTED,
             detected_from_url=dto.detected_from_url,
             is_demo=is_demo,
         )

@@ -39,11 +39,11 @@ export interface Tag {
   category: TagCategory;
 }
 
-/** Lifecycle state. ``submitted`` = a person submitted it (the norm: via the
+/** Lifecycle status. ``submitted`` = a person submitted it (the norm: via the
  *  form, or by submitting a reviewed detection; not an independent-verification
  *  claim); ``detected`` = machine output, rendered marked everywhere until its
  *  owner submits it. */
-export type GeolocationState = components["schemas"]["GeolocationRead"]["state"];
+export type GeolocationStatus = components["schemas"]["GeolocationRead"]["status"];
 
 interface GeolocationListItem {
   id: string;
@@ -52,7 +52,7 @@ interface GeolocationListItem {
   lng: number;
   event_date: string;
   is_demo: boolean;
-  state: GeolocationState;
+  status: GeolocationStatus;
   author: Author;
   tags: Tag[];
 }
@@ -256,7 +256,7 @@ export interface SearchGeolocationHit {
   lng: number;
   event_date: string;
   is_demo: boolean;
-  state: GeolocationState;
+  status: GeolocationStatus;
   author: Author;
   tags: Tag[];
 }

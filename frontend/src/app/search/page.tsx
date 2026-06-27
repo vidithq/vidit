@@ -324,7 +324,7 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
           <Highlighted value={hit.title_highlight} />
         </h3>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <StatusBadge state={hit.state} />
+          <StatusBadge status={hit.status} />
           <span className="inline-flex items-center gap-1">
             <UserIcon size={11} />@{hit.author.username}
             <TrustBadge

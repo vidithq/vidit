@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
-from app.models.geolocation import STATE_DETECTED, STATE_SUBMITTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
@@ -296,7 +296,7 @@ async def submit_detected(
     (title, coordinate, source URL, event date + time, source post time, proof,
     tags, and source media: new ``files`` added, ``remove_media_ids`` dropped),
     and on success the row becomes ``submitted`` and frozen. ``detected_from_url``
-    (the provenance anchor) and ``state`` carry no form field.
+    (the provenance anchor) and ``status`` carry no form field.
 
     The field updates, media removals, new uploads, and the state flip commit in a
     single transaction; a failed upload rolls everything back and sweeps the keys
@@ -313,7 +313,7 @@ async def submit_detected(
     the floor is unmet, :class:`TooManyFilesError` over the file-count cap, or a
     file-validation error. Returns the refreshed ``submitted`` row.
     """
-    if geo.state != STATE_DETECTED:
+    if geo.status != STATUS_DETECTED:
         raise GeolocationStateError("Only detected geolocations can be submitted")
 
     validate_coordinates(lat, lng)
@@ -348,7 +348,7 @@ async def submit_detected(
     if proof_data is not None:
         geo.proof = proof_data
     geo.tags = effective_tags
-    geo.state = STATE_SUBMITTED
+    geo.status = STATUS_SUBMITTED
 
     # Drop the media flagged for removal: snapshot their S3 keys, delete the rows
     # (pending; committed atomically with the field updates + uploads below).
@@ -397,7 +397,7 @@ def reject_detected(db: Session, *, geo: Geolocation) -> None:
     Raises :class:`GeolocationStateError` (409) off ``detected``. Commits,
     invalidates the points cache.
     """
-    if geo.state != STATE_DETECTED:
+    if geo.status != STATUS_DETECTED:
         raise GeolocationStateError("Only detected geolocations can be rejected")
     geo.deleted_at = datetime.now(UTC)
     db.commit()

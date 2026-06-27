@@ -67,7 +67,7 @@ export default function EditGeolocationPage() {
     );
   }
 
-  if (geo.state !== "detected") {
+  if (geo.status !== "detected") {
     return (
       <PageShell back title="Edit detection">
         <p className="text-sm text-neutral-400">

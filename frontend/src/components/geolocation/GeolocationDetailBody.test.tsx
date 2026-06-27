@@ -15,7 +15,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     is_demo: false,
-    state: "submitted",
+    status: "submitted",
     detected_from_url: null,
     detected_post_at: null,
     author: {
@@ -145,7 +145,7 @@ describe("GeolocationDetailBody", () => {
     render(
       <GeolocationDetailBody
         geo={geoFixture({
-          state: "detected",
+          status: "detected",
           detected_from_url: "https://x.com/ana/status/123",
         })}
         variant="page"

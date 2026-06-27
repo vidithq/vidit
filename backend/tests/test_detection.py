@@ -18,7 +18,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.database import SessionLocal
-from app.models.geolocation import STATE_DETECTED, STATE_SUBMITTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -98,7 +98,7 @@ async def test_assemble_persists_detected_row(db, owner):
     assert outcome.skipped == 0 and outcome.recreated == 0
 
     geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
-    assert geo.state == STATE_DETECTED
+    assert geo.status == STATUS_DETECTED
     assert geo.detected_from_url == "https://x.com/own/status/1"
     assert geo.source_url == "https://x.com/own/status/1"
     assert geo.event_date == date(2025, 11, 12)
@@ -159,7 +159,7 @@ async def test_submitted_pair_is_skipped(db, owner):
         source_url="https://example.com/footage",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
-        state=STATE_SUBMITTED,
+        status=STATUS_SUBMITTED,
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)
@@ -178,7 +178,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
 
     geos = db.query(Geolocation).filter(Geolocation.author_id == owner.id).all()
     assert len(geos) == 6
-    assert all(g.state == STATE_DETECTED for g in geos)
+    assert all(g.status == STATUS_DETECTED for g in geos)
     assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
     assert all(g.proof and g.proof["content"] for g in geos)
 

@@ -165,7 +165,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         <span className={`${label} inline-flex items-center gap-1`}>
           Status <FieldHelp concept="status" />
         </span>
-        <StatusBadge state={geo.state} />
+        <StatusBadge status={geo.status} />
       </div>
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>

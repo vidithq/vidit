@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.geolocation import GeolocationState
+from app.models.geolocation import GeolocationStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -42,8 +42,8 @@ class GeolocationRead(BaseModel):
     updated_at: datetime
     is_demo: bool
     # ``submitted`` (human submits + bounty fulfilments) vs ``detected``
-    # (machine-produced, rendered marked). See ``models.geolocation.STATE_*``.
-    state: GeolocationState
+    # (machine-produced, rendered marked). See ``models.geolocation.STATUS_*``.
+    status: GeolocationStatus
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None = None
@@ -65,8 +65,8 @@ class GeolocationList(BaseModel):
     lng: float
     event_date: date
     is_demo: bool
-    # See ``GeolocationRead.state``; a list card marks ``detected`` too.
-    state: GeolocationState
+    # See ``GeolocationRead.status``; a list card marks ``detected`` too.
+    status: GeolocationStatus
     author: AuthorRef
     tags: list[TagRead]
 

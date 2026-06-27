@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.geolocation import STATE_DETECTED, STATE_SUBMITTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -95,7 +95,7 @@ def _detected(db, author, **kwargs):
     return _make_geo(
         db,
         author=author,
-        state=STATE_DETECTED,
+        status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
         source_url="https://x.com/a/status/1",
         **kwargs,
@@ -202,12 +202,12 @@ def test_submit_writes_fields_and_freezes(db, author, conflict_tag, capture_sour
     assert body["source_posted_at"].startswith("2026-06-30T07:45")
     assert {t["id"] for t in body["tags"]} == {str(conflict_tag.id), str(capture_source_tag.id)}
     # Submit freezes it: a detected row becomes submitted.
-    assert body["state"] == "submitted"
+    assert body["status"] == "submitted"
 
     db.expire_all()
     refreshed = db.query(Geolocation).filter(Geolocation.id == geo.id).one()
     assert refreshed.title == "Completed title"
-    assert refreshed.state == STATE_SUBMITTED
+    assert refreshed.status == STATUS_SUBMITTED
 
 
 def test_submit_applies_source_url_but_ignores_provenance_and_state(
@@ -224,7 +224,7 @@ def test_submit_applies_source_url_but_ignores_provenance_and_state(
             capture_source_tag,
             source_url="https://example.com/new-source",
             detected_from_url="https://evil.example/swap",  # ignored, no field
-            state="detected",  # ignored, no field
+            status="detected",  # ignored, no field
         ),
         headers=login_as(client, author),
     )
@@ -232,7 +232,7 @@ def test_submit_applies_source_url_but_ignores_provenance_and_state(
     body = response.json()
     assert body["source_url"] == "https://example.com/new-source"  # editable
     assert body["detected_from_url"] == "https://x.com/a/status/1"  # immutable
-    assert body["state"] == "submitted"  # set by submit, not the ignored field
+    assert body["status"] == "submitted"  # set by submit, not the ignored field
 
 
 def test_submit_source_posted_at_round_trips(db, author, conflict_tag, capture_source_tag):
@@ -307,7 +307,7 @@ def test_submit_freezes_against_resubmit(db, author, conflict_tag, capture_sourc
         headers=login_as(client, author),
     )
     assert ok.status_code == 200
-    assert ok.json()["state"] == "submitted"
+    assert ok.json()["status"] == "submitted"
 
     frozen = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",

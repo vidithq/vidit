@@ -185,7 +185,7 @@ async def submit_geolocation(
     The owner posts the whole form (title, coordinate, source URL, dates, proof,
     tags, and the source media: ``files`` added, ``remove_media_ids`` dropped),
     and on success the row is written and frozen as ``submitted``. Only
-    ``detected_from_url`` (provenance) and ``state`` carry no field. Blocked until
+    ``detected_from_url`` (provenance) and ``status`` carry no field. Blocked until
     the evidence floor is met (at least one media and the ``conflict`` +
     ``capture_source`` tags, 400 otherwise). Off ``detected`` → 409. Soft-deleted
     rows read as 404.

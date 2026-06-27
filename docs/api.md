@@ -348,7 +348,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
     "lng": 37.456,
     "event_date": "2026-03-15",
     "is_demo": false,
-    "state": "submitted",
+    "status": "submitted",
     "author": {
       "id": "uuid",
       "username": "kalush",
@@ -364,13 +364,13 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 ]
 ```
 
-`state` is `submitted` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
+`status` is `submitted` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
 
 ---
 
 ### `GET /geolocations/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `added_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a submitted row, a flag, not the state string, to keep the no-LIMIT catalog payload small.
+Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `added_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a submitted row, a flag, not the status string, to keep the no-LIMIT catalog payload small.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -563,7 +563,7 @@ Full detail for a single geolocation.
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
-  "state": "submitted",
+  "status": "submitted",
   "detected_from_url": null,
   "detected_post_at": null,
   "author": {
@@ -662,7 +662,7 @@ The owner "Detections" queue: the caller's machine-`detected` geolocations await
 **Response 200:** each item is the same shape as `GET /geolocations/{id}`.
 ```json
 {
-  "items": [ { "id": "uuid", "state": "detected", "media": [], "tags": [] } ],
+  "items": [ { "id": "uuid", "status": "detected", "media": [], "tags": [] } ],
   "total": 12,
   "page": 1,
   "per_page": 20
@@ -697,9 +697,9 @@ Owner-only. Submit a machine-`detected` geolocation: write the owner's edits and
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
 | `files` | file[] | New source media to add (same allowlist + size limits as create) |
 
-`detected_from_url` (the provenance anchor, the post the detection was imported from) and `state` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a human submit meets at create is satisfied by the post-submit state: **at least one media** (kept + new) and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here; the owner adds the tags as part of the submit.
+`detected_from_url` (the provenance anchor, the post the detection was imported from) and `status` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a human submit meets at create is satisfied by the post-submit state: **at least one media** (kept + new) and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here; the owner adds the tags as part of the submit.
 
-**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "submitted"`).
+**Response 200:** same shape as `GET /geolocations/{id}` (now `"status": "submitted"`).
 
 **Errors:**
 | Code | Case |
@@ -977,7 +977,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
       "is_demo": false,
-      "state": "submitted",
+      "status": "submitted",
       "author": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
       "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
     }

@@ -60,7 +60,7 @@ def build_geolocation_read(
         created_at=geo.created_at,
         updated_at=geo.updated_at,
         is_demo=geo.is_demo,
-        state=geo.state,
+        status=geo.status,
         detected_from_url=geo.detected_from_url,
         detected_post_at=geo.detected_post_at,
         author=geo.author,

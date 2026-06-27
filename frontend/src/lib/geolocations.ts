@@ -1,7 +1,7 @@
 import { apiFetch } from "./api";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
-import type { GeolocationDetail, GeolocationState, TagCategory } from "@/types";
+import type { GeolocationDetail, GeolocationStatus, TagCategory } from "@/types";
 
 /** A required field a create/edit form is still missing. `key` drives the
  *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
@@ -30,9 +30,9 @@ export interface MissingField {
  *  (the imported tweet), a realistic link worth showing even in demo data. */
 export function sourceIsSynthetic(g: {
   is_demo: boolean;
-  state: GeolocationState;
+  status: GeolocationStatus;
 }): boolean {
-  return g.is_demo && g.state !== "detected";
+  return g.is_demo && g.status !== "detected";
 }
 
 /** Page size for the owner Detections queue. Matches the backend default
@@ -58,7 +58,7 @@ export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string 
  * mirroring create. The form posts the whole state; the server writes it and
  * flips the row to `submitted` (frozen) atomically. New media ride in `files`;
  * existing media are dropped via `remove_media_ids`. Only `detected_from_url`
- * (the provenance anchor) and `state` carry no field. A `detected` row is
+ * (the provenance anchor) and `status` carry no field. A `detected` row is
  * immutable machine output until this submit, the only write to it.
  */
 export interface GeolocationEditInput {

@@ -1,5 +1,5 @@
 import { Bot, User } from "lucide-react";
-import type { GeolocationState } from "@/types";
+import type { GeolocationStatus } from "@/types";
 
 /**
  * The geolocation's lifecycle status, shown explicitly for **both** states as a
@@ -16,13 +16,13 @@ import type { GeolocationState } from "@/types";
  * Shown on cards, the detail page, search results, and the Detections queue.
  */
 export default function StatusBadge({
-  state,
+  status,
   className = "",
 }: {
-  state: GeolocationState;
+  status: GeolocationStatus;
   className?: string;
 }) {
-  if (state === "detected") {
+  if (status === "detected") {
     return (
       <span
         title="Machine-detected from a tweet, shown until the owner submits it"

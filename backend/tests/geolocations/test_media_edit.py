@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.geolocation import STATE_DETECTED
+from app.models.geolocation import STATUS_DETECTED
 from app.models.media import Media
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
@@ -23,7 +23,7 @@ def _detected(db, author, **kwargs):
     return _make_geo(
         db,
         author=author,
-        state=STATE_DETECTED,
+        status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
         source_url="https://x.com/a/status/1",
         **kwargs,
@@ -68,7 +68,7 @@ def test_submit_adds_media(db, author, conflict_tag, capture_source_tag):
     body = response.json()
     assert len(body["media"]) == 1
     assert body["media"][0]["media_type"] == "image"
-    assert body["state"] == "submitted"
+    assert body["status"] == "submitted"
     db.expire_all()
     assert db.query(Media).filter(Media.geolocation_id == geo.id).count() == 1
 

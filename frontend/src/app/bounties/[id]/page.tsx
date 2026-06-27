@@ -20,15 +20,10 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
-import type { BountyDetail, BountyStatus } from "@/types";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import type { BountyDetail } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import {
-  PRIMARY_BUTTON,
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
-  TAG_CHIP,
-} from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -216,7 +211,7 @@ export default function BountyDetailPage() {
                 Status{" "}
                 <FieldHelp concept="bounty_status" />
               </span>
-              <StatusBadge status={bounty.status} />
+              <BountyStatusBadge status={bounty.status} />
             </div>
             {/* The dates read as one block — event → source → posted. */}
             {bounty.event_date && (
@@ -384,20 +379,5 @@ export default function BountyDetailPage() {
           </div>
         )}
     </PageShell>
-  );
-}
-
-function StatusBadge({ status }: { status: BountyStatus }) {
-  const classes: Record<BountyStatus, string> = {
-    open: STATUS_PILL_ACTIVE,
-    fulfilled: STATUS_PILL_FULFILLED,
-    closed: STATUS_PILL_CLOSED,
-  };
-  return (
-    <span
-      className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold ${classes[status]}`}
-    >
-      {status}
-    </span>
   );
 }

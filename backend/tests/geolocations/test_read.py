@@ -15,7 +15,7 @@ import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
@@ -247,7 +247,7 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
         source_url="https://x.com/a/status/1",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
-        state=STATE_DETECTED,
+        status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
     )
     db.add(geo)
@@ -261,13 +261,13 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
 
     # Detail — state + the distinct detected_from_url provenance link.
     detail = client.get(f"/api/v1/geolocations/{geo.id}").json()
-    assert detail["state"] == "detected"
+    assert detail["status"] == "detected"
     assert detail["detected_from_url"] == "https://x.com/a/status/1"
 
     # List card — carries state too.
     listing = client.get("/api/v1/geolocations").json()
     item = next(i for i in listing if i["id"] == str(geo.id))
-    assert item["state"] == "detected"
+    assert item["status"] == "detected"
 
 
 def test_points_cache_miss_then_hit(db, author):

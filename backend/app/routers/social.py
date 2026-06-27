@@ -34,7 +34,7 @@ def get_timeline(
             lng=lng,
             event_date=geo.event_date,
             is_demo=geo.is_demo,
-            state=geo.state,
+            status=geo.status,
             author=geo.author,
             tags=geo.tags,
         )

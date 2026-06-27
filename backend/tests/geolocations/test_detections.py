@@ -9,7 +9,7 @@ in ``conftest.py``; ``client`` / ``_make_geo`` in ``_helpers.py``.
 
 from __future__ import annotations
 
-from app.models.geolocation import STATE_DETECTED, STATE_SUBMITTED
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -21,7 +21,7 @@ def _detected(db, author, **kwargs):
     return _make_geo(
         db,
         author=author,
-        state=STATE_DETECTED,
+        status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
         source_url="https://x.com/a/status/1",
         **kwargs,
@@ -45,7 +45,7 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
     soft-deleted one, and not another analyst's detection; the endpoint scopes
     to ``current_user`` regardless of any URL username."""
     mine = _detected(db, author)
-    _make_geo(db, author=author, state=STATE_SUBMITTED)  # submitted, excluded
+    _make_geo(db, author=author, status=STATUS_SUBMITTED)  # submitted, excluded
     _detected(db, author, deleted=True)  # soft-deleted — excluded
     _detected(db, second_user)  # another analyst — excluded
 
@@ -54,7 +54,7 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
     body = response.json()
     assert body["total"] == 1
     assert [item["id"] for item in body["items"]] == [str(mine.id)]
-    assert body["items"][0]["state"] == "detected"
+    assert body["items"][0]["status"] == "detected"
 
 
 def test_detections_includes_media_and_tags(db, author, conflict_tag, capture_source_tag):
