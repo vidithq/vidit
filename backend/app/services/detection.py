@@ -94,7 +94,7 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     in practice, but the explicit ``author_id`` filter makes the invariant hold
     even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
     every row sharing ``detected_from_url`` (including soft-deleted) and matches
-    the coordinate to ``_COORD_PLACES``. A live match (validated or detected)
+    the coordinate to ``_COORD_PLACES``. A live match (submitted or detected)
     wins → ``skip``; only a soft-deleted match → ``recreate``; no match →
     ``create``.
     """

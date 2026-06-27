@@ -35,14 +35,13 @@ export function sourceIsSynthetic(g: {
   return g.is_demo && g.state !== "detected";
 }
 
-/** Page size for the owner review queue. Matches the backend default
+/** Page size for the owner Detections queue. Matches the backend default
  *  (`per_page=20`, capped at 100). */
-const REVIEW_QUEUE_PER_PAGE = 20;
+const DETECTIONS_PER_PAGE = 20;
 
-/** Shape of `GET /geolocations/review-queue` — full-detail items (media +
- *  tags) so the queue renders the evidence and computes validation-readiness
- *  without a per-row round-trip. Mirrors the backend
- *  `PaginatedGeolocationDetails`. */
+/** Shape of `GET /geolocations/detections`: full-detail items (media + tags) so
+ *  the queue renders the evidence and computes submit-readiness without a
+ *  per-row round-trip. Mirrors the backend `PaginatedGeolocationDetails`. */
 export interface PaginatedGeolocationDetails {
   items: GeolocationDetail[];
   total: number;
@@ -50,15 +49,17 @@ export interface PaginatedGeolocationDetails {
   per_page: number;
 }
 
-export function reviewQueuePath(page = 1, perPage = REVIEW_QUEUE_PER_PAGE): string {
-  return `/geolocations/review-queue?page=${page}&per_page=${perPage}`;
+export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string {
+  return `/geolocations/detections?page=${page}&per_page=${perPage}`;
 }
 
 /**
- * Full edit of a `detected` geolocation — `PATCH /geolocations/{id}`, multipart,
- * mirroring submit: the form posts the whole editable state, applied atomically.
- * New media ride in `files`; existing media are dropped via `remove_media_ids`.
- * Only `detected_from_url` (the provenance anchor) and `state` are immutable.
+ * Submit a `detected` geolocation: `POST /geolocations/{id}/submit`, multipart,
+ * mirroring create. The form posts the whole state; the server writes it and
+ * flips the row to `submitted` (frozen) atomically. New media ride in `files`;
+ * existing media are dropped via `remove_media_ids`. Only `detected_from_url`
+ * (the provenance anchor) and `state` carry no field. A `detected` row is
+ * immutable machine output until this submit, the only write to it.
  */
 export interface GeolocationEditInput {
   title: string;
@@ -80,7 +81,7 @@ export interface GeolocationEditInput {
   files: File[];
 }
 
-export function updateGeolocation(
+export function submitGeolocation(
   id: string,
   input: GeolocationEditInput
 ): Promise<GeolocationDetail> {
@@ -100,45 +101,37 @@ export function updateGeolocation(
   for (const file of input.files) {
     fd.append("files", file);
   }
-  return apiFetch<GeolocationDetail>(`/geolocations/${id}`, {
-    method: "PATCH",
+  return apiFetch<GeolocationDetail>(`/geolocations/${id}/submit`, {
+    method: "POST",
     body: fd,
   });
 }
 
-/** `detected → validated`, freezing the row. 400s if the evidence floor isn't
- *  met (see `validationReadiness`), 409 if the row isn't `detected`. */
-export function validateGeolocation(id: string): Promise<GeolocationDetail> {
-  return apiFetch<GeolocationDetail>(`/geolocations/${id}/validate`, {
-    method: "POST",
-  });
-}
-
 /** Soft-delete a `detected` row (re-importable later), distinct from the hard
- *  `DELETE`. The review queue surfaces this as "Delete" — to the owner the row
+ *  `DELETE`. The Detections queue surfaces this as "Delete"; to the owner the row
  *  just disappears; the soft/tombstone distinction only matters to the
  *  re-import idempotency on the backend. */
 export function rejectGeolocation(id: string): Promise<void> {
   return apiFetch<void>(`/geolocations/${id}/reject`, { method: "POST" });
 }
 
-export interface ValidationReadiness {
+export interface SubmitReadiness {
   isReady: boolean;
-  /** Validate-floor fields still missing — the labels shown in the queue card's
-   *  "Needs:" line. Empty when ready. */
+  /** Submit-floor fields still missing, the labels shown in the queue card's
+   *  readiness line. Empty when ready. */
   missing: string[];
 }
 
 /**
- * Whether a `detected` row would pass the review form's **Validate** gate,
- * computed client-side so the queue shows the owner exactly what's left before
- * they open it. Delegates to `missingGeolocationFields` (requireMedia +
- * requireTags) — the *same* call the Validate button makes — so the queue's
- * "Needs:" line can never drift from what validation actually enforces. (The
- * backend floor is the narrower media + `conflict` + `capture_source` tags; the
- * form adds the core fields and a proof image on top — see `missingGeolocationFields`.)
+ * Whether a `detected` row would pass the **Submit** gate, computed client-side
+ * so the Detections queue shows the owner exactly what's left before they open
+ * it. Delegates to `missingGeolocationFields` (requireMedia + requireTags), the
+ * same check the Submit button makes, so the readiness line can never drift from
+ * what submitting actually enforces. (The backend floor is the narrower media +
+ * `conflict` + `capture_source` tags; the form adds the core fields and a proof
+ * image on top, see `missingGeolocationFields`.)
  */
-export function validationReadiness(geo: {
+export function submitReadiness(geo: {
   title: string;
   lat: number;
   lng: number;
@@ -148,7 +141,7 @@ export function validationReadiness(geo: {
   proof: Record<string, unknown> | null;
   media: readonly unknown[];
   tags: readonly { category: TagCategory }[];
-}): ValidationReadiness {
+}): SubmitReadiness {
   const missing = missingGeolocationFields(
     {
       title: geo.title,
@@ -186,22 +179,20 @@ export interface GeolocationFieldsState {
 }
 
 export interface GeolocationFieldsOptions {
-  /** Require >=1 source media. False when a bounty supplies the media, or for a
-   *  partial draft save. Default true. */
+  /** Require >=1 source media. False when a bounty supplies the media. Default
+   *  true. */
   requireMedia?: boolean;
-  /** Require the conflict + capture-source tag floor. False for a partial draft
-   *  save (Save changes), true for submit + validate. Default true. */
+  /** Require the conflict + capture-source tag floor. Default true. */
   requireTags?: boolean;
 }
 
 /**
  * Every still-unmet required field for a geolocation, as `{key, label}` for
- * `IncompleteFormNotice` (the labels) and the in-form highlight (the keys) — the
- * whole list at once, not the first miss. Drives both the submit form and the
- * review/validate form (the validate floor is a superset of the save floor,
- * toggled via the options). Coordinate, media, and tag rules mirror the backend;
- * keep them in step with `validationReadiness` (the queue's inline readiness)
- * and the server submission check. Proof must carry an image (`proofHasImage`):
+ * `IncompleteFormNotice` (the labels) and the in-form highlight (the keys): the
+ * whole list at once, not the first miss. Drives the create submit form and the
+ * detection submit form. Coordinate, media, and tag rules mirror the backend;
+ * keep them in step with `submitReadiness` (the queue's inline readiness) and
+ * the server submit check. Proof must carry an image (`proofHasImage`):
  * a geolocation's proof is a source ↔ satellite cross-reference, so text alone
  * can't be audited.
  */

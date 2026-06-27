@@ -239,7 +239,7 @@ export default function BountyDetailPage() {
             </div>
             <div className="flex justify-between px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Posted <FieldHelp concept="submitted_date" />
+                Posted <FieldHelp concept="added" />
               </span>
               <span className="text-sm text-neutral-200">
                 {formatDate(bounty.created_at)}

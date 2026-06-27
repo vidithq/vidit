@@ -41,10 +41,10 @@ class GeolocationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_demo: bool
-    # ``human`` (human submits + bounty fulfilments) vs ``detected``
+    # ``submitted`` (human submits + bounty fulfilments) vs ``detected``
     # (machine-produced, rendered marked). See ``models.geolocation.STATE_*``.
     state: GeolocationState
-    # The post a machine detection was imported from — a provenance link
+    # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None = None
     # When the analyst posted this geolocation on X (the imported tweet's time);
@@ -65,7 +65,7 @@ class GeolocationList(BaseModel):
     lng: float
     event_date: date
     is_demo: bool
-    # See ``GeolocationRead.state`` — a list card marks ``detected`` too.
+    # See ``GeolocationRead.state``; a list card marks ``detected`` too.
     state: GeolocationState
     author: AuthorRef
     tags: list[TagRead]
@@ -81,12 +81,12 @@ class PaginatedGeolocations(BaseModel):
 
 
 class PaginatedGeolocationDetails(BaseModel):
-    """Full-detail paginated geolocations — the owner review-queue payload.
+    """Full-detail paginated geolocations: the owner Detections-queue payload.
 
     Mirrors ``PaginatedGeolocations`` but carries ``GeolocationRead`` items
     (media + tags + provenance) rather than the lightweight ``GeolocationList``
-    card: the review queue needs the media to judge a detection and the tags to
-    compute validation-readiness (>=1 media + a ``conflict`` + a
+    card: the Detections queue needs the media to judge a detection and the tags
+    to compute submit-readiness (>=1 media + a ``conflict`` + a
     ``capture_source`` tag) without a per-row round-trip.
     """
 

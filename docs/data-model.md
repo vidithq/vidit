@@ -88,7 +88,7 @@ erDiagram
         TIME event_time "nullable, optional UTC hour"
         TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
         TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
-        VARCHAR state "human | detected"
+        VARCHAR state "submitted | detected"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo row"
         UUID originated_from_bounty_id FK "nullable, trace to bounty"
@@ -345,11 +345,11 @@ Indexes:
 | `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
-| `event_date` | `DATE` | NOT NULL, when the depicted event happened. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at validation. |
+| `event_date` | `DATE` | NOT NULL, when the depicted event happened. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown (often: an event date is inferred from context or undated footage). |
 | `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the original source posted the media (a Telegram / X post): a real post instant, so a full UTC timestamp, not a bare date, a post always has a time. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
 | `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The authorship / precedence signal ("who geolocated it first") for the v0.5 claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
-| `state` | `VARCHAR(20)` | NOT NULL, `server_default 'human'`. `human` = human submits + bounty fulfilments (immutable); `detected` = machine-produced, rendered marked on every surface until its owner validates it. Plain string, no DB enum (mirrors `bounties.status`); the default keeps every non-machine insert correct with no code change. Owner transitions over a `detected` row (edit, `validate` which freezes it, `reject` which soft-deletes for re-import) live in [`api.md`](api.md). |
+| `state` | `VARCHAR(20)` | NOT NULL, `server_default 'submitted'`. `submitted` = human submits + bounty fulfilments (a person submitted it, immutable); `detected` = machine-produced, rendered marked on every surface and itself immutable machine output until its owner submits it, which writes their edits and flips it to `submitted` in one step. Plain string, no DB enum (mirrors `bounties.status`); the default keeps every non-machine insert correct with no code change. Owner transitions over a `detected` row (`submit`, the single write that applies the edits and freezes it as `submitted`, and `reject` which soft-deletes for re-import) live in [`api.md`](api.md). |
 | `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
 | `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable, provenance trace populated when a geolocation is promoted from a bounty. `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |

@@ -15,30 +15,30 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import { useReviewQueue } from "@/contexts/ReviewQueueContext";
+import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { apiFetch } from "@/lib/api";
 import {
   missingGeolocationFields,
-  updateGeolocation,
-  validateGeolocation,
+  submitGeolocation,
   type GeolocationFieldsState,
 } from "@/lib/geolocations";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { GeolocationDetail, Tag } from "@/types";
 
 /**
- * Owner review + edit of a machine-`detected` geolocation. Built like the submit
+ * Owner edit + submit of a machine-`detected` geolocation. Built like the create
  * form (same field bricks, same `MediaManager` staging): the owner curates the
- * whole draft — title, coordinate, source URL, dates, proof (incl. inline
- * images), tags, and source media (new files staged, existing ones marked for
- * removal). Only `detected_from_url` (provenance) is immutable. Everything
- * applies in one atomic multipart `PATCH` on **Save**; **Validate** saves then
- * freezes the row (with a confirm — validation is one-way). State is seeded from
- * props (the form mounts only after the row loaded), so the Tiptap editor gets
- * its `initialContent` on first paint.
+ * whole detection (title, coordinate, source URL, dates, proof including inline
+ * images, tags, and source media, with new files staged and existing ones marked
+ * for removal). Only `detected_from_url` (provenance) is immutable. A `detected`
+ * row is immutable machine output; **Submit** is the only write, applying the
+ * whole form and flipping the row to `submitted` in one atomic multipart request
+ * (with a confirm, since submitting freezes it). State is seeded from props (the
+ * form mounts only after the row loaded), so the Tiptap editor gets its
+ * `initialContent` on first paint.
  */
 export function GeolocationEditForm({
   geo,
@@ -48,7 +48,7 @@ export function GeolocationEditForm({
   redirectTo: string;
 }) {
   const router = useRouter();
-  const { refresh: refreshReviewCount } = useReviewQueue();
+  const { refresh: refreshDetectionCount } = useDetectionsCount();
 
   const [title, setTitle] = useState(geo.title);
   const [lat, setLat] = useState(String(geo.lat));
@@ -75,7 +75,7 @@ export function GeolocationEditForm({
     geo.tags.map((t) => t.id)
   );
 
-  const [confirmingValidate, setConfirmingValidate] = useState(false);
+  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 
   // Incomplete-form feedback (shared notice + in-form red outlines).
   const {
@@ -106,39 +106,22 @@ export function GeolocationEditForm({
     files: newFiles,
   });
 
-  const saveMutation = useMutation(() => updateGeolocation(geo.id, buildInput()), {
-    fallback: "Couldn't save changes.",
+  // Submit is the only write to a detection: it applies the whole form and flips
+  // the row to `submitted` in one atomic request (the server enforces the floor
+  // too). A `detected` row is otherwise immutable machine output.
+  const submitMutation = useMutation(() => submitGeolocation(geo.id, buildInput()), {
+    fallback: "Couldn't submit.",
     onSuccess: () => {
-      refreshReviewCount();
+      refreshDetectionCount();
       router.push(redirectTo);
     },
   });
 
-  // Validate saves the staged edits first, then freezes the row — one click.
-  const validateMutation = useMutation(
-    async () => {
-      await updateGeolocation(geo.id, buildInput());
-      // PATCH committed (files uploaded / media removed). Clear the staging so
-      // that if validate then fails (e.g. a transient error), a retry validates
-      // the already-saved row instead of re-uploading the same files.
-      setNewFiles([]);
-      setRemovedIds(new Set());
-      return validateGeolocation(geo.id);
-    },
-    {
-      fallback: "Couldn't validate.",
-      onSuccess: () => {
-        refreshReviewCount();
-        router.push(redirectTo);
-      },
-    }
-  );
+  const busy = submitMutation.loading;
+  const actionError = submitMutation.error;
 
-  const busy = saveMutation.loading || validateMutation.loading;
-  const actionError = saveMutation.error ?? validateMutation.error;
-
-  // Validate floor is computed on the *post-save* state — kept existing media
-  // plus staged new files, and the selected curated tags.
+  // Submit floor is computed on the post-edit state: kept existing media plus
+  // staged new files, and the selected curated tags.
   const keptMediaCount =
     geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
   const selectedCurated = curatedTags.filter((t) => selectedTagIds.includes(t.id));
@@ -158,43 +141,19 @@ export function GeolocationEditForm({
     ),
   });
 
-  // Save persists a partial draft: it needs the core fields valid, but not the
-  // full validate floor (source media + tags) — those are enforced at validate.
-  const handleSave = (e: React.FormEvent) => {
+  // Submit enforces the full floor (it freezes the row), then asks to confirm.
+  // Submitting an incomplete detection surfaces the notice (every miss at once)
+  // instead of entering the confirm step.
+  const attemptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.reset();
-    validateMutation.reset();
-    clearIncomplete();
-    const missing = missingGeolocationFields(fieldsState(), {
-      requireMedia: false,
-      requireTags: false,
-    });
-    if (missing.length) {
-      flagIncomplete(missing);
-      return;
-    }
-    if (proofImageUploading) {
-      saveMutation.setError(
-        "An image is still uploading — please wait before saving."
-      );
-      return;
-    }
-    saveMutation.run();
-  };
-
-  // Validate is one-way, so it enforces the full floor before asking to confirm.
-  // Clicking Validate on an incomplete draft surfaces the notice (every miss at
-  // once) instead of entering the confirm step.
-  const attemptValidate = () => {
-    saveMutation.reset();
-    validateMutation.reset();
+    submitMutation.reset();
     clearIncomplete();
     // The Conflict / Capture-source taxonomy must be loaded before the floor can
-    // tell "didn't pick one" from "options still loading" — otherwise it would
+    // tell "didn't pick one" from "options still loading", otherwise it would
     // spuriously report both tags missing. Recoverable state, not a missing field
-    // (mirrors the submit form's guard).
+    // (mirrors the create form's guard).
     if (curatedTags.length === 0) {
-      validateMutation.setError(
+      submitMutation.setError(
         curatedTagsError
           ? "Couldn’t load the Conflict and Capture source options. Use Retry above, or reload the page."
           : "Still loading the required tag options. Give it a moment and try again."
@@ -210,27 +169,27 @@ export function GeolocationEditForm({
       return;
     }
     if (proofImageUploading) {
-      validateMutation.setError(
-        "An image is still uploading — please wait before validating."
+      submitMutation.setError(
+        "An image is still uploading, please wait before submitting."
       );
       return;
     }
-    setConfirmingValidate(true);
+    setConfirmingSubmit(true);
   };
 
-  const handleValidate = () => {
-    validateMutation.run();
+  const handleSubmit = () => {
+    submitMutation.run();
   };
 
   return (
     <PageShell
       back
-      title="Review detection"
-      subtitle="Review and complete this machine detection, then validate it. Validation publishes the geolocation and freezes it — so give it a full read first."
+      title="Submit detection"
+      subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
     >
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
-      <form onSubmit={handleSave} className="space-y-6" noValidate>
+      <form onSubmit={attemptSubmit} className="space-y-6" noValidate>
         <TitleField
           value={title}
           onChange={setTitle}
@@ -319,33 +278,22 @@ export function GeolocationEditForm({
         {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
 
         <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-1.5">
-            <button
-              type="submit"
-              disabled={busy}
-              className="px-4 py-2 rounded-md text-sm border border-neutral-700 text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-            >
-              {saveMutation.loading ? "Saving…" : "Save changes"}
-            </button>
-            <FieldHelp concept="action_save_draft" />
-          </span>
-
-          {confirmingValidate ? (
+          {confirmingSubmit ? (
             <span className="inline-flex items-center gap-2">
               <span className="text-xs text-amber-400/90">
-                Once validated it can&apos;t be edited.
+                Once submitted it can&apos;t be edited.
               </span>
               <button
                 type="button"
-                onClick={handleValidate}
+                onClick={handleSubmit}
                 disabled={busy}
                 className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
-                {validateMutation.loading ? "Validating…" : "Confirm & validate"}
+                {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
               </button>
               <button
                 type="button"
-                onClick={() => setConfirmingValidate(false)}
+                onClick={() => setConfirmingSubmit(false)}
                 disabled={busy}
                 className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
               >
@@ -355,14 +303,13 @@ export function GeolocationEditForm({
           ) : (
             <span className="inline-flex items-center gap-1.5">
               <button
-                type="button"
-                onClick={attemptValidate}
+                type="submit"
                 disabled={busy}
                 className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
-                Validate
+                Submit
               </button>
-              <FieldHelp concept="action_validate" />
+              <FieldHelp concept="action_submit" />
             </span>
           )}
 

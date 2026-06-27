@@ -9,16 +9,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Lifecycle states. ``human`` is the default — every human submit and bounty
-# fulfilment is born human-backed and immutable. ``detected`` is the machine
-# path: visible on every read surface but clearly marked, until its owner
-# validates it (the validate action vouches for it → ``human``). ``human`` means
-# a person submitted or vouched for it, NOT that it's independently verified.
+# Lifecycle states. ``submitted`` is the default: every human submit and bounty
+# fulfilment is born person-submitted and immutable. ``detected`` is the machine
+# path: visible on every read surface but clearly marked, and itself immutable
+# (pure machine output) until its owner submits it, which writes their edits and
+# flips it to ``submitted`` in one step. ``submitted`` means a person submitted
+# it (via the form, or by submitting a reviewed detection), NOT that it's
+# independently verified.
 # The alias is the single source of truth for the value domain: the ORM column,
 # the Read schemas, and (via the OpenAPI spec) the generated frontend type all
 # derive from it, so adding a state is a one-line change here.
-GeolocationState = Literal["human", "detected"]
-STATE_HUMAN: GeolocationState = "human"
+GeolocationState = Literal["submitted", "detected"]
+STATE_SUBMITTED: GeolocationState = "submitted"
 STATE_DETECTED: GeolocationState = "detected"
 
 # Field-length ceilings for the create / edit multipart forms, kept next to the
@@ -65,11 +67,11 @@ class Geolocation(Base):
     detected_post_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Lifecycle state — ``human`` (default) vs ``detected`` (machine path).
+    # Lifecycle state: ``submitted`` (default) vs ``detected`` (machine path).
     # See ``STATE_*``. server_default so every non-machine insert stays correct
     # without setting it; the machine path passes ``state=STATE_DETECTED``.
     state: Mapped[GeolocationState] = mapped_column(
-        String(20), nullable=False, default=STATE_HUMAN, server_default=text("'human'")
+        String(20), nullable=False, default=STATE_SUBMITTED, server_default=text("'submitted'")
     )
     # The post a machine detection was imported from — the assemble idempotency
     # anchor and a provenance link, distinct from ``source_url`` (footage origin).

@@ -148,21 +148,22 @@ def delete_geolocation(
     points_cache.invalidate()
 
 
-# ── Owner review flow over machine ``detected`` rows ───────────────────────
-# Edit completes a detection, validate freezes it (detected → human),
-# reject soft-deletes it. All three are owner-only and state-gated to
-# ``detected``; a ``human`` row is immutable (409). See ``api.md``.
+# ── Owner flow over machine ``detected`` rows ───────────────────────
+# Submit writes the owner's edits and finalizes it (detected → submitted);
+# reject soft-deletes it. Both are owner-only and state-gated to ``detected``:
+# a ``detected`` row is otherwise immutable machine output, and a ``submitted``
+# row is frozen (409). See ``api.md``.
 
 
-@router.patch("/{geolocation_id}", response_model=GeolocationRead)
+@router.post("/{geolocation_id}/submit", response_model=GeolocationRead)
 @limiter.limit("30/minute")
-async def update_geolocation(
+async def submit_geolocation(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart, mirroring create: the form posts the whole editable state and
-    # the service applies it atomically. ``max_length`` ceilings are the shared
-    # model constants (same as create) so over-length input is rejected before
-    # the files hit S3.
+    # Multipart, mirroring create: the form posts the whole state and the service
+    # writes it and flips to ``submitted`` atomically. ``max_length`` ceilings are
+    # the shared model constants (same as create) so over-length input is rejected
+    # before the files hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
@@ -178,13 +179,16 @@ async def update_geolocation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Owner edit of a ``detected`` geolocation (review flow).
+    """Submit a ``detected`` geolocation (owner flow): ``detected → submitted``.
 
-    Editable only while ``detected``; a ``human`` row is frozen (409). The
-    owner curates the whole draft — title, coordinate, source URL, dates, proof,
-    tags, and the source media (``files`` added, ``remove_media_ids`` dropped).
-    Only ``detected_from_url`` (provenance) and ``state`` are immutable, so they
-    carry no field. Soft-deleted rows read as 404.
+    A ``detected`` row is immutable machine output; this is the only write to it.
+    The owner posts the whole form (title, coordinate, source URL, dates, proof,
+    tags, and the source media: ``files`` added, ``remove_media_ids`` dropped),
+    and on success the row is written and frozen as ``submitted``. Only
+    ``detected_from_url`` (provenance) and ``state`` carry no field. Blocked until
+    the evidence floor is met (at least one media and the ``conflict`` +
+    ``capture_source`` tags, 400 otherwise). Off ``detected`` → 409. Soft-deleted
+    rows read as 404.
     """
     files = files or []
     parsed_event_date = parse_iso_date(event_date, field="event_date")
@@ -196,7 +200,7 @@ async def update_geolocation(
 
     geo = _resolve_owned_geolocation(db, geolocation_id, current_user)
     try:
-        updated = await geolocations_service.update_detected(
+        submitted = await geolocations_service.submit_detected(
             db,
             geo=geo,
             title=title,
@@ -215,29 +219,7 @@ async def update_geolocation(
         )
     except EvidenceIntakeError as exc:
         _raise_geolocation_error(exc)
-    return _serialize_geolocation(db, updated)
-
-
-@router.post("/{geolocation_id}/validate", response_model=GeolocationRead)
-@limiter.limit("30/minute")
-def validate_geolocation(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Validate a ``detected`` geolocation: ``detected → validated``, frozen.
-
-    Owner-only. Blocked until the row carries the evidence floor of a human
-    submit — at least one media and the ``conflict`` + ``capture_source`` tags
-    (400 otherwise). Off ``detected`` → 409. Soft-deleted → 404.
-    """
-    geo = _resolve_owned_geolocation(db, geolocation_id, current_user)
-    try:
-        validated = geolocations_service.validate_detected(db, geo=geo)
-    except EvidenceIntakeError as exc:
-        _raise_geolocation_error(exc)
-    return _serialize_geolocation(db, validated)
+    return _serialize_geolocation(db, submitted)
 
 
 @router.post("/{geolocation_id}/reject", status_code=status.HTTP_204_NO_CONTENT)

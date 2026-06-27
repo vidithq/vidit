@@ -81,13 +81,13 @@ describe("smartBack back-stack", () => {
 
   it("walks the chain back instead of ping-ponging between two pages", () => {
     navigate("/profile/ana");
-    navigate("/profile/ana/review");
+    navigate("/profile/ana/detections");
 
     smartBack(router, "/map");
     expect(current).toBe("/profile/ana");
 
     // The regression: the second back must continue up the chain to /map,
-    // not bounce back to /review.
+    // not bounce back to /detections.
     smartBack(router, "/map");
     expect(current).toBe("/map");
 
@@ -97,7 +97,7 @@ describe("smartBack back-stack", () => {
   });
 
   it("falls back when entered directly on a deep page (empty stack)", () => {
-    setLocation("/profile/ana/review");
+    setLocation("/profile/ana/detections");
     window.sessionStorage.clear();
     smartBack(router, "/map");
     expect(current).toBe("/map");

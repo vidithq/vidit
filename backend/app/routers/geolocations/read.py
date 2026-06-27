@@ -264,13 +264,13 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return all geolocations as a compact array:
-    ``[[id, lat, lng, event_date, submitted_date, detected], ...]``.
-    No joins, no limit — designed for map display with client-side clustering.
-    ``event_date`` and ``submitted_date`` (the ``created_at`` calendar day) are
+    ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+    No joins, no limit, designed for map display with client-side clustering.
+    ``event_date`` and ``added_date`` (the ``created_at`` calendar day) are
     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
     scrubbers and filters the windows client-side (no refetch per drag).
     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-    human row — a flag, not the state string, to keep the payload small.
+    submitted row, a flag, not the state string, to keep the payload small.
     Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
@@ -324,9 +324,9 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 6-tuple: [id, lat, lng, event_date, submitted_date, detected].
+    # Compact 6-tuple: [id, lat, lng, event_date, added_date, detected].
     # ``detected`` is 1/0 (not the state string) so the no-LIMIT catalog payload
-    # stays small — the map colours the marker off this flag.
+    # stays small; the map colours the marker off this flag.
     result = [
         [
             str(r.id),
@@ -413,26 +413,27 @@ def list_geolocations(
     ]
 
 
-@router.get("/review-queue", response_model=PaginatedGeolocationDetails)
+@router.get("/detections", response_model=PaginatedGeolocationDetails)
 @limiter.limit("120/minute")
-def list_review_queue(
+def list_detections(
     request: Request,
     page: int = 1,
     per_page: int = 20,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The caller's ``detected`` geolocations awaiting review, newest first.
+    """The caller's ``detected`` geolocations awaiting submission, newest first.
 
-    Owner-scoped to ``current_user`` (never the ``{username}`` in any URL) — the
-    queue behind ``/profile/{username}/review`` where ``detected`` becomes
-    ``human`` over time. Returns full ``GeolocationRead`` (media + tags) so
-    the queue shows the evidence and the frontend computes validation-readiness
-    (>=1 media + a ``conflict`` + a ``capture_source`` tag) with no per-row
-    round-trip. A ``detected`` row never originates from a bounty (fulfilments
-    are born ``human``), so ``originated_from_bounty`` is always null here —
-    passed as such to skip the join. Ordered by ``created_at`` desc: the latest
-    import is the first thing to triage.
+    Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
+    "Detections" queue behind ``/profile/{username}/detections`` where a
+    ``detected`` row becomes ``submitted`` over time. Returns full
+    ``GeolocationRead`` (media + tags) so the queue shows the evidence and the
+    frontend computes submit-readiness (>=1 media + a ``conflict`` + a
+    ``capture_source`` tag) with no per-row round-trip. A ``detected`` row never
+    originates from a bounty (fulfilments are born ``submitted``), so
+    ``originated_from_bounty`` is always null here, passed as such to skip the
+    join. Ordered by ``created_at`` desc: the latest import is the first thing to
+    triage.
     """
     # Clamp rather than 422 — a too-large page/per_page is harmless and the
     # per-user list clamps the same way. The lower-bound guard matters: page < 1

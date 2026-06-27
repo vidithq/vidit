@@ -11,25 +11,25 @@ import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
-import { rejectGeolocation, sourceIsSynthetic, validationReadiness } from "@/lib/geolocations";
+import { rejectGeolocation, sourceIsSynthetic, submitReadiness } from "@/lib/geolocations";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { GeolocationDetail } from "@/types";
 
 /**
- * One machine-`detected` row in the owner review queue. **Review** opens the
- * full form at `/geolocations/{id}/edit` — where the owner edits and validates
- * (validation lives there so it always follows a complete read). **Delete**
+ * One machine-`detected` row in the owner detections list. **Edit** opens the
+ * full form at `/geolocations/{id}/edit`, where the owner edits and submits
+ * (submission lives there so it always follows a complete read). **Delete**
  * (two-click) soft-deletes the detection here. `onActed` lets the parent refetch
- * once a row leaves the queue.
+ * once a row leaves the list.
  */
-export default function ReviewQueueCard({
+export default function DetectionCard({
   geo,
   onActed,
 }: {
   geo: GeolocationDetail;
   onActed: () => void;
 }) {
-  const readiness = validationReadiness(geo);
+  const readiness = submitReadiness(geo);
   const [confirmingReject, setConfirmingReject] = useState(false);
 
   const rejectMut = useMutation(() => rejectGeolocation(geo.id), {
@@ -115,21 +115,21 @@ export default function ReviewQueueCard({
         {actionError && <div className={FORM_ERROR_BANNER_BOXED}>{actionError}</div>}
 
         {/* Readiness on the left, the three actions tucked into the bottom-right
-            corner — one row instead of two keeps the card compact. Readiness is
+            corner: one row instead of two keeps the card compact. Readiness is
             always rendered (ready or not) so the card height stays uniform; when
-            blocked it's the nudge (machine rows are born tagless → edit to add
-            the curated tags, then validate). */}
+            blocked it's the nudge (machine rows are born tagless, edit to add
+            the curated tags, then submit). */}
         <div className="flex items-start justify-between gap-3 pt-0.5">
           <div className="min-w-0">
             {readiness.isReady ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
-                <Check size={12} /> Ready to validate.
+                <Check size={12} /> Ready to submit.
               </span>
             ) : (
-              // The validate floor as a single neutral line — the concrete
-              // reason a review is needed, kept light (no chips).
+              // The submit floor as a single neutral line: the concrete reason a
+              // submission is blocked, kept light (no chips).
               <span className="text-[11px] text-neutral-500">
-                To validate: {readiness.missing.join(", ")}
+                To submit: {readiness.missing.join(", ")}
               </span>
             )}
           </div>
@@ -140,7 +140,7 @@ export default function ReviewQueueCard({
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs ${PRIMARY_BUTTON}`}
             >
               <Pencil size={13} />
-              Review
+              Edit
             </Link>
 
             {/* Two-click confirm so a stray click can't soft-delete a detection. */}

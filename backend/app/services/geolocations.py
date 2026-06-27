@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
-from app.models.geolocation import STATE_DETECTED, STATE_HUMAN, Geolocation
+from app.models.geolocation import STATE_DETECTED, STATE_SUBMITTED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
@@ -270,7 +270,7 @@ async def create_with_evidence(
     return geo
 
 
-async def update_detected(
+async def submit_detected(
     db: Session,
     *,
     geo: Geolocation,
@@ -288,32 +288,38 @@ async def update_detected(
     uploaded_ip: str | None,
     uploaded_user_agent: str | None,
 ) -> Geolocation:
-    """Apply an owner edit to a ``detected`` geolocation — the review step.
+    """Submit a ``detected`` geolocation: write the owner's edits and flip it to
+    ``submitted`` in one atomic step.
 
-    Mirrors :func:`create_with_evidence`: a full multipart edit (the form posts
-    the whole current state), applied atomically. The owner curates everything —
-    title, coordinate, source URL, event date + time, source post time, proof, tags, and the
-    source media (new ``files`` added, ``remove_media_ids`` dropped). Only
-    ``detected_from_url`` (the provenance anchor) and ``state`` are immutable. A
-    ``human`` row is frozen.
+    A ``detected`` row is immutable machine output; this submit is the only write
+    to it. Mirrors :func:`create_with_evidence`: the form posts the whole state
+    (title, coordinate, source URL, event date + time, source post time, proof,
+    tags, and source media: new ``files`` added, ``remove_media_ids`` dropped),
+    and on success the row becomes ``submitted`` and frozen. ``detected_from_url``
+    (the provenance anchor) and ``state`` carry no form field.
 
-    The field updates, the media removals, and the new-media uploads commit in a
+    The field updates, media removals, new uploads, and the state flip commit in a
     single transaction; a failed upload rolls everything back and sweeps the keys
-    that landed (the removals revert with the txn, so their S3 stays). The
-    removed media's S3 objects are swept after the commit succeeds.
+    that landed (the removals revert with the txn, so their S3 stays). The removed
+    media's S3 objects are swept after the commit succeeds.
+
+    The evidence floor a human submit meets at create is enforced here, before any
+    S3 work, since machine detections are born tagless: at least one media (kept +
+    new) and the curated ``conflict`` + ``capture_source`` tags.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
-    values, :class:`TooManyFilesError` over the file-count cap, or a
-    file-validation error. Returns the refreshed row.
+    values, :class:`MediaRequiredError` / :class:`TagRequirementsError` (400) when
+    the floor is unmet, :class:`TooManyFilesError` over the file-count cap, or a
+    file-validation error. Returns the refreshed ``submitted`` row.
     """
     if geo.state != STATE_DETECTED:
-        raise GeolocationStateError("Only detected geolocations can be edited")
+        raise GeolocationStateError("Only detected geolocations can be submitted")
 
     validate_coordinates(lat, lng)
 
-    # File-count cap counts what survives the edit: kept existing + new uploads.
-    # Compare on the string form — ids arrive as JSON strings from the form.
+    # File-count cap counts what survives the submit: kept existing + new uploads.
+    # Compare on the string form; ids arrive as JSON strings from the form.
     removing = {str(x) for x in remove_media_ids}
     kept = [m for m in geo.media if str(m.id) not in removing]
     if len(kept) + len(files) > MAX_FILES_PER_SUBMISSION:
@@ -327,6 +333,12 @@ async def update_detected(
 
     effective_tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
 
+    # Evidence floor, checked up front (before any S3 upload) against the
+    # post-submit state: at least one media survives, and both curated tags are set.
+    if len(kept) + len(files) == 0:
+        raise MediaRequiredError("At least one media file is required")
+    _require_submission_tags(effective_tags)
+
     geo.title = title
     geo.location = from_shape(Point(lng, lat), srid=4326)
     geo.source_url = source_url
@@ -336,9 +348,10 @@ async def update_detected(
     if proof_data is not None:
         geo.proof = proof_data
     geo.tags = effective_tags
+    geo.state = STATE_SUBMITTED
 
     # Drop the media flagged for removal: snapshot their S3 keys, delete the rows
-    # (pending — committed atomically with the field updates + uploads below).
+    # (pending; committed atomically with the field updates + uploads below).
     storage = get_storage()
     removed_keys: list[str] = []
     for m in list(geo.media):
@@ -362,38 +375,11 @@ async def update_detected(
         upload=upload_file,
         uploaded_ip=uploaded_ip,
         uploaded_user_agent=uploaded_user_agent,
-        sweep_context=f"geolocation {geo.id} edit rollback",
+        sweep_context=f"geolocation {geo.id} submit rollback",
     )
 
-    # Committed — sweep the removed media's S3 objects (best-effort).
-    sweep_keys(removed_keys, context=f"geolocation {geo.id} edit media removal")
-    db.refresh(geo)
-    points_cache.invalidate()
-    return geo
-
-
-def validate_detected(db: Session, *, geo: Geolocation) -> Geolocation:
-    """Transition a ``detected`` row to ``human``, freezing it.
-
-    Owner-gated at the router. Blocked until the row carries the evidence a
-    human submit must have at create: at least one media, and the curated
-    ``conflict`` + ``capture_source`` tags. Machine detections are born tagless
-    and exempt from the create-time tag rule, so the floor is enforced here —
-    the owner adds the tags during review. On success the row is ``human``
-    and the edit endpoint refuses it.
-
-    Raises :class:`GeolocationStateError` (409) off ``detected``,
-    :class:`MediaRequiredError` / :class:`TagRequirementsError` (400) when the
-    evidence floor isn't met. Commits, invalidates the points cache.
-    """
-    if geo.state != STATE_DETECTED:
-        raise GeolocationStateError("Only detected geolocations can be validated")
-    if not geo.media:
-        raise MediaRequiredError("At least one media file is required")
-    _require_submission_tags(list(geo.tags))
-
-    geo.state = STATE_HUMAN
-    db.commit()
+    # Committed; sweep the removed media's S3 objects (best-effort).
+    sweep_keys(removed_keys, context=f"geolocation {geo.id} submit media removal")
     db.refresh(geo)
     points_cache.invalidate()
     return geo

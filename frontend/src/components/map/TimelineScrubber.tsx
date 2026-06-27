@@ -12,7 +12,7 @@ interface TimelineScrubberProps {
   /** Which date each point is bucketed/filtered on: 3 = event_date,
    *  4 = submitted (created_at) date. */
   dateIndex: 3 | 4;
-  /** Short label for accessibility ("Event date" / "Submitted date"). */
+  /** Short label for accessibility ("Event date" / "Added"). */
   label: string;
   /** The active window, owned by the parent (one pair per timeline). Empty
    *  string at an edge = open (snaps to the data's min/max). */

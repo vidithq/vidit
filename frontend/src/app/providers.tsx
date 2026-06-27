@@ -2,18 +2,18 @@
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { MapStateProvider } from "@/contexts/MapStateContext";
-import { ReviewQueueProvider } from "@/contexts/ReviewQueueContext";
+import { DetectionsProvider } from "@/contexts/DetectionsContext";
 import PathTracker from "@/components/PathTracker";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <ReviewQueueProvider>
+      <DetectionsProvider>
         <MapStateProvider>
           <PathTracker />
           {children}
         </MapStateProvider>
-      </ReviewQueueProvider>
+      </DetectionsProvider>
     </AuthProvider>
   );
 }

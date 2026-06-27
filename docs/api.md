@@ -40,7 +40,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/geolocations/{id}` | 🌐 | Full geolocation detail |
 | POST | `/geolocations` | 🔒 | Create a geolocation (multipart, uploads media) |
 | DELETE | `/geolocations/{id}` | 🔒 | Author-only delete + S3 sweep |
-| GET | `/geolocations/review-queue` | 🔒 | Your `detected` geolocations awaiting review (paginated) |
+| GET | `/geolocations/detections` | 🔒 | Your `detected` geolocations awaiting submission (paginated) |
 | POST | `/geolocations/proof-images` | 🔒 | Upload an inline image referenced by the Tiptap proof |
 | **Bounties** | | | |
 | GET | `/bounties` | 🌐 | List bounties (newest first, soft-delete filtered) |
@@ -94,7 +94,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /geolocations/points` | 60/min |
 | `GET /geolocations/possible-duplicates` | 60/min |
 | `GET /geolocations/{id}` | 120/min |
-| `GET /geolocations/review-queue` | 120/min |
+| `GET /geolocations/detections` | 120/min |
 | `POST /geolocations/import-from-tweet` | 30/min |
 | `GET /geolocations/import-from-tweet/media` | 60/min |
 | `POST /geolocations` | 30/min |
@@ -348,7 +348,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
     "lng": 37.456,
     "event_date": "2026-03-15",
     "is_demo": false,
-    "state": "human",
+    "state": "submitted",
     "author": {
       "id": "uuid",
       "username": "kalush",
@@ -364,13 +364,13 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 ]
 ```
 
-`state` is `human` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
+`state` is `submitted` (human submits + bounty fulfilments) or `detected` (machine-produced, rendered marked). The same field flows through the profile feed, the timeline, and search hits.
 
 ---
 
 ### `GET /geolocations/points`
 
-Compact `[id, lat, lng, event_date, submitted_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `submitted_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a human row, a flag, not the state string, to keep the no-LIMIT catalog payload small.
+Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `added_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a submitted row, a flag, not the state string, to keep the no-LIMIT catalog payload small.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -563,7 +563,7 @@ Full detail for a single geolocation.
   "created_at": "2026-03-16T09:42:00Z",
   "updated_at": "2026-03-16T09:42:00Z",
   "is_demo": false,
-  "state": "human",
+  "state": "submitted",
   "detected_from_url": null,
   "detected_post_at": null,
   "author": {
@@ -649,9 +649,9 @@ Author-only delete. Cascades media. A **hard** delete, distinct from `POST /geol
 
 ---
 
-### `GET /geolocations/review-queue` 🔒
+### `GET /geolocations/detections` 🔒
 
-The owner review queue: the caller's machine-`detected` geolocations awaiting validation, newest first (`created_at` desc). **Scoped to `current_user`**, it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/review`, where the owner edits / validates / rejects each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes validation-readiness (≥1 media + a `conflict` + a `capture_source` tag) client-side without a per-row fetch.
+The owner "Detections" queue: the caller's machine-`detected` geolocations awaiting submission, newest first (`created_at` desc). **Scoped to `current_user`**, it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where the owner reviews and submits or rejects each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes submit-readiness (≥1 media + a `conflict` + a `capture_source` tag) client-side without a per-row fetch.
 
 **Query params:**
 | Param | Type | Description |
@@ -669,7 +669,7 @@ The owner review queue: the caller's machine-`detected` geolocations awaiting va
 }
 ```
 
-A `detected` row never originates from a bounty (fulfilments are born `human`), so `originated_from_bounty` is always `null` here.
+A `detected` row never originates from a bounty (fulfilments are born `submitted`), so `originated_from_bounty` is always `null` here.
 
 **Errors:**
 | Code | Case |
@@ -678,9 +678,9 @@ A `detected` row never originates from a bounty (fulfilments are born `human`), 
 
 ---
 
-### `PATCH /geolocations/{id}` 🔒
+### `POST /geolocations/{id}/submit` 🔒
 
-Owner edit of a machine-`detected` geolocation, the review step. **Multipart**, mirroring `POST /geolocations`: the form posts the whole editable state and the server applies it **atomically** (field updates, media removals, and new-media uploads in one transaction). Editable **only while `detected`**; a `human` row is frozen.
+Owner-only. Submit a machine-`detected` geolocation: write the owner's edits and flip `detected → submitted` in one atomic request. A `detected` row is immutable machine output, and this submit is the **only** write to it; there is no separate edit / save step. **Multipart**, mirroring `POST /geolocations`: the form posts the whole row state and the server applies the field updates, media removals, and new-media uploads, then freezes the row as `submitted`, in one transaction. Allowed **only while `detected`**; a `submitted` row is frozen.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -697,40 +697,24 @@ Owner edit of a machine-`detected` geolocation, the review step. **Multipart**, 
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
 | `files` | file[] | New source media to add (same allowlist + size limits as create) |
 
-`detected_from_url` (the provenance anchor, the post the detection was imported from) and `state` are the only **immutable** fields: they carry no field, so a caller that sends them is ignored.
+`detected_from_url` (the provenance anchor, the post the detection was imported from) and `state` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a human submit meets at create is satisfied by the post-submit state: **at least one media** (kept + new) and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here; the owner adds the tags as part of the submit.
 
-**Response 200:** same shape as `GET /geolocations/{id}`.
+**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "submitted"`).
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Invalid coordinates (`invalid_coordinates`), proof (`invalid_proof`), or a rejected file (`invalid_file` / `evidence_processing_failed`) |
+| 400 | Invalid coordinates (`invalid_coordinates`), proof (`invalid_proof`), a rejected file (`invalid_file` / `evidence_processing_failed`), or the evidence floor unmet, no media (`media_required`) or missing required tag (`tag_requirements_not_met`) |
 | 403 | Caller is not the author |
 | 404 | Geolocation not found (incl. soft-deleted) |
-| 409 | Row is not `detected`, a `human` row is frozen (`invalid_state`) |
+| 409 | Row is not `detected`, a `submitted` row is frozen (`invalid_state`) |
 | 422 | Over the file-count cap (`too_many_files`) |
-
----
-
-### `POST /geolocations/{id}/validate` 🔒
-
-Owner-only. Transition a `detected` geolocation to `human`, which **freezes** the row (the edit endpoint then refuses it). Blocked until the row carries the evidence floor a human submit has at create: **at least one media** and **one `conflict` + one `capture_source` tag**. Machine detections are born tagless and exempt from the create-time tag rule, so the floor is enforced here; the owner adds the tags via `PATCH` during review.
-
-**Response 200:** same shape as `GET /geolocations/{id}` (now `"state": "human"`).
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | Evidence floor unmet, no media (`media_required`) or missing required tag (`tag_requirements_not_met`) |
-| 403 | Caller is not the author |
-| 404 | Geolocation not found (incl. soft-deleted) |
-| 409 | Row is not `detected`, already `human` (`invalid_state`) |
 
 ---
 
 ### `POST /geolocations/{id}/reject` 🔒
 
-Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `human` row is not rejectable here, use `DELETE`.
+Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `submitted` row is not rejectable here, use `DELETE`.
 
 **Response 204:** no body.
 
@@ -993,7 +977,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
       "is_demo": false,
-      "state": "human",
+      "state": "submitted",
       "author": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
       "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
     }

@@ -39,9 +39,10 @@ export interface Tag {
   category: TagCategory;
 }
 
-/** Lifecycle state. ``human`` = a person submitted or vouched for it (the norm,
- *  not an independent-verification claim); ``detected`` = machine-produced,
- *  rendered marked everywhere until its owner validates it. */
+/** Lifecycle state. ``submitted`` = a person submitted it (the norm: via the
+ *  form, or by submitting a reviewed detection; not an independent-verification
+ *  claim); ``detected`` = machine output, rendered marked everywhere until its
+ *  owner submits it. */
 export type GeolocationState = components["schemas"]["GeolocationRead"]["state"];
 
 interface GeolocationListItem {
@@ -57,11 +58,11 @@ interface GeolocationListItem {
 }
 
 /** Compact point from /geolocations/points:
- *  [id, lat, lng, event_date, submitted_date, detected]. ``event_date`` and
- *  ``submitted_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings —
+ *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
+ *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings,
  *  the timeline scrubbers bucket them for the histograms and filter their
  *  windows client-side. ``detected`` is 1 for a machine detection (marked on
- *  the map), 0 for a validated row. */
+ *  the map), 0 for a submitted row. */
 export type MapPoint = [string, number, number, string, string, 0 | 1];
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   missingGeolocationFields,
-  validationReadiness,
+  submitReadiness,
   type GeolocationFieldsState,
 } from "./geolocations";
 
@@ -107,8 +107,8 @@ describe("missingGeolocationFields", () => {
   });
 });
 
-describe("validationReadiness", () => {
-  // A detected row that would pass the Validate gate.
+describe("submitReadiness", () => {
+  // A detected row that would pass the Submit gate.
   const readyGeo = {
     title: "Strike on depot",
     lat: 48.5,
@@ -127,12 +127,12 @@ describe("validationReadiness", () => {
     ],
   };
 
-  it("is ready when the full validate floor is met", () => {
-    expect(validationReadiness(readyGeo)).toEqual({ isReady: true, missing: [] });
+  it("is ready when the full submit floor is met", () => {
+    expect(submitReadiness(readyGeo)).toEqual({ isReady: true, missing: [] });
   });
 
-  it("mirrors the Validate gate — same labels, incl. a text-only proof", () => {
-    const r = validationReadiness({
+  it("mirrors the Submit gate (same labels, including a text-only proof)", () => {
+    const r = submitReadiness({
       ...readyGeo,
       proof: { type: "doc", content: [{ type: "paragraph" }] },
       media: [],

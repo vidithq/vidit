@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useReviewQueue } from "@/contexts/ReviewQueueContext";
+import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
 import {
@@ -133,7 +133,7 @@ export default function Sidebar() {
   const pathname = usePathname() ?? "";
   const { user, loading } = useAuth();
   const { isAdmin } = useAdmin();
-  const { count: reviewCount } = useReviewQueue();
+  const { count: detectionCount } = useDetectionsCount();
 
   useEffect(() => {
     if (expanded) {
@@ -156,7 +156,7 @@ export default function Sidebar() {
     !!user &&
     (pathname === "/profile" ||
       pathname === `/profile/${user.username}` ||
-      pathname === `/profile/${user.username}/review`);
+      pathname === `/profile/${user.username}/detections`);
 
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item, pathname);
@@ -278,8 +278,8 @@ export default function Sidebar() {
             href={`/profile/${user.username}`}
             title={
               !labelsVisible
-                ? reviewCount > 0
-                  ? `${user.username} · ${reviewCount} to review`
+                ? detectionCount > 0
+                  ? `${user.username} · ${detectionCount} to submit`
                   : user.username
                 : undefined
             }
@@ -291,8 +291,8 @@ export default function Sidebar() {
           >
             <span className="relative size-[18px] rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
               <User size={11} strokeWidth={1.8} />
-              {/* Pending-review nudge — same dot the nav items use. */}
-              {reviewCount > 0 && (
+              {/* Pending-submission nudge, same dot the nav items use. */}
+              {detectionCount > 0 && (
                 <span
                   aria-hidden="true"
                   className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-orange-500 ring-2 ring-neutral-900"
@@ -309,9 +309,9 @@ export default function Sidebar() {
                 />
               </span>
             )}
-            {reviewCount > 0 && (
+            {detectionCount > 0 && (
               <span className="sr-only">
-                {reviewCount} geolocations awaiting review
+                {detectionCount} geolocations awaiting submission
               </span>
             )}
           </Link>

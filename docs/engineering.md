@@ -160,7 +160,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/                      # pytest; geolocations/ is a sub-package (read/create/duplicates/import/review)
+│   ├── tests/                      # pytest; geolocations/ is a sub-package (read/create/duplicates/import/owner_flow/detections)
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
@@ -266,7 +266,7 @@ GeolocationList     → simplified output (map, lists)
 A few rules live in one backend home so the two sides can't drift:
 
 - **Upload MIME allowlist**: `services/storage.ALLOWED_IMAGE_TYPES` / `ALLOWED_VIDEO_TYPES` (the EXIF-strip set is *derived* from the image allowlist). Frontend mirror: `lib/mediaTypes.ts`.
-- **Coordinate bounds**: `services/geolocations.validate_coordinates` (the create + edit paths share it). Frontend mirror: `lib/coordinates.ts`.
+- **Coordinate bounds**: `services/geolocations.validate_coordinates` (the create + submit paths share it). Frontend mirror: `lib/coordinates.ts`.
 - **Password length**: `schemas/auth.PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH`. Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH`.
 
 The frontend mirrors are hand-kept: change a backend value, change its mirror.
