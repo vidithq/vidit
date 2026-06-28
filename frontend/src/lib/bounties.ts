@@ -28,11 +28,11 @@ export interface CreateBountyInput {
   source_url: string;
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
-  /** Optional, ISO YYYY-MM-DD — when the event happened. */
+  /** Optional, ISO YYYY-MM-DD: when the event happened. */
   event_date?: string;
-  /** Optional, ISO HH:MM — event time-of-day (UTC). */
+  /** Optional, ISO HH:MM: event time-of-day (UTC). */
   event_time?: string;
-  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC) — when the source posted. Required. */
+  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
   source_posted_at: string;
   tag_ids?: string[];
   files: File[];

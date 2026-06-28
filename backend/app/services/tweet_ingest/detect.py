@@ -86,8 +86,8 @@ def _posted_at(created_at: str) -> datetime:
 
     Acquire adapters normalize ``created_at`` to ISO 8601. ``event_date`` is just
     this instant's UTC date, so both come from one parse and can't drift. A
-    malformed value falls back to the epoch instant — a visibly-wrong sentinel
-    the owner fixes at validation, never a silent "now".
+    malformed value falls back to the epoch instant, a visibly-wrong sentinel
+    the owner fixes at submit, never a silent "now".
     """
     try:
         parsed = datetime.fromisoformat(created_at.replace("Z", "+00:00"))

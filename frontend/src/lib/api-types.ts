@@ -818,7 +818,7 @@ export interface paths {
          *
          *     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
          *     distinct from the hard ``DELETE`` that removes a row for good. Off
-         *     ``detected`` → 409 (a ``human`` row goes through ``DELETE``).
+         *     ``detected`` → 409 (a ``submitted`` row goes through ``DELETE``).
          *     Soft-deleted → 404.
          */
         post: operations["reject_geolocation_api_v1_geolocations__geolocation_id__reject_post"];

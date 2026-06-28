@@ -15,7 +15,7 @@ describe("FieldHelp", () => {
     render(<FieldHelp concept="source_url" />);
     const btn = screen.getByRole("button", { name: FIELD_HELP.source_url.label });
     expect(btn).toHaveAttribute("aria-expanded", "false");
-    // The tooltip is portaled and only rendered while open — hidden by default.
+    // The tooltip is portaled and only rendered while open, hidden by default.
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.focus(btn);
     const tooltip = await screen.findByRole("tooltip");

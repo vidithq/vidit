@@ -166,7 +166,7 @@ export interface GeolocationDetail extends GeolocationListItem {
   /** Optional time-of-day for ``event_date`` (UTC, ``HH:MM:SS``); null when the
    *  hour is unknown. */
   event_time: string | null;
-  /** When the original source posted the media — a real post instant (UTC),
+  /** When the original source posted the media: a real post instant (UTC),
    *  always present. ISO datetime. Distinct from ``event_date`` (when the event
    *  happened) and ``created_at`` (submission). */
   source_posted_at: string;
@@ -218,11 +218,11 @@ export interface BountyDetail {
   /** The in-progress proof (Tiptap JSON), mirroring a geolocation's `proof`.
    *  Optional and image-free. Null when the poster left it empty. */
   proof: Record<string, unknown> | null;
-  /** When the event happened — date (ISO YYYY-MM-DD) + optional UTC time-of-day.
+  /** When the event happened: date (ISO YYYY-MM-DD) + optional UTC time-of-day.
    *  Nullable: a bounty is an unfinished geolocation. */
   event_date: string | null;
   event_time: string | null;
-  /** When the source posted the media — a real post instant (UTC), always
+  /** When the source posted the media: a real post instant (UTC), always
    *  present (the bounty's source_url is required). ISO datetime. */
   source_posted_at: string;
   status: BountyStatus;

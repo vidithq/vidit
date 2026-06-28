@@ -70,7 +70,7 @@ export interface GeolocationEditInput {
   event_date: string;
   /** Optional ISO `HH:MM`; empty / omitted clears it. */
   event_time?: string;
-  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required — a post always has a time. */
+  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required: a post always has a time. */
   source_posted_at: string;
   proof?: Record<string, unknown> | null;
   /** Replaces the tag set wholesale. */

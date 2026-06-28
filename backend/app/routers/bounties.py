@@ -265,7 +265,7 @@ async def create_bounty(
     source_url: str = Form(..., max_length=2000),
     proof: str | None = Form(None),
     # Event date optional (often unknown for a bounty); the source is a post, so
-    # its timestamp is required — same loose ``str`` shapes, parsed below.
+    # its timestamp is required. Same loose ``str`` shapes, parsed below.
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),

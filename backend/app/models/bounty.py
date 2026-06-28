@@ -88,7 +88,7 @@ class Bounty(Base):
     # (services/bounties.py sanitises it with ``allow_images=False``).
     proof: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # Metadata carried over when the bounty becomes a geolocation. ``event_date``
-    # (+ optional ``event_time``) is when the event happened — often unknown for
+    # (+ optional ``event_time``) is when the event happened, often unknown for
     # an unfinished geolocation, so nullable. ``source_posted_at`` is when the
     # source posted the media: a real post instant (full UTC timestamp), and
     # since the bounty's ``source_url`` is required, its post time is too.

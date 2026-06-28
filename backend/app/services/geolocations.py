@@ -77,8 +77,8 @@ class BountyNotOpenError(GeolocationError):
 class GeolocationStateError(GeolocationError):
     """The geolocation's lifecycle state forbids the requested transition.
 
-    Raised when an edit / validate / reject targets a row that isn't
-    ``detected`` (a ``human`` row is frozen). Maps to 409 — the request is
+    Raised when a submit / reject targets a row that isn't
+    ``detected`` (a ``submitted`` row is frozen). Maps to 409: the request is
     well-formed but conflicts with the row's current state.
     """
 
@@ -386,12 +386,12 @@ async def submit_detected(
 
 
 def reject_detected(db: Session, *, geo: Geolocation) -> None:
-    """Soft-delete a ``detected`` row — the owner rejects the detection.
+    """Soft-delete a ``detected`` row: the owner rejects the detection.
 
     Sets ``deleted_at`` rather than hard-deleting: re-importing the same tweet
     later recreates it as a fresh ``detected`` (the assemble step's ``recreate``
-    verdict matches a soft-deleted pair — see ``detection._disposition``). A
-    ``human`` row is not rejectable here; the hard ``DELETE`` endpoint owns
+    verdict matches a soft-deleted pair, see ``detection._disposition``). A
+    ``submitted`` row is not rejectable here; the hard ``DELETE`` endpoint owns
     removing a row the owner already stood behind.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``. Commits,

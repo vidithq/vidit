@@ -66,7 +66,7 @@ export default function ShareButtons({
     };
   }, []);
 
-  // Validated links act on the first click; a draft arms first, then acts.
+  // A submitted link acts on the first click; a detected one arms first, then acts.
   const needsConfirm = status === "detected";
   const arm = (which: "copy" | "share") => {
     setArmed(which);

@@ -1,7 +1,7 @@
 """Multipart form-field parsers shared by the geolocation + bounty create routers.
 
-Both create endpoints take the same loose ``str`` form fields — a JSON ``proof``
-document, a JSON array of ``tag_ids``, and ISO dates / times — and parse them
+Both create endpoints take the same loose ``str`` form fields (a JSON ``proof``
+document, a JSON array of ``tag_ids``, and ISO dates / times) and parse them
 into clean Python types. Keeping the parsers here means the ``{status, message}``
 contract for malformed input lives in one place instead of being recopied per form.
 """

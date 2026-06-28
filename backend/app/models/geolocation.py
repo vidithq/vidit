@@ -48,20 +48,20 @@ class Geolocation(Base):
     proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
     # Optional time-of-day for ``event_date``, in UTC. NULL when the hour is
-    # unknown — common, since the event date is often inferred from context or
-    # from footage with no timestamp. A real-world event differs from a post:
+    # unknown, as the event date is often inferred from context or from footage
+    # with no timestamp. A real-world event differs from a post:
     # its date may be known only to the day (contrast ``source_posted_at``).
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # When the original source (a Telegram channel, an X account, …) posted the
-    # media — a real post instant, hence a full UTC timestamp and NOT NULL: a
+    # media. A real post instant, hence a full UTC timestamp and NOT NULL: a
     # post always has a time. Distinct from ``event_date`` (when the event
     # happened), ``detected_post_at`` (when the analyst posted the geolocation),
     # and ``created_at`` (submission to Vidit). On the machine path it equals the
     # imported tweet's timestamp (``source_url`` is the tweet there).
     source_posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # When the analyst published THIS geolocation on X — the post time of
+    # When the analyst published THIS geolocation on X, the post time of
     # ``detected_from_url``. The authorship / precedence signal for "who
-    # geolocated this first", consumed by the v0.5 claim/dispute pipeline;
+    # geolocated this first", consumed by the claim/dispute pipeline;
     # captured now because the originating tweet may be deleted before then.
     # NULL for human submits (no X import).
     detected_post_at: Mapped[datetime | None] = mapped_column(

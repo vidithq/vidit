@@ -34,7 +34,7 @@ class GeolocationRead(BaseModel):
     event_date: date
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
     event_time: time | None = None
-    # When the original source posted the media — a real post instant (UTC),
+    # When the original source posted the media: a real post instant (UTC),
     # always present. Distinct from ``event_date`` (when the event happened) and
     # ``created_at`` (submission).
     source_posted_at: datetime

@@ -61,9 +61,7 @@ def _submit(geo_id, author, **form_kwargs):
 
 def test_submit_adds_media(db, author, conflict_tag, capture_source_tag):
     geo = _detected(db, author)  # born media-less
-    response = _submit(
-        geo.id, author, data=_form(conflict_tag, capture_source_tag), files=_jpeg()
-    )
+    response = _submit(geo.id, author, data=_form(conflict_tag, capture_source_tag), files=_jpeg())
     assert response.status_code == 200
     body = response.json()
     assert len(body["media"]) == 1

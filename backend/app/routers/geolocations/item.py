@@ -234,7 +234,7 @@ def reject_geolocation(
 
     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
     distinct from the hard ``DELETE`` that removes a row for good. Off
-    ``detected`` → 409 (a ``human`` row goes through ``DELETE``).
+    ``detected`` → 409 (a ``submitted`` row goes through ``DELETE``).
     Soft-deleted → 404.
     """
     geo = _resolve_owned_geolocation(db, geolocation_id, current_user)

@@ -179,9 +179,9 @@ async def create_geolocation(
     # reject a valid ``2026-05-01T00:00:00`` with a generic Pydantic 422
     # instead of our custom message.
     event_date: str = Form(...),
-    # Optional hour-of-day for the event (HH:MM, UTC) — parsed below.
+    # Optional hour-of-day for the event (HH:MM, UTC). Parsed below.
     event_time: str | None = Form(None),
-    # When the source posted the media — a full datetime (datetime-local
+    # When the source posted the media: a full datetime (datetime-local
     # ``YYYY-MM-DDTHH:MM``, read as UTC). Required: a post always has a time.
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),

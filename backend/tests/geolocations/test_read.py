@@ -227,7 +227,7 @@ def test_points_returns_compact_shape(db, author):
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
-    assert row[5] == 0  # validated row → not marked detected
+    assert row[5] == 0  # submitted row → not marked detected
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -259,12 +259,12 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     point = next(r for r in points if r[0] == str(geo.id))
     assert point[5] == 1
 
-    # Detail — state + the distinct detected_from_url provenance link.
+    # Detail: status + the distinct detected_from_url provenance link.
     detail = client.get(f"/api/v1/geolocations/{geo.id}").json()
     assert detail["status"] == "detected"
     assert detail["detected_from_url"] == "https://x.com/a/status/1"
 
-    # List card — carries state too.
+    # List card: carries status too.
     listing = client.get("/api/v1/geolocations").json()
     item = next(i for i in listing if i["id"] == str(geo.id))
     assert item["status"] == "detected"

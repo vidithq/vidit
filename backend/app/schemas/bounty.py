@@ -22,7 +22,7 @@ class BountyRead(BaseModel):
     title: str
     source_url: str
     proof: dict[str, Any] | None
-    # When the event happened (date + optional hour) — nullable, a bounty is an
+    # When the event happened (date + optional hour), nullable: a bounty is an
     # unfinished geolocation. ``source_posted_at`` is the source's post instant
     # (UTC), required: the bounty's ``source_url`` is, so its post time is too.
     event_date: date | None = None

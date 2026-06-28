@@ -7,19 +7,19 @@ Create Date: 2026-06-27 13:00:00.000000
 Gives the editorial date fields a time-of-day, and turns the source date into a
 real post instant. On both ``geolocations`` and ``bounties``:
 
-* add ``event_time`` (TIME, nullable) — optional hour for ``event_date``; NULL
+* add ``event_time`` (TIME, nullable): optional hour for ``event_date``; NULL
   when the event's time-of-day is unknown.
 * ``source_date`` (DATE, nullable) becomes ``source_posted_at``
   (TIMESTAMPTZ, NOT NULL): a post always has a time. Existing day-only values
   are read as ``00:00 UTC``; pre-existing NULLs are backfilled from
-  ``created_at`` (a visible placeholder — the closed-beta catalog is wiped in
-  v0.4). The submit/edit forms then always supply a real timestamp.
+  ``created_at`` (a visible placeholder; the closed-beta catalog is wiped before
+  the public launch). The submit/edit forms then always supply a real timestamp.
 
 And on ``geolocations`` only:
 
-* add ``detected_post_at`` (TIMESTAMPTZ, nullable) — when the analyst published
+* add ``detected_post_at`` (TIMESTAMPTZ, nullable): when the analyst published
   the geolocation on X (the imported tweet's time); NULL for human submits. The
-  precedence signal for the v0.5 claim/dispute pipeline.
+  precedence signal for the claim/dispute pipeline.
 
 Downgrade narrows ``source_posted_at`` back to a nullable DATE (losing the time)
 and drops the added columns.

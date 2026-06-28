@@ -83,7 +83,7 @@ function SubmitForm() {
   const [eventDate, setEventDate] = useState("");
   // Optional event time-of-day (HH:MM, UTC).
   const [eventTime, setEventTime] = useState("");
-  // When the source posted the media — a datetime-local value (UTC). Required:
+  // When the source posted the media: a datetime-local value (UTC). Required:
   // a post always has a time.
   const [sourcePostedAt, setSourcePostedAt] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);

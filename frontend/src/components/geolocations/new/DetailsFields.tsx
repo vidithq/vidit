@@ -21,7 +21,7 @@ interface DetailsFieldsProps {
   /** Optional event time-of-day ("HH:MM", UTC). */
   eventTime: string;
   setEventTime: (v: string) => void;
-  /** When the source posted the media — a datetime-local value
+  /** When the source posted the media: a datetime-local value
    *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;

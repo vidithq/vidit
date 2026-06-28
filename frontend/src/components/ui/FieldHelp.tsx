@@ -13,11 +13,11 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
  * closed by outside-click, Escape, scroll, or pointer-leave.
  *
  * The tooltip is shown from JS hover state on the icon itself (not a CSS
- * `group-hover`) so a surrounding `.group` — e.g. the map filter-panel rows —
+ * `group-hover`) so a surrounding `.group` (e.g. the map filter-panel rows)
  * can't trigger it; and it's rendered in a portal with `position: fixed` so an
  * `overflow` ancestor (e.g. the map detail side panel) can't clip it.
  *
- * Takes a single `concept` key — the explanation text and the accessible label
+ * Takes a single `concept` key: the explanation text and the accessible label
  * both come from the one registry in `lib/fieldHelp.ts`, so the same concept
  * reads identically everywhere it appears and never drifts between them.
  *
@@ -123,7 +123,7 @@ export default function FieldHelp({
   return (
     <span
       ref={wrapperRef}
-      // Hover lives on the wrapper (just the icon — the tooltip is portaled out).
+      // Hover lives on the wrapper (just the icon, the tooltip is portaled out).
       // Leaving un-pins so a desktop click-then-move-away dismisses naturally;
       // touch never fires mouseleave, so a tapped pin stays until an outside tap.
       onMouseEnter={() => {
