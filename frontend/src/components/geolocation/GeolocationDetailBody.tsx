@@ -5,11 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 
 import type { GeolocationDetail } from "@/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
+import { sourceIsSynthetic } from "@/lib/geolocations";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { TAG_CHIP } from "@/components/ui/styles";
@@ -160,33 +161,29 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 
   const rows = (
     <>
-      {geo.state === "detected" && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Status <FieldHelp concept="status" />
-          </span>
-          <DetectedBadge state={geo.state} />
-        </div>
-      )}
+      <div className={row}>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Status <FieldHelp concept="status" />
+        </span>
+        <StatusBadge status={geo.status} />
+      </div>
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
           Event date <FieldHelp concept="event_date" />
         </span>
-        <span className={value}>{formatDate(geo.event_date)}</span>
+        <span className={value}>{formatEventDate(geo.event_date, geo.event_time)}</span>
       </div>
-      {geo.source_date && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Source date{" "}
-            <FieldHelp concept="source_date" />
-          </span>
-          <span className={value}>{formatDate(geo.source_date)}</span>
-        </div>
-      )}
+      <div className={row}>
+        <span className={`${label} inline-flex items-center gap-1`}>
+          Source posted{" "}
+          <FieldHelp concept="source_posted_at" />
+        </span>
+        <span className={value}>{formatInstant(geo.source_posted_at)}</span>
+      </div>
       {/* The three dates read as one block: event → source → submitted. */}
       <div className={row}>
         <span className={`${label} inline-flex items-center gap-1`}>
-          Submitted date <FieldHelp concept="submitted_date" />
+          Added <FieldHelp concept="added" />
         </span>
         <span className={value}>{formatDate(geo.created_at)}</span>
       </div>
@@ -195,14 +192,14 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           Source <FieldHelp concept="source_url" />
         </span>
         <SourceLabel
-          isDemo={geo.is_demo}
+          isDemo={sourceIsSynthetic(geo)}
           url={geo.source_url}
           variant="link"
           maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
           className={compact ? "ml-4" : "text-sm ml-4"}
         />
       </div>
-      {/* The post a detection was imported from — distinct from Source (the
+      {/* The post a detection was imported from, distinct from Source (the
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
         <div className={row}>
@@ -211,10 +208,11 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             <FieldHelp concept="detected_from" />
           </span>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
-              host (and shows "synthetic" for demo rows), so the two provenance
-              rows read alike rather than one host-reduced, one truncated-full. */}
+              host, so the two provenance rows read alike rather than one
+              host-reduced, one truncated-full. A detected row's provenance link
+              shows even in demo data (see sourceIsSynthetic). */}
           <SourceLabel
-            isDemo={geo.is_demo}
+            isDemo={sourceIsSynthetic(geo)}
             url={geo.detected_from_url}
             variant="link"
             maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}

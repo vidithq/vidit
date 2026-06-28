@@ -146,7 +146,7 @@ function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
 /**
  * The map's filter overlay. Sections collapse individually (state summaries in
  * the header), ordered required → optional, broad → specific: Conflict and
- * Capture source (curated, open by default) → Event date → Submitted date →
+ * Capture source (curated, open by default) → Event date → Added →
  * Tags → Author. Filter state lives in MapStateContext so it survives
  * navigation; the panel reads and writes the context directly.
  */
@@ -366,17 +366,17 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
           </FilterSection>
 
           <FilterSection
-            title="Submitted date"
-            concept="submitted_date"
+            title="Added"
+            concept="added"
             summary={rangeSummary(submittedStart, submittedEnd)}
             active={submittedActive}
-            open={!!openSections["Submitted date"]}
-            onToggle={() => toggleSection("Submitted date")}
+            open={!!openSections["Added"]}
+            onToggle={() => toggleSection("Added")}
           >
             <TimelineScrubber
               points={points}
               dateIndex={4}
-              label="Submitted date"
+              label="Added"
               start={submittedStart}
               setStart={setSubmittedStart}
               end={submittedEnd}

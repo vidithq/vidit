@@ -13,22 +13,17 @@ import {
   deleteBounty,
   unclaimBounty,
 } from "@/lib/bounties";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import SourceLabel from "@/components/ui/SourceLabel";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
-import type { BountyDetail, BountyStatus } from "@/types";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import type { BountyDetail } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import {
-  PRIMARY_BUTTON,
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
-  TAG_CHIP,
-} from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -216,7 +211,7 @@ export default function BountyDetailPage() {
                 Status{" "}
                 <FieldHelp concept="bounty_status" />
               </span>
-              <StatusBadge status={bounty.status} />
+              <BountyStatusBadge status={bounty.status} />
             </div>
             {/* The dates read as one block — event → source → posted. */}
             {bounty.event_date && (
@@ -225,23 +220,21 @@ export default function BountyDetailPage() {
                   Event date <FieldHelp concept="event_date" />
                 </span>
                 <span className="text-sm text-neutral-200">
-                  {formatDate(bounty.event_date)}
-                </span>
-              </div>
-            )}
-            {bounty.source_date && (
-              <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                  Source date <FieldHelp concept="source_date" />
-                </span>
-                <span className="text-sm text-neutral-200">
-                  {formatDate(bounty.source_date)}
+                  {formatEventDate(bounty.event_date, bounty.event_time)}
                 </span>
               </div>
             )}
             <div className="flex justify-between px-4 py-3">
               <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Posted <FieldHelp concept="submitted_date" />
+                Source posted <FieldHelp concept="source_posted_at" />
+              </span>
+              <span className="text-sm text-neutral-200">
+                {formatInstant(bounty.source_posted_at)}
+              </span>
+            </div>
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
+                Added <FieldHelp concept="added" />
               </span>
               <span className="text-sm text-neutral-200">
                 {formatDate(bounty.created_at)}
@@ -386,20 +379,5 @@ export default function BountyDetailPage() {
           </div>
         )}
     </PageShell>
-  );
-}
-
-function StatusBadge({ status }: { status: BountyStatus }) {
-  const classes: Record<BountyStatus, string> = {
-    open: STATUS_PILL_ACTIVE,
-    fulfilled: STATUS_PILL_FULFILLED,
-    closed: STATUS_PILL_CLOSED,
-  };
-  return (
-    <span
-      className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold ${classes[status]}`}
-    >
-      {status}
-    </span>
   );
 }

@@ -28,10 +28,12 @@ export interface CreateBountyInput {
   source_url: string;
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
-  /** Optional, ISO YYYY-MM-DD — when the event happened. */
+  /** Optional, ISO YYYY-MM-DD: when the event happened. */
   event_date?: string;
-  /** Optional, ISO YYYY-MM-DD — when the source posted the media. */
-  source_date?: string;
+  /** Optional, ISO HH:MM: event time-of-day (UTC). */
+  event_time?: string;
+  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
+  source_posted_at: string;
   tag_ids?: string[];
   files: File[];
 }
@@ -46,9 +48,10 @@ export function createBounty(input: CreateBountyInput): Promise<BountyDetail> {
   if (input.event_date) {
     formData.append("event_date", input.event_date);
   }
-  if (input.source_date) {
-    formData.append("source_date", input.source_date);
+  if (input.event_time) {
+    formData.append("event_time", input.event_time);
   }
+  formData.append("source_posted_at", input.source_posted_at);
   if (input.tag_ids && input.tag_ids.length > 0) {
     formData.append("tag_ids", JSON.stringify(input.tag_ids));
   }
@@ -75,11 +78,15 @@ export function deleteBounty(id: string): Promise<void> {
 export function missingBountyFields(s: {
   title: string;
   sourceUrl: string;
+  sourcePostedAt: string;
   mediaCount: number;
 }): MissingField[] {
   const missing: MissingField[] = [];
   if (!s.title.trim()) missing.push({ key: "title", label: "Title" });
   if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
+  if (!s.sourcePostedAt) {
+    missing.push({ key: "source_posted_at", label: "Source post time" });
+  }
   if (s.mediaCount === 0) missing.push({ key: "source_media", label: "Source media" });
   return missing;
 }

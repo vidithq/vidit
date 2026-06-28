@@ -9,13 +9,13 @@ validation. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
@@ -227,7 +227,7 @@ def test_points_returns_compact_shape(db, author):
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
-    assert row[5] == 0  # validated row → not marked detected
+    assert row[5] == 0  # submitted row → not marked detected
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -245,8 +245,9 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
         title="Detected geo",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
-        state=STATE_DETECTED,
+        status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
     )
     db.add(geo)
@@ -258,15 +259,15 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     point = next(r for r in points if r[0] == str(geo.id))
     assert point[5] == 1
 
-    # Detail — state + the distinct detected_from_url provenance link.
+    # Detail: status + the distinct detected_from_url provenance link.
     detail = client.get(f"/api/v1/geolocations/{geo.id}").json()
-    assert detail["state"] == "detected"
+    assert detail["status"] == "detected"
     assert detail["detected_from_url"] == "https://x.com/a/status/1"
 
-    # List card — carries state too.
+    # List card: carries status too.
     listing = client.get("/api/v1/geolocations").json()
     item = next(i for i in listing if i["id"] == str(geo.id))
-    assert item["state"] == "detected"
+    assert item["status"] == "detected"
 
 
 def test_points_cache_miss_then_hit(db, author):

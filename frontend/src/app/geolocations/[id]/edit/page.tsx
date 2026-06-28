@@ -47,7 +47,7 @@ export default function EditGeolocationPage() {
     );
   }
 
-  // The review flow is owner-only and state-gated to ``detected`` — the same
+  // The submit flow is owner-only and state-gated to ``detected``, the same
   // gate the backend enforces (403 / 409). Surface it before the form rather
   // than letting a PATCH bounce.
   if (user.id !== geo.author.id) {
@@ -67,11 +67,11 @@ export default function EditGeolocationPage() {
     );
   }
 
-  if (geo.state !== "detected") {
+  if (geo.status !== "detected") {
     return (
       <PageShell back title="Edit detection">
         <p className="text-sm text-neutral-400">
-          This geolocation is validated and frozen — it can no longer be edited.{" "}
+          This geolocation is submitted and frozen, it can no longer be edited.{" "}
           <Link
             href={`/geolocations/${geo.id}`}
             className="text-orange-400 hover:underline"
@@ -87,7 +87,7 @@ export default function EditGeolocationPage() {
   return (
     <GeolocationEditForm
       geo={geo}
-      redirectTo={`/profile/${user.username}/review`}
+      redirectTo={`/profile/${user.username}/detections`}
     />
   );
 }

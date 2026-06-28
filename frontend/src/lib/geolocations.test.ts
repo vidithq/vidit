@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   missingGeolocationFields,
-  validationReadiness,
+  submitReadiness,
   type GeolocationFieldsState,
 } from "./geolocations";
 
@@ -14,6 +14,7 @@ const complete: GeolocationFieldsState = {
   lng: "37.8",
   sourceUrl: "https://t.me/c/1",
   eventDate: "2026-01-02",
+  sourcePostedAt: "2026-01-01T00:00",
   proof: {
     type: "doc",
     content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
@@ -40,6 +41,7 @@ describe("missingGeolocationFields", () => {
         lng: "",
         sourceUrl: "",
         eventDate: "",
+        sourcePostedAt: "",
         proof: null,
         mediaCount: 0,
         hasConflictTag: false,
@@ -50,6 +52,7 @@ describe("missingGeolocationFields", () => {
       "Coordinates",
       "Source URL",
       "Event date",
+      "Source post time",
       "Proof",
       "Source media",
       "Conflict tag",
@@ -104,14 +107,15 @@ describe("missingGeolocationFields", () => {
   });
 });
 
-describe("validationReadiness", () => {
-  // A detected row that would pass the Validate gate.
+describe("submitReadiness", () => {
+  // A detected row that would pass the Submit gate.
   const readyGeo = {
     title: "Strike on depot",
     lat: 48.5,
     lng: 37.8,
     source_url: "https://t.me/c/1",
     event_date: "2026-01-02",
+    source_posted_at: "2026-01-01T00:00:00Z",
     proof: {
       type: "doc",
       content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
@@ -123,12 +127,12 @@ describe("validationReadiness", () => {
     ],
   };
 
-  it("is ready when the full validate floor is met", () => {
-    expect(validationReadiness(readyGeo)).toEqual({ isReady: true, missing: [] });
+  it("is ready when the full submit floor is met", () => {
+    expect(submitReadiness(readyGeo)).toEqual({ isReady: true, missing: [] });
   });
 
-  it("mirrors the Validate gate — same labels, incl. a text-only proof", () => {
-    const r = validationReadiness({
+  it("mirrors the Submit gate (same labels, including a text-only proof)", () => {
+    const r = submitReadiness({
       ...readyGeo,
       proof: { type: "doc", content: [{ type: "paragraph" }] },
       media: [],

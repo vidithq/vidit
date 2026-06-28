@@ -1,8 +1,8 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Any, Literal
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String, Table, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String, Table, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -87,11 +87,14 @@ class Bounty(Base):
     # JSON shape as ``Geolocation.proof``, but optional and image-free
     # (services/bounties.py sanitises it with ``allow_images=False``).
     proof: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    # Optional metadata carried over when the bounty becomes a geolocation:
-    # when the event happened, and when the source posted the media. A bounty is
-    # an unfinished geolocation, so both may be unknown at posting time.
+    # Metadata carried over when the bounty becomes a geolocation. ``event_date``
+    # (+ optional ``event_time``) is when the event happened, often unknown for
+    # an unfinished geolocation, so nullable. ``source_posted_at`` is when the
+    # source posted the media: a real post instant (full UTC timestamp), and
+    # since the bounty's ``source_url`` is required, its post time is too.
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    source_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    source_posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[BountyStatus] = mapped_column(
         String(20), nullable=False, default=STATUS_OPEN, server_default=STATUS_OPEN
     )

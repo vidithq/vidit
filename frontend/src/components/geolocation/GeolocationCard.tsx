@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { ExternalLink, MapPin } from "lucide-react";
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import { TAG_CHIP, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { formatDate } from "@/lib/format";
-import type { GeolocationState } from "@/types";
+import type { GeolocationStatus } from "@/types";
 
 interface GeolocationCardData {
   id: string;
@@ -15,7 +15,7 @@ interface GeolocationCardData {
   is_demo?: boolean;
   /** Optional so minimal card data (no lifecycle context) still type-checks;
    *  the badge only renders for ``detected``. */
-  state?: GeolocationState;
+  status?: GeolocationStatus;
   lat?: number | null;
   lng?: number | null;
   author?: { username: string } | null;
@@ -86,7 +86,7 @@ export default function GeolocationCard({
             {geo.title}
           </p>
           <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-            {geo.state && <DetectedBadge state={geo.state} />}
+            {geo.status && <StatusBadge status={geo.status} />}
             {conflictTags.slice(0, 1).map((t) => (
               <span
                 key={t.id}
@@ -149,7 +149,7 @@ export default function GeolocationCard({
 
       <div className="flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {geo.state && <DetectedBadge state={geo.state} />}
+          {geo.status && <StatusBadge status={geo.status} />}
           {conflictTags.map((t) => (
             <span
               key={t.id}

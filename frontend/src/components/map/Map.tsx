@@ -123,7 +123,7 @@ export default function Map({
         id,
         selected: id === selectedId ? 1 : 0,
         // 1 for a machine detection — the marker paint colours it amber so a
-        // detected point reads distinct from a validated one at a glance.
+        // detected point reads distinct from a submitted one at a glance.
         detected,
       },
       geometry: {
@@ -259,7 +259,7 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 6,
-            // Amber for a machine detection, orange for a validated row.
+            // Amber for a machine detection, orange for a submitted row.
             "circle-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
             "circle-stroke-width": 1,

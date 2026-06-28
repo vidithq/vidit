@@ -18,7 +18,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.database import SessionLocal
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -79,6 +79,8 @@ def _dto(
         detected_from_url=url,
         owner_handle="own",
         event_date=date(2025, 11, 12),
+        posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+        detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         media=media or [],
     )
 
@@ -97,7 +99,7 @@ async def test_assemble_persists_detected_row(db, owner):
     assert outcome.skipped == 0 and outcome.recreated == 0
 
     geo = db.query(Geolocation).filter(Geolocation.author_id == owner.id).one()
-    assert geo.state == STATE_DETECTED
+    assert geo.status == STATUS_DETECTED
     assert geo.detected_from_url == "https://x.com/own/status/1"
     assert geo.source_url == "https://x.com/own/status/1"
     assert geo.event_date == date(2025, 11, 12)
@@ -111,8 +113,8 @@ async def test_assemble_persists_detected_row(db, owner):
 
 
 async def test_media_less_detection_persists(db, owner):
-    # A detected row may be media-incomplete — the owner completes it before
-    # validating. No media required, unlike a human submit.
+    # A detected row may be media-incomplete; the owner completes it before
+    # submitting. No media required, unlike a human submit.
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
@@ -148,16 +150,17 @@ async def test_idempotency_recreates_soft_deleted_pair(db, owner):
     assert len(live) == 1
 
 
-async def test_validated_pair_is_skipped(db, owner):
-    # A human (validated) row already at this (detected_from_url, coordinate)
+async def test_submitted_pair_is_skipped(db, owner):
+    # A submitted row already at this (detected_from_url, coordinate)
     # blocks a machine re-detection.
     existing = Geolocation(
         author_id=owner.id,
         title="Human submit",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
-        state=STATE_VALIDATED,
+        status=STATUS_SUBMITTED,
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)
@@ -176,7 +179,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
 
     geos = db.query(Geolocation).filter(Geolocation.author_id == owner.id).all()
     assert len(geos) == 6
-    assert all(g.state == STATE_DETECTED for g in geos)
+    assert all(g.status == STATUS_DETECTED for g in geos)
     assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
     assert all(g.proof and g.proof["content"] for g in geos)
 

@@ -22,7 +22,7 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from app.models.geolocation import STATE_DETECTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
@@ -94,7 +94,7 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     in practice, but the explicit ``author_id`` filter makes the invariant hold
     even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
     every row sharing ``detected_from_url`` (including soft-deleted) and matches
-    the coordinate to ``_COORD_PLACES``. A live match (validated or detected)
+    the coordinate to ``_COORD_PLACES``. A live match (submitted or detected)
     wins → ``skip``; only a soft-deleted match → ``recreate``; no match →
     ``create``.
     """
@@ -172,7 +172,9 @@ async def _persist_one(
             source_url=dto.detected_from_url,
             proof=tiptap_doc_from_text(dto.proof_text),
             event_date=dto.event_date,
-            state=STATE_DETECTED,
+            source_posted_at=dto.posted_at,
+            detected_post_at=dto.detected_post_at,
+            status=STATUS_DETECTED,
             detected_from_url=dto.detected_from_url,
             is_demo=is_demo,
         )

@@ -32,8 +32,10 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
 from app.routers._forms import (
+    parse_iso_datetime,
     parse_json_id_list,
     parse_optional_iso_date,
+    parse_optional_iso_time,
     parse_optional_json_object,
 )
 from app.schemas.bounty import BountyList, BountyRead
@@ -157,7 +159,8 @@ def _serialize_detail(bounty: Bounty) -> BountyRead:
         source_url=bounty.source_url,
         proof=bounty.proof,
         event_date=bounty.event_date,
-        source_date=bounty.source_date,
+        event_time=bounty.event_time,
+        source_posted_at=bounty.source_posted_at,
         status=bounty.status,
         created_at=bounty.created_at,
         updated_at=bounty.updated_at,
@@ -261,10 +264,11 @@ async def create_bounty(
     title: str = Form(..., min_length=1, max_length=255),
     source_url: str = Form(..., max_length=2000),
     proof: str | None = Form(None),
-    # Optional dates — same loose ``str`` shape as the geolocation form,
-    # parsed below (not by Pydantic).
+    # Event date optional (often unknown for a bounty); the source is a post, so
+    # its timestamp is required. Same loose ``str`` shapes, parsed below.
     event_date: str | None = Form(None),
-    source_date: str | None = Form(None),
+    event_time: str | None = Form(None),
+    source_posted_at: str = Form(...),
     tag_ids: str | None = Form(None),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
@@ -285,7 +289,11 @@ async def create_bounty(
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
-    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
+    # A time-of-day needs its day; event_date is optional on a bounty.
+    if parsed_event_time is not None and parsed_event_date is None:
+        raise HTTPException(status_code=422, detail="event_time requires event_date")
 
     try:
         bounty = await bounties_service.create_with_evidence(
@@ -295,7 +303,8 @@ async def create_bounty(
             source_url=source_url,
             proof_data=proof_data,
             event_date=parsed_event_date,
-            source_date=parsed_source_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
             tag_ids=parsed_tag_ids,
             files=files,
             uploaded_ip=extract_client_ip(request),

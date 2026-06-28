@@ -4,34 +4,35 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import ReviewQueueCard from "@/components/geolocation/ReviewQueueCard";
+import DetectionCard from "@/components/geolocation/DetectionCard";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { useReviewQueue } from "@/contexts/ReviewQueueContext";
+import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
-  reviewQueuePath,
+  detectionsPath,
   type PaginatedGeolocationDetails,
 } from "@/lib/geolocations";
 
-export default function ReviewQueuePage() {
+export default function DetectionsPage() {
   const params = useParams();
   const router = useRouter();
   const { user, loading: authLoading } = useRequireAuth();
   const username = typeof params.username === "string" ? params.username : "";
   const isOwn = !!user && user.username === username;
   const [page, setPage] = useState(1);
-  const { refresh: refreshReviewCount } = useReviewQueue();
+  const { refresh: refreshDetectionCount } = useDetectionsCount();
 
-  // The queue is the caller's own — the endpoint scopes to ``current_user`` and
+  // The list is the caller's own: the endpoint scopes to ``current_user`` and
   // ignores the URL username, so viewing it under another analyst's handle
-  // would show your queue under their name. Send a non-owner to that profile.
+  // would show your detections under their name. Send a non-owner to that
+  // profile.
   useEffect(() => {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
   const { data, error, refetch } = useApiResource<PaginatedGeolocationDetails>(
-    isOwn ? reviewQueuePath(page) : null
+    isOwn ? detectionsPath(page) : null
   );
 
   if (authLoading || !user || !isOwn) {
@@ -42,12 +43,12 @@ export default function ReviewQueuePage() {
     );
   }
 
-  // A row leaves the queue once acted on (validated → frozen, rejected →
-  // soft-deleted). Acting on the last row of a later page would strand the
-  // user on an empty page — step back instead of refetching into nothing.
+  // A row leaves the list once acted on (submitted then frozen, rejected then
+  // soft-deleted). Acting on the last row of a later page would strand the user
+  // on an empty page, step back instead of refetching into nothing.
   const handleActed = () => {
-    // Keep the sidebar dot + profile entry in sync with the queue.
-    refreshReviewCount();
+    // Keep the sidebar dot + profile entry in sync with the list.
+    refreshDetectionCount();
     if (data && data.items.length === 1 && page > 1) {
       setPage((p) => p - 1);
     } else {
@@ -63,7 +64,7 @@ export default function ReviewQueuePage() {
   } else if (data.items.length === 0) {
     listBody = (
       <div className="py-8 text-center space-y-3">
-        <p className="text-sm text-neutral-400">Nothing to review.</p>
+        <p className="text-sm text-neutral-400">No detections to submit.</p>
         <p className="text-xs text-neutral-500">
           New detections land here after you import your archive or tag the bot
           on a geolocation tweet.
@@ -81,7 +82,7 @@ export default function ReviewQueuePage() {
     listBody = (
       <div className="space-y-3">
         {data.items.map((geo) => (
-          <ReviewQueueCard key={geo.id} geo={geo} onActed={handleActed} />
+          <DetectionCard key={geo.id} geo={geo} onActed={handleActed} />
         ))}
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">
@@ -113,8 +114,8 @@ export default function ReviewQueuePage() {
   return (
     <PageShell
       back
-      title="Review queue"
-      subtitle="Machine-detected geolocations awaiting your review — validate, edit, or reject each."
+      title="Detections"
+      subtitle="Machine-detected geolocations awaiting your submission. Edit and submit, or reject each."
     >
       {listBody}
     </PageShell>

@@ -95,6 +95,17 @@
   background: #525252;
 }
 
+/* Native date/time inputs (date / time / datetime-local): mute the empty
+   placeholder text (dd/mm/yyyy, --:--) to the text-input placeholder colour
+   (`placeholder:text-neutral-600`). Filled inputs carry `.has-value` (set from
+   the field's value) and keep the normal text colour. Webkit/Chromium pseudo,
+   same scope as the scrollbar rules above. */
+input[type='date']:not(.has-value)::-webkit-datetime-edit,
+input[type='time']:not(.has-value)::-webkit-datetime-edit,
+input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
+  color: var(--color-neutral-600);
+}
+
 /* Offset MapLibre controls past the sidebar on full-screen map only */
 .map-fullscreen .maplibregl-ctrl-bottom-left {
   left: 60px !important;

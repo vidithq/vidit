@@ -13,7 +13,7 @@
  * do this — `smartBack` navigates with `push` (a forward nav), so the tracker
  * would immediately re-record the page just left, and the button would
  * ping-pong between the last two pages instead of walking the chain
- * (Map → Profile → Review then back should go Review → Profile → Map). A
+ * (Map → Profile → Detections then back should go Detections → Profile → Map). A
  * one-shot "going back" flag, set by `smartBack` and consumed by the tracker,
  * stops that re-record so the walk stays honest.
  */

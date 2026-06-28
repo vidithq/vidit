@@ -2,13 +2,13 @@ import Link from "next/link";
 import { ArrowRight, Bot } from "lucide-react";
 
 /**
- * Own-profile entry point into the review queue. Surfaces the count of
- * machine-`detected` geolocations awaiting the owner's validation and links to
- * `/profile/{username}/review`. The parent renders it only when `count > 0`, so
- * a clean profile stays clean. Amber to match `DetectedBadge` — the same
+ * Own-profile entry point into the detections list. Surfaces the count of
+ * machine-`detected` geolocations awaiting the owner's submission and links to
+ * `/profile/{username}/detections`. The parent renders it only when `count > 0`,
+ * so a clean profile stays clean. Amber to match `StatusBadge`, the same
  * "machine, pending" signal.
  */
-export function ReviewQueueEntry({
+export function DetectionsEntry({
   username,
   count,
 }: {
@@ -17,7 +17,7 @@ export function ReviewQueueEntry({
 }) {
   return (
     <Link
-      href={`/profile/${username}/review`}
+      href={`/profile/${username}/detections`}
       className="group flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 hover:bg-amber-500/15 transition-colors"
     >
       <div className="flex items-center gap-3">
@@ -32,10 +32,10 @@ export function ReviewQueueEntry({
         </span>
         <div>
           <p className="text-sm font-medium text-neutral-100">
-            {count} {count === 1 ? "detection" : "detections"} to review
+            {count} {count === 1 ? "detection" : "detections"} to submit
           </p>
           <p className="text-xs text-neutral-400">
-            Machine-found geolocations awaiting your validation.
+            Machine-found geolocations awaiting submission.
           </p>
         </div>
       </div>

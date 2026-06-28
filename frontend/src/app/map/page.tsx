@@ -126,7 +126,7 @@ export default function HomePage() {
   };
 
   // Apply both timeline windows client-side: each point carries its event and
-  // submitted dates, so scrubbing and playback filter the in-memory set
+  // added dates, so scrubbing and playback filter the in-memory set
   // instantly with no /points refetch. A point must fall inside both windows.
   const visiblePoints = useMemo(() => {
     if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return points;

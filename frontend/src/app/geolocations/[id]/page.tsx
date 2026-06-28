@@ -60,7 +60,7 @@ export default function GeolocationPage() {
           eventDate={geo.event_date}
           lat={geo.lat}
           lng={geo.lng}
-          state={geo.state}
+          status={geo.status}
         />
       }
     >
@@ -82,7 +82,7 @@ export default function GeolocationPage() {
                     date slots are inert here, so pass empty strings. */}
                 <Map
                   points={[
-                    [geo.id, geo.lat, geo.lng, "", "", geo.state === "detected" ? 1 : 0],
+                    [geo.id, geo.lat, geo.lng, "", "", geo.status === "detected" ? 1 : 0],
                   ]}
                   center={{ lat: geo.lat, lng: geo.lng }}
                   zoom={12}

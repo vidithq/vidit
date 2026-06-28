@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { formatDate } from "@/lib/format";
@@ -324,7 +324,7 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
           <Highlighted value={hit.title_highlight} />
         </h3>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <DetectedBadge state={hit.state} />
+          <StatusBadge status={hit.status} />
           <span className="inline-flex items-center gap-1">
             <UserIcon size={11} />@{hit.author.username}
             <TrustBadge

@@ -5,31 +5,31 @@ import Image from "next/image";
 import Link from "next/link";
 import { Check, Film, MapPin, Pencil, X } from "lucide-react";
 
-import DetectedBadge from "@/components/geolocation/DetectedBadge";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import SourceLabel from "@/components/ui/SourceLabel";
 import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
-import { rejectGeolocation, validationReadiness } from "@/lib/geolocations";
+import { rejectGeolocation, sourceIsSynthetic, submitReadiness } from "@/lib/geolocations";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { GeolocationDetail } from "@/types";
 
 /**
- * One machine-`detected` row in the owner review queue. **Review** opens the
- * full form at `/geolocations/{id}/edit` — where the owner edits and validates
- * (validation lives there so it always follows a complete read). **Delete**
+ * One machine-`detected` row in the owner detections list. **Edit** opens the
+ * full form at `/geolocations/{id}/edit`, where the owner edits and submits
+ * (submission lives there so it always follows a complete read). **Delete**
  * (two-click) soft-deletes the detection here. `onActed` lets the parent refetch
- * once a row leaves the queue.
+ * once a row leaves the list.
  */
-export default function ReviewQueueCard({
+export default function DetectionCard({
   geo,
   onActed,
 }: {
   geo: GeolocationDetail;
   onActed: () => void;
 }) {
-  const readiness = validationReadiness(geo);
+  const readiness = submitReadiness(geo);
   const [confirmingReject, setConfirmingReject] = useState(false);
 
   const rejectMut = useMutation(() => rejectGeolocation(geo.id), {
@@ -77,7 +77,7 @@ export default function ReviewQueueCard({
           >
             {geo.title}
           </Link>
-          <DetectedBadge state={geo.state} />
+          <StatusBadge status={geo.status} />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
@@ -90,7 +90,7 @@ export default function ReviewQueueCard({
             <span className="inline-flex items-center gap-1">
               from
               <SourceLabel
-                isDemo={geo.is_demo}
+                isDemo={sourceIsSynthetic(geo)}
                 url={geo.detected_from_url}
                 variant="link"
                 maxWidthClass="max-w-[160px]"
@@ -115,20 +115,24 @@ export default function ReviewQueueCard({
         {actionError && <div className={FORM_ERROR_BANNER_BOXED}>{actionError}</div>}
 
         {/* Readiness on the left, the three actions tucked into the bottom-right
-            corner — one row instead of two keeps the card compact. Readiness is
+            corner: one row instead of two keeps the card compact. Readiness is
             always rendered (ready or not) so the card height stays uniform; when
-            blocked it's the nudge (machine rows are born tagless → edit to add
-            the curated tags, then validate). */}
-        <div className="flex items-center justify-between gap-3 pt-0.5">
-          <p className="text-[11px] min-w-0">
+            blocked it's the nudge (machine rows are born tagless, edit to add
+            the curated tags, then submit). */}
+        <div className="flex items-start justify-between gap-3 pt-0.5">
+          <div className="min-w-0">
             {readiness.isReady ? (
-              <span className="text-neutral-400">Ready to validate.</span>
+              <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
+                <Check size={12} /> Ready to submit.
+              </span>
             ) : (
-              <span className="text-amber-400/90">
-                Needs: {readiness.missing.join(", ")}
+              // The submit floor as a single neutral line: the concrete reason a
+              // submission is blocked, kept light (no chips).
+              <span className="text-[11px] text-neutral-500">
+                To submit: {readiness.missing.join(", ")}
               </span>
             )}
-          </p>
+          </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Link
@@ -136,7 +140,7 @@ export default function ReviewQueueCard({
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs ${PRIMARY_BUTTON}`}
             >
               <Pencil size={13} />
-              Review
+              Edit
             </Link>
 
             {/* Two-click confirm so a stray click can't soft-delete a detection. */}

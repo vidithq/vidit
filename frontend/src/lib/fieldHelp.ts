@@ -37,16 +37,20 @@ export const FIELD_HELP = {
     text: "When the depicted event happened (from the chyron or context). Not the post date or the date you submit it here.",
     label: "What is the event date?",
   },
-  source_date: {
-    text: "When the source posted the media (the Telegram / X post date). Not when the event happened, nor when you submitted it here.",
-    label: "What is the source date?",
+  event_time: {
+    text: "Optional time-of-day the event happened (UTC), if known from the footage or context. Leave blank when only the day is known.",
+    label: "What is the event time?",
   },
-  submitted_date: {
+  source_posted_at: {
+    text: "When the source posted the media (the Telegram / X post date and time, UTC). A post always has a time. Not when the event happened, nor when you submitted it here.",
+    label: "What is the source post time?",
+  },
+  added: {
     text: "When this was added to Vidit. Not when the event happened, nor when the source posted the media.",
-    label: "What is the submitted date?",
+    label: "What is the added date?",
   },
   status: {
-    text: "Validated: submitted or vouched for by a human. Detected: produced by the machine from a tweet, shown marked until its owner validates it.",
+    text: "Submitted: a person submitted it (via the form, or by submitting a reviewed detection), not independently verified. Detected: machine output from a tweet, shown marked until its owner submits it.",
     label: "What does the status mean?",
   },
   bounty_status: {
@@ -78,14 +82,10 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a bounty it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
-  // Edit-form actions — the two buttons do different things, spelled out here.
-  action_save_draft: {
-    text: "Saves your edits and keeps this a draft. It stays unpublished and you can keep editing — nothing is shown publicly yet.",
-    label: "What does Save changes do?",
-  },
-  action_validate: {
-    text: "Publishes the geolocation and freezes it. Once validated it can't be edited, so review everything first.",
-    label: "What does Validate do?",
+  // Detection submit action, spelled out here.
+  action_submit: {
+    text: "Submits this detection: your edits are saved and it becomes Submitted (a person stands behind it), frozen and no longer editable. Give it a full read first.",
+    label: "What does Submit do?",
   },
 } as const;
 

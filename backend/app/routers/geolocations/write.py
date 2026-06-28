@@ -25,8 +25,9 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
     parse_iso_date,
+    parse_iso_datetime,
     parse_json_id_list,
-    parse_optional_iso_date,
+    parse_optional_iso_time,
     parse_optional_json_object,
 )
 from app.routers.geolocations._common import _raise_geolocation_error, build_geolocation_read
@@ -178,9 +179,11 @@ async def create_geolocation(
     # reject a valid ``2026-05-01T00:00:00`` with a generic Pydantic 422
     # instead of our custom message.
     event_date: str = Form(...),
-    # Optional: the date the original source posted the media. Same loose
-    # ``str`` shape as ``event_date`` — parsed below, not by Pydantic.
-    source_date: str | None = Form(None),
+    # Optional hour-of-day for the event (HH:MM, UTC). Parsed below.
+    event_time: str | None = Form(None),
+    # When the source posted the media: a full datetime (datetime-local
+    # ``YYYY-MM-DDTHH:MM``, read as UTC). Required: a post always has a time.
+    source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     bounty_id: str | None = Form(None),
@@ -197,9 +200,9 @@ async def create_geolocation(
     # flush, AFTER the S3 round-trips. 422 matches ``_parse_bbox`` /
     # ``_parse_filter_date`` so malformed-input rejections share a code.
     parsed_event_date = parse_iso_date(event_date, field="event_date")
-
-    # Optional — empty string / absent → None. Same 422-on-garbage contract.
-    parsed_source_date = parse_optional_iso_date(source_date, field="source_date")
+    # Optional hour → None when absent; required source instant, read as UTC.
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
     parsed_bounty_id: uuid.UUID | None = None
     if bounty_id:
@@ -220,7 +223,8 @@ async def create_geolocation(
             lng=lng,
             source_url=source_url,
             event_date=parsed_event_date,
-            source_date=parsed_source_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
             bounty_id=parsed_bounty_id,

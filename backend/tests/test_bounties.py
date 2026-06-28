@@ -188,6 +188,7 @@ def _make_bounty(
         author_id=author.id,
         title=title or f"Bounty {uuid.uuid4().hex[:8]}",
         source_url=source_url,
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=status,
     )
     if deleted:
@@ -363,6 +364,7 @@ def test_detail_reflects_fulfilled_geolocation(db, author):
         title="Promoted",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=bounty.source_url,
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         originated_from_bounty_id=bounty.id,
     )
@@ -393,7 +395,11 @@ def test_create_rejects_missing_files(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "x", "source_url": "https://example.com"},
+        data={
+            "title": "x",
+            "source_url": "https://example.com",
+            "source_posted_at": "2026-05-01T12:00",
+        },
     )
     assert response.status_code in (400, 422)
 
@@ -403,7 +409,11 @@ def test_create_rejects_blank_title(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "   ", "source_url": "https://example.com"},
+        data={
+            "title": "   ",
+            "source_url": "https://example.com",
+            "source_posted_at": "2026-05-01T12:00",
+        },
         files=files,
     )
     assert response.status_code == 400
@@ -415,7 +425,11 @@ def test_create_rejects_blank_source_url(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "ok", "source_url": "  "},
+        data={
+            "title": "ok",
+            "source_url": "  ",
+            "source_posted_at": "2026-05-01T12:00",
+        },
         files=files,
     )
     assert response.status_code == 400
@@ -430,6 +444,7 @@ def test_create_rejects_invalid_proof_json(author):
         data={
             "title": "ok",
             "source_url": "https://example.com",
+            "source_posted_at": "2026-05-01T12:00",
             "proof": "{not valid",
         },
         files=files,
@@ -447,7 +462,11 @@ def test_create_rejects_too_many_files(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "x", "source_url": "https://example.com/post/1"},
+        data={
+            "title": "x",
+            "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
+        },
         files=files,
     )
     assert response.status_code == 422
@@ -461,7 +480,11 @@ def test_create_rejects_over_length_title(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "a" * 256, "source_url": "https://example.com/post/1"},
+        data={
+            "title": "a" * 256,
+            "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
+        },
         files=files,
     )
     assert response.status_code == 422
@@ -473,7 +496,11 @@ def test_create_rejects_over_length_source_url(author):
     response = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "ok", "source_url": "https://example.com/" + "a" * 2000},
+        data={
+            "title": "ok",
+            "source_url": "https://example.com/" + "a" * 2000,
+            "source_posted_at": "2026-05-01T12:00",
+        },
         files=files,
     )
     assert response.status_code == 422
@@ -489,6 +516,7 @@ def test_create_rejects_unsanitisable_proof(author):
         data={
             "title": "ok",
             "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
             "proof": '{"type": "not-doc"}',
         },
         files=files,
@@ -505,6 +533,7 @@ def test_create_happy_path(db, author, free_tag):
         data={
             "title": "Footage from a strike",
             "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
             "tag_ids": f'["{free_tag.id}"]',
         },
         files=files,
@@ -523,9 +552,9 @@ def test_create_happy_path(db, author, free_tag):
     db.commit()
 
 
-def test_create_accepts_optional_dates(db, author):
-    """``event_date`` + ``source_date`` are optional on a bounty: supplied →
-    round-trip on the read model, omitted → null."""
+def test_create_event_date_optional_source_required(db, author):
+    """event_date is optional on a bounty (omitted → null); source_posted_at is
+    required (a post always has a time) and round-trips on the read model."""
     with_dates = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
@@ -533,23 +562,27 @@ def test_create_accepts_optional_dates(db, author):
             "title": "Dated bounty",
             "source_url": "https://example.com/post/1",
             "event_date": "2026-05-01",
-            "source_date": "2026-05-02",
+            "source_posted_at": "2026-05-02T09:30",
         },
         files={"files": _tiny_jpeg()},
     )
     assert with_dates.status_code == 201, with_dates.text
     assert with_dates.json()["event_date"] == "2026-05-01"
-    assert with_dates.json()["source_date"] == "2026-05-02"
+    assert with_dates.json()["source_posted_at"].startswith("2026-05-02T09:30")
 
     without = client.post(
         "/api/v1/bounties",
         headers=login_as(client, author),
-        data={"title": "Undated bounty", "source_url": "https://example.com/post/2"},
+        data={
+            "title": "Undated bounty",
+            "source_url": "https://example.com/post/2",
+            "source_posted_at": "2026-05-02T09:30",
+        },
         files={"files": _tiny_jpeg()},
     )
     assert without.status_code == 201, without.text
     assert without.json()["event_date"] is None
-    assert without.json()["source_date"] is None
+    assert without.json()["source_posted_at"].startswith("2026-05-02T09:30")
 
     for created in (with_dates.json(), without.json()):
         bid = uuid.UUID(created["id"])
@@ -578,6 +611,7 @@ def test_create_strips_inline_images_from_proof(db, author):
         data={
             "title": "Image in proof",
             "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
             "proof": json.dumps(doc),
         },
         files={"files": _tiny_jpeg()},
@@ -608,6 +642,7 @@ def test_create_rejects_invalid_event_date(author):
             "title": "x",
             "source_url": "https://example.com/post/1",
             "event_date": "not-a-date",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files={"files": _tiny_jpeg()},
     )
@@ -633,6 +668,7 @@ def test_create_populates_sha256_on_media(db, author):
         data={
             "title": "hash test",
             "source_url": "https://example.com/post/1",
+            "source_posted_at": "2026-05-01T12:00",
         },
         files={"files": ("tiny.jpg", payload, "image/jpeg")},
     )
@@ -703,6 +739,7 @@ def test_delete_returns_409_when_fulfilled(db, author):
         title="Promoted",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=bounty.source_url,
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         originated_from_bounty_id=bounty.id,
     )
@@ -863,6 +900,7 @@ def test_geolocate_from_bounty_transfers_media_and_fulfills(
             "lng": "34.5",
             "source_url": bounty.source_url,
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(bounty_id),
             "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
         },
@@ -902,6 +940,7 @@ def test_geolocate_from_bounty_rejected_when_bounty_not_open(db, author, second_
             "lng": "34.5",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(bounty.id),
         },
     )
@@ -918,6 +957,7 @@ def test_geolocate_from_bounty_404_for_unknown(author):
             "lng": "34.5",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(uuid.uuid4()),
         },
     )
@@ -934,6 +974,7 @@ def test_geolocate_without_bounty_still_requires_media(author):
             "lng": "34.5",
             "source_url": "https://example.com",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 400
@@ -972,6 +1013,7 @@ def test_geolocate_from_bounty_overrides_form_source_url(
             "lat": "48.5",
             "lng": "34.5",
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(bounty.id),
             "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
         },
@@ -1020,6 +1062,7 @@ def test_geolocate_from_bounty_honors_analyst_title_and_tags(
                 "lng": "34.5",
                 "source_url": "https://example.com",
                 "event_date": "2026-05-01",
+                "source_posted_at": "2026-05-01T12:00",
                 "bounty_id": str(bounty.id),
                 # Analyst attaches a tag that wasn't on the bounty AND
                 # drops the bounty's original tag — both moves are allowed.
@@ -1068,6 +1111,7 @@ def test_partial_unique_index_blocks_double_fulfilment(db, author, second_user):
         title="first",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         originated_from_bounty_id=bounty_id,
     )
@@ -1081,6 +1125,7 @@ def test_partial_unique_index_blocks_double_fulfilment(db, author, second_user):
         title="second",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         originated_from_bounty_id=bounty_id,
     )
@@ -1113,6 +1158,7 @@ def test_fulfilled_by_excludes_soft_deleted_geolocation(
             "lng": "34.5",
             "source_url": bounty.source_url,
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(bounty_id),
             "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
         },
@@ -1163,6 +1209,7 @@ def test_geolocate_from_bounty_accepts_extra_files(
             "lng": "34.5",
             "source_url": bounty.source_url,
             "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
             "bounty_id": str(bounty_id),
             "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
         },

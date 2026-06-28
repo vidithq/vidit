@@ -11,12 +11,14 @@ afterEach(() => {
 });
 
 describe("FieldHelp", () => {
-  it("resolves a concept to its registry label + explanation text", () => {
+  it("reveals the registry label + explanation text on hover / focus", async () => {
     render(<FieldHelp concept="source_url" />);
     const btn = screen.getByRole("button", { name: FIELD_HELP.source_url.label });
     expect(btn).toHaveAttribute("aria-expanded", "false");
-    // The text lives in the DOM (a role=tooltip) so hover / focus reveal it.
-    const tooltip = screen.getByRole("tooltip");
+    // The tooltip is portaled and only rendered while open, hidden by default.
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.focus(btn);
+    const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent(FIELD_HELP.source_url.text);
     // The trigger is described by the tooltip so a screen reader announces it.
     expect(btn.getAttribute("aria-describedby")).toBe(tooltip.getAttribute("id"));

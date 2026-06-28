@@ -1,10 +1,10 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.geolocation import GeolocationState
+from app.models.geolocation import GeolocationStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -32,18 +32,24 @@ class GeolocationRead(BaseModel):
     source_url: str
     proof: dict[str, Any] | None
     event_date: date
-    # When the original source posted the media — distinct from ``event_date``
-    # (when the event happened) and ``created_at`` (submission). Nullable.
-    source_date: date | None = None
+    # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
+    event_time: time | None = None
+    # When the original source posted the media: a real post instant (UTC),
+    # always present. Distinct from ``event_date`` (when the event happened) and
+    # ``created_at`` (submission).
+    source_posted_at: datetime
     created_at: datetime
     updated_at: datetime
     is_demo: bool
-    # ``validated`` (human submits + bounty fulfilments) vs ``detected``
-    # (machine-produced, rendered marked). See ``models.geolocation.STATE_*``.
-    state: GeolocationState
-    # The post a machine detection was imported from — a provenance link
+    # ``submitted`` (human submits + bounty fulfilments) vs ``detected``
+    # (machine-produced, rendered marked). See ``models.geolocation.STATUS_*``.
+    status: GeolocationStatus
+    # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None = None
+    # When the analyst posted this geolocation on X (the imported tweet's time);
+    # NULL for human submits. The "who geolocated first" precedence signal.
+    detected_post_at: datetime | None = None
     author: AuthorRef
     media: list[MediaRead]
     tags: list[TagRead]
@@ -59,8 +65,8 @@ class GeolocationList(BaseModel):
     lng: float
     event_date: date
     is_demo: bool
-    # See ``GeolocationRead.state`` — a list card marks ``detected`` too.
-    state: GeolocationState
+    # See ``GeolocationRead.status``; a list card marks ``detected`` too.
+    status: GeolocationStatus
     author: AuthorRef
     tags: list[TagRead]
 
@@ -75,12 +81,12 @@ class PaginatedGeolocations(BaseModel):
 
 
 class PaginatedGeolocationDetails(BaseModel):
-    """Full-detail paginated geolocations — the owner review-queue payload.
+    """Full-detail paginated geolocations: the owner Detections-queue payload.
 
     Mirrors ``PaginatedGeolocations`` but carries ``GeolocationRead`` items
     (media + tags + provenance) rather than the lightweight ``GeolocationList``
-    card: the review queue needs the media to judge a detection and the tags to
-    compute validation-readiness (>=1 media + a ``conflict`` + a
+    card: the Detections queue needs the media to judge a detection and the tags
+    to compute submit-readiness (>=1 media + a ``conflict`` + a
     ``capture_source`` tag) without a per-row round-trip.
     """
 

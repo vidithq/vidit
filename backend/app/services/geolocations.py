@@ -16,7 +16,7 @@ when adding a code.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 
 from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.models.bounty import STATUS_FULFILLED, STATUS_OPEN, Bounty
-from app.models.geolocation import STATE_DETECTED, STATE_VALIDATED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
 from app.models.media import Media
 from app.models.proof_image import ProofImage
 from app.models.tag import Tag
@@ -77,8 +77,8 @@ class BountyNotOpenError(GeolocationError):
 class GeolocationStateError(GeolocationError):
     """The geolocation's lifecycle state forbids the requested transition.
 
-    Raised when an edit / validate / reject targets a row that isn't
-    ``detected`` (a ``validated`` row is frozen). Maps to 409 — the request is
+    Raised when a submit / reject targets a row that isn't
+    ``detected`` (a ``submitted`` row is frozen). Maps to 409: the request is
     well-formed but conflicts with the row's current state.
     """
 
@@ -99,16 +99,26 @@ def _require_submission_tags(tags: list[Tag]) -> None:
 
     Shared by the two paths a geolocation reaches a publishable state. A human
     submit runs it at create; a machine ``detected`` row is born tagless and
-    runs it at validate — the owner adds the tags during review. Checked
-    against resolved ``Tag`` rows, so a bogus id payload fails like an empty
-    one. Both categories ship an escape value, so the rule is always
-    satisfiable.
+    runs it at submit, when the owner adds the tags. Checked against resolved
+    ``Tag`` rows, so a bogus id payload fails like an empty one. Both categories
+    ship an escape value, so the rule is always satisfiable.
     """
     categories = {t.category for t in tags}
     if "conflict" not in categories:
         raise TagRequirementsError("A conflict tag is required")
     if "capture_source" not in categories:
         raise TagRequirementsError("A capture source tag is required")
+
+
+def _require_submission_media(has_media: bool) -> None:
+    """Enforce the media floor: at least one source media.
+
+    The sibling of :func:`_require_submission_tags` for the other half of the
+    evidence floor, shared by create (a fresh upload batch or an inherited
+    bounty's media) and detection submit (kept existing media plus new uploads).
+    """
+    if not has_media:
+        raise MediaRequiredError("At least one media file is required")
 
 
 async def create_with_evidence(
@@ -120,7 +130,8 @@ async def create_with_evidence(
     lng: float,
     source_url: str,
     event_date: date,
-    source_date: date | None = None,
+    event_time: time | None = None,
+    source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
     bounty_id: uuid.UUID | None,
@@ -174,11 +185,9 @@ async def create_with_evidence(
         if bounty.status != STATUS_OPEN:
             raise BountyNotOpenError(f"Cannot fulfill a bounty with status {bounty.status}")
 
-    # Every geolocation needs at least one media: a fresh upload batch, or
-    # a fulfilled bounty's existing media (transferred in place, no S3
-    # round-trip).
-    if not files and not (bounty and bounty.media):
-        raise MediaRequiredError("At least one media file is required")
+    # Every geolocation needs at least one media: a fresh upload batch, or a
+    # fulfilled bounty's existing media (transferred in place, no S3 round-trip).
+    _require_submission_media(bool(files) or bool(bounty and bounty.media))
 
     if proof_data is not None:
         try:
@@ -207,7 +216,8 @@ async def create_with_evidence(
         # NULL. ``proof_data`` stays None for the inline-image adoption below.
         proof=proof_data if proof_data is not None else EMPTY_TIPTAP_DOC,
         event_date=event_date,
-        source_date=source_date,
+        event_time=event_time,
+        source_posted_at=source_posted_at,
         originated_from_bounty_id=bounty.id if bounty else None,
     )
 
@@ -268,7 +278,7 @@ async def create_with_evidence(
     return geo
 
 
-async def update_detected(
+async def submit_detected(
     db: Session,
     *,
     geo: Geolocation,
@@ -277,7 +287,8 @@ async def update_detected(
     lng: float,
     source_url: str,
     event_date: date,
-    source_date: date | None,
+    event_time: time | None,
+    source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
     remove_media_ids: list,
@@ -285,32 +296,38 @@ async def update_detected(
     uploaded_ip: str | None,
     uploaded_user_agent: str | None,
 ) -> Geolocation:
-    """Apply an owner edit to a ``detected`` geolocation — the review step.
+    """Submit a ``detected`` geolocation: write the owner's edits and flip it to
+    ``submitted`` in one atomic step.
 
-    Mirrors :func:`create_with_evidence`: a full multipart edit (the form posts
-    the whole current state), applied atomically. The owner curates everything —
-    title, coordinate, source URL, event / source date, proof, tags, and the
-    source media (new ``files`` added, ``remove_media_ids`` dropped). Only
-    ``detected_from_url`` (the provenance anchor) and ``state`` are immutable. A
-    ``validated`` row is frozen.
+    A ``detected`` row is immutable machine output; this submit is the only write
+    to it. Mirrors :func:`create_with_evidence`: the form posts the whole state
+    (title, coordinate, source URL, event date + time, source post time, proof,
+    tags, and source media: new ``files`` added, ``remove_media_ids`` dropped),
+    and on success the row becomes ``submitted`` and frozen. ``detected_from_url``
+    (the provenance anchor) and ``status`` carry no form field.
 
-    The field updates, the media removals, and the new-media uploads commit in a
+    The field updates, media removals, new uploads, and the state flip commit in a
     single transaction; a failed upload rolls everything back and sweeps the keys
-    that landed (the removals revert with the txn, so their S3 stays). The
-    removed media's S3 objects are swept after the commit succeeds.
+    that landed (the removals revert with the txn, so their S3 stays). The removed
+    media's S3 objects are swept after the commit succeeds.
+
+    The evidence floor a human submit meets at create is enforced here, before any
+    S3 work, since machine detections are born tagless: at least one media (kept +
+    new) and the curated ``conflict`` + ``capture_source`` tags.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
-    values, :class:`TooManyFilesError` over the file-count cap, or a
-    file-validation error. Returns the refreshed row.
+    values, :class:`MediaRequiredError` / :class:`TagRequirementsError` (400) when
+    the floor is unmet, :class:`TooManyFilesError` over the file-count cap, or a
+    file-validation error. Returns the refreshed ``submitted`` row.
     """
-    if geo.state != STATE_DETECTED:
-        raise GeolocationStateError("Only detected geolocations can be edited")
+    if geo.status != STATUS_DETECTED:
+        raise GeolocationStateError("Only detected geolocations can be submitted")
 
     validate_coordinates(lat, lng)
 
-    # File-count cap counts what survives the edit: kept existing + new uploads.
-    # Compare on the string form — ids arrive as JSON strings from the form.
+    # File-count cap counts what survives the submit: kept existing + new uploads.
+    # Compare on the string form; ids arrive as JSON strings from the form.
     removing = {str(x) for x in remove_media_ids}
     kept = [m for m in geo.media if str(m.id) not in removing]
     if len(kept) + len(files) > MAX_FILES_PER_SUBMISSION:
@@ -324,17 +341,24 @@ async def update_detected(
 
     effective_tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
 
+    # Evidence floor, checked up front (before any S3 upload) against the
+    # post-submit state: at least one media survives, and both curated tags are set.
+    _require_submission_media(len(kept) + len(files) > 0)
+    _require_submission_tags(effective_tags)
+
     geo.title = title
     geo.location = from_shape(Point(lng, lat), srid=4326)
     geo.source_url = source_url
     geo.event_date = event_date
-    geo.source_date = source_date
+    geo.event_time = event_time
+    geo.source_posted_at = source_posted_at
     if proof_data is not None:
         geo.proof = proof_data
     geo.tags = effective_tags
+    geo.status = STATUS_SUBMITTED
 
     # Drop the media flagged for removal: snapshot their S3 keys, delete the rows
-    # (pending — committed atomically with the field updates + uploads below).
+    # (pending; committed atomically with the field updates + uploads below).
     storage = get_storage()
     removed_keys: list[str] = []
     for m in list(geo.media):
@@ -358,56 +382,29 @@ async def update_detected(
         upload=upload_file,
         uploaded_ip=uploaded_ip,
         uploaded_user_agent=uploaded_user_agent,
-        sweep_context=f"geolocation {geo.id} edit rollback",
+        sweep_context=f"geolocation {geo.id} submit rollback",
     )
 
-    # Committed — sweep the removed media's S3 objects (best-effort).
-    sweep_keys(removed_keys, context=f"geolocation {geo.id} edit media removal")
-    db.refresh(geo)
-    points_cache.invalidate()
-    return geo
-
-
-def validate_detected(db: Session, *, geo: Geolocation) -> Geolocation:
-    """Transition a ``detected`` row to ``validated``, freezing it.
-
-    Owner-gated at the router. Blocked until the row carries the evidence a
-    human submit must have at create: at least one media, and the curated
-    ``conflict`` + ``capture_source`` tags. Machine detections are born tagless
-    and exempt from the create-time tag rule, so the floor is enforced here —
-    the owner adds the tags during review. On success the row is ``validated``
-    and the edit endpoint refuses it.
-
-    Raises :class:`GeolocationStateError` (409) off ``detected``,
-    :class:`MediaRequiredError` / :class:`TagRequirementsError` (400) when the
-    evidence floor isn't met. Commits, invalidates the points cache.
-    """
-    if geo.state != STATE_DETECTED:
-        raise GeolocationStateError("Only detected geolocations can be validated")
-    if not geo.media:
-        raise MediaRequiredError("At least one media file is required")
-    _require_submission_tags(list(geo.tags))
-
-    geo.state = STATE_VALIDATED
-    db.commit()
+    # Committed; sweep the removed media's S3 objects (best-effort).
+    sweep_keys(removed_keys, context=f"geolocation {geo.id} submit media removal")
     db.refresh(geo)
     points_cache.invalidate()
     return geo
 
 
 def reject_detected(db: Session, *, geo: Geolocation) -> None:
-    """Soft-delete a ``detected`` row — the owner rejects the detection.
+    """Soft-delete a ``detected`` row: the owner rejects the detection.
 
     Sets ``deleted_at`` rather than hard-deleting: re-importing the same tweet
     later recreates it as a fresh ``detected`` (the assemble step's ``recreate``
-    verdict matches a soft-deleted pair — see ``detection._disposition``). A
-    ``validated`` row is not rejectable here; the hard ``DELETE`` endpoint owns
+    verdict matches a soft-deleted pair, see ``detection._disposition``). A
+    ``submitted`` row is not rejectable here; the hard ``DELETE`` endpoint owns
     removing a row the owner already stood behind.
 
     Raises :class:`GeolocationStateError` (409) off ``detected``. Commits,
     invalidates the points cache.
     """
-    if geo.state != STATE_DETECTED:
+    if geo.status != STATUS_DETECTED:
         raise GeolocationStateError("Only detected geolocations can be rejected")
     geo.deleted_at = datetime.now(UTC)
     db.commit()

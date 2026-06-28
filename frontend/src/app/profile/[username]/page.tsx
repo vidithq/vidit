@@ -15,10 +15,10 @@ import {
   RecentSubmissions,
   type PaginatedSubmissions,
 } from "@/components/profile/RecentSubmissions";
-import { ReviewQueueEntry } from "@/components/profile/ReviewQueueEntry";
+import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { useReviewQueue } from "@/contexts/ReviewQueueContext";
+import { useDetectionsCount } from "@/contexts/DetectionsContext";
 
 export default function ProfilePage() {
   const params = useParams();
@@ -44,7 +44,7 @@ export default function ProfilePage() {
   // Shared with the sidebar dot via the provider — owner-scoped server-side, so
   // it's the signed-in user's pending count regardless of whose profile this is
   // (gated to the own-profile render below).
-  const { count: reviewCount } = useReviewQueue();
+  const { count: detectionCount } = useDetectionsCount();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -126,8 +126,8 @@ export default function ProfilePage() {
 
         <LinkedAccountsCard profile={profile} edit={edit} />
 
-        {isOwn && reviewCount > 0 && (
-          <ReviewQueueEntry username={profile.username} count={reviewCount} />
+        {isOwn && detectionCount > 0 && (
+          <DetectionsEntry username={profile.username} count={detectionCount} />
         )}
 
         <RecentSubmissions

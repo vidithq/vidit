@@ -71,6 +71,7 @@ def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = N
         title=title,
         location=from_shape(Point(37.802, 48.012), srid=4326),
         source_url="https://example.com/proof",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=event or date.today(),
     )
     db.add(geo)

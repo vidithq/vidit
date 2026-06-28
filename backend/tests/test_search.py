@@ -132,6 +132,7 @@ def test_search_matches_geolocation_by_title(db, caller):
         title=f"Spotted {token} convoy near checkpoint",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/post-a",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     db.add(geo)
@@ -169,6 +170,7 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
         title="Plain title with no match",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=f"https://example.com/{token}/post",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     db.add(geo)
@@ -194,6 +196,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
         title=f"Soft-deleted {token} should be hidden",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/post-b",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         deleted_at=datetime.now(UTC),
     )
@@ -221,6 +224,7 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
         author_id=caller.id,
         title=f"Bounty {token} — please geolocate",
         source_url="https://example.com/bounty-a",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_OPEN,
     )
     db.add(bounty)
@@ -260,6 +264,7 @@ def test_search_excludes_soft_deleted_bounties(db, caller):
         author_id=caller.id,
         title=f"Hidden bounty {token}",
         source_url="https://example.com/bounty-b",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_OPEN,
         deleted_at=datetime.now(UTC),
     )
@@ -378,12 +383,14 @@ def test_search_type_all_returns_three_groups(db, caller):
         title=f"Geo {token} unique-token row",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     bounty = Bounty(
         author_id=caller.id,
         title=f"Bounty {token} unique-token row",
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_OPEN,
     )
     user = User(
@@ -434,12 +441,14 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         title=f"Geo only {token}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     bounty = Bounty(
         author_id=caller.id,
         title=f"Bounty also {token}",
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_OPEN,
     )
     db.add_all([geo, bounty])
@@ -481,6 +490,7 @@ def test_search_limit_caps_per_group(db, caller):
             author_id=caller.id,
             title=f"Bounty {token} number {i}",
             source_url="https://example.com",
+            source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
             status=STATUS_OPEN,
         )
         db.add(b)
@@ -576,6 +586,7 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
         title=f"planted \x02bad\x03 then {token} fragment",
         location=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
     db.add(geo)
