@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { TweetImportCoord, TweetImportResponse } from "@/types";
+import { toDatetimeLocalUTC } from "@/lib/format";
 import {
   buildSeedProof,
   fetchProxyBlob,
@@ -83,12 +84,12 @@ export function useTweetImport(form: TweetImportFormBindings) {
     if (parsed.suggested_title) form.setTitle(parsed.suggested_title);
     if (parsed.source_url) form.setSourceUrl(parsed.source_url);
     if (parsed.posted_at) {
-      const d = new Date(parsed.posted_at);
-      if (!Number.isNaN(d.getTime())) {
-        form.setEventDate(d.toISOString().slice(0, 10));
-        // The imported tweet is the source on this path, so its post time
-        // pre-fills the (required) source instant.
-        form.setSourcePostedAt(d.toISOString().slice(0, 16));
+      // The imported tweet is the source on this path: its post time pre-fills
+      // the (required) source instant, and that instant's date the event date.
+      const sourcePostedAt = toDatetimeLocalUTC(parsed.posted_at);
+      if (sourcePostedAt) {
+        form.setSourcePostedAt(sourcePostedAt);
+        form.setEventDate(sourcePostedAt.slice(0, 10));
       }
     }
     if (parsed.parsed_coords.length > 0) {

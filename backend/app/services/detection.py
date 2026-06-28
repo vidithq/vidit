@@ -173,7 +173,7 @@ async def _persist_one(
             proof=tiptap_doc_from_text(dto.proof_text),
             event_date=dto.event_date,
             source_posted_at=dto.posted_at,
-            detected_post_at=dto.posted_at,
+            detected_post_at=dto.detected_post_at,
             status=STATUS_DETECTED,
             detected_from_url=dto.detected_from_url,
             is_demo=is_demo,

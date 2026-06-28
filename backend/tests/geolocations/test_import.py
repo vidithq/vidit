@@ -111,6 +111,7 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
                 owner_handle="handle",
                 event_date=date(2025, 11, 12),
                 posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+                detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
                 media=[
                     ParsedMedia(
                         kind="image",

@@ -99,16 +99,26 @@ def _require_submission_tags(tags: list[Tag]) -> None:
 
     Shared by the two paths a geolocation reaches a publishable state. A human
     submit runs it at create; a machine ``detected`` row is born tagless and
-    runs it at validate — the owner adds the tags during review. Checked
-    against resolved ``Tag`` rows, so a bogus id payload fails like an empty
-    one. Both categories ship an escape value, so the rule is always
-    satisfiable.
+    runs it at submit, when the owner adds the tags. Checked against resolved
+    ``Tag`` rows, so a bogus id payload fails like an empty one. Both categories
+    ship an escape value, so the rule is always satisfiable.
     """
     categories = {t.category for t in tags}
     if "conflict" not in categories:
         raise TagRequirementsError("A conflict tag is required")
     if "capture_source" not in categories:
         raise TagRequirementsError("A capture source tag is required")
+
+
+def _require_submission_media(has_media: bool) -> None:
+    """Enforce the media floor: at least one source media.
+
+    The sibling of :func:`_require_submission_tags` for the other half of the
+    evidence floor, shared by create (a fresh upload batch or an inherited
+    bounty's media) and detection submit (kept existing media plus new uploads).
+    """
+    if not has_media:
+        raise MediaRequiredError("At least one media file is required")
 
 
 async def create_with_evidence(
@@ -175,11 +185,9 @@ async def create_with_evidence(
         if bounty.status != STATUS_OPEN:
             raise BountyNotOpenError(f"Cannot fulfill a bounty with status {bounty.status}")
 
-    # Every geolocation needs at least one media: a fresh upload batch, or
-    # a fulfilled bounty's existing media (transferred in place, no S3
-    # round-trip).
-    if not files and not (bounty and bounty.media):
-        raise MediaRequiredError("At least one media file is required")
+    # Every geolocation needs at least one media: a fresh upload batch, or a
+    # fulfilled bounty's existing media (transferred in place, no S3 round-trip).
+    _require_submission_media(bool(files) or bool(bounty and bounty.media))
 
     if proof_data is not None:
         try:
@@ -335,8 +343,7 @@ async def submit_detected(
 
     # Evidence floor, checked up front (before any S3 upload) against the
     # post-submit state: at least one media survives, and both curated tags are set.
-    if len(kept) + len(files) == 0:
-        raise MediaRequiredError("At least one media file is required")
+    _require_submission_media(len(kept) + len(files) > 0)
     _require_submission_tags(effective_tags)
 
     geo.title = title

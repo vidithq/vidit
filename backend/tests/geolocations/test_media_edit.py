@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.geolocation import STATUS_DETECTED
+from app.models.geolocation import STATUS_DETECTED, Geolocation
 from app.models.media import Media
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
@@ -57,6 +57,27 @@ def _submit(geo_id, author, **form_kwargs):
         headers=login_as(client, author),
         **form_kwargs,
     )
+
+
+def test_submit_rolls_back_flip_when_media_upload_fails(
+    db, author, conflict_tag, capture_source_tag
+):
+    # A file that clears the count floor but fails validation (disallowed MIME)
+    # raises after the row was flipped to submitted in-memory. The whole
+    # transaction rolls back, so the row stays detected and gains no media.
+    geo = _detected(db, author)
+    response = _submit(
+        geo.id,
+        author,
+        data=_form(conflict_tag, capture_source_tag),
+        files={"files": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_file"
+    db.expire_all()
+    refreshed = db.get(Geolocation, geo.id)
+    assert refreshed.status == STATUS_DETECTED
+    assert len(refreshed.media) == 0
 
 
 def test_submit_adds_media(db, author, conflict_tag, capture_source_tag):

@@ -80,6 +80,7 @@ def _dto(
         owner_handle="own",
         event_date=date(2025, 11, 12),
         posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+        detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         media=media or [],
     )
 

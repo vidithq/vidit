@@ -6,7 +6,7 @@ but at the thread → DTO boundary.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -88,3 +88,24 @@ def test_title_is_never_a_bare_coordinate():
     assert len(out) == 1
     # The only line is a bare coordinate → title falls back to empty.
     assert out[0].title == ""
+
+
+def test_malformed_time_recovers_date_and_nulls_detected_post_at():
+    # A valid date with a garbled time-of-day: event_date is recovered from the
+    # date prefix, posted_at falls back to the epoch sentinel (it maps to the
+    # NOT-NULL source_posted_at), and detected_post_at is NULL, not a false 1970.
+    out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")])
+    assert len(out) == 1
+    d = out[0]
+    assert d.event_date == date(2025, 11, 12)
+    assert d.posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.detected_post_at is None
+
+
+def test_fully_unparseable_timestamp_falls_back_to_epoch_date():
+    out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
+    assert len(out) == 1
+    d = out[0]
+    assert d.event_date == date(1970, 1, 1)
+    assert d.posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.detected_post_at is None

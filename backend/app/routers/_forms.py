@@ -66,15 +66,28 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
 
 
 def parse_optional_iso_time(raw: str | None, *, field: str) -> time | None:
-    """Parse an optional ISO-8601 (HH:MM[:SS]) time form field. Empty → ``None``; 422 on garbage."""
+    """Parse an optional ISO-8601 (HH:MM[:SS]) time-of-day form field. Empty →
+    ``None``; 422 on garbage or on an offset-aware value.
+
+    The column stores a UTC wall-clock time-of-day (naive). A value carrying a
+    UTC offset can't be normalised to UTC without a date, so it's rejected rather
+    than silently stored with the offset dropped (the sibling
+    :func:`parse_iso_datetime` does normalise, because it has the date).
+    """
     if not raw:
         return None
     try:
-        return time.fromisoformat(raw)
+        parsed = time.fromisoformat(raw)
     except ValueError as exc:
         raise HTTPException(
             status_code=422, detail=f"{field} must be an ISO-8601 time (HH:MM)"
         ) from exc
+    if parsed.tzinfo is not None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} must be a UTC time of day with no offset (HH:MM)",
+        )
+    return parsed
 
 
 def parse_iso_datetime(raw: str, *, field: str) -> datetime:
