@@ -1,10 +1,11 @@
 "use client";
 
-import { User as UserIcon, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import type { PublicProfile } from "@/lib/users";
 import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
+import { Avatar } from "@/components/ui/Avatar";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_INPUT_COMPACT,
@@ -34,18 +35,12 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           title) so own and others' profiles share the same chrome. */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-16 h-16 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
-            {displayedAvatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={displayedAvatar}
-                alt={`${profile.username}'s avatar`}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <UserIcon size={28} className="text-neutral-500" />
-            )}
-          </div>
+          <Avatar
+            src={displayedAvatar}
+            username={profile.username}
+            size="w-16 h-16"
+            fallback="icon"
+          />
           <div className="min-w-0">
             {/* h2 under PageShell's generic "Profile" h1 so the username is
                 exposed to screen readers and the document outline. */}

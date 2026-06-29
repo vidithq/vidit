@@ -12,11 +12,14 @@ import {
 } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import StatusBadge from "@/components/geolocation/StatusBadge";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { formatDate } from "@/lib/format";
-import { displayUrlsFor } from "@/lib/mediaUrls";
 import SourceLabel from "@/components/ui/SourceLabel";
+import { Avatar } from "@/components/ui/Avatar";
+import { MediaThumb } from "@/components/ui/MediaThumb";
+import { TagBadge } from "@/components/ui/TagBadge";
 import type {
   SearchBountyHit,
   SearchGeolocationHit,
@@ -31,10 +34,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
-  TAG_CHIP,
   TAPPABLE_HOVER,
   TEXT_LINK,
 } from "@/components/ui/styles";
@@ -337,12 +336,7 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
         {hit.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
             {hit.tags.map((t) => (
-              <span
-                key={t.id}
-                className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-              >
-                {t.name}
-              </span>
+              <TagBadge key={t.id} name={t.name} />
             ))}
           </div>
         )}
@@ -358,42 +352,13 @@ function BountyResult({ hit }: { hit: SearchBountyHit }) {
       href={`/bounties/${hit.id}`}
       className={`flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
     >
-      <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
-        {hero ? (
-          hero.media_type === "image" ? (
-            // `w-28 aspect-video` ≈ 112 CSS px; thumbnail variant fits
-            // the dense results, re-fetched on every render.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayUrlsFor(hero).thumbnail}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <video src={hero.storage_url} className="w-full h-full object-cover" muted />
-          )
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
-            no media
-          </div>
-        )}
-      </div>
+      <MediaThumb media={hero} />
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
             <Highlighted value={hit.title_highlight} />
           </h3>
-          <span
-            className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold ${
-              hit.status === "open"
-                ? STATUS_PILL_ACTIVE
-                : hit.status === "fulfilled"
-                  ? STATUS_PILL_FULFILLED
-                  : STATUS_PILL_CLOSED
-            }`}
-          >
-            {hit.status}
-          </span>
+          <BountyStatusBadge status={hit.status} />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
           <span className="inline-flex items-center gap-1">
@@ -422,18 +387,7 @@ function UserResult({ hit }: { hit: SearchUserHit }) {
       href={`/profile/${hit.username}`}
       className={`flex items-start gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
     >
-      {hit.avatar_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={hit.avatar_url}
-          alt=""
-          className="size-10 rounded-full object-cover border border-neutral-700 shrink-0"
-        />
-      ) : (
-        <div className="size-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-300 font-medium shrink-0">
-          {hit.username[0]?.toUpperCase() ?? "?"}
-        </div>
-      )}
+      <Avatar src={hit.avatar_url} username={hit.username} size="size-10" />
       <div className="flex-1 min-w-0 space-y-1">
         <h3 className="text-sm font-medium text-neutral-100 inline-flex items-center gap-1.5">
           @<Highlighted value={hit.username_highlight} />

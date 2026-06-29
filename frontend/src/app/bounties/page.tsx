@@ -7,18 +7,18 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
 import { formatDate, safeHostname } from "@/lib/format";
-import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { BountyListItem, BountyStatus } from "@/types";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MediaThumb } from "@/components/ui/MediaThumb";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import {
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
   PRIMARY_BUTTON,
-  TAG_CHIP,
   TAPPABLE_HOVER,
   TEXT_LINK,
 } from "@/components/ui/styles";
@@ -139,35 +139,7 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
       href={`/bounties/${bounty.id}`}
       className={`flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
     >
-      <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
-        {hero ? (
-          hero.media_type === "image" ? (
-            // `w-28 aspect-video` ≈ 112 CSS px; thumbnail variant fits
-            // the dense index.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayUrlsFor(hero).thumbnail}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            // `#t=0.1` media-fragment URI seeks to t=0.1s on metadata
-            // load; with `preload="metadata"` this paints the first frame
-            // as a poster so the thumbnail isn't a black box — no
-            // per-bounty poster needed.
-            <video
-              src={`${hero.storage_url}#t=0.1`}
-              className="w-full h-full object-cover"
-              preload="metadata"
-              muted
-            />
-          )
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
-            no media
-          </div>
-        )}
-      </div>
+      <MediaThumb media={hero} />
       {/* Status + "N working" sit beside the whole text column, not in
           the title row: in the title row, short titles would leave a
           visible gap between title and meta. */}
@@ -201,12 +173,7 @@ function BountyCard({ bounty }: { bounty: BountyListItem }) {
           {bounty.tags.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               {bounty.tags.map((t) => (
-                <span
-                  key={t.id}
-                  className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-                >
-                  {t.name}
-                </span>
+                <TagBadge key={t.id} name={t.name} />
               ))}
             </div>
           )}
