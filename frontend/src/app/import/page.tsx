@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Clock, Download, ExternalLink, Settings, ShieldCheck, Upload } from "lucide-react";
+import { Clock, Download, ExternalLink, Scissors, Settings, ShieldCheck, Upload } from "lucide-react";
 
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -38,6 +38,12 @@ const STEPS = [
     icon: Download,
     title: "Download the .zip",
     detail: "Open the link from X's email or in-app banner and save the zip to your device.",
+  },
+  {
+    icon: Scissors,
+    title: "Trim it to your posts (recommended)",
+    detail:
+      "Open the archive and keep only your tweets.js and tweets_media folder (inside the data folder); delete the rest, then re-zip. We strip it automatically too, this is for full control.",
   },
   {
     icon: Upload,
@@ -166,7 +172,7 @@ export default function ImportPage() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <span className="inline-flex items-center gap-1.5 text-neutral-400">
               <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
-              Your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
+              Even if you skip the trim, your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
             </span>
             <a
               href={X_ARCHIVE_HELP}
