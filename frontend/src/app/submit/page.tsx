@@ -14,12 +14,13 @@ import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
+import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
@@ -45,13 +46,7 @@ export default function SubmitPage() {
   // component under a Suspense boundary. Fallback is minimal — the inner form
   // shows its own "Loading…" once auth resolves.
   return (
-    <Suspense
-      fallback={
-        <PageCenter>
-          <span className="text-neutral-500">Loading...</span>
-        </PageCenter>
-      }
-    >
+    <Suspense fallback={<PageLoading />}>
       <SubmitForm />
     </Suspense>
   );
@@ -326,11 +321,7 @@ function SubmitForm() {
   };
 
   if (authLoading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   // Bounty referenced but couldn't load (404 / wrong status / network).
@@ -338,7 +329,7 @@ function SubmitForm() {
     return (
       <PageShell title="Geolocate a bounty">
         <div className={FORM_ERROR_BANNER}>{bountyError}</div>
-        <Link href="/bounties" className="text-sm text-orange-400 hover:underline">
+        <Link href="/bounties" className={`text-sm ${TEXT_LINK}`}>
           ← Back to bounties
         </Link>
       </PageShell>
@@ -348,11 +339,7 @@ function SubmitForm() {
   // Bounty referenced but still loading — block the form until the
   // title / source / tags are known to pre-fill.
   if (bountyIdParam && !bounty) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading bounty…</span>
-      </PageCenter>
-    );
+    return <PageLoading label="Loading bounty…" />;
   }
 
   // Header is uniform across both toggle states — the toggle below owns the
@@ -364,7 +351,7 @@ function SubmitForm() {
       You&apos;re fulfilling a bounty posted by{" "}
       <Link
         href={`/profile/${bounty!.author.username}`}
-        className="text-orange-400 hover:underline"
+        className={TEXT_LINK}
       >
         @{bounty!.author.username}
       </Link>
@@ -519,18 +506,7 @@ function SubmitForm() {
         />
 
         {showGeoFields && curatedTagsError && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <span>
-              Couldn&apos;t load the required Conflict and Capture source options.
-            </span>
-            <button
-              type="button"
-              onClick={reloadCuratedTags}
-              className="shrink-0 font-medium text-orange-400 hover:underline"
-            >
-              Retry
-            </button>
-          </div>
+          <CuratedTagsError onRetry={reloadCuratedTags} />
         )}
         <TagPicker
           tags={tags}

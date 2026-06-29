@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { PageCenter } from "@/components/ui/PageShell";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /**
  * The bulk import now lives in the Submit hub as the Geolocation archive
@@ -15,9 +15,5 @@ export default function ImportRedirect() {
   useEffect(() => {
     router.replace("/submit?import=1");
   }, [router]);
-  return (
-    <PageCenter>
-      <span className="text-neutral-500">Loading…</span>
-    </PageCenter>
-  );
+  return <PageLoading />;
 }

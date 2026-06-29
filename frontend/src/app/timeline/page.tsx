@@ -7,7 +7,7 @@ import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import GeolocationCard from "@/components/geolocation/GeolocationCard";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import type { GeolocationStatus } from "@/types";
 
@@ -45,11 +45,7 @@ export default function TimelinePage() {
   }, [authLoading, user, router]);
 
   if (authLoading || loading) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading timeline...</span>
-      </PageCenter>
-    );
+    return <PageLoading label="Loading timeline..." />;
   }
 
   if (!user) return null;

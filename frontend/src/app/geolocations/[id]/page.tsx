@@ -9,7 +9,8 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -25,12 +26,7 @@ export default function GeolocationPage() {
         <span className="text-red-400">{error}</span>
       </PageCenter>
     );
-  if (!geo)
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+  if (!geo) return <PageLoading />;
 
   return (
     <PageShell
@@ -41,7 +37,7 @@ export default function GeolocationPage() {
           by{" "}
           <Link
             href={`/profile/${geo.author.username}`}
-            className="text-orange-400 hover:underline transition-colors"
+            className={`${TEXT_LINK} transition-colors`}
           >
             {geo.author.username}
           </Link>

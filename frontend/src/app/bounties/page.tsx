@@ -10,7 +10,8 @@ import { formatDate, safeHostname } from "@/lib/format";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { BountyListItem, BountyStatus } from "@/types";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import {
@@ -19,6 +20,7 @@ import {
   PRIMARY_BUTTON,
   TAG_CHIP,
   TAPPABLE_HOVER,
+  TEXT_LINK,
 } from "@/components/ui/styles";
 
 // Default filter "open": status pills no longer render on cards, so a
@@ -41,11 +43,7 @@ export default function BountiesPage() {
   );
 
   if (loading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const countLabel =
@@ -96,21 +94,21 @@ export default function BountiesPage() {
         )}
 
         {!error && bounties !== null && bounties.length === 0 && (
-          <div className="text-sm text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-md p-6 text-center">
+          <EmptyState>
             No {statusFilter === "all" ? "bounties" : `${statusFilter} bounties`} yet.
             {statusFilter === "all" && (
               <>
                 {" "}
                 <Link
                   href="/submit?type=bounty"
-                  className="text-orange-400 hover:underline"
+                  className={TEXT_LINK}
                 >
                   Post the first one
                 </Link>
                 .
               </>
             )}
-          </div>
+          </EmptyState>
         )}
 
         {!error && bounties !== null && bounties.length > 0 && (

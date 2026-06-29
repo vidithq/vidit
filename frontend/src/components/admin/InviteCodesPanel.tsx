@@ -18,6 +18,7 @@ import {
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
 
 const STATUS_STYLES: Record<InviteCodeStatus, string> = {
   active: "bg-orange-500/15 text-orange-400 border-orange-500/30",
@@ -170,7 +171,7 @@ export function InviteCodesPanel() {
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-5">
+    <Card as="section" spacing="5">
       <header>
         <h2 className="text-sm font-medium text-neutral-100">Invite codes</h2>
         <p className="text-xs text-neutral-500 mt-0.5">
@@ -250,6 +251,6 @@ export function InviteCodesPanel() {
           </tbody>
         </table>
       </div>
-    </section>
+    </Card>
   );
 }

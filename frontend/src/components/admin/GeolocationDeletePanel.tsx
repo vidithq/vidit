@@ -14,6 +14,7 @@ import {
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
 
 export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
@@ -54,7 +55,7 @@ export function GeolocationDeletePanel() {
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section" spacing="4">
       <header>
         <h2 className="text-sm font-medium text-neutral-100">
           Remove a geolocation
@@ -195,6 +196,6 @@ export function GeolocationDeletePanel() {
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }

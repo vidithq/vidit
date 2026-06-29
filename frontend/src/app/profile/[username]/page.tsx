@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -17,7 +16,7 @@ import {
 } from "@/components/profile/RecentSubmissions";
 import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 
 export default function ProfilePage() {
@@ -81,32 +80,15 @@ export default function ProfilePage() {
   }, [authLoading, currentUser, router, signingOut]);
 
   if (authLoading || !currentUser) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   if (error) {
-    return (
-      <PageCenter>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-neutral-300">{error}</p>
-          <Link href="/map" className="text-xs text-orange-400 hover:underline">
-            Back to map
-          </Link>
-        </div>
-      </PageCenter>
-    );
+    return <PageError message={error} backHref="/map" />;
   }
 
   if (!profile) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const isOwn = profile.username === currentUser.username;

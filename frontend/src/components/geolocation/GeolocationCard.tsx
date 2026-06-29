@@ -4,7 +4,8 @@ import Link from "next/link";
 import { ExternalLink, MapPin } from "lucide-react";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
-import { TAG_CHIP, TAPPABLE_HOVER } from "@/components/ui/styles";
+import { TAPPABLE_HOVER } from "@/components/ui/styles";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { formatDate } from "@/lib/format";
 import type { GeolocationStatus } from "@/types";
 
@@ -88,12 +89,7 @@ export default function GeolocationCard({
           <div className="flex items-center gap-2 mt-0.5 text-[11px]">
             {geo.status && <StatusBadge status={geo.status} />}
             {conflictTags.slice(0, 1).map((t) => (
-              <span
-                key={t.id}
-                className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-              >
-                {t.name}
-              </span>
+<TagBadge key={t.id} name={t.name} />
             ))}
             <span className="text-neutral-500">{formatDate(geo.event_date)}</span>
             {coords && (
@@ -151,28 +147,13 @@ export default function GeolocationCard({
         <div className="flex items-center gap-1.5 flex-wrap">
           {geo.status && <StatusBadge status={geo.status} />}
           {conflictTags.map((t) => (
-            <span
-              key={t.id}
-              className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-            >
-              {t.name}
-            </span>
+<TagBadge key={t.id} name={t.name} />
           ))}
           {captureSourceTags.map((t) => (
-            <span
-              key={t.id}
-              className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-            >
-              {t.name}
-            </span>
+<TagBadge key={t.id} name={t.name} />
           ))}
           {freeTags.slice(0, 2).map((t) => (
-            <span
-              key={t.id}
-              className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-            >
-              {t.name}
-            </span>
+<TagBadge key={t.id} name={t.name} />
           ))}
         </div>
         <Link

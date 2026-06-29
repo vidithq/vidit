@@ -5,8 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import DetectionCard from "@/components/geolocation/DetectionCard";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -37,11 +37,7 @@ export default function DetectionsPage() {
   );
 
   if (authLoading || !user || !isOwn) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading…</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   // A row leaves the list once acted on (submitted then frozen, rejected then
@@ -79,7 +75,7 @@ export default function DetectionsPage() {
           </Link>
           <Link
             href={`/profile/${username}`}
-            className="text-xs text-orange-400 hover:underline"
+            className={`text-xs ${TEXT_LINK}`}
           >
             Back to profile
           </Link>

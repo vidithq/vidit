@@ -2,6 +2,7 @@
 
 import type { PublicProfile } from "@/lib/users";
 import { FORM_INPUT } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
 /** Bio card: textarea + remaining-characters counter in edit mode,
@@ -15,7 +16,7 @@ export function BioCard({
 }) {
   if (edit.editing) {
     return (
-      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-2">
+      <Card spacing="2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
           <span
@@ -32,18 +33,18 @@ export function BioCard({
           placeholder="A short blurb about you, your focus area, what to expect from your submissions."
           className={`${FORM_INPUT} min-h-[96px] resize-y`}
         />
-      </div>
+      </Card>
     );
   }
 
   if (!profile.bio) return null;
 
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-2">
+    <Card spacing="2">
       <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
       <p className="text-sm text-neutral-200 whitespace-pre-line">
         {profile.bio}
       </p>
-    </div>
+    </Card>
   );
 }

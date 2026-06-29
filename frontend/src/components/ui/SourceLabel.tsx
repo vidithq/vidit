@@ -1,4 +1,5 @@
 import { safeHostname } from "@/lib/format";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
  * Discriminated union — ``maxWidthClass`` is required in link mode (without a
@@ -53,7 +54,7 @@ export default function SourceLabel(props: SourceLabelProps) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={cx("text-orange-400 hover:underline truncate", props.maxWidthClass, className)}
+      className={cx(`${TEXT_LINK} truncate`, props.maxWidthClass, className)}
     >
       {hostname}
     </a>

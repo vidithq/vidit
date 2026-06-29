@@ -13,7 +13,7 @@ import SourceLabel from "@/components/ui/SourceLabel";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
-import { TAG_CHIP } from "@/components/ui/styles";
+import { TAG_CHIP, TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Compact (map side-panel) section eyebrow — same role as the page variant's
@@ -230,7 +230,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           <span className={label}>Bounty</span>
           <Link
             href={`/bounties/${geo.originated_from_bounty.id}`}
-            className="text-sm text-orange-400 hover:underline truncate ml-4 max-w-[300px]"
+            className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
           >
             {geo.originated_from_bounty.title}
           </Link>
@@ -242,7 +242,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           <span className="text-sm inline-flex items-center gap-1.5">
             <Link
               href={`/profile/${geo.author.username}`}
-              className="text-orange-400 hover:underline transition-colors"
+              className={`${TEXT_LINK} transition-colors`}
             >
               {geo.author.username}
             </Link>

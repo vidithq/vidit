@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 import type { GeolocationDetail } from "@/types";
+import { TEXT_LINK } from "@/components/ui/styles";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
@@ -47,7 +48,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
                 by{" "}
                 <Link
                   href={`/profile/${detail.author.username}`}
-                  className="text-orange-400 hover:underline transition-colors"
+                  className={`${TEXT_LINK} transition-colors`}
                 >
                   {detail.author.username}
                 </Link>

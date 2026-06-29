@@ -7,6 +7,7 @@ import { TagChip } from "@/components/ui/TagChip";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
 
 interface TagPickerProps {
   /** Live tags (referenced by ≥1 geolocation) — source of the free-tag chips
@@ -73,7 +74,7 @@ export function TagPicker({
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section" spacing="4">
       <header className="space-y-1">
         <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
           Tags
@@ -148,6 +149,6 @@ export function TagPicker({
           }}
         />
       </div>
-    </section>
+    </Card>
   );
 }

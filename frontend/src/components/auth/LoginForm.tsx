@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
@@ -77,7 +77,7 @@ export default function LoginForm({ onSuccess }: Props) {
             </label>
             <Link
               href="/forgot-password"
-              className="text-[10px] text-orange-400 hover:underline"
+              className={`text-[10px] ${TEXT_LINK}`}
             >
               Forgot?
             </Link>
@@ -103,7 +103,7 @@ export default function LoginForm({ onSuccess }: Props) {
 
       <p className="text-center text-xs text-neutral-400">
         No account?{" "}
-        <Link href="/register" className="text-orange-400 hover:underline">
+        <Link href="/register" className={TEXT_LINK}>
           Register with an invite code
         </Link>
       </p>
@@ -112,7 +112,7 @@ export default function LoginForm({ onSuccess }: Props) {
         Didn&apos;t receive your confirmation email?{" "}
         <Link
           href="/resend-confirmation"
-          className="text-orange-400 hover:underline"
+          className={TEXT_LINK}
         >
           Resend it
         </Link>

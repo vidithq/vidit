@@ -17,6 +17,7 @@ import {
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
 
 function TrustUserRow({
   user,
@@ -319,7 +320,7 @@ export function TrustPanel() {
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section" spacing="4">
       <header>
         <h2 className="text-sm font-medium text-neutral-100">Manage analysts</h2>
         <p className="text-xs text-neutral-500 mt-0.5">
@@ -413,6 +414,6 @@ export function TrustPanel() {
           </div>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

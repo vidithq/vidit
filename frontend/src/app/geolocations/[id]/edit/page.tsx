@@ -4,7 +4,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { GeolocationEditForm } from "@/components/geolocations/edit/GeolocationEditForm";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import type { GeolocationDetail } from "@/types";
@@ -19,32 +20,15 @@ export default function EditGeolocationPage() {
   );
 
   if (authLoading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading…</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   if (error) {
-    return (
-      <PageCenter>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-neutral-300">{error}</p>
-          <Link href="/map" className="text-xs text-orange-400 hover:underline">
-            Back to map
-          </Link>
-        </div>
-      </PageCenter>
-    );
+    return <PageError message={error} backHref="/map" />;
   }
 
   if (!geo) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading…</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   // The submit flow is owner-only and state-gated to ``detected``, the same
@@ -57,7 +41,7 @@ export default function EditGeolocationPage() {
           You can only edit your own detections.{" "}
           <Link
             href={`/geolocations/${geo.id}`}
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             View this geolocation
           </Link>
@@ -74,7 +58,7 @@ export default function EditGeolocationPage() {
           This geolocation is submitted and frozen, it can no longer be edited.{" "}
           <Link
             href={`/geolocations/${geo.id}`}
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             View it
           </Link>

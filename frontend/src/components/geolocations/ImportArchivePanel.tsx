@@ -14,7 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
 import { useMutation } from "@/hooks/useMutation";
@@ -191,7 +191,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
             href={X_ARCHIVE_HELP}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-orange-400 hover:underline"
+            className={`inline-flex items-center gap-1 ${TEXT_LINK}`}
           >
             {"X's guide"}
             <ExternalLink size={12} strokeWidth={2} />

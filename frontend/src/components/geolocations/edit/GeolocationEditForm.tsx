@@ -15,6 +15,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
@@ -235,18 +236,10 @@ export function GeolocationEditForm({
         />
 
         {curatedTagsError && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <span>
-              Couldn&apos;t load the Conflict and Capture source options.
-            </span>
-            <button
-              type="button"
-              onClick={reloadCuratedTags}
-              className="shrink-0 font-medium text-orange-400 hover:underline"
-            >
-              Retry
-            </button>
-          </div>
+          <CuratedTagsError
+            onRetry={reloadCuratedTags}
+            message="Couldn't load the Conflict and Capture source options."
+          />
         )}
         <TagPicker
           tags={tags}

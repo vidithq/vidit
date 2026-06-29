@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
@@ -76,7 +76,7 @@ export default function RegisterForm({
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="text-orange-400 hover:underline">
+          <Link href="/login" className={TEXT_LINK}>
             Sign in
           </Link>
         </>

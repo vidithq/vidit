@@ -24,7 +24,8 @@ import type {
   SearchType,
   SearchUserHit,
 } from "@/types";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import {
@@ -35,6 +36,7 @@ import {
   STATUS_PILL_FULFILLED,
   TAG_CHIP,
   TAPPABLE_HOVER,
+  TEXT_LINK,
 } from "@/components/ui/styles";
 
 const TYPE_FILTERS: { value: SearchType; label: string }[] = [
@@ -52,13 +54,7 @@ export default function SearchPage() {
   // `useSearchParams` opts out of static prerender, so the body lives
   // under a Suspense boundary (Next 14 requirement).
   return (
-    <Suspense
-      fallback={
-        <PageCenter>
-          <span className="text-neutral-500">Loading...</span>
-        </PageCenter>
-      }
-    >
+    <Suspense fallback={<PageLoading />}>
       <SearchPageBody />
     </Suspense>
   );
@@ -141,11 +137,7 @@ function SearchPageBody() {
   }, []);
 
   if (authLoading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const showGroup = (group: SearchType): boolean =>
@@ -210,13 +202,13 @@ function SearchPageBody() {
         )}
 
         {!activeQuery.trim() && (
-          <div className="text-sm text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-md p-6 text-center">
+          <EmptyState>
             Start typing to search across geolocations, bounties and analysts.
-          </div>
+          </EmptyState>
         )}
 
         {activeQuery.trim() && results && totalHits === 0 && !loading && (
-          <div className="text-sm text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-md p-6 text-center">
+          <EmptyState>
             No matches for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span>.
             {typeFilter !== "all" && (
               <>
@@ -224,14 +216,14 @@ function SearchPageBody() {
                 <button
                   type="button"
                   onClick={() => onChipClick("all")}
-                  className="text-orange-400 hover:underline"
+                  className={TEXT_LINK}
                 >
                   Try searching all types
                 </button>
                 .
               </>
             )}
-          </div>
+          </EmptyState>
         )}
 
         {results && (

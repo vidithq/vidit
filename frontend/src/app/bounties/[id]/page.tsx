@@ -22,8 +22,9 @@ import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
+import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PRIMARY_BUTTON, TAG_CHIP, TEXT_LINK } from "@/components/ui/styles";
+import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -76,11 +77,7 @@ export default function BountyDetailPage() {
     );
   }
   if (!bounty) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const isAuthor = user?.id === bounty.author.id;
@@ -94,17 +91,7 @@ export default function BountyDetailPage() {
   const freeTags = bounty.tags.filter((t) => t.category === "free");
   const tagRow = (name: string, tags: BountyDetail["tags"], concept?: Concept) =>
     tags.length > 0 ? (
-      <div className="flex justify-between items-start px-4 py-3">
-        <span
-          className={
-            concept
-              ? "text-sm text-neutral-500 inline-flex items-center gap-1"
-              : "text-sm text-neutral-500"
-          }
-        >
-          {name}
-          {concept && <FieldHelp concept={concept} />}
-        </span>
+      <DetailRow label={name} concept={concept} align="start">
         <div className="flex flex-wrap gap-1.5 justify-end">
           {tags.map((tag) => (
             <span key={tag.id} className={`text-xs px-2.5 py-0.5 rounded-full ${TAG_CHIP}`}>
@@ -112,7 +99,7 @@ export default function BountyDetailPage() {
             </span>
           ))}
         </div>
-      </div>
+      </DetailRow>
     ) : null;
 
   const handleToggleClaim = async () => {
@@ -146,7 +133,7 @@ export default function BountyDetailPage() {
           by{" "}
           <Link
             href={`/profile/${bounty.author.username}`}
-            className="text-orange-400 hover:underline transition-colors"
+            className={`${TEXT_LINK} transition-colors`}
           >
             {bounty.author.username}
           </Link>
@@ -205,46 +192,29 @@ export default function BountyDetailPage() {
           <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
             Details
           </h2>
-          <div className="bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800">
-            <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Status{" "}
-                <FieldHelp concept="bounty_status" />
-              </span>
+          <DetailCard>
+            <DetailRow label="Status" concept="bounty_status" align="center">
               <BountyStatusBadge status={bounty.status} />
-            </div>
+            </DetailRow>
             {/* The dates read as one block — event → source → posted. */}
             {bounty.event_date && (
-              <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                  Event date <FieldHelp concept="event_date" />
-                </span>
-                <span className="text-sm text-neutral-200">
-                  {formatEventDate(bounty.event_date, bounty.event_time)}
-                </span>
-              </div>
+              <DetailRow
+                label="Event date"
+                concept="event_date"
+                value={formatEventDate(bounty.event_date, bounty.event_time)}
+              />
             )}
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Source posted <FieldHelp concept="source_posted_at" />
-              </span>
-              <span className="text-sm text-neutral-200">
-                {formatInstant(bounty.source_posted_at)}
-              </span>
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Added <FieldHelp concept="added" />
-              </span>
-              <span className="text-sm text-neutral-200">
-                {formatDate(bounty.created_at)}
-              </span>
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                Source{" "}
-                <FieldHelp concept="source_url" />
-              </span>
+            <DetailRow
+              label="Source posted"
+              concept="source_posted_at"
+              value={formatInstant(bounty.source_posted_at)}
+            />
+            <DetailRow
+              label="Added"
+              concept="added"
+              value={formatDate(bounty.created_at)}
+            />
+            <DetailRow label="Source" concept="source_url">
               <SourceLabel
                 isDemo={bounty.is_demo}
                 url={bounty.source_url}
@@ -252,20 +222,19 @@ export default function BountyDetailPage() {
                 maxWidthClass="max-w-[300px]"
                 className="text-sm ml-4"
               />
-            </div>
+            </DetailRow>
             {tagRow("Conflict", conflictTags, "conflict")}
             {tagRow("Capture source", captureTags, "capture_source")}
             {tagRow("Tags", freeTags)}
             {bounty.status === "open" && (
-              <div className="flex justify-between items-start px-4 py-3">
-                <span className="text-sm text-neutral-500">Working on</span>
+              <DetailRow label="Working on" align="start">
                 {bounty.claimers.length > 0 ? (
                   <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
                     {bounty.claimers.map((c) => (
                       <Link
                         key={c.id}
                         href={`/profile/${c.username}`}
-                        className="text-sm text-orange-400 hover:underline transition-colors"
+                        className={`text-sm ${TEXT_LINK} transition-colors`}
                       >
                         @{c.username}
                       </Link>
@@ -274,30 +243,25 @@ export default function BountyDetailPage() {
                 ) : (
                   <span className="text-sm text-neutral-600">—</span>
                 )}
-              </div>
+              </DetailRow>
             )}
             {bounty.fulfilled_by && (
-              <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500">Fulfilled by</span>
+              <DetailRow label="Fulfilled by">
                 <Link
                   href={`/geolocations/${bounty.fulfilled_by.id}`}
-                  className="text-sm text-orange-400 hover:underline transition-colors truncate ml-4 max-w-[300px]"
+                  className={`text-sm ${TEXT_LINK} transition-colors truncate ml-4 max-w-[300px]`}
                 >
                   {bounty.fulfilled_by.title}
                 </Link>
-              </div>
+              </DetailRow>
             )}
             {bounty.closed_at && (
-              <div className="flex justify-between px-4 py-3">
-                <span className="text-sm text-neutral-500">
-                  {bounty.status === "fulfilled" ? "Fulfilled" : "Closed"}
-                </span>
-                <span className="text-sm text-neutral-200">
-                  {formatDate(bounty.closed_at)}
-                </span>
-              </div>
+              <DetailRow
+                label={bounty.status === "fulfilled" ? "Fulfilled" : "Closed"}
+                value={formatDate(bounty.closed_at)}
+              />
             )}
-          </div>
+          </DetailCard>
         </div>
 
         {bounty.proof && (

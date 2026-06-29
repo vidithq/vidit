@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import GeolocationCard from "@/components/geolocation/GeolocationCard";
+import { Card } from "@/components/ui/Card";
+import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
 import type { GeolocationStatus } from "@/types";
 
@@ -33,7 +35,7 @@ export function RecentSubmissions({
   isOwn: boolean;
 }) {
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card spacing="4">
       <div className="space-y-1">
         <h2 className="text-sm font-medium text-neutral-300">
           Recent submissions
@@ -67,7 +69,7 @@ export function RecentSubmissions({
           </p>
           <Link
             href="/submit"
-            className="inline-block text-xs text-orange-400 hover:underline"
+            className={`inline-block text-xs ${TEXT_LINK}`}
           >
             Submit your first geolocation →
           </Link>
@@ -75,6 +77,6 @@ export function RecentSubmissions({
       ) : (
         <p className="text-xs text-neutral-500 italic">Nothing yet.</p>
       )}
-    </div>
+    </Card>
   );
 }

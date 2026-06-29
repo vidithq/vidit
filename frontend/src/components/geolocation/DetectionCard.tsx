@@ -8,7 +8,8 @@ import { Check, Film, MapPin, Pencil, X } from "lucide-react";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import SourceLabel from "@/components/ui/SourceLabel";
 import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
-import { PRIMARY_BUTTON, TAG_CHIP } from "@/components/ui/styles";
+import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import { rejectGeolocation, sourceIsSynthetic, submitReadiness } from "@/lib/geolocations";
@@ -103,12 +104,7 @@ export default function DetectionCard({
             the same height and the cards stay aligned across the queue. */}
         <div className="flex flex-wrap gap-1.5 min-h-[1.375rem]">
           {[...conflictTags, ...captureTags, ...freeTags].map((t) => (
-            <span
-              key={t.id}
-              className={`px-1.5 py-0.5 rounded-full text-[10px] ${TAG_CHIP}`}
-            >
-              {t.name}
-            </span>
+            <TagBadge key={t.id} name={t.name} className="text-[10px]" />
           ))}
         </div>
 

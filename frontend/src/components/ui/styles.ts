@@ -45,3 +45,8 @@ export const BETA_PILL =
 // per card, orange tags competed with the orange CTAs / status pills / links,
 // and tags carry meta info, not signal.
 export const TAG_CHIP = "bg-neutral-800 text-neutral-400";
+
+// Inline text link — orange label, underline on hover. The single home for
+// the "clickable orange text" treatment (bylines, "Back to X", retry actions,
+// empty-state CTAs). Size / weight stay at the call site.
+export const TEXT_LINK = "text-orange-400 hover:underline";

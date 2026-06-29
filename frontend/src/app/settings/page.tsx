@@ -5,7 +5,8 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
@@ -52,11 +53,7 @@ export default function SettingsPage() {
   const submitting = changePassword.loading;
 
   if (loading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -76,7 +73,7 @@ export default function SettingsPage() {
   return (
     <PageShell title="Settings">
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+        <Card spacing="3">
           <h2 className="text-sm font-medium text-neutral-300">Account</h2>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -88,9 +85,9 @@ export default function SettingsPage() {
               <p className="text-neutral-100 mt-0.5">{user.email}</p>
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+        <Card spacing="3">
           <div className="space-y-1">
             <h2 className="text-sm font-medium text-neutral-300">Display</h2>
             <p className="text-xs text-neutral-500">
@@ -152,9 +149,9 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+        <Card spacing="4">
           <div className="space-y-1">
             <h2 className="text-sm font-medium text-neutral-300">Change password</h2>
             <p className="text-xs text-neutral-500">
@@ -232,7 +229,7 @@ export default function SettingsPage() {
               {submitting ? "Updating..." : "Update password"}
             </button>
           </form>
-        </div>
+        </Card>
     </PageShell>
   );
 }

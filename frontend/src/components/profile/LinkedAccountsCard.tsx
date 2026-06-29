@@ -1,11 +1,11 @@
 "use client";
 
-import { AtSign, Code, ExternalLink, Globe, MessageCircle } from "lucide-react";
+import { AtSign, Code, Globe, MessageCircle } from "lucide-react";
 
 import { resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
-import { TAPPABLE_HOVER } from "@/components/ui/styles";
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
+import { LinkRow } from "@/components/ui/LinkRow";
 import type { ProfileEditState } from "./useProfileEdit";
 
 const LINK_PLATFORMS: {
@@ -31,7 +31,7 @@ export function LinkedAccountsCard({
 }) {
   if (edit.editing) {
     return (
-      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+      <Card spacing="3">
         <h2 className="text-sm font-medium text-neutral-300">
           Linked accounts
         </h2>
@@ -69,7 +69,7 @@ export function LinkedAccountsCard({
             );
           })}
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -79,7 +79,7 @@ export function LinkedAccountsCard({
   if (presentLinks.length === 0) return null;
 
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+    <Card spacing="3">
       <h2 className="text-sm font-medium text-neutral-300">
         Linked accounts
       </h2>
@@ -87,44 +87,17 @@ export function LinkedAccountsCard({
         {presentLinks.map((p) => {
           const value = profile.external_links[p.key] ?? "";
           const href = resolveLinkHref(p.key, value);
-          // Orange only when `href` resolves (the value sniffs as an http
-          // URL), per the "if it's orange, it's clickable" rule; plain handles
-          // (e.g. a Discord username) stay neutral.
-          const valueClass = href
-            ? "text-sm text-orange-400 truncate"
-            : "text-sm text-neutral-200 truncate";
-          const inner = (
-            <>
-              <p.Icon size={14} className="text-neutral-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <span className={FORM_LABEL}>{p.label}</span>
-                <p className={valueClass}>{value}</p>
-              </div>
-              {href && (
-                <ExternalLink size={12} className="text-orange-400/70 shrink-0" />
-              )}
-            </>
-          );
-          return href ? (
-            <a
+          return (
+            <LinkRow
               key={p.key}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md ${TAPPABLE_HOVER}`}
-            >
-              {inner}
-            </a>
-          ) : (
-            <div
-              key={p.key}
-              className="flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md"
-            >
-              {inner}
-            </div>
+              icon={p.Icon}
+              label={p.label}
+              value={value}
+              href={href ?? undefined}
+            />
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }

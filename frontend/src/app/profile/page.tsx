@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { PageCenter } from "@/components/ui/PageShell";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /**
  * Redirects to the canonical /profile/[username] for the current user, so
@@ -22,9 +22,5 @@ export default function ProfileRedirect() {
     }
   }, [loading, user, router]);
 
-  return (
-    <PageCenter>
-      <span className="text-neutral-500">Loading...</span>
-    </PageCenter>
-  );
+  return <PageLoading />;
 }

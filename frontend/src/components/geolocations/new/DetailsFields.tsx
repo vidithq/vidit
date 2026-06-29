@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/form-styles";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { LockedHint } from "./LockedHint";
 
 interface DetailsFieldsProps {
@@ -64,13 +66,8 @@ export function DetailsFields({
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-      <header>
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Details
-          <FieldHelp concept="section_details" />
-        </h2>
-      </header>
+    <Card as="section" spacing="4">
+      <SectionHeading title="Details" concept="section_details" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
@@ -152,6 +149,6 @@ export function DetailsFields({
           />
         </div>
       )}
-    </section>
+    </Card>
   );
 }

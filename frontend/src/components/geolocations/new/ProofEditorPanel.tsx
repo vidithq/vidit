@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 
-import FieldHelp from "@/components/ui/FieldHelp";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
-import { OptionalHint } from "@/components/ui/OptionalHint";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 
 const ProofEditor = dynamic(
   () => import("@/components/editor/ProofEditor"),
@@ -40,18 +40,12 @@ export function ProofEditorPanel({
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
-    <section
-      className={`bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4${
-        invalid ? ` ${FORM_INVALID_FIELD}` : ""
-      }`}
+    <Card
+      as="section"
+      spacing="4"
+      className={invalid ? FORM_INVALID_FIELD : ""}
     >
-      <header>
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Proof
-          <FieldHelp concept="section_proof" />
-          {optional && <OptionalHint />}
-        </h2>
-      </header>
+      <SectionHeading title="Proof" concept="section_proof" optional={optional} />
 
       {/* Re-mount the editor on every import. ``importGen`` changes even
           on same-author re-import, where the handle alone would leave the
@@ -66,6 +60,6 @@ export function ProofEditorPanel({
         onUploadStateChange={onUploadStateChange}
         allowImages={allowImages}
       />
-    </section>
+    </Card>
   );
 }
