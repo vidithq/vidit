@@ -200,7 +200,7 @@ export default function Sidebar() {
       {/* Logo + community shortcuts. Paddings mirror the nav rows so the V sits
           in the same x column as every nav icon. The glyphs render only when
           expanded — no room in the 56px collapsed bar. */}
-      <div className="flex items-center h-14 px-2 border-b border-neutral-800 overflow-hidden">
+      <div className="flex items-center h-14 px-2 overflow-hidden">
         <Link
           href="/"
           className="flex items-center gap-2.5 px-2.5 min-w-0"
