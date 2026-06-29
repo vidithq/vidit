@@ -1,4 +1,4 @@
-import { unzip, zipSync, type Unzipped } from "fflate";
+import { unzip, zip, type Unzipped } from "fflate";
 
 import { ApiError } from "./api";
 
@@ -16,8 +16,9 @@ const MEDIA_DIR = "tweets_media/";
  * server still runs the same copy-allowlist as defence in depth; this is the
  * privacy + size win on top.
  *
- * Only the kept entries are decompressed (the `filter`), so the sensitive files
- * are never even inflated. The export's `data/` prefix is flattened and media
+ * Only the allowlisted entries are decompressed (the `filter`, anchored so a
+ * sibling like `deleted-tweets.js` isn't inflated either), so the sensitive
+ * files never even inflate. The export's `data/` prefix is flattened and media
  * rebased by basename, matching what the server extracts. Throws an `ApiError`
  * carrying the same `code` the backend would (`archive_malformed` /
  * `archive_no_tweets`) so the page maps it to one message.
@@ -30,7 +31,14 @@ export async function stripArchive(file: File): Promise<File> {
     kept = await new Promise<Unzipped>((resolve, reject) => {
       unzip(
         buf,
-        { filter: (f) => f.name.endsWith(TWEETS_FILE) || f.name.includes(MEDIA_DIR) },
+        {
+          // Anchor the tweets.js match (mirrors `tweetsKey` below); a loose
+          // `endsWith("tweets.js")` would also inflate `deleted-tweets.js`.
+          filter: (f) =>
+            f.name === TWEETS_FILE ||
+            f.name.endsWith(`/${TWEETS_FILE}`) ||
+            f.name.includes(MEDIA_DIR),
+        },
         (err, data) => (err ? reject(err) : resolve(data))
       );
     });
@@ -61,6 +69,10 @@ export async function stripArchive(file: File): Promise<File> {
     }
   }
 
-  const zipped = zipSync(out, { level: 6 });
+  // Async (worker-backed) zip, matching the `unzip` above, so re-compressing a
+  // large `tweets_media` doesn't block the main thread and freeze the tab.
+  const zipped = await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
+    zip(out, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
+  });
   return new File([zipped], "vidit-archive.zip", { type: "application/zip" });
 }

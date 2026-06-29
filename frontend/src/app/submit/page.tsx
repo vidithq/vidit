@@ -409,7 +409,7 @@ function SubmitForm() {
       )}
 
       {/* Under Geolocation (not fulfilment): two scales of "bring your existing
-          X work" — pre-fill one from a post, or bulk-import your archive. The
+          X work": pre-fill one from a post, or bulk-import your archive. The
           manual form stays the default below. */}
       {canImport && !archiveMode && (
         <div className="mt-4 flex flex-wrap gap-2">

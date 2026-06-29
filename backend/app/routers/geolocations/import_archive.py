@@ -1,4 +1,4 @@
-"""``import-archive`` — backfill the caller's profile from their X data export."""
+"""``import-archive``: backfill the caller's profile from their X data export."""
 
 import logging
 import tempfile

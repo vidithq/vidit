@@ -21,6 +21,17 @@ describe("stripArchive", () => {
     expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
   });
 
+  it("never emits deleted-tweets.js (a loose tweets.js match would catch it)", async () => {
+    const file = zipFile({
+      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+      "data/tweets_media/1-a.jpg": new Uint8Array([9]),
+      "data/deleted-tweets.js": strToU8("window.YTD.deleted_tweets.part0 = []"),
+    });
+    const stripped = await stripArchive(file);
+    const out = unzipSync(new Uint8Array(await stripped.arrayBuffer()));
+    expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
+  });
+
   it("throws archive_no_tweets when there is no tweets.js", async () => {
     const file = zipFile({ "data/account.js": strToU8("x") });
     await expect(stripArchive(file)).rejects.toHaveProperty("code", "archive_no_tweets");

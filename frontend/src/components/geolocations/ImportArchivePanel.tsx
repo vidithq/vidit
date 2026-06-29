@@ -115,38 +115,46 @@ export function ImportArchivePanel({ username }: { username: string }) {
     }
   );
 
-  // Only reached when the import created nothing: no geolocations found (retry)
-  // or the archive was already fully imported (offer the queue).
+  // Reached only when the import created nothing. Three cases: some posts failed
+  // to persist (retry the same file), the archive was already fully imported
+  // (offer the queue), or it simply had no geolocatable posts (pick another).
   if (result) {
-    const nothing = result.skipped === 0;
+    const failedSome = result.failed > 0;
+    const alreadyImported = !failedSome && result.skipped > 0;
     return (
       <div className="space-y-4">
         <p className="text-sm text-neutral-200">
-          {nothing
-            ? "No geolocations found in that archive. Posts with a coordinate in their text become detections."
-            : `Everything in that archive was already imported (${result.skipped} ${
-                result.skipped === 1 ? "geolocation" : "geolocations"
-              }).`}
+          {failedSome
+            ? `Some posts couldn't be imported (${result.failed} failed). Try the import again.`
+            : alreadyImported
+              ? `Everything in that archive was already imported (${result.skipped} ${
+                  result.skipped === 1 ? "geolocation" : "geolocations"
+                }).`
+              : "No geolocations found in that archive. Posts with a coordinate in their text become detections."}
         </p>
         <div className="flex flex-wrap gap-3 pt-1">
-          {nothing ? (
-            <button
-              type="button"
-              onClick={() => {
-                setResult(null);
-                setFile(null);
-              }}
-              className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
-            >
-              Choose a different file
-            </button>
-          ) : (
+          {alreadyImported ? (
             <Link
               href={`/profile/${username}/detections`}
               className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
             >
               Review detections
             </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setResult(null);
+                if (failedSome) {
+                  if (file) run(file);
+                } else {
+                  setFile(null);
+                }
+              }}
+              className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+            >
+              {failedSome ? "Try again" : "Choose a different file"}
+            </button>
           )}
         </div>
       </div>
