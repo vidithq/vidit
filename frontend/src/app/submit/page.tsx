@@ -412,27 +412,24 @@ function SubmitForm() {
           X work" — pre-fill one from a post, or bulk-import your archive. The
           manual form stays the default below. */}
       {canImport && !archiveMode && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 px-3 py-2">
-          <span className="text-xs text-neutral-500">Already posted it on X?</span>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setTweetPrefillOpen((v) => !v)}
-              aria-pressed={tweetPrefillOpen}
-              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
-            >
-              <XGlyph size={12} />
-              Pre-fill from a post
-            </button>
-            <button
-              type="button"
-              onClick={() => setArchiveMode(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
-            >
-              <Archive size={13} strokeWidth={1.8} />
-              Import your archive
-            </button>
-          </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setTweetPrefillOpen((v) => !v)}
+            aria-pressed={tweetPrefillOpen}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
+          >
+            <XGlyph size={12} />
+            Pre-fill from an X post
+          </button>
+          <button
+            type="button"
+            onClick={() => setArchiveMode(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
+          >
+            <Archive size={13} strokeWidth={1.8} />
+            Import your X archive
+          </button>
         </div>
       )}
 
@@ -470,11 +467,6 @@ function SubmitForm() {
             linkedX={user?.external_links?.x ?? null}
           />
         )}
-
-        <p className="text-xs text-neutral-500">
-          All fields are required unless marked{" "}
-          <span className="text-neutral-400">optional</span>.
-        </p>
 
         {/* Title leads, mirroring the detail page where it's the heading. */}
         <TitleField
