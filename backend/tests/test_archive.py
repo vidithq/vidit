@@ -7,6 +7,7 @@ handles), never real tweet data.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.services.tweet_ingest import (
@@ -63,3 +64,35 @@ async def test_archive_media_fetcher_reads_present_and_misses_absent():
         kind="image", remote_url="tweets_media/nope.jpg", content_type="image/jpeg"
     )
     assert await fetch(absent) is None
+
+
+def test_read_tweets_skips_non_numeric_id(tmp_path):
+    """A crafted ``id_str`` carrying path metacharacters is dropped, so it never
+    reaches the ``tweets_media/<id>-...`` path built from it."""
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {"tweet": {"id_str": "12345", "full_text": "a", "created_at": ""}},
+        {"tweet": {"id_str": "../../../../etc/passwd", "full_text": "b", "created_at": ""}},
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+    records = read_tweets(archive, handle="ana")
+    assert [r.tweet_id for r in records] == ["12345"]
+
+
+async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
+    """The fetcher never reads outside the extraction dir, even when a record's
+    ``remote_url`` resolves to a real sibling file (defeats arbitrary-file read)."""
+    archive = tmp_path / "arc"
+    (archive / "tweets_media").mkdir(parents=True)
+    # A real file just outside the archive dir, reachable only by escaping it.
+    (tmp_path / "secret.png").write_bytes(b"\x89PNG not yours")
+    fetch = archive_media_fetcher(archive)
+    escaping = ParsedMedia(
+        kind="image",
+        remote_url="tweets_media/../../secret.png",
+        content_type="image/png",
+    )
+    assert await fetch(escaping) is None

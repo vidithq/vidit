@@ -106,7 +106,13 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
         if not isinstance(tweet, dict):
             continue
         tweet_id = tweet.get("id_str")
-        if not isinstance(tweet_id, str) or not tweet_id:
+        # ``id_str`` is woven into a filesystem path below
+        # (``tweets_media/<id>-...``) and the export is attacker-controlled, so
+        # reject anything that isn't digits-only before it can carry ``..`` or a
+        # separator into the media path. Looser on length than syndication's
+        # ``_TWEET_ID_PATTERN`` (``^\d{5,25}$``): an export holds the owner's own
+        # historical ids, of any vintage.
+        if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
         text = tweet.get("full_text") or tweet.get("text") or ""
         created_at = tweet.get("created_at")
@@ -136,9 +142,18 @@ def archive_media_fetcher(
     persists media-incomplete rather than failing the whole backfill.
     """
 
+    base = archive_dir.resolve()
+
     async def fetch(parsed: ParsedMedia) -> tuple[bytes, str] | None:
+        # Defence in depth behind ``read_tweets``' id check: never read outside
+        # the extraction dir, whatever ``remote_url`` resolves to (so a crafted
+        # record can't turn this into an arbitrary-file read, the way zip-slip is
+        # already blocked on the extract side).
+        target = (base / parsed.remote_url).resolve()
+        if not target.is_relative_to(base):
+            return None
         try:
-            return (archive_dir / parsed.remote_url).read_bytes(), parsed.content_type
+            return target.read_bytes(), parsed.content_type
         except OSError:
             return None
 

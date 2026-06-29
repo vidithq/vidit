@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.routers.geolocations import (
     duplicates,
+    import_archive,
     import_tweet,
     item,
     read,
@@ -27,6 +28,7 @@ def test_router_mount_order_is_pinned():
         read.router,
         duplicates.router,
         import_tweet.router,
+        import_archive.router,
         write.router,
         item.router,
     )

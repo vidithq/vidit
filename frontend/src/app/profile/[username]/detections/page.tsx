@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import DetectionCard from "@/components/geolocation/DetectionCard";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -69,12 +70,20 @@ export default function DetectionsPage() {
           New detections land here after you import your archive or tag the bot
           on a geolocation tweet.
         </p>
-        <Link
-          href={`/profile/${username}`}
-          className="inline-block text-xs text-orange-400 hover:underline"
-        >
-          Back to profile
-        </Link>
+        <div className="flex flex-col items-center gap-2 pt-1">
+          <Link
+            href="/submit?import=1"
+            className={`px-5 py-2.5 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
+          >
+            Import your work
+          </Link>
+          <Link
+            href={`/profile/${username}`}
+            className="text-xs text-orange-400 hover:underline"
+          >
+            Back to profile
+          </Link>
+        </div>
       </div>
     );
   } else {

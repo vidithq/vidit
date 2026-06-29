@@ -15,10 +15,10 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { Modal } from "@/components/ui/Modal";
+import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
-import { FIELD_HELP } from "@/lib/fieldHelp";
+import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -74,7 +74,11 @@ function SubmitForm() {
   );
   const isBounty = submitType === "bounty";
 
-  const [importOpen, setImportOpen] = useState(false);
+  // Geolocation sub-mode: the manual form, or the bulk archive on-ramp. Seeded
+  // from `?import=1` (the onboarding + /import redirect target).
+  const [archiveMode, setArchiveMode] = useState(searchParams.get("import") === "1");
+  // Inline "pre-fill from a post" banner, revealed from the import strip.
+  const [tweetPrefillOpen, setTweetPrefillOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [lat, setLat] = useState("");
@@ -184,6 +188,9 @@ function SubmitForm() {
   const showGeoFields = !isBounty;
   // No type toggle while fulfilling a bounty: that path is always a geolocation.
   const showToggle = !bountyIdParam;
+  // Import (pre-fill from a post, or bulk archive) is offered only when adding a
+  // geolocation and not fulfilling a bounty.
+  const canImport = showGeoFields && !lockedFromBounty;
 
   // Bounty + geolocation are mutually-exclusive submit paths sharing one error
   // banner; each mutation clears the other so the single-slot behaviour holds.
@@ -373,54 +380,93 @@ function SubmitForm() {
 
   return (
     <PageShell title={pageTitle} subtitle={subtitle}>
+      {/* Primary choice: your placed work (Geolocation) vs a request to others
+          (Bounty). Hidden in fulfilment, which is always a geolocation. */}
+      {showToggle && (
+        <div className="inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
+          {(["geolocation", "bounty"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => {
+                setSubmitType(t);
+                setArchiveMode(false);
+                // Bounty mode has no image upload, so a flag left true by an
+                // in-flight geolocation upload would wedge the submit button.
+                if (t === "bounty") setProofImageUploading(false);
+              }}
+              aria-pressed={submitType === t}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                submitType === t
+                  ? FILTER_CHIP_ACTIVE
+                  : "text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              {t === "geolocation" ? "Geolocation" : "Bounty"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Under Geolocation (not fulfilment): two scales of "bring your existing
+          X work": pre-fill one from a post, or bulk-import your archive. The
+          manual form stays the default below. */}
+      {canImport && !archiveMode && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setTweetPrefillOpen((v) => !v)}
+            aria-pressed={tweetPrefillOpen}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
+          >
+            <XGlyph size={12} />
+            Pre-fill from an X post
+          </button>
+          <button
+            type="button"
+            onClick={() => setArchiveMode(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
+          >
+            <Archive size={13} strokeWidth={1.8} />
+            Import your X archive
+          </button>
+        </div>
+      )}
+
+      {/* Archive on-ramp swaps in for the form; the form stays mounted (hidden)
+          so its draft survives a Back. */}
+      {canImport && archiveMode && (
+        <div className="mt-4 space-y-4">
+          <button
+            type="button"
+            onClick={() => setArchiveMode(false)}
+            className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+          >
+            <ArrowLeft size={14} strokeWidth={1.8} />
+            Back to the form
+          </button>
+          <ImportArchivePanel username={user.username} />
+        </div>
+      )}
+
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's one-bubble-at-a-time native validation must
           not preempt it. */}
-      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-        {/* Toggle on the left, the import shortcut mirrored on the right at the
-            same height. Import is geolocation-only (a bounty has nothing to
-            pre-fill); inside `showToggle`, so it never shows in fulfilment. */}
-        {showToggle && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
-              {(["geolocation", "bounty"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setSubmitType(t);
-                    // Bounty mode has no image upload, so a flag left true by an
-                    // in-flight geolocation upload would wedge the submit button.
-                    if (t === "bounty") setProofImageUploading(false);
-                  }}
-                  aria-pressed={submitType === t}
-                  className={`px-3 py-1 text-sm rounded transition-colors ${
-                    submitType === t
-                      ? FILTER_CHIP_ACTIVE
-                      : "text-neutral-400 hover:text-neutral-200"
-                  }`}
-                >
-                  {t === "geolocation" ? "Geolocation" : "Bounty"}
-                </button>
-              ))}
-            </div>
-            {showGeoFields && (
-              <button
-                type="button"
-                onClick={() => setImportOpen(true)}
-                className="inline-flex h-9 items-center gap-2 px-3 rounded-md border border-orange-500/30 bg-orange-500/5 text-sm text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/50 transition-colors"
-              >
-                <XGlyph size={13} />
-                Import from a tweet
-              </button>
-            )}
-          </div>
+      <form
+        onSubmit={handleSubmit}
+        className={canImport && archiveMode ? "hidden" : "mt-4 space-y-6"}
+        noValidate
+      >
+        {/* Inline pre-fill from a post (the old floating button is gone); stays
+            once a tweet is imported so the "Imported from @x" confirmation shows. */}
+        {canImport && (tweetPrefillOpen || importedFrom) && (
+          <TweetImportBanner
+            onImported={applyTweetImport}
+            onClear={clearImportedTweet}
+            importedFrom={importedFrom}
+            linkedX={user?.external_links?.x ?? null}
+          />
         )}
-
-        <p className="text-xs text-neutral-500">
-          All fields are required unless marked{" "}
-          <span className="text-neutral-400">optional</span>.
-        </p>
 
         {/* Title leads, mirroring the detail page where it's the heading. */}
         <TitleField
@@ -575,22 +621,6 @@ function SubmitForm() {
           </Link>
         </div>
       </form>
-
-      {/* Import is a header action, not a field — a tweet pre-fills the form,
-          reviewed before submit. Modal keeps it out of the field flow. */}
-      <Modal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        title="Import from a tweet"
-        subtitle={FIELD_HELP.section_import.text}
-      >
-        <TweetImportBanner
-          onImported={applyTweetImport}
-          onClear={clearImportedTweet}
-          importedFrom={importedFrom}
-          linkedX={user?.external_links?.x ?? null}
-        />
-      </Modal>
     </PageShell>
   );
 }

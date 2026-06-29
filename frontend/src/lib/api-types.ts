@@ -638,6 +638,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/geolocations/import-archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Archive
+         * @description Backfill the caller's profile from their X "Download your data" zip.
+         *
+         *     The upload is the consent: every row lands ``detected``, attributed to the
+         *     caller (no handle-ownership check in this version, see ``planning``). Only the
+         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are read; the
+         *     rest of the export is never extracted. The import runs synchronously behind a
+         *     size cap (``archive_zip.MAX_UPLOAD_BYTES``); a larger archive waits for the
+         *     durable-worker upgrade. Returns the assemble counts.
+         */
+        post: operations["import_archive_api_v1_geolocations_import_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/geolocations/import-from-tweet": {
         parameters: {
             query?: never;
@@ -1321,6 +1348,25 @@ export interface components {
             deleted_users: number;
         };
         /**
+         * ArchiveImportResult
+         * @description Outcome of an archive backfill: how the detections landed.
+         *
+         *     The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
+         *     a live row already held; ``recreated`` a previously rejected (soft-deleted)
+         *     pair re-detected; ``failed`` a detection that raised mid-persist and was
+         *     rolled back (the others still land).
+         */
+        ArchiveImportResult: {
+            /** Created */
+            created: number;
+            /** Failed */
+            failed: number;
+            /** Recreated */
+            recreated: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /**
          * AuthorRef
          * @description Compact author handle used wherever one payload references another.
          *
@@ -1384,6 +1430,11 @@ export interface components {
             tag_ids?: string | null;
             /** Title */
             title: string;
+        };
+        /** Body_import_archive_api_v1_geolocations_import_archive_post */
+        Body_import_archive_api_v1_geolocations_import_archive_post: {
+            /** File */
+            file: string;
         };
         /** Body_submit_geolocation_api_v1_geolocations__geolocation_id__submit_post */
         Body_submit_geolocation_api_v1_geolocations__geolocation_id__submit_post: {
@@ -3311,6 +3362,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedGeolocationDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_archive_api_v1_geolocations_import_archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_archive_api_v1_geolocations_import_archive_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveImportResult"];
                 };
             };
             /** @description Validation Error */
