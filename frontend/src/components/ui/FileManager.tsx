@@ -6,8 +6,9 @@ import { Plus, Upload, X } from "lucide-react";
 export interface FileManagerItem {
   /** Stable React key. */
   key: string;
-  /** The item's visual: a media thumbnail, a file card, whatever the file type
-   *  wants. The only per-type concern. */
+  /** The item's visual. In `grid` it fills a uniform thumbnail tile (a media
+   *  image); in `stack` it IS the tile (a caller-defined file card). The only
+   *  per-type concern. */
   content: ReactNode;
   /** Remove handler; omit for a non-removable item (e.g. a locked grid). */
   onRemove?: () => void;
@@ -20,12 +21,13 @@ interface FileManagerProps {
   onAddFiles?: (files: File[]) => void;
   /** `accept` for the file input. */
   accept: string;
-  /** Allow picking several at once (also keeps the grid drop zone always shown). */
+  /** Allow picking several at once (also keeps the drop zone shown once staged). */
   multiple?: boolean;
   /** Drop-zone label + optional hint line. */
   addLabel: string;
   addHint?: string;
-  /** `grid` = thumbnail tiles (media); `stack` = full-width rows (documents). */
+  /** `grid` = uniform thumbnail tiles (media); `stack` = caller-defined file
+   *  cards in a column (documents). */
   layout?: "grid" | "stack";
 }
 
@@ -33,8 +35,8 @@ interface FileManagerProps {
  * Generic file-staging UI: the drop zone (click + drag-drop), the hidden input,
  * the remove-button chrome, and the layout. Each file type composes it by
  * passing how one item renders (`items[].content`): the media manager passes
- * thumbnails, the archive import passes a file card. A new file type is a new
- * caller, not a new picker.
+ * thumbnails (grid), the archive import passes a file card (stack). A new file
+ * type is a new caller, not a new picker.
  */
 export function FileManager({
   items,
@@ -59,13 +61,9 @@ export function FileManager({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={
-        grid
-          ? "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
-          : "flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:text-red-400"
-      }
+      className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
     >
-      <X size={grid ? 13 : 15} />
+      <X size={13} />
     </button>
   );
 
@@ -98,6 +96,10 @@ export function FileManager({
     </label>
   ) : null;
 
+  // The drop zone stays while multiple are allowed; for a single-file picker it
+  // gives way to the staged item.
+  const showDropzone = !!onAddFiles && (multiple || items.length === 0);
+
   if (grid) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -110,21 +112,16 @@ export function FileManager({
             {it.onRemove && removeButton(it.onRemove, it.removeLabel ?? "Remove")}
           </div>
         ))}
-        {dropzone}
+        {showDropzone && dropzone}
       </div>
     );
   }
 
-  // Stack: full-width rows. The drop zone stays while multiple are allowed,
-  // otherwise it's replaced by the single staged row.
-  const showDropzone = !!onAddFiles && (multiple || items.length === 0);
+  // Stack: the caller's own item tiles in a column; full-width drop zone.
   return (
     <div className="space-y-3">
       {items.map((it) => (
-        <div
-          key={it.key}
-          className="flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-900 p-4"
-        >
+        <div key={it.key} className="relative w-fit">
           {it.content}
           {it.onRemove && removeButton(it.onRemove, it.removeLabel ?? "Remove")}
         </div>

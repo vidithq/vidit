@@ -216,20 +216,20 @@ export default function ImportPage() {
                 ? [
                     {
                       key: file.name,
+                      // A media-style tile: the zip logo where the thumbnail
+                      // would be, the details below.
                       content: (
-                        <>
-                          <FileArchive
-                            size={28}
-                            strokeWidth={1.6}
-                            className="shrink-0 text-orange-400"
-                          />
-                          <div className="min-w-0 flex-1">
+                        <div className="w-60 max-w-full overflow-hidden rounded-md border border-neutral-700 bg-neutral-950">
+                          <div className="flex aspect-video items-center justify-center bg-neutral-900">
+                            <FileArchive size={44} strokeWidth={1.3} className="text-orange-400" />
+                          </div>
+                          <div className="border-t border-neutral-800 px-3 py-2">
                             <p className="truncate text-sm text-neutral-100">{file.name}</p>
                             <p className="text-xs text-neutral-500">
                               {formatBytes(file.size)} · ready to import
                             </p>
                           </div>
-                        </>
+                        </div>
                       ),
                       onRemove: () => setFile(null),
                       removeLabel: "Remove file",
