@@ -120,12 +120,16 @@ export default function ImportPage() {
           <p className="text-sm text-neutral-200">
             {nothing ? (
               "No geolocations found in that archive. Posts with a coordinate in their text become detections."
-            ) : (
+            ) : result.created > 0 ? (
               <>
                 Imported <strong>{result.created}</strong>{" "}
                 {result.created === 1 ? "geolocation" : "geolocations"}.
                 {result.skipped > 0 && ` ${result.skipped} were already imported.`}
               </>
+            ) : (
+              `Everything in that archive was already imported (${result.skipped} ${
+                result.skipped === 1 ? "geolocation" : "geolocations"
+              }).`
             )}
           </p>
           {result.created > 0 && (
@@ -135,7 +139,20 @@ export default function ImportPage() {
             </p>
           )}
           <div className="flex flex-wrap gap-3 pt-1">
-            {result.created > 0 && (
+            {nothing ? (
+              // Nothing landed: the only sensible next step is to try a different
+              // file, not to "import another".
+              <button
+                type="button"
+                onClick={() => {
+                  setResult(null);
+                  setFile(null);
+                }}
+                className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+              >
+                Choose a different file
+              </button>
+            ) : (
               <Link
                 href={`/profile/${user.username}/detections`}
                 className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
@@ -143,16 +160,6 @@ export default function ImportPage() {
                 Review detections
               </Link>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setResult(null);
-                setFile(null);
-              }}
-              className={`${BUTTON_SHAPE} border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors`}
-            >
-              Import another
-            </button>
           </div>
         </div>
       </PageShell>
