@@ -130,20 +130,6 @@ export default function ProfilePage() {
           <DetectionsEntry username={profile.username} count={detectionCount} />
         )}
 
-        {isOwn && (
-          <Link
-            href="/import"
-            className="block rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-orange-500/40 transition-colors"
-          >
-            <span className="text-sm font-medium text-neutral-200">
-              Import your work
-            </span>
-            <span className="mt-0.5 block text-xs text-neutral-500">
-              Backfill your geolocations from your X archive.
-            </span>
-          </Link>
-        )}
-
         <RecentSubmissions
           profile={profile}
           submissions={submissions}

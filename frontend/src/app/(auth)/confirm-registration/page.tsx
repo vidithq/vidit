@@ -58,7 +58,7 @@ function ConfirmInner() {
         // navigate; on a ref so unmount can cancel a stale push. A brand-new
         // account lands on the import on-ramp (backfill your X work) rather than
         // an empty map, the first step of the curated onboarding.
-        redirectTimerRef.current = setTimeout(() => router.push("/import"), 800);
+        redirectTimerRef.current = setTimeout(() => router.push("/submit?import=1"), 800);
       })
       .catch((err) => {
         setState("failed");
