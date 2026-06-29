@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Clock,
   Download,
@@ -86,6 +87,7 @@ function importErrorMessage(err: unknown): string | undefined {
 
 export default function ImportPage() {
   const { user, loading: authLoading } = useRequireAuth();
+  const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportResult | null>(null);
@@ -97,8 +99,15 @@ export default function ImportPage() {
     async (archive: File) => importArchive(await stripArchive(archive)),
     {
       onSuccess: (res) => {
-        setResult(res);
         refreshDetectionCount();
+        // Bridge straight to the review queue when there's fresh work to triage;
+        // only stay on this screen when nothing landed (retry) or it was all
+        // already imported.
+        if (res.created > 0 && user) {
+          router.push(`/profile/${user.username}/detections`);
+        } else {
+          setResult(res);
+        }
       },
       onError: importErrorMessage,
     }
@@ -112,36 +121,23 @@ export default function ImportPage() {
     );
   }
 
+  // Only reached when the import created nothing: either no geolocations were
+  // found (offer a retry) or the archive was already fully imported (offer the
+  // queue). A successful import bridges straight to the queue, no screen here.
   if (result) {
-    const nothing = result.created === 0 && result.skipped === 0;
+    const nothing = result.skipped === 0;
     return (
       <PageShell back title="Import your work">
         <div className="space-y-4">
           <p className="text-sm text-neutral-200">
-            {nothing ? (
-              "No geolocations found in that archive. Posts with a coordinate in their text become detections."
-            ) : result.created > 0 ? (
-              <>
-                Imported <strong>{result.created}</strong>{" "}
-                {result.created === 1 ? "geolocation" : "geolocations"}.
-                {result.skipped > 0 && ` ${result.skipped} were already imported.`}
-              </>
-            ) : (
-              `Everything in that archive was already imported (${result.skipped} ${
-                result.skipped === 1 ? "geolocation" : "geolocations"
-              }).`
-            )}
+            {nothing
+              ? "No geolocations found in that archive. Posts with a coordinate in their text become detections."
+              : `Everything in that archive was already imported (${result.skipped} ${
+                  result.skipped === 1 ? "geolocation" : "geolocations"
+                }).`}
           </p>
-          {result.created > 0 && (
-            <p className="text-xs text-neutral-500">
-              Each lands as a machine-detected geolocation. Review, complete, and submit
-              them from your Detections queue.
-            </p>
-          )}
           <div className="flex flex-wrap gap-3 pt-1">
             {nothing ? (
-              // Nothing landed: the only sensible next step is to try a different
-              // file, not to "import another".
               <button
                 type="button"
                 onClick={() => {
