@@ -125,7 +125,10 @@ const ROADMAP: {
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-neutral-100 pl-14">
-      <section className="mx-auto max-w-3xl px-5 pt-16 pb-12 text-center">
+      {/* Every section shares PageShell's horizontal frame (max-w-4xl mx-auto
+          px-6) so the landing's content sits at the same left inset as every
+          app page; the rail-to-content gap no longer shifts on the way to Home. */}
+      <section className="mx-auto max-w-4xl px-6 pt-16 pb-12 text-center">
         <div
           className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight ${BETA_PILL}`}
         >
@@ -143,7 +146,7 @@ export default function LandingPage() {
         <HeroCtas />
       </section>
 
-      <section className="mx-auto max-w-4xl px-5 pb-20">
+      <section className="mx-auto max-w-4xl px-6 pb-20">
         <div className="aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
           {DEMO_VIDEO_URL ? (
             DEMO_VIDEO_IS_FILE ? (
@@ -172,7 +175,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-4xl px-5 pb-20">
+      <section className="mx-auto max-w-4xl px-6 pb-20">
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map(({ icon: Icon, title, body }) => (
             <div
@@ -193,7 +196,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-5 pb-20">
+      <section className="mx-auto max-w-4xl px-6 pb-20">
         <div className="text-center">
           <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
             Roadmap
