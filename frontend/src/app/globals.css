@@ -32,6 +32,75 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Accent palette switching.
+
+   Every accent in the UI is a Tailwind `orange-*` utility, which compiles to
+   `var(--color-orange-*)`. Re-pointing those variables on the root element
+   re-colours the whole UI with no per-component change. `orange` is the
+   historical accent-scale name and stays the default (no attribute, no
+   override); the blocks below remap that scale to other hues, using Tailwind's
+   own values at the same shade stops so the tinted-on-dark recipe is preserved.
+
+   Map markers read hex colours straight from JS (maplibre paint can't read CSS
+   variables); those live in `lib/palette.ts` and are kept in step by hand.
+--------------------------------------------------------------------------- */
+[data-palette="blue"] {
+  --color-orange-50: #eff6ff;
+  --color-orange-100: #dbeafe;
+  --color-orange-200: #bfdbfe;
+  --color-orange-300: #93c5fd;
+  --color-orange-400: #60a5fa;
+  --color-orange-500: #3b82f6;
+  --color-orange-600: #2563eb;
+  --color-orange-700: #1d4ed8;
+  --color-orange-800: #1e40af;
+  --color-orange-900: #1e3a8a;
+  --color-orange-950: #172554;
+}
+
+[data-palette="emerald"] {
+  --color-orange-50: #ecfdf5;
+  --color-orange-100: #d1fae5;
+  --color-orange-200: #a7f3d0;
+  --color-orange-300: #6ee7b7;
+  --color-orange-400: #34d399;
+  --color-orange-500: #10b981;
+  --color-orange-600: #059669;
+  --color-orange-700: #047857;
+  --color-orange-800: #065f46;
+  --color-orange-900: #064e3b;
+  --color-orange-950: #022c22;
+}
+
+[data-palette="violet"] {
+  --color-orange-50: #f5f3ff;
+  --color-orange-100: #ede9fe;
+  --color-orange-200: #ddd6fe;
+  --color-orange-300: #c4b5fd;
+  --color-orange-400: #a78bfa;
+  --color-orange-500: #8b5cf6;
+  --color-orange-600: #7c3aed;
+  --color-orange-700: #6d28d9;
+  --color-orange-800: #5b21b6;
+  --color-orange-900: #4c1d95;
+  --color-orange-950: #2e1065;
+}
+
+[data-palette="rose"] {
+  --color-orange-50: #fff1f2;
+  --color-orange-100: #ffe4e6;
+  --color-orange-200: #fecdd3;
+  --color-orange-300: #fda4af;
+  --color-orange-400: #fb7185;
+  --color-orange-500: #f43f5e;
+  --color-orange-600: #e11d48;
+  --color-orange-700: #be123c;
+  --color-orange-800: #9f1239;
+  --color-orange-900: #881337;
+  --color-orange-950: #4c0519;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still

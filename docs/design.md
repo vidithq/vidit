@@ -44,12 +44,15 @@ The orange palette uses **tinted-on-dark** variants almost exclusively, and neve
 
 Tag chips are decorative-not-interactive and use a neutral paint (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe) (decorative tag chip).
 
+**The accent hue is selectable.** Orange is the default; Settings → Display also offers blue, emerald, violet, and rose. The choice is browser-local (`localStorage`, key `vidit:palette`), applied as `data-palette` on `<html>`, which remaps the Tailwind `orange-*` scale to the chosen hue (see [`globals.css`](../frontend/src/app/globals.css)). Components keep using the `orange-*` utilities and the [`styles.ts`](../frontend/src/components/ui/styles.ts) constants unchanged: the recipe below holds for whichever hue is active. Map markers can't read CSS variables, so their hex colors live alongside the palette definitions in [`lib/palette.ts`](../frontend/src/lib/palette.ts) and are kept in step there.
+
 ### Map points
 
 | Role | Color | Usage |
 |------|-------|-------|
-| Point default | `#f97316` / `orange-500` | All points, single color |
-| Point selected | `#f97316` + white border | Active, clicked point |
+| Point default | accent `500` (default `#f97316`) | Submitted points; follows the selected accent palette |
+| Point detected | `#f59e0b` / `amber-500` | Machine-detected points; fixed amber so the machine-vs-human signal survives any palette |
+| Point selected | accent `500` + white border | Active, clicked point |
 
 ### Semantic
 

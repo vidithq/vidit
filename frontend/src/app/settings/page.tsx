@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/form-styles";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
+import { usePalette } from "@/hooks/usePalette";
+import { PALETTES, setPalette } from "@/lib/palette";
 
 
 
@@ -25,6 +27,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState(false);
   const helpHidden = useHelpHidden();
+  const palette = usePalette();
 
   const changePassword = useMutation(
     () =>
@@ -119,6 +122,35 @@ export default function SettingsPage() {
                 }`}
               />
             </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-neutral-800 pt-4">
+            <div>
+              <p className="text-sm text-neutral-200">Accent color</p>
+              <p className="text-xs text-neutral-500">
+                The highlight color for buttons, links, selected states, and map
+                points.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {PALETTES.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={palette === p.id}
+                  aria-label={p.label}
+                  title={p.label}
+                  onClick={() => setPalette(p.id)}
+                  style={{ backgroundColor: p.swatch }}
+                  className={`h-6 w-6 rounded-full transition-transform hover:scale-110 ${
+                    palette === p.id
+                      ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"
+                      : "ring-1 ring-neutral-700"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 

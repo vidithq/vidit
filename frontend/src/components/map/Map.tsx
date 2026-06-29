@@ -10,6 +10,8 @@ import MapGL, {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { MapPoint } from "@/types";
+import { usePalette } from "@/hooks/usePalette";
+import { paletteMapColors } from "@/lib/palette";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 
@@ -102,6 +104,11 @@ export default function Map({
   // Skip the first onMoveEnd MapLibre fires during initial layout: it
   // carries the values we just seeded, so reporting it back is no-op noise.
   const firstMoveEndRef = useRef(true);
+  // Marker colours follow the user's accent palette. Detection markers keep a
+  // fixed amber (machine-vs-human signal), so only the submitted/accent hue and
+  // the density ramp re-colour.
+  const marker = paletteMapColors(usePalette());
+  const DETECTED = "#f59e0b";
 
   useEffect(() => {
     let ok = false;
@@ -194,9 +201,9 @@ export default function Map({
             "circle-color": [
               "step",
               ["get", "point_count"],
-              "#f97316",
-              1000, "#ea580c",
-              10000, "#c2410c",
+              marker.base,
+              1000, marker.rampMid,
+              10000, marker.rampHigh,
             ],
             "circle-opacity": 0.85,
             "circle-radius": [
@@ -242,7 +249,7 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 7,
-            "circle-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
+            "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": "#ffffff",
             "circle-stroke-width": 2,
             "circle-opacity": 1,
@@ -259,9 +266,9 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 6,
-            // Amber for a machine detection, orange for a submitted row.
-            "circle-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
-            "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], "#f59e0b", "#f97316"],
+            // Amber for a machine detection, the accent hue for a submitted row.
+            "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
+            "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-width": 1,
             "circle-opacity": 1,
           }}

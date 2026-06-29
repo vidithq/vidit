@@ -30,6 +30,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* Apply the saved accent palette before first paint so themed UI
+            doesn't flash the default hue on load. Sets only an attribute, so an
+            unexpected stored value is inert (no matching override = default). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var p=localStorage.getItem('vidit:palette');if(p)document.documentElement.dataset.palette=p;}catch(e){}})();",
+          }}
+        />
+      </head>
       <body
         className={`${montserrat.variable} font-sans bg-[#0a0a0a] text-neutral-100 min-h-screen`}
       >
