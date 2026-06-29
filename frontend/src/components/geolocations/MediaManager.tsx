@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Plus, X } from "lucide-react";
 
+import { FileManager, type FileManagerItem } from "@/components/ui/FileManager";
 import { ACCEPTED_MEDIA_MIME } from "@/lib/mediaTypes";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
@@ -27,11 +27,11 @@ interface MediaManagerProps {
 
 /**
  * The source-media control, shared by the submit form (`LocationPicker`) and the
- * detection edit form so the two can't drift. One grid of thumbnails — persisted
- * media + locally-staged files — each removable, plus an "add" tile. Submit
- * stages files for one upload-on-submit; edit stages new files + marks existing
- * for removal, all applied on save. Object URLs for staged files are revoked on
- * change / unmount so a clear → re-pick cycle doesn't leak blobs.
+ * detection edit form so the two can't drift. A thin specialisation of the
+ * generic [`FileManager`](../ui/FileManager.tsx): it supplies the media
+ * thumbnails (persisted + locally-staged) as items, FileManager owns the grid,
+ * the add tile, drag-drop, and the remove chrome. Object URLs for staged files
+ * are revoked on change / unmount so a clear → re-pick cycle doesn't leak blobs.
  */
 export function MediaManager({
   existing = [],
@@ -53,78 +53,50 @@ export function MediaManager({
 
   const visibleExisting = existing.filter((m) => !removedIds?.has(m.id));
 
-  const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    // Reset so re-picking the same file still fires onChange.
-    e.target.value = "";
-    if (files.length > 0) onAddFiles?.(files);
-  };
-
-  const removeButton = (onClick: () => void, label: string) => (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 hover:bg-neutral-950 hover:text-red-400 transition-colors"
-    >
-      <X size={13} />
-    </button>
-  );
+  const items: FileManagerItem[] = [
+    ...visibleExisting.map((m) => ({
+      key: m.id,
+      content:
+        m.media_type === "image" ? (
+          <Image
+            src={displayUrlsFor(m).thumbnail}
+            alt=""
+            fill
+            sizes="200px"
+            className="object-cover"
+          />
+        ) : (
+          <video src={m.storage_url} className="h-full w-full object-cover" muted />
+        ),
+      onRemove: !locked && onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
+      removeLabel: "Remove media",
+    })),
+    // Render staged tiles only once their object URLs line up 1:1, else a brief
+    // mismatch flashes a broken preview.
+    ...(stagedUrls.length === staged.length
+      ? staged.map((f, i) => ({
+          key: `${f.name}-${i}`,
+          content: f.type.startsWith("video/") ? (
+            <video src={stagedUrls[i]} className="h-full w-full object-cover" muted />
+          ) : (
+            // Object-URL bytes can't round-trip Next's image optimiser.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={stagedUrls[i]} alt={f.name} className="h-full w-full object-cover" />
+          ),
+          onRemove: onRemoveStaged ? () => onRemoveStaged(i) : undefined,
+          removeLabel: "Remove file",
+        }))
+      : []),
+  ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {visibleExisting.map((m) => (
-        <div
-          key={m.id}
-          className="relative aspect-video rounded-md overflow-hidden border border-neutral-700 bg-neutral-950"
-        >
-          {m.media_type === "image" ? (
-            <Image
-              src={displayUrlsFor(m).thumbnail}
-              alt=""
-              fill
-              sizes="200px"
-              className="object-cover"
-            />
-          ) : (
-            <video src={m.storage_url} className="w-full h-full object-cover" muted />
-          )}
-          {!locked && onRemoveExisting && removeButton(() => onRemoveExisting(m.id), "Remove media")}
-        </div>
-      ))}
-
-      {stagedUrls.length === staged.length &&
-        staged.map((f, i) => (
-          <div
-            key={`${f.name}-${i}`}
-            className="relative aspect-video rounded-md overflow-hidden border border-neutral-700 bg-neutral-950"
-          >
-            {f.type.startsWith("video/") ? (
-              <video src={stagedUrls[i]} className="w-full h-full object-cover" muted />
-            ) : (
-              // Object-URL bytes can't round-trip Next's image optimiser.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={stagedUrls[i]} alt={f.name} className="w-full h-full object-cover" />
-            )}
-            {onRemoveStaged && removeButton(() => onRemoveStaged(i), "Remove file")}
-          </div>
-        ))}
-
-      {!locked && onAddFiles && (
-        // Clickable ⇒ orange (design rule): orange dashed border + orange `+` and
-        // label. Background stays neutral so it reads as a drop-zone, not a button.
-        <label className="flex aspect-video cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-orange-500/40 bg-neutral-950 text-orange-400 hover:border-orange-500/60 hover:text-orange-300 transition-colors">
-          <input
-            type="file"
-            multiple
-            accept={ACCEPTED_MEDIA_MIME}
-            className="hidden"
-            onChange={onInput}
-          />
-          <Plus size={18} />
-          <span className="text-xs">Add media</span>
-        </label>
-      )}
-    </div>
+    <FileManager
+      items={items}
+      onAddFiles={locked ? undefined : onAddFiles}
+      accept={ACCEPTED_MEDIA_MIME}
+      multiple
+      addLabel="Add media"
+      layout="grid"
+    />
   );
 }
