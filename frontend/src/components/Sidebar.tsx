@@ -9,7 +9,6 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
 import {
   Globe,
-  Home,
   Plus,
   User,
   Settings,
@@ -92,11 +91,13 @@ interface NavItem {
   activeFor?: (pathname: string) => boolean;
 }
 
-// Map (the workspace) leads, then Submit (the add-your-work hub), then the other
-// browse views and the bounty board. Home + About (the public/meta pages) sit
-// last: the logo already links Home, and logged out the list filters down to
-// just those two. The rest carry `auth: true`. Profile/Settings/Sign-in/Sign-out
-// are not here — they're a separate identity block at the bottom.
+// Map (the catalogue), Submit (add your work), Bounties (the board) are the
+// working surfaces; Timeline + Search are alternate lenses on the catalogue.
+// About (public/meta) sits last. Home has no rail slot: the logo already links
+// it, so a second entry was pure noise once signed in. Logged out, the rail
+// filters down to just About (the rest carry `auth: true`).
+// Profile/Settings/Sign-in/Sign-out are a separate identity block at the bottom,
+// not here.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   {
     href: "/map",
@@ -109,8 +110,6 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     activeFor: (p) => p === "/map" || /^\/geolocations\/[^/]+$/.test(p),
   },
   { href: "/submit", icon: Plus, label: "Submit", auth: true },
-  { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
-  { href: "/search", icon: Search, label: "Search", auth: true },
   {
     href: "/bounties",
     icon: Target,
@@ -119,7 +118,8 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     // Every /bounties/* path is a Bounties page (creation lives at /submit).
     activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
   },
-  { href: "/", icon: Home, label: "Home" },
+  { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
+  { href: "/search", icon: Search, label: "Search", auth: true },
   { href: "/about", icon: Info, label: "About" },
 ];
 
