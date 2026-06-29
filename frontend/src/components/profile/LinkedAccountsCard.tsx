@@ -41,7 +41,7 @@ export function LinkedAccountsCard({
             return (
               <div
                 key={p.key}
-                className="flex items-center gap-2 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md"
+                className="flex items-center gap-2 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md transition-colors focus-within:border-orange-500"
               >
                 <Icon size={14} className="text-neutral-500 shrink-0" />
                 <div className="flex-1 min-w-0">

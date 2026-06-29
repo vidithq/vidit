@@ -167,6 +167,10 @@ If you're writing a class string longer than ~3 Tailwind tokens for an orange el
 
 ## Components
 
+### Build on shared primitives
+
+Every element below is a reusable primitive. Compose from them; do not hand-roll a one-off. If no primitive fits a new need, the missing piece is added to [`components/ui/`](../frontend/src/components/ui) (or as a new `FORM_*` / `styles.ts` constant) and consumed from there, never inlined in a page or feature component. Growing the vocabulary with a new shared component is a maintainer decision (see [`AGENTS.md`](../AGENTS.md) → *Conventions*); reusing or extending an existing one is the default.
+
 ### Links and clickable surfaces
 
 Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for the five buckets and constants. Carve-outs: navigation chrome stays neutral grey, destructive actions go red. External links open in a new tab (`target="_blank" rel="noopener noreferrer"`) with the same orange styling.
