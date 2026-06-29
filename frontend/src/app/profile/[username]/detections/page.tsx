@@ -71,7 +71,10 @@ export default function DetectionsPage() {
           on a geolocation tweet.
         </p>
         <div className="flex flex-col items-center gap-2 pt-1">
-          <Link href="/import" className={PRIMARY_BUTTON}>
+          <Link
+            href="/import"
+            className={`px-5 py-2.5 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
+          >
             Import your work
           </Link>
           <Link
