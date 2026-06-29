@@ -51,7 +51,7 @@ Tag chips are decorative-not-interactive and use a neutral paint (`bg-neutral-80
 | Role | Color | Usage |
 |------|-------|-------|
 | Point default | accent `500` (default `#f97316`) | Submitted points; follows the selected accent palette |
-| Point detected | `#f59e0b` / `amber-500` | Machine-detected points; fixed amber so the machine-vs-human signal survives any palette |
+| Point detected | accent `300` (default `#fdba74`) | Machine-detected points; the same hue a shade lighter, so it follows the palette but stays distinct from submitted by lightness |
 | Point selected | accent `500` + white border | Active, clicked point |
 
 ### Semantic

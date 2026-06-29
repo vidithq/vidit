@@ -104,11 +104,11 @@ export default function Map({
   // Skip the first onMoveEnd MapLibre fires during initial layout: it
   // carries the values we just seeded, so reporting it back is no-op noise.
   const firstMoveEndRef = useRef(true);
-  // Marker colours follow the user's accent palette. Detection markers keep a
-  // fixed amber (machine-vs-human signal), so only the submitted/accent hue and
-  // the density ramp re-colour.
+  // Marker colours follow the user's accent palette: submitted points + the
+  // density ramp use the accent hue, machine detections a lighter shade of the
+  // same hue (distinct by lightness, not a separate colour).
   const marker = paletteMapColors(usePalette());
-  const DETECTED = "#f59e0b";
+  const DETECTED = marker.detected;
 
   useEffect(() => {
     let ok = false;
@@ -266,7 +266,7 @@ export default function Map({
           ]}
           paint={{
             "circle-radius": 6,
-            // Amber for a machine detection, the accent hue for a submitted row.
+            // Lighter accent shade for a machine detection, full accent for a submitted row.
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-width": 1,

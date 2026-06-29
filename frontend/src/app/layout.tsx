@@ -29,7 +29,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // `suppressHydrationWarning`: the inline script below sets `data-palette` on
+    // <html> before hydration, which the server markup doesn't carry, so React
+    // would flag the attribute mismatch. Scoped to this one element.
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Apply the saved accent palette before first paint so themed UI
             doesn't flash the default hue on load. Sets only an attribute, so an

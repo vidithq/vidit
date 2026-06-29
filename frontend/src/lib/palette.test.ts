@@ -58,15 +58,17 @@ describe("paletteMapColors", () => {
       base: "#3b82f6",
       rampMid: "#2563eb",
       rampHigh: "#1d4ed8",
+      detected: "#93c5fd",
     });
   });
 
-  it("every palette defines a swatch and three map colors", () => {
+  it("every palette defines a swatch and its four map colors", () => {
     for (const p of PALETTES) {
       expect(p.swatch).toMatch(/^#[0-9a-f]{6}$/);
       expect(p.map.base).toMatch(/^#[0-9a-f]{6}$/);
       expect(p.map.rampMid).toMatch(/^#[0-9a-f]{6}$/);
       expect(p.map.rampHigh).toMatch(/^#[0-9a-f]{6}$/);
+      expect(p.map.detected).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 });

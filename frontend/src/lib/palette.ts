@@ -13,7 +13,9 @@
  *
  * Orange is the historical accent and stays the default; the other entries are
  * Tailwind's own scales at the same shade stops, so the UI keeps its
- * tinted-on-dark recipe whatever hue is picked.
+ * tinted-on-dark recipe whatever hue is picked. `detected` is the same hue a
+ * shade lighter (the `300` stop): a machine `detected` point reads as the same
+ * family as a submitted one but stays distinct by lightness.
  */
 
 export type PaletteId = "orange" | "blue" | "emerald" | "violet" | "rose";
@@ -23,8 +25,11 @@ export interface PaletteOption {
   label: string;
   /** Representative swatch (the 500 shade) for the settings picker. */
   swatch: string;
-  /** Map-marker colours: primary point + the density ramp's two darker stops. */
-  map: { base: string; rampMid: string; rampHigh: string };
+  /**
+   * Map-marker colours: submitted point (`base`) + the density ramp's two
+   * darker stops, plus the lighter `detected` shade for machine points.
+   */
+  map: { base: string; rampMid: string; rampHigh: string; detected: string };
 }
 
 export const PALETTES: readonly PaletteOption[] = [
@@ -32,31 +37,56 @@ export const PALETTES: readonly PaletteOption[] = [
     id: "orange",
     label: "Orange",
     swatch: "#f97316",
-    map: { base: "#f97316", rampMid: "#ea580c", rampHigh: "#c2410c" },
+    map: {
+      base: "#f97316",
+      rampMid: "#ea580c",
+      rampHigh: "#c2410c",
+      detected: "#fdba74",
+    },
   },
   {
     id: "blue",
     label: "Blue",
     swatch: "#3b82f6",
-    map: { base: "#3b82f6", rampMid: "#2563eb", rampHigh: "#1d4ed8" },
+    map: {
+      base: "#3b82f6",
+      rampMid: "#2563eb",
+      rampHigh: "#1d4ed8",
+      detected: "#93c5fd",
+    },
   },
   {
     id: "emerald",
     label: "Emerald",
     swatch: "#10b981",
-    map: { base: "#10b981", rampMid: "#059669", rampHigh: "#047857" },
+    map: {
+      base: "#10b981",
+      rampMid: "#059669",
+      rampHigh: "#047857",
+      detected: "#6ee7b7",
+    },
   },
   {
     id: "violet",
     label: "Violet",
     swatch: "#8b5cf6",
-    map: { base: "#8b5cf6", rampMid: "#7c3aed", rampHigh: "#6d28d9" },
+    map: {
+      base: "#8b5cf6",
+      rampMid: "#7c3aed",
+      rampHigh: "#6d28d9",
+      detected: "#c4b5fd",
+    },
   },
   {
     id: "rose",
     label: "Rose",
     swatch: "#f43f5e",
-    map: { base: "#f43f5e", rampMid: "#e11d48", rampHigh: "#be123c" },
+    map: {
+      base: "#f43f5e",
+      rampMid: "#e11d48",
+      rampHigh: "#be123c",
+      detected: "#fda4af",
+    },
   },
 ] as const;
 
