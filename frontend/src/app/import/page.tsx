@@ -11,6 +11,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
+import { stripArchive } from "@/lib/archive";
 import { importArchive } from "@/lib/geolocations";
 import type { ArchiveImportResult } from "@/types";
 
@@ -67,13 +68,19 @@ export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportResult | null>(null);
 
-  const { run, loading, error } = useMutation(importArchive, {
-    onSuccess: (res) => {
-      setResult(res);
-      refreshDetectionCount();
-    },
-    onError: importErrorMessage,
-  });
+  // Strip to the allowlisted entries in the browser first, then upload, so the
+  // sensitive rest of the export never leaves the device (and the upload is a
+  // fraction of the size).
+  const { run, loading, error } = useMutation(
+    async (archive: File) => importArchive(await stripArchive(archive)),
+    {
+      onSuccess: (res) => {
+        setResult(res);
+        refreshDetectionCount();
+      },
+      onError: importErrorMessage,
+    }
+  );
 
   if (authLoading || !user) {
     return (
@@ -159,7 +166,7 @@ export default function ImportPage() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <span className="inline-flex items-center gap-1.5 text-neutral-400">
               <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
-              We open only your posts and their media; DMs, email, and phone are never read.
+              Your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
             </span>
             <a
               href={X_ARCHIVE_HELP}
@@ -208,8 +215,8 @@ export default function ImportPage() {
           </button>
           {loading && (
             <p className="text-xs text-neutral-500">
-              Reading your archive and detecting geolocations. A large archive can take a
-              moment.
+              Keeping only your posts, then uploading and detecting geolocations. A large
+              archive can take a moment.
             </p>
           )}
         </form>
