@@ -92,11 +92,12 @@ interface NavItem {
   activeFor?: (pathname: string) => boolean;
 }
 
-// Home and About are public; the rest carry `auth: true` and are filtered out
-// when logged out (see the render below). Profile/Settings/Sign-in/Sign-out are
-// not here — they're a separate identity block at the bottom.
+// Map (the workspace) leads, then Submit (the add-your-work hub), then the other
+// browse views and the bounty board. Home + About (the public/meta pages) sit
+// last: the logo already links Home, and logged out the list filters down to
+// just those two. The rest carry `auth: true`. Profile/Settings/Sign-in/Sign-out
+// are not here — they're a separate identity block at the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
-  { href: "/", icon: Home, label: "Home" },
   {
     href: "/map",
     icon: Globe,
@@ -107,6 +108,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     // Submit lives at /submit now, so no carve-out is needed here.
     activeFor: (p) => p === "/map" || /^\/geolocations\/[^/]+$/.test(p),
   },
+  { href: "/submit", icon: Plus, label: "Submit", auth: true },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search", auth: true },
   {
@@ -117,7 +119,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     // Every /bounties/* path is a Bounties page (creation lives at /submit).
     activeFor: (p) => p === "/bounties" || p.startsWith("/bounties/"),
   },
-  { href: "/submit", icon: Plus, label: "Submit", auth: true },
+  { href: "/", icon: Home, label: "Home" },
   { href: "/about", icon: Info, label: "About" },
 ];
 
