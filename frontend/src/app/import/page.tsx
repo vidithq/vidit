@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { Clock, Download, ExternalLink, Settings, ShieldCheck, Upload } from "lucide-react";
 
 import { PageCenter, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
@@ -13,6 +13,37 @@ import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { importArchive } from "@/lib/geolocations";
 import type { ArchiveImportResult } from "@/types";
+
+/** X's official walkthrough for requesting the data archive. */
+const X_ARCHIVE_HELP =
+  "https://help.x.com/en/managing-your-account/how-to-download-your-x-archive";
+
+/** Shape for the page's action buttons (colour comes from `PRIMARY_BUTTON`). */
+const BUTTON_SHAPE = "px-5 py-2.5 rounded-md text-sm font-medium disabled:opacity-50";
+
+const STEPS = [
+  {
+    icon: Settings,
+    title: "Request your archive on X",
+    detail: 'On X: Settings → "Your account" → "Download an archive of your data".',
+  },
+  {
+    icon: Clock,
+    title: "Wait for X to build it",
+    detail:
+      "Confirm your password. X prepares the file and notifies you when it's ready (often minutes, up to 24h).",
+  },
+  {
+    icon: Download,
+    title: "Download the .zip",
+    detail: "Open the link from X's email or in-app banner and save the zip to your device.",
+  },
+  {
+    icon: Upload,
+    title: "Upload it here",
+    detail: "Drop the zip below. We map the geolocations in your posts for you to review.",
+  },
+];
 
 /** Map the backend's typed archive errors to a human message; fall back to the
  *  generic `errorMessage` for anything else. */
@@ -53,32 +84,43 @@ export default function ImportPage() {
   }
 
   if (result) {
+    const nothing = result.created === 0 && result.skipped === 0;
     return (
       <PageShell back title="Import your work">
         <div className="space-y-4">
           <p className="text-sm text-neutral-200">
-            Imported <strong>{result.created}</strong>{" "}
-            {result.created === 1 ? "detection" : "detections"} from your archive.
-            {result.skipped > 0 && ` ${result.skipped} already existed.`}
+            {nothing ? (
+              "No geolocations found in that archive. Posts with a coordinate in their text become detections."
+            ) : (
+              <>
+                Imported <strong>{result.created}</strong>{" "}
+                {result.created === 1 ? "geolocation" : "geolocations"}.
+                {result.skipped > 0 && ` ${result.skipped} were already imported.`}
+              </>
+            )}
           </p>
-          <p className="text-xs text-neutral-500">
-            Each lands as a machine-detected geolocation. Review, complete, and
-            submit them from your Detections queue.
-          </p>
-          <div className="flex gap-3">
-            <Link
-              href={`/profile/${user.username}/detections`}
-              className={PRIMARY_BUTTON}
-            >
-              Review detections
-            </Link>
+          {result.created > 0 && (
+            <p className="text-xs text-neutral-500">
+              Each lands as a machine-detected geolocation. Review, complete, and submit
+              them from your Detections queue.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3 pt-1">
+            {result.created > 0 && (
+              <Link
+                href={`/profile/${user.username}/detections`}
+                className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+              >
+                Review detections
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => {
                 setResult(null);
                 setFile(null);
               }}
-              className="px-4 py-2 rounded-md border border-neutral-700 text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
+              className={`${BUTTON_SHAPE} border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors`}
             >
               Import another
             </button>
@@ -92,44 +134,86 @@ export default function ImportPage() {
     <PageShell
       back
       title="Import your work"
-      subtitle="Upload your official X archive to backfill your geolocations. We read only your posts (tweets.js and their media); nothing else in the export is opened."
+      subtitle="Backfill your geolocations from your official X archive. It's the fastest way to bring your existing work onto the map."
     >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (file) run(file);
-        }}
-        className="space-y-4"
-        noValidate
-      >
-        <label className="flex flex-col items-center justify-center gap-2 px-4 py-10 rounded-lg border border-dashed border-neutral-700 cursor-pointer hover:border-orange-500/40 transition-colors text-center">
-          <Upload size={22} strokeWidth={1.8} className="text-neutral-500" />
-          <span className="text-sm text-neutral-300">
-            {file ? file.name : "Choose your X archive (.zip)"}
-          </span>
-          <span className="text-xs text-neutral-600">
-            From X: Settings → Your account → Download an archive of your data.
-          </span>
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-neutral-200">How to export from X</h2>
+          <ol className="space-y-2">
+            {STEPS.map((step, i) => (
+              <li
+                key={step.title}
+                className="flex items-start gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-3"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-semibold text-orange-400">
+                  {i + 1}
+                </span>
+                <step.icon size={18} strokeWidth={1.8} className="mt-0.5 shrink-0 text-neutral-500" />
+                <div className="min-w-0">
+                  <p className="text-sm text-neutral-200">{step.title}</p>
+                  <p className="text-xs text-neutral-500">{step.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="inline-flex items-center gap-1.5 text-neutral-400">
+              <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
+              We open only your posts and their media; DMs, email, and phone are never read.
+            </span>
+            <a
+              href={X_ARCHIVE_HELP}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-orange-400 hover:underline"
+            >
+              {"X's guide"}
+              <ExternalLink size={12} strokeWidth={2} />
+            </a>
+          </div>
+        </section>
 
-        {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (file) run(file);
+          }}
+          className="space-y-4"
+          noValidate
+        >
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-700 px-4 py-10 text-center transition-colors hover:border-orange-500/40">
+            <Upload size={22} strokeWidth={1.8} className="text-neutral-500" />
+            <span className="text-sm text-neutral-200">
+              {file ? file.name : "Choose your X archive (.zip)"}
+            </span>
+            <span className="text-xs text-neutral-600">
+              {file ? "Click to choose a different file" : "or drag it onto this box"}
+            </span>
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
 
-        <button type="submit" disabled={!file || loading} className={PRIMARY_BUTTON}>
-          {loading ? "Importing…" : "Import"}
-        </button>
-        {loading && (
-          <p className="text-xs text-neutral-500">
-            Reading your archive and detecting geolocations. A large archive can
-            take a moment.
-          </p>
-        )}
-      </form>
+          {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+
+          <button
+            type="submit"
+            disabled={!file || loading}
+            className={`w-full sm:w-auto ${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+          >
+            {loading ? "Importing…" : "Import archive"}
+          </button>
+          {loading && (
+            <p className="text-xs text-neutral-500">
+              Reading your archive and detecting geolocations. A large archive can take a
+              moment.
+            </p>
+          )}
+        </form>
+      </div>
     </PageShell>
   );
 }

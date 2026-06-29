@@ -55,8 +55,10 @@ function ConfirmInner() {
         }
         setState("success");
         // Delay so the user reads the success message before the hard
-        // navigate; on a ref so unmount can cancel a stale push.
-        redirectTimerRef.current = setTimeout(() => router.push("/map"), 800);
+        // navigate; on a ref so unmount can cancel a stale push. A brand-new
+        // account lands on the import on-ramp (backfill your X work) rather than
+        // an empty map, the first step of the curated onboarding.
+        redirectTimerRef.current = setTimeout(() => router.push("/import"), 800);
       })
       .catch((err) => {
         setState("failed");
@@ -89,7 +91,7 @@ function ConfirmInner() {
 
       {state === "success" && (
         <p className="text-xs text-neutral-400">
-          Welcome to Vidit. Taking you to the map…
+          {"Welcome to Vidit. Let's bring your work onto the map, taking you to import your X archive…"}
         </p>
       )}
 
