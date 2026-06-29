@@ -11,12 +11,20 @@ GETs (``/points``, ``/possible-duplicates``, ``/import-from-tweet/media``) and
 422 on the non-UUID segment.
 """
 
-from app.routers.geolocations import duplicates, import_tweet, item, read, write
+from app.routers.geolocations import (
+    duplicates,
+    import_archive,
+    import_tweet,
+    item,
+    read,
+    write,
+)
 
 routers = (
     read.router,
     duplicates.router,
     import_tweet.router,
+    import_archive.router,
     write.router,
     item.router,
 )

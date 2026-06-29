@@ -37,6 +37,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/geolocations/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/geolocations/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/geolocations/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
+| POST | `/geolocations/import-archive` | 🔒 | Backfill your profile from your X data archive (zip) |
 | GET | `/geolocations/{id}` | 🌐 | Full geolocation detail |
 | POST | `/geolocations` | 🔒 | Create a geolocation (multipart, uploads media) |
 | DELETE | `/geolocations/{id}` | 🔒 | Author-only delete + S3 sweep |
@@ -97,6 +98,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /geolocations/detections` | 120/min |
 | `POST /geolocations/import-from-tweet` | 30/min |
 | `GET /geolocations/import-from-tweet/media` | 60/min |
+| `POST /geolocations/import-archive` | 10/hour |
 | `POST /geolocations` | 30/min |
 | `DELETE /geolocations/{id}` | 30/min |
 | `POST /geolocations/proof-images` | 30/min (+ per-user 24h DB ceiling) |
@@ -541,6 +543,31 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 | 400 | `u` host not in the whitelist |
 | 404 | Upstream returned 404 |
 | 502 | Upstream transport error, 5xx, or response above the size cap |
+
+---
+
+### `POST /geolocations/import-archive` 🔒
+
+Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The import runs **synchronously behind a size cap**; a larger archive waits for the durable-worker upgrade.
+
+**Tweets-only intake guard.** The upload is a whole `.zip`, but only the copy-allowlisted entries are extracted: `tweets.js` and `tweets_media/`. Everything else (DMs, email, phone, account data, `deleted-*`) is ignored, never read, so a copy-allowlist fails safe where a delete-denylist would leak. Extraction is hardened against zip-slip (members are written by basename, so none escapes the temp dir) and zip-bombs (per-file and total uncompressed-size caps). The export's `data/` prefix is normalized away.
+
+Pipeline: extract → `read_tweets` → stitch self-threads → detect coordinates → assemble as `detected` rows, idempotent on `(detected_from_url, coordinate)` so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
+
+**Request:** `multipart/form-data` with a single `file` (the `.zip`).
+
+**Response 200:**
+```json
+{ "created": 12, "skipped": 3, "recreated": 0, "failed": 0 }
+```
+`created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `archive_malformed` (not a valid zip) or `archive_no_tweets` (no `tweets.js` inside) |
+| 401 | Not authenticated |
+| 413 | `archive_too_large` (the upload, or the extracted contents, over the cap) |
 
 ---
 

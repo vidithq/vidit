@@ -33,6 +33,9 @@ export interface User {
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 
+/** Result of an archive backfill (`POST /geolocations/import-archive`). */
+export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
+
 export interface Tag {
   id: string;
   name: string;

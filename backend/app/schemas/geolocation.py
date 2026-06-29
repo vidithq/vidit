@@ -10,6 +10,21 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
+class ArchiveImportResult(BaseModel):
+    """Outcome of an archive backfill: how the detections landed.
+
+    The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
+    a live row already held; ``recreated`` a previously rejected (soft-deleted)
+    pair re-detected; ``failed`` a detection that raised mid-persist and was
+    rolled back (the others still land).
+    """
+
+    created: int
+    skipped: int
+    recreated: int
+    failed: int
+
+
 class _OriginatedFromBountyNested(BaseModel):
     """Compact bounty trace surfaced on the geolocation detail.
 

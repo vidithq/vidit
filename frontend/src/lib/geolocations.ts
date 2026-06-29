@@ -1,7 +1,12 @@
 import { apiFetch } from "./api";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
-import type { GeolocationDetail, GeolocationStatus, TagCategory } from "@/types";
+import type {
+  ArchiveImportResult,
+  GeolocationDetail,
+  GeolocationStatus,
+  TagCategory,
+} from "@/types";
 
 /** A required field a create/edit form is still missing. `key` drives the
  *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
@@ -102,6 +107,21 @@ export function submitGeolocation(
     fd.append("files", file);
   }
   return apiFetch<GeolocationDetail>(`/geolocations/${id}/submit`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+/**
+ * Backfill the caller's profile from their X "Download your data" zip:
+ * `POST /geolocations/import-archive` (multipart). Only the allowlisted entries
+ * (`tweets.js` + `tweets_media/`) are read server-side; the rest of the export
+ * is never extracted. Every row lands `detected` for the caller to submit.
+ */
+export function importArchive(file: File): Promise<ArchiveImportResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return apiFetch<ArchiveImportResult>("/geolocations/import-archive", {
     method: "POST",
     body: fd,
   });
