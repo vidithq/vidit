@@ -160,6 +160,9 @@ export default function Sidebar() {
       pathname === `/profile/${user.username}` ||
       pathname === `/profile/${user.username}/detections`);
 
+  // The brand mark is the Home entry now, so it lights like a nav row on `/`.
+  const homeActive = pathname === "/";
+
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item, pathname);
     const Icon = item.icon;
@@ -197,22 +200,24 @@ export default function Sidebar() {
         expanded ? "w-48" : "w-14"
       }`}
     >
-      {/* Logo + community shortcuts. Paddings mirror the nav rows so the V sits
-          in the same x column as every nav icon. The glyphs render only when
-          expanded — no room in the 56px collapsed bar. */}
-      <div className="flex items-center h-14 px-2 overflow-hidden">
+      {/* The brand mark doubles as the Home entry: it links `/` and takes the
+          same row treatment (hover + active highlight) as the items below, now
+          that Home has no separate rail slot. Community glyphs ride the right of
+          the row when expanded (no room in the 56px collapsed rail). pt-3/pb-1
+          keep the mark tight against the rail, not floating in a tall header. */}
+      <div className="flex items-center gap-1 px-2 pt-3 pb-1 overflow-hidden">
         <Link
           href="/"
-          className="flex items-center gap-2.5 px-2.5 min-w-0"
+          title="Home"
+          className={`${ROW_CLASS} ${
+            homeActive
+              ? FILTER_CHIP_ACTIVE
+              : "text-neutral-100 hover:bg-neutral-800"
+          }`}
         >
           <span className="w-[18px] flex items-center justify-center shrink-0 text-orange-500 font-bold text-lg leading-none">
             V
           </span>
-          {labelsVisible && (
-            <span className="text-neutral-100 font-semibold text-sm tracking-tight truncate animate-label-in">
-              Vidit
-            </span>
-          )}
         </Link>
         {labelsVisible && (
           <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
@@ -251,8 +256,8 @@ export default function Sidebar() {
       </div>
 
       {/* flex-1 pushes the bottom block down, so the gap is visual, not a
-          border. */}
-      <nav className="flex-1 flex flex-col gap-1 px-2 py-3">
+          border. The logo header's pb-1 sets the top gap, so no pt here. */}
+      <nav className="flex-1 flex flex-col gap-1 px-2 pb-3">
         {NAV_ITEMS.filter((item) => !item.auth || user).map(renderNavItem)}
       </nav>
 
