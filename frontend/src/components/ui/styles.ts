@@ -50,3 +50,16 @@ export const TAG_CHIP = "bg-neutral-800 text-neutral-400";
 // the "clickable orange text" treatment (bylines, "Back to X", retry actions,
 // empty-state CTAs). Size / weight stay at the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
+
+// Muted inline link / control — neutral label that brightens on hover. The
+// neutral counterpart to TEXT_LINK, for secondary navigation that shouldn't
+// pull accent (Cancel, Back, dismiss). Size / weight stay at the call site.
+export const MUTED_LINK = "text-neutral-400 hover:text-neutral-200 transition-colors";
+
+// Amber "caution / heads-up" surface — the warning counterpart to the red error
+// banners (a hard error). Amber reads as "check this, you're not blocked"
+// (duplicate-probe, curated-tags load failure, tweet-import notice). Colour only
+// (border + tint + text); radius / padding / layout stay at the call site, since
+// the callouts range from a one-line notice to an icon + list.
+export const WARNING_CALLOUT =
+  "border border-amber-500/30 bg-amber-500/10 text-amber-200";

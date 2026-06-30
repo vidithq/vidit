@@ -15,7 +15,7 @@ import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { MUTED_LINK, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -302,7 +302,7 @@ export function GeolocationEditForm({
                 type="button"
                 onClick={() => setConfirmingSubmit(false)}
                 disabled={busy}
-                className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+                className={`text-sm ${MUTED_LINK}`}
               >
                 Cancel
               </button>
@@ -322,7 +322,7 @@ export function GeolocationEditForm({
 
           <Link
             href={redirectTo}
-            className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            className={`text-sm ${MUTED_LINK}`}
           >
             Cancel
           </Link>
@@ -343,7 +343,7 @@ export function GeolocationEditForm({
                 onClick={confirmReject.cancel}
                 disabled={busy}
                 aria-label="Cancel reject"
-                className="px-2 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+                className={`px-2 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
               >
                 <X size={13} />
               </button>

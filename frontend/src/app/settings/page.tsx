@@ -13,6 +13,7 @@ import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
   FORM_LABEL,
+  FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
@@ -167,10 +168,7 @@ export default function SettingsPage() {
               </div>
             )}
             {success && (
-              // Orange, not emerald (see design.md's palette): "success"
-              // green next to red destructive actions reads wrong, and the
-              // app stays in the orange family.
-              <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
+              <div className={FORM_SUCCESS_BANNER}>
                 Password updated.
               </div>
             )}

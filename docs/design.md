@@ -58,9 +58,9 @@ Tag chips are decorative-not-interactive and use a neutral paint (`bg-neutral-80
 
 | Role | Color | Tailwind | Usage |
 |------|-------|----------|-------|
-| Danger | `#ef4444` | `red-500` | Errors, deletions |
-| Success | `#22c55e` | `green-500` | Confirmations |
-| Info | `#3b82f6` | `blue-500` | Hints, neutral links |
+| Danger | `#ef4444` | `red-500` | Errors, deletions (`FORM_ERROR_BANNER*`) |
+| Success / info | accent `500` | `orange-500` | Confirmations + info notices (`FORM_SUCCESS_BANNER`). Orange, not green: a confirmation next to red destructive actions shouldn't read as celebratory. |
+| Warning | `#f59e0b` | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`): duplicate probe, curated-tags load failure, tweet-import notice. Colour only; layout at the call site. |
 
 ## Orange palette recipe
 
@@ -72,7 +72,7 @@ The rule that governs all of it:
 
 ### The five buckets
 
-1. **Inline orange text link**: plain clickable text in body copy or rows (bylines, source URLs, "Cancel", "Back to bounties"). `text-orange-400 hover:underline`; sometimes `hover:text-orange-300` when the surrounding row is also turning orange under group-hover.
+1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. The neutral counterpart for secondary navigation (Cancel, Back, dismiss) is `MUTED_LINK`, see *Other orange shapes*.
 2. **Tappable card / row** (`TAPPABLE_HOVER`): the whole card or row is one click target (GeolocationCard, BountyCard, search rows, profile external links). Neutral at rest; on hover the **border** turns orange and the inner title picks up `group-hover:text-orange-400` (put `group` on the row).
 3. **Primary CTA** (`PRIMARY_BUTTON`): "do this now" buttons (Submit, Post a bounty, Geolocate this, Follow, admin actions, the error-boundary "Try again"). Soft-fill outlined orange, visible at rest, brightens on hover. The constant covers colour **only**; shape (padding, width, `disabled:opacity-50`) stays at the call site.
 4. **Selected / active state** (`FILTER_CHIP_ACTIVE` / `FILTER_CHIP_INACTIVE`): a state indicator on an interactive element (active filter chip, active sidebar nav row, the bounties status filter). Reads as `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE`. Status pills add a thin border so the badge reads as a discrete shape, in three states: `STATUS_PILL_ACTIVE` (open, orange), `STATUS_PILL_FULFILLED` (end-state, neutral **white**, not green: fulfilment isn't a win), `STATUS_PILL_CLOSED` (author-withdrawn, the quietest, neutral grey).
@@ -86,7 +86,7 @@ These don't fit the five buckets:
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
 - **Destructive actions**: the admin "Hard delete" stays `bg-red-500 text-white`; sibling soft-delete buttons use `PRIMARY_BUTTON`, so "less destructive = quieter."
-- **Navigation chrome** (back arrows, × close buttons): kept neutral grey (`text-neutral-400 hover:text-neutral-200`) so structural chrome doesn't compete with content links.
+- **Navigation chrome + secondary links** (`MUTED_LINK`): back arrows, × close buttons, Cancel / Back / dismiss. Neutral grey (`text-neutral-400 hover:text-neutral-200`) that brightens on hover, so structural chrome and secondary nav don't compete with content links.
 
 ### Constants: single source of truth
 

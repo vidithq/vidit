@@ -19,7 +19,7 @@ import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { FILTER_CHIP_ACTIVE, MUTED_LINK, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -427,7 +427,7 @@ function SubmitForm() {
           <button
             type="button"
             onClick={() => setArchiveMode(false)}
-            className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            className={`inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}
           >
             <ArrowLeft size={14} strokeWidth={1.8} />
             Back to the form
@@ -591,7 +591,7 @@ function SubmitForm() {
           </button>
           <Link
             href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
-            className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            className={`text-sm ${MUTED_LINK}`}
           >
             Cancel
           </Link>

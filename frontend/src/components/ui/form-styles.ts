@@ -43,3 +43,10 @@ export const FORM_ERROR_BANNER_COMPACT =
 // field. (The form banners use `red-900/40`; this card variant uses `red-500/10`.)
 export const FORM_ERROR_BANNER_BOXED =
   "bg-red-500/10 border border-red-500/30 text-red-300 px-3 py-2 rounded-md text-xs";
+
+// Positive confirmation banner. Orange, not green (see design.md's palette: a
+// "success" green next to red destructive actions reads wrong, so the app stays
+// in the orange family). Covers success + info notices (password updated, reset
+// confirmation). Sibling to the FORM_ERROR_BANNER family.
+export const FORM_SUCCESS_BANNER =
+  "bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs";

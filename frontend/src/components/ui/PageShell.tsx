@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { smartBack } from "@/lib/navigation";
-import { TEXT_LINK } from "./styles";
+import { MUTED_LINK, TEXT_LINK } from "./styles";
 import { PageFrame } from "./PageFrame";
 
 export function PageShell({
@@ -34,7 +34,7 @@ export function PageShell({
             type="button"
             onClick={handleBack}
             aria-label="Back"
-            className="absolute right-full top-1.5 mr-3 text-neutral-400 hover:text-neutral-200 transition-colors"
+            className={`absolute right-full top-1.5 mr-3 ${MUTED_LINK}`}
           >
             <ArrowLeft size={18} />
           </button>

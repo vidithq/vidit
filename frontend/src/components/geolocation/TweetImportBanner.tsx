@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -168,7 +168,7 @@ function AuthorshipWarning({
   const linkedHandle = normaliseHandle(linkedX);
   return (
     <div
-      className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 flex items-start gap-2 text-xs text-amber-200"
+      className={`rounded-md p-3 flex items-start gap-2 text-xs ${WARNING_CALLOUT}`}
       aria-live="polite"
     >
       <AlertTriangle size={14} className="shrink-0 mt-0.5" />

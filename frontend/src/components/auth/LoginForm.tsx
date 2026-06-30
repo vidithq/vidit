@@ -11,6 +11,7 @@ import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
   FORM_LABEL_COMPACT,
+  FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 
 
@@ -43,8 +44,8 @@ export default function LoginForm({ onSuccess }: Props) {
     <AuthCard title="Sign in to Vidit" subtitle="OSINT/GEOINT geolocation platform">
       <form onSubmit={handleSubmit} className="space-y-4">
         {justReset && !error && (
-          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
-            Password reset — sign in with your new password.
+          <div className={FORM_SUCCESS_BANNER}>
+            Password reset, sign in with your new password.
           </div>
         )}
         {error && (

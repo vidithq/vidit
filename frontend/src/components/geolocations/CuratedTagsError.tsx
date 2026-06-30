@@ -1,4 +1,4 @@
-import { TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 
 // Amber "couldn't load the curated Conflict/Capture tags" banner with a retry,
 // shown identically by the submit form and the detection edit form.
@@ -10,7 +10,7 @@ export function CuratedTagsError({
   message?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+    <div className={`flex items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
       <span>{message}</span>
       <button
         type="button"
