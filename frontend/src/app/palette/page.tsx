@@ -475,7 +475,7 @@ export default function PalettePage() {
             <div className="w-full max-w-xl">
               <ProofSection>
                 <div className="text-sm text-neutral-300 leading-relaxed">
-                  The proof body goes here (a rendered doc, or a bounty's notes).
+                  The proof body goes here (a rendered doc, or bounty notes).
                 </div>
               </ProofSection>
             </div>
