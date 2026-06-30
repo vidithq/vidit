@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { notFound } from "next/navigation";
-import { AtSign, Mail, MessageCircle } from "lucide-react";
+import { AtSign, Mail, MessageCircle, MapPin } from "lucide-react";
 
 import type { GeolocationDetail, GeolocationStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
@@ -15,6 +15,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { FilterChip } from "@/components/ui/FilterChip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TagChip } from "@/components/ui/TagChip";
@@ -22,6 +23,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import FieldHelp from "@/components/ui/FieldHelp";
@@ -30,11 +32,15 @@ import StatusBadge from "@/components/geolocation/StatusBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import {
   PRIMARY_BUTTON,
+  SECONDARY_BUTTON,
+  DANGER_BUTTON,
   TEXT_LINK,
+  MUTED_LINK,
   TAPPABLE_HOVER,
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
   BETA_PILL,
+  WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import {
   FORM_LABEL,
@@ -46,12 +52,15 @@ import {
   FORM_ERROR_BANNER,
   FORM_ERROR_BANNER_COMPACT,
   FORM_ERROR_BANNER_BOXED,
+  FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
- * note on where it's used. Dev reference, not linked in the nav. Everything
- * here follows the accent palette (switchable in Settings → Display).
+ * note on where it's used. Dev reference, not linked in the nav. Ordered the way
+ * design systems are (atomic design): foundations / tokens, then atoms,
+ * molecules, organisms, and page scaffolding. Everything follows the accent
+ * palette (switchable in Settings → Display).
  */
 
 // One showcased component: a labelled card with the live preview + a usage note.
@@ -151,6 +160,7 @@ export default function PalettePage() {
   if (process.env.NODE_ENV !== "development") notFound();
 
   const [chip, setChip] = useState(true);
+  const [fc, setFc] = useState("All");
   const [tpTags, setTpTags] = useState<Tag[]>([
     { id: "f1", name: "donetsk", category: "free" },
   ]);
@@ -159,32 +169,44 @@ export default function PalettePage() {
   return (
     <PageShell
       title="Palette"
-      subtitle="Reusable components, their options, and where each is used. Everything follows the accent color (Settings → Display)."
+      subtitle="Reusable building blocks, ordered smallest to largest (atomic design): foundations → atoms → molecules → organisms → pages. Everything follows the accent color (Settings → Display)."
     >
       <div className="space-y-8">
-        {/* ---- Style constants ---- */}
+        {/* ============ FOUNDATIONS · accent & buttons ============ */}
         <section className="space-y-3">
-          <SectionEyebrow title="Style constants" />
+          <SectionEyebrow title="Foundations · accent & buttons" />
 
-          <Item
-            name="PRIMARY_BUTTON"
-            usage="Primary CTA: Submit, auth, admin actions"
-          >
+          <Item name="PRIMARY_BUTTON" usage="Primary CTA: Submit, auth, admin actions">
             <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}>
               Primary action
             </button>
           </Item>
 
-          <Item name="TEXT_LINK" usage="Accent links: bylines, back links, retry, About">
+          <Item name="SECONDARY_BUTTON" usage="Outlined accent, transparent at rest: Edit profile, alternate actions">
+            <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${SECONDARY_BUTTON}`}>
+              Secondary action
+            </button>
+          </Item>
+
+          <Item name="DANGER_BUTTON" usage="Filled red destructive action: admin hard delete">
+            <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${DANGER_BUTTON}`}>
+              Hard delete
+            </button>
+          </Item>
+
+          <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
             <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
               A text link
             </a>
           </Item>
 
-          <Item
-            name="FILTER_CHIP_ACTIVE / _INACTIVE"
-            usage="Filter chips: map panel, bounties, search"
-          >
+          <Item name="MUTED_LINK" usage="Neutral secondary nav: Cancel, Back, dismiss, × close">
+            <a href="#" className={`text-sm ${MUTED_LINK}`} onClick={(e) => e.preventDefault()}>
+              Cancel
+            </a>
+          </Item>
+
+          <Item name="FILTER_CHIP_ACTIVE / _INACTIVE" usage="Selected-state colour pair (see <FilterChip>)">
             <Variant label="active">
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${FILTER_CHIP_ACTIVE}`}>
                 Selected
@@ -197,6 +219,12 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
+          <Item name="TAPPABLE_HOVER" usage="Clickable cards/rows: accent border on hover">
+            <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
+              Hover me
+            </div>
+          </Item>
+
           <Item name="BETA_PILL" usage="Closed beta banner (bottom-right corner)">
             <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${BETA_PILL}`}>
               <span className="size-1.5 rounded-full bg-orange-500" />
@@ -204,19 +232,16 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item
-            name="TAPPABLE_HOVER"
-            usage="Clickable cards/rows: accent border on hover"
-          >
-            <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
-              Hover me
+          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice">
+            <div className={`rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
+              Heads up, check this before submitting.
             </div>
           </Item>
         </section>
 
-        {/* ---- Forms ---- */}
+        {/* ============ FOUNDATIONS · form fields ============ */}
         <section className="space-y-3">
-          <SectionEyebrow title="Forms" />
+          <SectionEyebrow title="Foundations · form fields" />
 
           <Item name="FORM_LABEL + FORM_INPUT" usage="All form fields (submit, edit, auth, settings)">
             <div className="w-full max-w-sm space-y-1.5">
@@ -241,7 +266,7 @@ export default function PalettePage() {
             <input className={`${FORM_INPUT} ${FORM_INVALID_FIELD} max-w-sm`} placeholder="Invalid field" />
           </Item>
 
-          <Item name="FORM_ERROR_BANNER (+ _COMPACT / _BOXED)" usage="Form error above actions; compact (auth) and boxed (admin panel) variants">
+          <Item name="FORM_ERROR_BANNER (+ _COMPACT / _BOXED)" usage="Form error above actions; compact (auth) and boxed (admin) variants">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default (form)">
                 <div className={FORM_ERROR_BANNER}>Something went wrong.</div>
@@ -255,6 +280,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="FORM_SUCCESS_BANNER" usage="Confirmation / info notice (password updated, reset). Orange, not green.">
+            <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>
+          </Item>
+
           <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / bounty)">
             <div className="w-full max-w-sm">
               <IncompleteFormNotice missing={["Coordinates", "Conflict tag", "Proof"]} />
@@ -262,70 +291,9 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ---- Structure ---- */}
+        {/* ============ ATOMS ============ */}
         <section className="space-y-3">
-          <SectionEyebrow title="Structure" />
-
-          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
-            <Card className="w-48">
-              <p className="text-xs text-neutral-300">Content</p>
-              <p className="text-xs text-neutral-500">Second line</p>
-            </Card>
-          </Item>
-
-          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
-            <SectionHeading title="Source media" concept="source_media" />
-            <SectionHeading title="Proof" concept="section_proof" optional />
-          </Item>
-
-          <Item name="<SectionEyebrow>" usage="Detail page headings (SOURCE MEDIA, LOCATION, DETAILS)">
-            <Variant label="as=h2 (page)">
-              <SectionEyebrow title="Details" concept="section_details" />
-            </Variant>
-            <Variant label="no concept">
-              <SectionEyebrow title="Working on" />
-            </Variant>
-          </Item>
-
-          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
-            <EmptyState className="max-w-sm">
-              Nothing here yet.{" "}
-              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-                Create the first one
-              </a>
-              .
-            </EmptyState>
-          </Item>
-        </section>
-
-        {/* ---- Rows & details ---- */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Rows & details" />
-
-          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & bounty detail pages (label / value)">
-            <div className="w-full max-w-md">
-              <DetailCard>
-                <DetailRow label="Status" concept="status">
-                  <StatusBadge status="submitted" />
-                </DetailRow>
-                <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
-                <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
-              </DetailCard>
-            </div>
-          </Item>
-
-          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
-            <div className="w-full max-w-md space-y-2">
-              <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
-              <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
-              <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
-            </div>
-          </Item>
-        </section>
-
-        {/* ---- Badges & pills ---- */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Badges & pills" />
+          <SectionEyebrow title="Atoms" />
 
           <Item name="<Pill>" usage="Shared shape of every badge below (StatusBadge, BountyStatusBadge, TagBadge)">
             <Variant label="tone + icon">
@@ -372,11 +340,6 @@ export default function PalettePage() {
             <SourceLabel isDemo={false} url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
-        </section>
-
-        {/* ---- Media & avatars ---- */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Media & avatars" />
 
           <Item name="<MediaThumb>" usage="Thumbnail on bounty cards (list & search)">
             <MediaThumb />
@@ -400,15 +363,93 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ---- Cards ---- */}
+        {/* ============ MOLECULES ============ */}
         <section className="space-y-3">
-          <SectionEyebrow title="Cards (EntityCard)" />
-          <p className="text-xs text-neutral-500 -mt-1">
-            One card for geoloc / bounty / detection, in 2 layouts. Uniform click
-            model: the whole card leads to the detail; the author stays clickable.
-            Absent fields (coords for a bounty, working for a geoloc) are not
-            shown.
-          </p>
+          <SectionEyebrow title="Molecules" />
+
+          <Item name="<FilterChip>" usage="Bounties status filter + search type filter">
+            {["All", "Open", "Closed"].map((label) => (
+              <FilterChip key={label} active={fc === label} onClick={() => setFc(label)}>
+                {label}
+              </FilterChip>
+            ))}
+          </Item>
+
+          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
+            <div className="w-full max-w-md space-y-2">
+              <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
+              <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
+              <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
+            </div>
+          </Item>
+
+          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
+            <EmptyState className="max-w-sm">
+              Nothing here yet.{" "}
+              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
+                Create the first one
+              </a>
+              .
+            </EmptyState>
+          </Item>
+
+          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
+            <SectionHeading title="Source media" concept="source_media" />
+            <SectionHeading title="Proof" concept="section_proof" optional />
+          </Item>
+
+          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow)">
+            <Variant label="as=h2 (page)">
+              <SectionEyebrow title="Details" concept="section_details" />
+            </Variant>
+            <Variant label="no concept">
+              <SectionEyebrow title="Working on" />
+            </Variant>
+          </Item>
+        </section>
+
+        {/* ============ ORGANISMS ============ */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Organisms" />
+
+          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
+            <Card className="w-48">
+              <p className="text-xs text-neutral-300">Content</p>
+              <p className="text-xs text-neutral-500">Second line</p>
+            </Card>
+          </Item>
+
+          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & bounty detail pages (label / value)">
+            <div className="w-full max-w-md">
+              <DetailCard>
+                <DetailRow label="Status" concept="status">
+                  <StatusBadge status="submitted" />
+                </DetailRow>
+                <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
+                <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
+              </DetailCard>
+            </div>
+          </Item>
+
+          <Item name="<DeleteReceipt>" usage="Admin delete result (trust panel, geolocation delete)">
+            <div className="w-full max-w-md space-y-2">
+              <DeleteReceipt
+                icon={<MapPin size={12} className="text-orange-400" />}
+                label="Strike on a depot"
+                mode="hard"
+                modeTone="border-red-500/30 text-red-300"
+              >
+                <div className="text-neutral-500">Swept 3 media + 1 proof image.</div>
+              </DeleteReceipt>
+              <DeleteReceipt
+                label="@analyst"
+                mode="soft"
+                modeTone="border-amber-500/30 text-amber-300"
+              >
+                <div className="text-neutral-500">Cascade-hid 2 geolocations.</div>
+              </DeleteReceipt>
+            </div>
+          </Item>
 
           <Item name="<EntityCard variant=feed>" usage="Feed (timeline), for all 3 types">
             <div className="w-full max-w-xl">
@@ -477,29 +518,10 @@ export default function PalettePage() {
               />
             </div>
           </Item>
-        </section>
-
-        {/* ---- Composites ---- */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Composites" />
 
           <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
             <div className="w-full max-w-xl">
               <CuratedTagsError onRetry={() => {}} />
-            </div>
-          </Item>
-
-          <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
-            <p className="text-xs text-neutral-500">
-              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
-              <span className="text-neutral-400">Loading…</span>, or an error message
-              with an optional Back to map link. Not rendered here (takes the full height).
-            </p>
-          </Item>
-
-          <Item name="<GeolocationDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
-            <div className="w-full max-w-2xl space-y-4">
-              <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
             </div>
           </Item>
 
@@ -515,10 +537,26 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item
-            name="Not rendered (runtime state required)"
-            usage="Genuinely impractical to mock here"
-          >
+          <Item name="<GeolocationDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
+            <div className="w-full max-w-2xl space-y-4">
+              <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
+            </div>
+          </Item>
+        </section>
+
+        {/* ============ PAGES & scaffolding ============ */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Pages & scaffolding" />
+
+          <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
+            <p className="text-xs text-neutral-500">
+              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
+              <span className="text-neutral-400">Loading…</span>, or an error message
+              with an optional Back to map link. Not rendered here (takes the full height).
+            </p>
+          </Item>
+
+          <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
               <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
               <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a <code>position: fixed</code> banner, already visible bottom-right</li>
