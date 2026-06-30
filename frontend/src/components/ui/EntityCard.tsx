@@ -33,15 +33,14 @@ interface EntityCardProps {
   badge?: ReactNode;
   media?: Media;
   mediaSeed?: string;
-  author?: { username: string } | null;
+  /** Always shown: every card carries its author for a uniform byline. */
+  author: { username: string };
   date?: string;
   coords?: { lat: number; lng: number } | null;
   source?: { url: string; isDemo: boolean };
   working?: number;
   tags?: { id: string; name: string }[];
   variant?: "feed" | "compact";
-  /** Skip the author byline (e.g. on the author's own profile). */
-  hideAuthor?: boolean;
 }
 
 function formatCoord(lat: number, lng: number): string {
@@ -98,9 +97,7 @@ export function EntityCard({
   working,
   tags,
   variant = "compact",
-  hideAuthor = false,
 }: EntityCardProps) {
-  const showAuthor = !hideAuthor && author?.username;
   const stretched = (
     <Link
       href={detailHref}
@@ -124,22 +121,20 @@ export function EntityCard({
     return (
       <article className={`${SHELL} flex-col gap-3 ${TAPPABLE_HOVER}`}>
         {stretched}
-        {showAuthor && (
-          <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
-            <Link href={`/profile/${author!.username}`}>
-              <Avatar username={author!.username} size="size-7" />
-            </Link>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[11px] text-neutral-500">
-                by <AuthorLink username={author!.username} />
-              </span>
-              <span className="text-[11px] text-neutral-500 inline-flex items-center gap-2">
-                {date && formatDate(date)}
-                {coords && <CoordsMeta coords={coords} />}
-              </span>
-            </div>
+        <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
+          <Link href={`/profile/${author.username}`}>
+            <Avatar username={author.username} size="size-7" />
+          </Link>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[11px] text-neutral-500">
+              by <AuthorLink username={author.username} />
+            </span>
+            <span className="text-[11px] text-neutral-500 inline-flex items-center gap-2">
+              {date && formatDate(date)}
+              {coords && <CoordsMeta coords={coords} />}
+            </span>
           </div>
-        )}
+        </div>
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
           {(media || mediaSeed) && (
@@ -167,18 +162,17 @@ export function EntityCard({
       {stretched}
       {thumb}
       <div className="flex-1 min-w-0 flex items-start gap-2">
-        <div className="flex-1 min-w-0 space-y-1.5">
-          {/* Reserve two lines so a 1-line and a 2-line title don't change the
-              row height. */}
-          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2 min-h-[2.5rem]">
+        {/* Fixed min-height keeps every compact card the same height. Content
+            packs to the top, so a 1-line title leaves its slack at the bottom
+            of the card rather than as a gap under the title. */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 min-h-[5.75rem]">
+          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
             {title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
-            {showAuthor && (
-              <span>
-                by <AuthorLink username={author!.username} />
-              </span>
-            )}
+            <span>
+              by <AuthorLink username={author.username} />
+            </span>
             {date && <span>{formatDate(date)}</span>}
             {coords && <CoordsMeta coords={coords} />}
             {source && (
@@ -194,13 +188,13 @@ export function EntityCard({
               <WorkingMeta count={working} />
             )}
           </div>
-          {/* Always rendered (even empty) so a tagged and a tagless card are the
-              same height. */}
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] min-h-[1.375rem]">
-            {tags?.map((t) => (
-              <TagBadge key={t.id} name={t.name} />
-            ))}
-          </div>
+          {tags && tags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              {tags.map((t) => (
+                <TagBadge key={t.id} name={t.name} />
+              ))}
+            </div>
+          )}
         </div>
         {badge && <div className="shrink-0">{badge}</div>}
       </div>

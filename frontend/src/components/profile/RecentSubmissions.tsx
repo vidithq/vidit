@@ -54,7 +54,7 @@ export function RecentSubmissions({
             <EntityCard
               key={entry.id}
               variant="compact"
-              hideAuthor
+              author={{ username: profile.username }}
               detailHref={`/geolocations/${entry.id}`}
               title={entry.title}
               titleText={entry.title}
