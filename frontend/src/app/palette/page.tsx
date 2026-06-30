@@ -46,7 +46,7 @@ import {
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
  * note on where it's used. Dev reference, not linked in the nav. Everything
- * here follows the accent palette (switchable in Settings -> Display).
+ * here follows the accent palette (switchable in Settings → Display).
  */
 
 // One showcased component: a labelled card with the live preview + a usage note.
@@ -89,7 +89,7 @@ const MOCK_TAGS = [
 // source renders as "synthetic" rather than a link that 404s.
 const MOCK_DETAIL: GeolocationDetail = {
   id: "demo",
-  title: "Frappe sur un dépôt, Donetsk",
+  title: "Strike on a depot, Donetsk",
   lat: 48.0159,
   lng: 37.8024,
   event_date: "2026-05-09",
@@ -99,7 +99,7 @@ const MOCK_DETAIL: GeolocationDetail = {
     id: "a1",
     username: "analyst",
     is_trusted: true,
-    trust_reason: "Analyste vérifié",
+    trust_reason: "Verified analyst",
   },
   tags: [
     { id: "t1", name: "Ukraine", category: "conflict" },
@@ -121,7 +121,7 @@ const MOCK_DETAIL: GeolocationDetail = {
 // The lighter geolocation-card payload (timeline / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
-  title: "Frappe sur un dépôt près de Donetsk",
+  title: "Strike on a depot near Donetsk",
   event_date: "2026-05-09",
   is_demo: true,
   status: "detected" as GeolocationStatus,
@@ -142,7 +142,7 @@ const MOCK_CURATED: Tag[] = [
 ];
 
 export default function PalettePage() {
-  // Dev reference only — a 404 in production / preview builds.
+  // Dev reference only: a 404 in production / preview builds.
   if (process.env.NODE_ENV !== "development") notFound();
 
   const [chip, setChip] = useState(true);
@@ -154,45 +154,45 @@ export default function PalettePage() {
   return (
     <PageShell
       title="Palette"
-      subtitle="Composants réutilisables, leurs options, et où ils servent. Tout suit la couleur d'accent (Réglages → Affichage)."
+      subtitle="Reusable components, their options, and where each is used. Everything follows the accent color (Settings → Display)."
     >
       <div className="space-y-8">
-        {/* ---- Constantes de style ---- */}
+        {/* ---- Style constants ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Constantes de style" />
+          <SectionEyebrow title="Style constants" />
 
           <Item
             name="PRIMARY_BUTTON"
-            usage="CTA principal: Submit, auth, actions admin"
+            usage="Primary CTA: Submit, auth, admin actions"
           >
             <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}>
-              Action principale
+              Primary action
             </button>
           </Item>
 
-          <Item name="TEXT_LINK" usage="Liens orange: bylines, « Back to X », retry, About">
+          <Item name="TEXT_LINK" usage="Accent links: bylines, back links, retry, About">
             <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-              Un lien texte
+              A text link
             </a>
           </Item>
 
           <Item
             name="FILTER_CHIP_ACTIVE / _INACTIVE"
-            usage="Chips de filtre: panneau carte, bounties, recherche"
+            usage="Filter chips: map panel, bounties, search"
           >
             <Variant label="active">
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${FILTER_CHIP_ACTIVE}`}>
-                Sélectionné
+                Selected
               </span>
             </Variant>
             <Variant label="inactive">
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${FILTER_CHIP_INACTIVE}`}>
-                Neutre
+                Neutral
               </span>
             </Variant>
           </Item>
 
-          <Item name="BETA_PILL" usage="Bannière « Closed beta » (coin bas-droit)">
+          <Item name="BETA_PILL" usage="Closed beta banner (bottom-right corner)">
             <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${BETA_PILL}`}>
               <span className="size-1.5 rounded-full bg-orange-500" />
               Closed beta
@@ -201,39 +201,39 @@ export default function PalettePage() {
 
           <Item
             name="TAPPABLE_HOVER"
-            usage="Cartes/lignes cliquables: bordure d'accent au survol"
+            usage="Clickable cards/rows: accent border on hover"
           >
             <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
-              Survole-moi
+              Hover me
             </div>
           </Item>
         </section>
 
-        {/* ---- Formulaires ---- */}
+        {/* ---- Forms ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Formulaires" />
+          <SectionEyebrow title="Forms" />
 
-          <Item name="FORM_LABEL + FORM_INPUT" usage="Tous les champs de formulaire (submit, edit, auth, settings)">
+          <Item name="FORM_LABEL + FORM_INPUT" usage="All form fields (submit, edit, auth, settings)">
             <div className="w-full max-w-sm space-y-1.5">
-              <label className={FORM_LABEL}>Label du champ</label>
-              <input className={FORM_INPUT} placeholder="Saisie..." />
+              <label className={FORM_LABEL}>Field label</label>
+              <input className={FORM_INPUT} placeholder="Type here..." />
             </div>
           </Item>
 
-          <Item name="FORM_INPUT_COMPACT" usage="Champs « façon ligne de données »: admin, raison de trust">
+          <Item name="FORM_INPUT_COMPACT" usage="Data-row style fields: admin, trust reason">
             <input className={`${FORM_INPUT_COMPACT} max-w-sm`} placeholder="Compact" />
           </Item>
 
-          <Item name="FORM_INPUT_LOCKED" usage="Champ hérité d'une bounty, lecture seule">
-            <input className={`${FORM_INPUT_LOCKED} max-w-sm`} value="Verrouillé" readOnly />
+          <Item name="FORM_INPUT_LOCKED" usage="Field inherited from a bounty, read-only">
+            <input className={`${FORM_INPUT_LOCKED} max-w-sm`} value="Locked" readOnly />
           </Item>
 
-          <Item name="FORM_INVALID_FIELD" usage="Champ/section signalé manquant (IncompleteFormNotice)">
-            <input className={`${FORM_INPUT} ${FORM_INVALID_FIELD} max-w-sm`} placeholder="Champ invalide" />
+          <Item name="FORM_INVALID_FIELD" usage="Field/section flagged missing (IncompleteFormNotice)">
+            <input className={`${FORM_INPUT} ${FORM_INVALID_FIELD} max-w-sm`} placeholder="Invalid field" />
           </Item>
 
-          <Item name="FORM_ERROR_BANNER" usage="Erreur de formulaire au-dessus des actions">
-            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Quelque chose s’est mal passé.</div>
+          <Item name="FORM_ERROR_BANNER" usage="Form error above the actions">
+            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Something went wrong.</div>
           </Item>
         </section>
 
@@ -241,43 +241,43 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Structure" />
 
-          <Item name="<Card>" usage="Panneaux: settings, admin, profil, sections de formulaire. Un seul rythme (space-y-4) pour toutes.">
+          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
             <Card className="w-48">
-              <p className="text-xs text-neutral-300">Contenu</p>
-              <p className="text-xs text-neutral-500">Deuxième ligne</p>
+              <p className="text-xs text-neutral-300">Content</p>
+              <p className="text-xs text-neutral-500">Second line</p>
             </Card>
           </Item>
 
-          <Item name="<SectionHeading>" usage="En-tête de section de formulaire (Details, Location, Tags...)">
+          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
             <SectionHeading title="Source media" concept="source_media" />
             <SectionHeading title="Proof" concept="section_proof" optional />
           </Item>
 
-          <Item name="<SectionEyebrow>" usage="En-tête des pages détail (SOURCE MEDIA, LOCATION, DETAILS)">
+          <Item name="<SectionEyebrow>" usage="Detail page headings (SOURCE MEDIA, LOCATION, DETAILS)">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
-            <Variant label="sans concept">
+            <Variant label="no concept">
               <SectionEyebrow title="Working on" />
             </Variant>
           </Item>
 
-          <Item name="<EmptyState>" usage="Listes vides: bounties, recherche">
+          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
             <EmptyState className="max-w-sm">
-              Rien ici pour l’instant.{" "}
+              Nothing here yet.{" "}
               <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-                Créer le premier
+                Create the first one
               </a>
               .
             </EmptyState>
           </Item>
         </section>
 
-        {/* ---- Lignes & détails ---- */}
+        {/* ---- Rows & details ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Lignes & détails" />
+          <SectionEyebrow title="Rows & details" />
 
-          <Item name="<DetailCard> + <DetailRow>" usage="Pages détail géoloc & bounty (libellé / valeur)">
+          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & bounty detail pages (label / value)">
             <div className="w-full max-w-md">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -289,75 +289,75 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Comptes liés (profil) + « Stay in touch » (About)">
+          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
-              <LinkRow icon={MessageCircle} label="Discord" value="un-pseudo (non résolu)" />
+              <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
             </div>
           </Item>
         </section>
 
-        {/* ---- Badges & pastilles ---- */}
+        {/* ---- Badges & pills ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Badges & pastilles" />
+          <SectionEyebrow title="Badges & pills" />
 
-          <Item name="<Pill>" usage="Forme commune de tous les badges ci-dessous (StatusBadge, BountyStatusBadge, TagBadge)">
-            <Variant label="tone + icône">
+          <Item name="<Pill>" usage="Shared shape of every badge below (StatusBadge, BountyStatusBadge, TagBadge)">
+            <Variant label="tone + icon">
               <Pill tone="bg-orange-500/15 text-orange-400 border border-orange-500/30">
                 Accent
               </Pill>
             </Variant>
-            <Variant label="tone neutre">
+            <Variant label="neutral tone">
               <Pill tone="bg-neutral-700/40 text-neutral-300 border border-neutral-600/50">
-                Neutre
+                Neutral
               </Pill>
             </Variant>
           </Item>
 
-          <Item name="<TagBadge>" usage="Tags décoratifs sur cartes & pages détail">
+          <Item name="<TagBadge>" usage="Decorative tags on cards & detail pages">
             {MOCK_TAGS.map((t) => (
               <TagBadge key={t.id} name={t.name} />
             ))}
           </Item>
 
-          <Item name="<StatusBadge>" usage="État d'une géoloc: cartes, détail, file de détections">
+          <Item name="<StatusBadge>" usage="Geoloc status: cards, detail, detections queue">
             <StatusBadge status="detected" />
             <StatusBadge status="submitted" />
           </Item>
 
-          <Item name="<BountyStatusBadge>" usage="État d'une bounty: liste & détail">
+          <Item name="<BountyStatusBadge>" usage="Bounty status: list & detail">
             <BountyStatusBadge status="open" />
             <BountyStatusBadge status="fulfilled" />
             <BountyStatusBadge status="closed" />
           </Item>
 
-          <Item name="<TagChip>" usage="Sélection de tags (TagPicker, formulaires)">
-            <TagChip tag={{ id: "x", name: "Cliquable", category: "free" }} active={chip} onClick={() => setChip((v) => !v)} />
-            <span className="text-[11px] text-neutral-600 self-center">← clique</span>
+          <Item name="<TagChip>" usage="Tag selection (TagPicker, forms)">
+            <TagChip tag={{ id: "x", name: "Clickable", category: "free" }} active={chip} onClick={() => setChip((v) => !v)} />
+            <span className="text-[11px] text-neutral-600 self-center">← click</span>
           </Item>
 
-          <Item name="<FieldHelp> + <OptionalHint>" usage="Aide « ? » sur labels/sections + marqueur « optional »">
+          <Item name="<FieldHelp> + <OptionalHint>" usage="Help ? on labels/sections + optional marker">
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordonnées <FieldHelp concept="coordinates" /> <OptionalHint />
+              Coordinates <FieldHelp concept="coordinates" /> <OptionalHint />
             </span>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Affichage d'une source (host réduit, ou « synthetic » en démo)">
+          <Item name="<SourceLabel>" usage="Source display (shortened host, or synthetic in demo)">
             <SourceLabel isDemo={false} url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
         </section>
 
-        {/* ---- Média & avatars ---- */}
+        {/* ---- Media & avatars ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Média & avatars" />
+          <SectionEyebrow title="Media & avatars" />
 
-          <Item name="<MediaThumb>" usage="Vignette des cartes bounty (liste & recherche)">
+          <Item name="<MediaThumb>" usage="Thumbnail on bounty cards (list & search)">
             <MediaThumb />
           </Item>
 
-          <Item name="<Avatar>" usage="Header profil (icône) + résultats utilisateur recherche (initiale)">
+          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial)">
             <Variant label='fallback="icon"'>
               <Avatar username="demo" size="w-16 h-16" fallback="icon" />
             </Variant>
@@ -367,17 +367,17 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ---- Cartes ---- */}
+        {/* ---- Cards ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Cartes (EntityCard)" />
+          <SectionEyebrow title="Cards (EntityCard)" />
           <p className="text-xs text-neutral-500 -mt-1">
-            Une seule carte pour géoloc / bounty / détection, en 2 dispositions.
-            Modèle de clic uniforme: toute la carte mène au détail; l’auteur et
-            les actions restent cliquables. Les champs absents (coords pour une
-            bounty, « working » pour une géoloc) ne s’affichent pas.
+            One card for geoloc / bounty / detection, in 2 layouts. Uniform click
+            model: the whole card leads to the detail; the author stays clickable.
+            Absent fields (coords for a bounty, working for a geoloc) are not
+            shown.
           </p>
 
-          <Item name="<EntityCard variant=feed>" usage="Flux (timeline), pour les 3 types">
+          <Item name="<EntityCard variant=feed>" usage="Feed (timeline), for all 3 types">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="feed"
@@ -394,7 +394,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact> — géoloc" usage="Listes (profil « recent submissions »)">
+          <Item name="<EntityCard variant=compact>: geoloc" usage="Lists (profile recent submissions)">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -411,13 +411,13 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact> — bounty" usage="/bounties + résultats de recherche">
+          <Item name="<EntityCard variant=compact>: bounty" usage="/bounties + search results">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
                 detailHref="/bounties/demo"
-                title="Footage demandé près de Bakhmut"
-                titleText="Footage demandé près de Bakhmut"
+                title="Footage wanted near Bakhmut"
+                titleText="Footage wanted near Bakhmut"
                 badge={<BountyStatusBadge status="open" />}
                 mediaSeed="pal-bounty"
                 author={{ username: "analyst" }}
@@ -429,7 +429,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact> — détection (sans média)" usage="File de détections: clic → édition; placeholder « no media »">
+          <Item name="<EntityCard variant=compact>: detection (no media)" usage="Detections queue: click leads to edit; no-media placeholder">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -450,27 +450,27 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Composites" />
 
-          <Item name="<CuratedTagsError>" usage="Formulaires submit & edit (tags curés non chargés)">
+          <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
             <div className="w-full max-w-xl">
               <CuratedTagsError onRetry={() => {}} />
             </div>
           </Item>
 
-          <Item name="<PageLoading> / <PageError>" usage="États plein écran avant données (pages détail, listes)">
+          <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
             <p className="text-xs text-neutral-500">
-              Plein écran (centré via <code className="text-neutral-400">PageCenter</code>): un{" "}
-              <span className="text-neutral-400">Loading…</span> muet, ou un message d’erreur
-              avec lien « Back to map » optionnel. Non rendu ici (prend toute la hauteur).
+              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
+              <span className="text-neutral-400">Loading…</span>, or an error message
+              with an optional Back to map link. Not rendered here (takes the full height).
             </p>
           </Item>
 
-          <Item name="<GeolocationDetailBody>" usage="Page détail géoloc + panneau carte (variant page/panel)">
+          <Item name="<GeolocationDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
               <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
             </div>
           </Item>
 
-          <Item name="<TagPicker>" usage="Sélection de tags curés + tags libres (submit / edit)">
+          <Item name="<TagPicker>" usage="Curated + free tag selection (submit / edit)">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
@@ -483,13 +483,13 @@ export default function PalettePage() {
           </Item>
 
           <Item
-            name="Non rendus (état runtime requis)"
-            usage="Genuinement impraticables à mocker ici"
+            name="Not rendered (runtime state required)"
+            usage="Genuinely impractical to mock here"
           >
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
-              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span> — upload: a besoin de vrais fichiers en attente</li>
-              <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span> — bannière <code>position: fixed</code> (déjà visible en bas-droit)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span> — ossature de page (celle de cette page)</li>
+              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
+              <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a <code>position: fixed</code> banner, already visible bottom-right</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page</li>
             </ul>
           </Item>
         </section>
