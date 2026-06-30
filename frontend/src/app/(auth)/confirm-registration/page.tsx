@@ -6,6 +6,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 type State = "confirming" | "success" | "failed";
 
@@ -102,7 +103,7 @@ function ConfirmInner() {
               "This confirmation link is invalid or expired. Start the registration over to get a fresh one."}
           </p>
           <p className="text-xs">
-            <Link href="/register" className="text-orange-400 hover:underline">
+            <Link href="/register" className={TEXT_LINK}>
               Start over →
             </Link>
           </p>

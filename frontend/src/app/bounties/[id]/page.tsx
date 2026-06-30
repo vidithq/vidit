@@ -23,8 +23,9 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON, TAG_CHIP, TEXT_LINK } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { TagBadge } from "@/components/ui/TagBadge";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -94,9 +95,7 @@ export default function BountyDetailPage() {
       <DetailRow label={name} concept={concept} align="start">
         <div className="flex flex-wrap gap-1.5 justify-end">
           {tags.map((tag) => (
-            <span key={tag.id} className={`text-xs px-2.5 py-0.5 rounded-full ${TAG_CHIP}`}>
-              {tag.name}
-            </span>
+            <TagBadge key={tag.id} name={tag.name} className="text-xs px-2.5" />
           ))}
         </div>
       </DetailRow>

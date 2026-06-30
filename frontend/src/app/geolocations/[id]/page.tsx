@@ -8,8 +8,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
-import FieldHelp from "@/components/ui/FieldHelp";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DetailRow } from "@/components/ui/DetailRow";
 import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 
@@ -82,15 +82,15 @@ export default function GeolocationPage() {
                   zoom={12}
                 />
               </div>
-              <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900 rounded-b-lg">
-                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                  Coordinates{" "}
-                  <FieldHelp concept="coordinates" />
-                </span>
+              <DetailRow
+                label="Coordinates"
+                concept="coordinates"
+                className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
+              >
                 <span className="text-sm text-neutral-200 font-mono">
                   {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
                 </span>
-              </div>
+              </DetailRow>
             </div>
           </div>
         </GeolocationDetailBody>

@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 type ResendState = "idle" | "sending" | "sent" | "failed";
 
@@ -50,7 +51,7 @@ function PendingInner() {
       footer={
         <>
           Already confirmed?{" "}
-          <Link href="/login" className="text-orange-400 hover:underline">
+          <Link href="/login" className={TEXT_LINK}>
             Sign in
           </Link>
         </>

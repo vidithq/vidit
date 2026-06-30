@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
   FORM_INPUT,
@@ -68,7 +68,7 @@ function ResetPasswordInner() {
           the email we sent, or{" "}
           <Link
             href="/forgot-password"
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             request a new one
           </Link>
@@ -83,7 +83,7 @@ function ResetPasswordInner() {
       title="Set a new password"
       subtitle={`Pick something at least ${PASSWORD_MIN_LENGTH} characters long. The link is single-use, so finish here.`}
       footer={
-        <Link href="/login" className="text-orange-400 hover:underline">
+        <Link href="/login" className={TEXT_LINK}>
           Back to sign in
         </Link>
       }

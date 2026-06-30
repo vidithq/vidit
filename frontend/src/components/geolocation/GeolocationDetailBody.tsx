@@ -14,7 +14,8 @@ import StatusBadge from "@/components/geolocation/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { TAG_CHIP, TEXT_LINK } from "@/components/ui/styles";
+import { TagBadge } from "@/components/ui/TagBadge";
+import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
 interface GeolocationDetailBodyProps {
@@ -132,14 +133,11 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       <DetailRow label={name} concept={concept} compact={compact} align="start">
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
           {tags.map((tag) => (
-            <span
+            <TagBadge
               key={tag.id}
-              className={`${
-                compact ? "text-[10px] px-2" : "text-xs px-2.5"
-              } py-0.5 rounded-full ${TAG_CHIP}`}
-            >
-              {tag.name}
-            </span>
+              name={tag.name}
+              className={compact ? "text-[10px] px-2" : "text-xs px-2.5"}
+            />
           ))}
         </div>
       </DetailRow>
