@@ -10,9 +10,9 @@ import { ApiError } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
   FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 
 
@@ -93,16 +93,14 @@ export default function RegisterForm({
           <label htmlFor="invite_code" className={FORM_LABEL_COMPACT}>
             Invite code
           </label>
-          <input
+          <Input
             id="invite_code"
             type="text"
             required
             readOnly={inviteCodeLocked}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
-            className={`${FORM_INPUT}${
-              inviteCodeLocked ? " opacity-70 cursor-not-allowed" : ""
-            }`}
+            className={inviteCodeLocked ? "opacity-70 cursor-not-allowed" : ""}
             placeholder="Paste your invite code"
           />
           {inviteCodeLocked && (
@@ -116,13 +114,12 @@ export default function RegisterForm({
           <label htmlFor="username" className={FORM_LABEL_COMPACT}>
             Username
           </label>
-          <input
+          <Input
             id="username"
             type="text"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -130,13 +127,12 @@ export default function RegisterForm({
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
-          <input
+          <Input
             id="email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -144,14 +140,13 @@ export default function RegisterForm({
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             Password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 

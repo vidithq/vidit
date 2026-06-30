@@ -11,10 +11,10 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
 import { usePalette } from "@/hooks/usePalette";
@@ -177,14 +177,14 @@ export default function SettingsPage() {
               <label htmlFor="current-password" className={FORM_LABEL}>
                 Current password
               </label>
-              <input
+              <Input
                 id="current-password"
                 type="password"
                 required
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 
@@ -192,7 +192,7 @@ export default function SettingsPage() {
               <label htmlFor="new-password" className={FORM_LABEL}>
                 New password
               </label>
-              <input
+              <Input
                 id="new-password"
                 type="password"
                 required
@@ -200,7 +200,7 @@ export default function SettingsPage() {
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 
@@ -208,7 +208,7 @@ export default function SettingsPage() {
               <label htmlFor="confirm-password" className={FORM_LABEL}>
                 Confirm new password
               </label>
-              <input
+              <Input
                 id="confirm-password"
                 type="password"
                 required
@@ -216,7 +216,7 @@ export default function SettingsPage() {
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 

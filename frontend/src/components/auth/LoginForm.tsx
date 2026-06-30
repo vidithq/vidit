@@ -9,10 +9,10 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
   FORM_LABEL_COMPACT,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 
 interface Props {
@@ -58,13 +58,12 @@ export default function LoginForm({ onSuccess }: Props) {
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
-          <input
+          <Input
             id="email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -83,13 +82,12 @@ export default function LoginForm({ onSuccess }: Props) {
               Forgot?
             </Link>
           </div>
-          <input
+          <Input
             id="password"
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 

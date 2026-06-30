@@ -17,10 +17,10 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
   FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 
 function TrustUserRow({
   user,
@@ -192,13 +192,13 @@ function TrustUserRow({
           <label className={FORM_LABEL} htmlFor={`reason-${user.id}`}>
             Reason (public — surfaces in the badge tooltip)
           </label>
-          <input
+          <Input
+            variant="compact"
             id={`reason-${user.id}`}
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. Established OSINT track record on X"
-            className={FORM_INPUT_COMPACT}
           />
           <div className="flex gap-2">
             <button
@@ -341,13 +341,14 @@ export function TrustPanel() {
           <label className={FORM_LABEL} htmlFor="user-search">
             Find an analyst (username or email)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="user-search"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="username or email"
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
         <button

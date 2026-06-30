@@ -6,10 +6,8 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import {
-  FORM_INPUT_COMPACT,
-  FORM_LABEL,
-} from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 interface SeedWipePanelProps<S, W> {
   title: string;
@@ -86,7 +84,8 @@ export function SeedWipePanel<S, W>({
             <label className={FORM_LABEL} htmlFor={countInputId}>
               Count
             </label>
-            <input
+            <Input
+              variant="compact"
               id={countInputId}
               type="number"
               min={1}
@@ -97,7 +96,6 @@ export function SeedWipePanel<S, W>({
                   Math.max(1, Math.min(maxCount, Number(e.target.value) || 1))
                 )
               }
-              className={FORM_INPUT_COMPACT}
             />
           </div>
           <button

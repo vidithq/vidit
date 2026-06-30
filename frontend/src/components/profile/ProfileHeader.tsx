@@ -9,9 +9,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import type { ProfileEditState } from "./useProfileEdit";
 
 interface ProfileHeaderProps {
@@ -107,14 +107,15 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           <label className={FORM_LABEL} htmlFor="avatar-url">
             Avatar URL
           </label>
-          <input
+          <Input
+            variant="compact"
             id="avatar-url"
             type="url"
             inputMode="url"
             placeholder="https://example.com/me.jpg"
             value={edit.draftAvatarUrl}
             onChange={(e) => edit.setDraftAvatarUrl(e.target.value)}
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
       )}

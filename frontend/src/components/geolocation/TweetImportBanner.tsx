@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
-import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import { PRIMARY_BUTTON, WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
@@ -127,13 +128,12 @@ export function TweetImportBanner({
         />
       )}
       <div className="flex gap-2">
-        <input
+        <Input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="https://x.com/handle/status/…"
-          className={FORM_INPUT}
           disabled={busy || imported}
         />
         <button

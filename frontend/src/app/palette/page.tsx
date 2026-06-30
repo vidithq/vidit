@@ -45,15 +45,13 @@ import {
 import {
   FORM_LABEL,
   FORM_LABEL_COMPACT,
-  FORM_INPUT,
-  FORM_INPUT_COMPACT,
-  FORM_INPUT_LOCKED,
   FORM_INVALID_FIELD,
   FORM_ERROR_BANNER,
   FORM_ERROR_BANNER_COMPACT,
   FORM_ERROR_BANNER_BOXED,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
@@ -243,27 +241,34 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Foundations · form fields" />
 
-          <Item name="FORM_LABEL + FORM_INPUT" usage="All form fields (submit, edit, auth, settings)">
-            <div className="w-full max-w-sm space-y-1.5">
-              <label className={FORM_LABEL}>Field label</label>
-              <input className={FORM_INPUT} placeholder="Type here..." />
+          <Item name="<Input>" usage="The one form field: variant (default / compact / locked) + invalid. Native props + className pass through.">
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label="default">
+                <Input placeholder="Type here..." />
+              </Variant>
+              <Variant label='variant="compact" (admin rows)'>
+                <Input variant="compact" placeholder="Compact" />
+              </Variant>
+              <Variant label='variant="locked" (read-only)'>
+                <Input variant="locked" value="Locked" readOnly />
+              </Variant>
+              <Variant label="invalid">
+                <Input invalid placeholder="Invalid field" />
+              </Variant>
             </div>
           </Item>
 
-          <Item name="FORM_LABEL_COMPACT" usage="Denser label for auth cards / admin rows">
-            <label className={FORM_LABEL_COMPACT}>Compact label</label>
+          <Item name="FORM_LABEL (+ _COMPACT)" usage="Field labels, kept separate from <Input>">
+            <div className="space-y-2">
+              <label className={FORM_LABEL}>Field label</label>
+              <label className={FORM_LABEL_COMPACT}>Compact label</label>
+            </div>
           </Item>
 
-          <Item name="FORM_INPUT_COMPACT" usage="Data-row style fields: admin, trust reason">
-            <input className={`${FORM_INPUT_COMPACT} max-w-sm`} placeholder="Compact" />
-          </Item>
-
-          <Item name="FORM_INPUT_LOCKED" usage="Field inherited from a bounty, read-only">
-            <input className={`${FORM_INPUT_LOCKED} max-w-sm`} value="Locked" readOnly />
-          </Item>
-
-          <Item name="FORM_INVALID_FIELD" usage="Field/section flagged missing (IncompleteFormNotice)">
-            <input className={`${FORM_INPUT} ${FORM_INVALID_FIELD} max-w-sm`} placeholder="Invalid field" />
+          <Item name="FORM_INVALID_FIELD" usage="Red outline token. <Input invalid> uses it; section cards apply it directly.">
+            <div className={`w-full max-w-sm rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
+              A section card flagged as missing.
+            </div>
           </Item>
 
           <Item name="FORM_ERROR_BANNER (+ _COMPACT / _BOXED)" usage="Form error above actions; compact (auth) and boxed (admin) variants">

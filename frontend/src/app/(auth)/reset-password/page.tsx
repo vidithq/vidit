@@ -10,9 +10,9 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 
 /**
@@ -99,14 +99,13 @@ function ResetPasswordInner() {
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             New password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -114,14 +113,13 @@ function ResetPasswordInner() {
           <label htmlFor="confirm" className={FORM_LABEL_COMPACT}>
             Confirm
           </label>
-          <input
+          <Input
             id="confirm"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 

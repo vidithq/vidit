@@ -6,9 +6,9 @@ import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 
 interface SingleEmailFlowProps {
   /** POST target; receives `{ email }` (trimmed). */
@@ -77,14 +77,13 @@ export function SingleEmailFlow({
         <label htmlFor="email" className={FORM_LABEL_COMPACT}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           required
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={FORM_INPUT}
           placeholder={placeholder}
         />
       </div>

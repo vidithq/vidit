@@ -14,10 +14,10 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
   FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 
 export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
@@ -72,7 +72,8 @@ export function GeolocationDeletePanel() {
           <label className={FORM_LABEL} htmlFor="geo-id">
             Geolocation ID (UUID)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="geo-id"
             type="text"
             value={id}
@@ -81,7 +82,7 @@ export function GeolocationDeletePanel() {
               confirm.cancel();
             }}
             placeholder="00000000-0000-0000-0000-000000000000"
-            className={`mt-1 ${FORM_INPUT_COMPACT} font-mono`}
+            className="mt-1 font-mono"
           />
         </div>
 

@@ -16,10 +16,10 @@ import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 
 const STATUS_STYLES: Record<InviteCodeStatus, string> = {
   active: "bg-orange-500/15 text-orange-400 border-orange-500/30",
@@ -190,7 +190,8 @@ export function InviteCodesPanel() {
           <label className={FORM_LABEL} htmlFor="expires">
             Expires in (days)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="expires"
             type="number"
             min={1}
@@ -201,7 +202,7 @@ export function InviteCodesPanel() {
               const v = e.target.value;
               setExpiresInDays(v === "" ? "" : Number(v));
             }}
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
         <button

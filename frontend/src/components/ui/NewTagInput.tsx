@@ -3,7 +3,7 @@
 import { useState, type KeyboardEvent } from "react";
 
 import { useMutation } from "@/hooks/useMutation";
-import { FORM_INPUT } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { Tag } from "@/types";
@@ -88,7 +88,7 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => {
@@ -100,7 +100,7 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
           maxLength={100}
           placeholder="New free tag (e.g. drone)"
           aria-label="New free tag name"
-          className={`${FORM_INPUT} flex-1 max-w-xs`}
+          className="flex-1 max-w-xs"
         />
         <button
           type="button"
