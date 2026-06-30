@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { notFound } from "next/navigation";
-import { AtSign, Mail, MessageCircle, MapPin } from "lucide-react";
+import { AtSign, Mail, MessageCircle, MapPin, Users, UserPlus, Calendar } from "lucide-react";
 
 import type { GeolocationDetail, GeolocationStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
@@ -16,6 +16,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { FilterChip } from "@/components/ui/FilterChip";
+import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TagChip } from "@/components/ui/TagChip";
@@ -386,6 +387,17 @@ export default function PalettePage() {
         {/* ============ MOLECULES ============ */}
         <section className="space-y-3">
           <SectionEyebrow title="Molecules" />
+
+          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
+            <div className="w-full max-w-xl">
+              <StatGrid>
+                <StatTile icon={MapPin} label="Submitted" value={42} />
+                <StatTile icon={Users} label="Followers" value={128} />
+                <StatTile icon={UserPlus} label="Following" value={37} />
+                <StatTile icon={Calendar} label="Since" value="27 Jun 2026" small />
+              </StatGrid>
+            </div>
+          </Item>
 
           <Item name="<FilterChip>" usage="Bounties status filter + search type filter">
             {["All", "Open", "Closed"].map((label) => (
