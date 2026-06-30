@@ -10,7 +10,7 @@ import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
-import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
@@ -23,9 +23,7 @@ export default function GeolocationPage() {
 
   if (error)
     return (
-      <PageCenter>
-        <span className="text-red-400">{error}</span>
-      </PageCenter>
+      <PageError message={error} />
     );
   if (!geo) return <PageLoading />;
 

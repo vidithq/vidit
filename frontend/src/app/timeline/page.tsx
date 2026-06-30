@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { EntityCard } from "@/components/ui/EntityCard";
 import StatusBadge from "@/components/geolocation/StatusBadge";
-import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import type { GeolocationStatus } from "@/types";
 
@@ -53,9 +53,7 @@ export default function TimelinePage() {
 
   if (error) {
     return (
-      <PageCenter>
-        <span className="text-red-400">{error}</span>
-      </PageCenter>
+      <PageError message={error} />
     );
   }
 

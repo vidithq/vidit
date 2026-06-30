@@ -22,7 +22,7 @@ import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
-import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { MUTED_LINK, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TagBadge } from "@/components/ui/TagBadge";
@@ -72,9 +72,7 @@ export default function BountyDetailPage() {
 
   if (error) {
     return (
-      <PageCenter>
-        <span className="text-red-400">{error}</span>
-      </PageCenter>
+      <PageError message={error} />
     );
   }
   if (!bounty) {
