@@ -2,25 +2,33 @@ import type { ReactNode } from "react";
 
 import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "./styles";
 
-// One filter / type chip: the rounded-pill shape plus the active/inactive colour
-// pair. The bounties status filter and the search type filter copy-pasted the
-// same `px-2.5 py-1 rounded-full text-[11px] font-medium…` string with the
-// `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE` ternary; the shape lives
-// here once. (The map FilterPanel keeps its own denser chip, a separate shape.)
+// One selectable rounded chip: the active/inactive colour pair plus a size.
+// The bounties status filter and the search type filter copy-pasted the same
+// `rounded-full text-…/font-medium…` string with the `active ? … : …` ternary;
+// the shape lives here once. `size="md"` (slightly larger) backs the form tag
+// pills (see `TagChip`). The map FilterPanel keeps its own denser chip on
+// purpose, a separate shape.
+const SIZE = {
+  sm: "px-2.5 py-1 text-[11px]", // filter / type bars
+  md: "px-3 py-1 text-xs", // tag selection in the submit / edit forms
+} as const;
+
 export function FilterChip({
   active,
   onClick,
+  size = "sm",
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  size?: keyof typeof SIZE;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+      className={`${SIZE[size]} rounded-full font-medium transition-colors ${
         active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
       }`}
     >

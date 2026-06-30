@@ -9,7 +9,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
@@ -90,7 +90,7 @@ function ResetPasswordInner() {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}

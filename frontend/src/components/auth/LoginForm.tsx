@@ -8,7 +8,7 @@ import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
@@ -49,7 +49,7 @@ export default function LoginForm({ onSuccess }: Props) {
           </div>
         )}
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}

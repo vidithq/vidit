@@ -53,8 +53,6 @@ import {
   FORM_LABEL_COMPACT,
   FORM_INVALID_FIELD,
   FORM_ERROR_BANNER,
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_ERROR_BANNER_BOXED,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
@@ -281,24 +279,14 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="FORM_INVALID_FIELD" usage="Red outline token. <Input invalid> uses it; section cards apply it directly.">
+          <Item name="FORM_INVALID_FIELD" usage="Red-outline token. <Input invalid> is sugar over it; non-input surfaces (media dropzone, proof editor) apply it raw.">
             <div className={`w-full max-w-sm rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
               A section card flagged as missing.
             </div>
           </Item>
 
-          <Item name="FORM_ERROR_BANNER (+ _COMPACT / _BOXED)" usage="Form error above actions; compact (auth) and boxed (admin) variants">
-            <div className="w-full max-w-sm space-y-2">
-              <Variant label="default (form)">
-                <div className={FORM_ERROR_BANNER}>Something went wrong.</div>
-              </Variant>
-              <Variant label="_COMPACT (auth card)">
-                <div className={FORM_ERROR_BANNER_COMPACT}>Something went wrong.</div>
-              </Variant>
-              <Variant label="_BOXED (admin panel)">
-                <div className={FORM_ERROR_BANNER_BOXED}>Something went wrong.</div>
-              </Variant>
-            </div>
+          <Item name="FORM_ERROR_BANNER" usage="The one error banner above the actions: forms, auth cards, admin panels">
+            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Something went wrong.</div>
           </Item>
 
           <Item name="FORM_SUCCESS_BANNER" usage="Confirmation / info notice (password updated, reset). Orange, not green.">

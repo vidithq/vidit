@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
@@ -70,7 +70,7 @@ export function SingleEmailFlow({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {errorMessage && (
-        <div className={FORM_ERROR_BANNER_COMPACT}>{errorMessage}</div>
+        <div className={FORM_ERROR_BANNER}>{errorMessage}</div>
       )}
 
       <div>

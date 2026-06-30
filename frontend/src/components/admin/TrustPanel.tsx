@@ -24,7 +24,7 @@ import {
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
-  FORM_ERROR_BANNER_BOXED,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
@@ -370,7 +370,7 @@ export function TrustPanel() {
       </form>
 
       {error && (
-        <div className={FORM_ERROR_BANNER_BOXED}>
+        <div className={FORM_ERROR_BANNER}>
           {error}
         </div>
       )}

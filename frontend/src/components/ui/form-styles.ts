@@ -20,17 +20,12 @@ export const FORM_LABEL_COMPACT =
 // one); the faint ring lifts it off the dark card. Append to the existing class.
 export const FORM_INVALID_FIELD = "!border-red-500/80 ring-1 ring-red-500/30";
 
+// The one error banner: red, above the actions. Used by every form, auth card,
+// and admin panel. Earlier `_COMPACT` / `_BOXED` siblings only varied the red
+// tint (dark fill vs light wash) and the density, neither of which carried a
+// meaning, so they collapsed into this single look.
 export const FORM_ERROR_BANNER =
   "bg-red-900/40 border border-red-700/60 text-red-300 px-4 py-3 rounded-md text-sm";
-
-export const FORM_ERROR_BANNER_COMPACT =
-  "bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 rounded-sm text-xs";
-
-// Boxed inline error — admin panels. Lighter red than `FORM_ERROR_BANNER`, for
-// a panel-level action error that sits inside a card rather than under a form
-// field. (The form banners use `red-900/40`; this card variant uses `red-500/10`.)
-export const FORM_ERROR_BANNER_BOXED =
-  "bg-red-500/10 border border-red-500/30 text-red-300 px-3 py-2 rounded-md text-xs";
 
 // Positive confirmation banner. Orange, not green (see design.md's palette: a
 // "success" green next to red destructive actions reads wrong, so the app stays

@@ -9,7 +9,7 @@ import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
-  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
@@ -84,7 +84,7 @@ export default function RegisterForm({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}

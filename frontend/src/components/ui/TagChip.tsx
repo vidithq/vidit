@@ -1,12 +1,9 @@
-"use client";
-
 import type { Tag } from "@/types";
-import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "@/components/ui/styles";
+import { FilterChip } from "@/components/ui/FilterChip";
 
-/**
- * Selectable tag pill for the submit forms. Orange when active per the palette
- * rule (clickable ⇒ orange), neutral when inactive.
- */
+// Selectable tag pill for the submit / edit forms: the shared `FilterChip` at
+// its `md` size, keyed by a tag. Orange when active per the palette rule
+// (clickable ⇒ orange), neutral when inactive.
 export function TagChip({
   tag,
   active,
@@ -16,11 +13,9 @@ export function TagChip({
   active: boolean;
   onClick: () => void;
 }) {
-  const base = "px-3 py-1 rounded-full text-xs font-medium transition-colors";
-  const activeClass = active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE;
   return (
-    <button type="button" onClick={onClick} className={`${base} ${activeClass}`}>
+    <FilterChip active={active} onClick={onClick} size="md">
       {tag.name}
-    </button>
+    </FilterChip>
   );
 }

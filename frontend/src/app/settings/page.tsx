@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
@@ -163,7 +163,7 @@ export default function SettingsPage() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {error && (
-              <div className={FORM_ERROR_BANNER_COMPACT}>
+              <div className={FORM_ERROR_BANNER}>
                 {error}
               </div>
             )}
