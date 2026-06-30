@@ -46,11 +46,6 @@ export const TAG_CHIP = NEUTRAL_SURFACE;
 // empty-state CTAs). Size / weight stay at the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
 
-// Muted inline link / control — neutral label that brightens on hover. The
-// neutral counterpart to TEXT_LINK, for secondary navigation that shouldn't
-// pull accent (Cancel, Back, dismiss). Size / weight stay at the call site.
-export const MUTED_LINK = "text-neutral-400 hover:text-neutral-200 transition-colors";
-
 // Amber "caution / heads-up" surface — the warning counterpart to the red error
 // banners (a hard error). Amber reads as "check this, you're not blocked"
 // (duplicate-probe, curated-tags load failure, tweet-import notice). Colour only

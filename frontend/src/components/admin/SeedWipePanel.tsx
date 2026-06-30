@@ -6,7 +6,7 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 interface SeedWipePanelProps<S, W> {
@@ -101,7 +101,12 @@ export function SeedWipePanel<S, W>({
           <Button variant="primary" onClick={onSeed} disabled={seeding}>
             {seeding ? "Generating…" : seedLabel}
           </Button>
-          <Button variant="danger" onClick={confirmWipe.trigger} disabled={wiping}>
+          <Button
+            variant="danger"
+            onClick={confirmWipe.trigger}
+            disabled={wiping}
+            className={confirmWipe.armed ? DANGER_CONFIRM : ""}
+          >
             {wiping
               ? "Wiping…"
               : confirmWipe.armed

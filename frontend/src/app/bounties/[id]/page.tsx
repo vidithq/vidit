@@ -24,7 +24,7 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { MUTED_LINK, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TagBadge } from "@/components/ui/TagBadge";
@@ -280,7 +280,7 @@ export default function BountyDetailPage() {
             </Link>
             {!isAuthor && (
               <Button
-                variant="neutral"
+                variant="secondary"
                 onClick={handleToggleClaim}
                 disabled={actionPending}
               >
@@ -293,22 +293,17 @@ export default function BountyDetailPage() {
 
         {isAuthor && bounty.status === "open" && (
           <div className="pt-4 border-t border-neutral-800 flex items-center gap-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={actionPending}
-              className={`text-sm disabled:opacity-50 ${MUTED_LINK}`}
-            >
+            <Button variant="ghost" onClick={handleClose} disabled={actionPending}>
               Close this bounty
-            </button>
-            <Button variant="ghost-danger" onClick={handleDelete} disabled={actionPending}>
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={actionPending}>
               Delete this bounty
             </Button>
           </div>
         )}
         {isAuthor && bounty.status === "closed" && (
           <div className="pt-4 border-t border-neutral-800">
-            <Button variant="ghost-danger" onClick={handleDelete} disabled={actionPending}>
+            <Button variant="danger" onClick={handleDelete} disabled={actionPending}>
               Delete this bounty
             </Button>
           </div>

@@ -78,7 +78,7 @@ export default function DetectionsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">
             <Button
-              variant="neutral"
+              variant="secondary"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
@@ -88,7 +88,7 @@ export default function DetectionsPage() {
               Page {page} of {totalPages} · {data.total} pending
             </span>
             <Button
-              variant="neutral"
+              variant="secondary"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >

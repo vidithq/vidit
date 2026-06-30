@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { smartBack } from "@/lib/navigation";
-import { MUTED_LINK, TEXT_LINK } from "./styles";
+import { TEXT_LINK } from "./styles";
+import { Button } from "./Button";
 import { PageFrame } from "./PageFrame";
 
 export function PageShell({
@@ -30,14 +31,15 @@ export function PageShell({
           // `right-full` parks the button outside the header's left edge
           // (header is `relative`), so the title's x-coordinate is the same
           // whether or not the back arrow renders.
-          <button
-            type="button"
+          <Button
+            icon
+            variant="ghost"
             onClick={handleBack}
             aria-label="Back"
-            className={`absolute right-full top-1.5 mr-3 ${MUTED_LINK}`}
+            className="absolute right-full top-1.5 mr-3"
           >
             <ArrowLeft size={18} />
-          </button>
+          </Button>
         )}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-2">

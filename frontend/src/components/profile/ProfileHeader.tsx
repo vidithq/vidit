@@ -65,7 +65,7 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
             edit.editing ? (
               <div className="inline-flex gap-2">
                 <Button
-                  variant="neutral"
+                  variant="ghost"
                   onClick={edit.cancelEditing}
                   disabled={edit.saving}
                 >

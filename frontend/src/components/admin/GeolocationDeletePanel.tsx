@@ -9,13 +9,12 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { MUTED_LINK } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 
@@ -141,8 +140,9 @@ export function GeolocationDeletePanel() {
         <div className="flex gap-2">
           <Button
             type="submit"
-            variant={mode === "hard" ? "danger" : "primary"}
+            variant="danger"
             disabled={submitting || !id.trim()}
+            className={confirm.armed ? DANGER_CONFIRM : ""}
           >
             {submitting
               ? "Deleting…"
@@ -153,13 +153,9 @@ export function GeolocationDeletePanel() {
                   : "Soft delete"}
           </Button>
           {confirm.armed && (
-            <button
-              type="button"
-              onClick={() => confirm.cancel()}
-              className={`px-3 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
-            >
+            <Button variant="ghost" onClick={() => confirm.cancel()}>
               Cancel
-            </button>
+            </Button>
           )}
         </div>
       </form>

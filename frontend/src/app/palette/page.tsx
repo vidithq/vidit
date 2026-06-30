@@ -32,14 +32,13 @@ import StatusBadge from "@/components/geolocation/StatusBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import {
   TEXT_LINK,
-  MUTED_LINK,
   TAPPABLE_HOVER,
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
   BETA_PILL,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { ProofSection } from "@/components/ui/ProofSection";
 import {
   FORM_LABEL,
@@ -171,26 +170,31 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Foundations · accent & buttons" />
 
-          <Item name="<Button>" usage="The one button: variant (colour) + fullWidth, one uniform size. buttonClasses() paints a <Link> the same (CTAs that navigate).">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="primary">Primary</Button>
-              <Button variant="secondary">Secondary</Button>
-              <Button variant="neutral">Neutral</Button>
-              <Button variant="danger">Hard delete</Button>
-              <Button variant="ghost">Soft delete</Button>
-              <Button variant="ghost-danger">Revoke</Button>
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive, no grey button. `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="primary">Primary</Button>
+                <Button variant="secondary">Secondary</Button>
+                <Button variant="ghost">Ghost</Button>
+                <Button variant="danger">Danger</Button>
+                <Button icon variant="ghost" aria-label="Locate">
+                  <MapPin size={15} />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
+                <Button variant="danger">Delete this bounty</Button>
+                <span className="text-neutral-600 self-center">→</span>
+                <Button variant="danger" className={DANGER_CONFIRM}>
+                  Confirm delete
+                </Button>
+              </div>
             </div>
           </Item>
 
           <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
             <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
               A text link
-            </a>
-          </Item>
-
-          <Item name="MUTED_LINK" usage="Neutral secondary nav: Cancel, Back, dismiss, × close">
-            <a href="#" className={`text-sm ${MUTED_LINK}`} onClick={(e) => e.preventDefault()}>
-              Cancel
             </a>
           </Item>
 

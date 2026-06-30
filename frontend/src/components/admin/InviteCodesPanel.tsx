@@ -100,7 +100,7 @@ function InviteCodeRow({
       <td className="py-2 text-right">
         {canRevoke && (
           <Button
-            variant="ghost-danger"
+            variant="danger"
             disabled={revoking}
             onClick={async () => {
               setRevoking(true);

@@ -72,9 +72,9 @@ The rule that governs all of it:
 
 ### The five buckets
 
-1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. The neutral counterpart for secondary navigation (Cancel, Back, dismiss) is `MUTED_LINK`, see *Other orange shapes*.
+1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. For genuine inline links only; an action that happens to read like a link (Cancel, dismiss) is a `<Button variant="ghost">`, not this.
 2. **Tappable card / row** (`TAPPABLE_HOVER`): the whole card or row is one click target (GeolocationCard, BountyCard, search rows, profile external links). Neutral at rest; on hover the **border** turns orange and the inner title picks up `group-hover:text-orange-400` (put `group` on the row).
-3. **Primary CTA** (`<Button variant="primary">`): "do this now" buttons (Submit, Post a bounty, Geolocate this, Follow, admin actions, the error-boundary "Try again"). Soft-fill outlined orange, visible at rest, brightens on hover. Buttons are the [`<Button>`](../frontend/src/components/ui/Button.tsx) primitive, which bundles shape **and** colour at one uniform size; `buttonClasses("primary")` paints a `<Link>` the same for CTAs that navigate.
+3. **Buttons** (`<Button>`): every action is the [`<Button>`](../frontend/src/components/ui/Button.tsx) primitive, shape **and** colour in one unit at a single size. Four variants on two axes (tone × emphasis): `primary` (accent, filled, the one main action), `secondary` (accent, outline, a secondary action), `ghost` (accent, text only, the quiet tier: cancel, dismiss, dense rows, icons), `danger` (red, outline, a destructive action). Every clickable is the accent colour; red is only destructive. `buttonClasses(variant)` paints a `<Link>` the same for CTAs that navigate; `icon` makes a square icon-only button. Full vocabulary under *Buttons* below.
 4. **Selected / active state** (`FILTER_CHIP_ACTIVE` / `FILTER_CHIP_INACTIVE`): a state indicator on an interactive element (active filter chip, active sidebar nav row, the bounties status filter). Reads as `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE`. Status pills add a thin border so the badge reads as a discrete shape, in three states: `STATUS_PILL_ACTIVE` (open, orange), `STATUS_PILL_FULFILLED` (end-state, neutral **white**, not green: fulfilment isn't a win), `STATUS_PILL_CLOSED` (author-withdrawn, the quietest, neutral grey).
 5. **Decorative tag chip** (`TAG_CHIP`): display-only metadata pills (`bg-neutral-800 text-neutral-400`), rendered as `<span>` not `<button>`. Neutral, so several tags on a card don't compete with the orange CTAs / status pills / links. If a tag is clickable, use bucket ④ instead.
 
@@ -85,8 +85,8 @@ These don't fit the five buckets:
 - **`BETA_PILL`**: the fixed closed-beta corner banner + the gate-page header badge. Same family as the status pill but less saturated (decorative, shouldn't compete with active-state pills). `pointer-events-none` is added at the call site.
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
-- **Destructive actions**: the admin "Hard delete" is `<Button variant="danger">` (`bg-red-500 text-white`); sibling soft-delete buttons use `variant="primary"`, so "less destructive = quieter."
-- **Navigation chrome + secondary links** (`MUTED_LINK`): back arrows, × close buttons, Cancel / Back / dismiss. Neutral grey (`text-neutral-400 hover:text-neutral-200`) that brightens on hover, so structural chrome and secondary nav don't compete with content links.
+- **Destructive actions**: `<Button variant="danger">` is red but quiet (outline, `secondary` in red), so a delete / revoke / reject trigger doesn't shout. The one loud filled red is `DANGER_CONFIRM`, applied only to the armed second click of a two-click confirm, so the strongest red marks the point of no return.
+- **Navigation chrome** (back arrow, × close, Cancel / dismiss): a `<Button variant="ghost">` (with `icon` for the bare arrow / ×). Orange like every clickable, but the quietest tier, so it doesn't compete with the primary action.
 
 ### Constants: single source of truth
 
@@ -111,12 +111,12 @@ If you're writing a class string longer than ~3 Tailwind tokens for an orange el
 |---|---|
 | Plain orange text, underlined on hover | Inline link, click it |
 | Card border turns orange on hover | Whole card is clickable |
-| Outlined orange button | Primary action |
+| Orange button | An action (filled = primary, outline = secondary, text = ghost) |
 | Tinted orange background + orange text | Currently selected / active state |
 | Neutral grey chip | Decorative tag, not interactive |
 | Bright `bg-orange-500` flat fill | Map point or 1.5 px state dot, never a button |
-| Bright red filled | Destructive: proceed with caution |
-| Neutral grey × or ← | Navigation chrome: close / back |
+| Red outline | A destructive action (delete, revoke, reject) |
+| Bright red filled | The armed confirm of a two-click destructive action |
 
 ## Map
 
@@ -218,15 +218,16 @@ The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/Aut
 
 ### Buttons
 
-One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **and** colour in a single unit at one uniform size (no size scale, by design). Pick the colour with `variant`:
+One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **and** colour in a single unit at one uniform size (no size scale, by design). Four variants on two axes, tone (accent or danger) and emphasis (filled, outline, text):
 
-- `primary`: soft-fill outlined orange, the "do this now" CTA.
-- `secondary`: transparent outlined orange, quieter alternate action.
-- `neutral`: bordered grey, non-accent actions (Cancel, search, Following).
-- `danger`: filled red, the one irreversible action (admin hard delete).
-- `ghost` / `ghost-danger`: borderless row actions for dense admin rows. Non-destructive (grant, soft-delete) share the neutral `ghost`; revoke and hard-delete take the red `ghost-danger`, where the colour is a safety cue.
+- `primary`: accent, filled. The one main action of a view (submit, post, confirm, follow).
+- `secondary`: accent, outline. A secondary action (edit profile, search, pagination, a toggle's active state).
+- `ghost`: accent, text only. The quiet tier: cancel, dismiss, dense row actions, and (with `icon`) icon-only buttons like share and the × close.
+- `danger`: red, outline. A destructive action (delete, revoke, reject), quiet on purpose, `secondary` in red.
 
-`fullWidth` stretches it (auth submits); orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
+Every clickable is the accent colour, red is only destructive, and there is no grey button (grey lives in `TAG_CHIP` and `disabled`). The one loud filled red is `DANGER_CONFIRM`, a class applied via `className` to the armed second click of a two-click confirm only, so the strongest red shows up once, at the point of no return.
+
+`fullWidth` stretches it (auth submits); `icon` makes a square icon-only button; orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
 
 ### Forms
 

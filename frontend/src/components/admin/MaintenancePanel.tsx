@@ -53,7 +53,7 @@ export function MaintenancePanel() {
       </header>
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-3">
-          <Button variant="neutral" onClick={onReapAuth} disabled={running}>
+          <Button variant="secondary" onClick={onReapAuth} disabled={running}>
             {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
           </Button>
           {authResult && (
@@ -64,7 +64,7 @@ export function MaintenancePanel() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="neutral" onClick={onReapOrphans} disabled={running}>
+          <Button variant="secondary" onClick={onReapOrphans} disabled={running}>
             {reapOrphans.loading
               ? "Reaping…"
               : "Reap orphan proof images"}

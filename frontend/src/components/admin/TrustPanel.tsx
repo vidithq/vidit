@@ -12,13 +12,12 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { MUTED_LINK } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 
@@ -144,7 +143,7 @@ function TrustUserRow({
         <div className="shrink-0 flex flex-col items-end gap-1">
           {trusted ? (
             <Button
-              variant="ghost-danger"
+              variant="danger"
               disabled={granting}
               onClick={submitRevoke}
               className="whitespace-nowrap"
@@ -173,7 +172,7 @@ function TrustUserRow({
                 Soft delete
               </Button>
               <Button
-                variant="ghost-danger"
+                variant="danger"
                 onClick={() => {
                   setDeleteMode("hard");
                   confirmDelete.cancel();
@@ -204,8 +203,8 @@ function TrustUserRow({
             <Button variant="primary" onClick={submitGrant} disabled={granting}>
               {granting ? "Granting…" : "Confirm grant"}
             </Button>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => {
                 setShowReasonForm(false);
                 setReason(user.trust_reason ?? "");
@@ -213,10 +212,9 @@ function TrustUserRow({
                 revokeMutation.reset();
                 deleteMutation.reset();
               }}
-              className={`px-3 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -245,9 +243,10 @@ function TrustUserRow({
           )}
           <div className="flex gap-2">
             <Button
-              variant={deleteMode === "hard" ? "danger" : "primary"}
+              variant="danger"
               onClick={confirmDelete.trigger}
               disabled={deleting}
+              className={confirmDelete.armed ? DANGER_CONFIRM : ""}
             >
               {deleting
                 ? "Deleting…"
@@ -257,13 +256,9 @@ function TrustUserRow({
                     ? "Hard delete"
                     : "Soft delete"}
             </Button>
-            <button
-              type="button"
-              onClick={cancelDelete}
-              className={`px-3 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
-            >
+            <Button variant="ghost" onClick={cancelDelete}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -343,7 +338,7 @@ export function TrustPanel() {
         </div>
         <Button
           type="submit"
-          variant="neutral"
+          variant="secondary"
           disabled={searching || !query.trim()}
         >
           <Search size={12} />

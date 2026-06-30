@@ -47,7 +47,7 @@ export default function FollowButton({
   return (
     <div className="inline-flex flex-col items-end gap-1">
       <Button
-        variant={following ? "neutral" : "primary"}
+        variant={following ? "secondary" : "primary"}
         onClick={toggleFollow}
         disabled={loading}
       >

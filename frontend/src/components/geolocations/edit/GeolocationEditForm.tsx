@@ -15,8 +15,7 @@ import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { Button } from "@/components/ui/Button";
-import { MUTED_LINK } from "@/components/ui/styles";
+import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -298,14 +297,13 @@ export function GeolocationEditForm({
               >
                 {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
               </Button>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 onClick={() => setConfirmingSubmit(false)}
                 disabled={busy}
-                className={`text-sm ${MUTED_LINK}`}
               >
                 Cancel
-              </button>
+              </Button>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5">
@@ -320,10 +318,7 @@ export function GeolocationEditForm({
             </span>
           )}
 
-          <Link
-            href={redirectTo}
-            className={`text-sm ${MUTED_LINK}`}
-          >
+          <Link href={redirectTo} className={buttonClasses("ghost")}>
             Cancel
           </Link>
 
@@ -331,25 +326,26 @@ export function GeolocationEditForm({
           {confirmReject.armed ? (
             <span className="ml-auto inline-flex items-center gap-1.5">
               <Button
-                variant="ghost-danger"
+                variant="danger"
                 onClick={confirmReject.trigger}
                 disabled={busy}
+                className={DANGER_CONFIRM}
               >
                 {rejectMutation.loading ? "Rejecting…" : "Confirm reject"}
               </Button>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                icon
                 onClick={confirmReject.cancel}
                 disabled={busy}
                 aria-label="Cancel reject"
-                className={`px-2 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
               >
                 <X size={13} />
-              </button>
+              </Button>
             </span>
           ) : (
             <Button
-              variant="ghost-danger"
+              variant="danger"
               onClick={confirmReject.trigger}
               disabled={busy}
               className="ml-auto"

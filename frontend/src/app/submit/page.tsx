@@ -19,8 +19,8 @@ import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, MUTED_LINK, TEXT_LINK } from "@/components/ui/styles";
-import { Button } from "@/components/ui/Button";
+import { FILTER_CHIP_ACTIVE, TEXT_LINK } from "@/components/ui/styles";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -402,14 +402,14 @@ function SubmitForm() {
       {canImport && !archiveMode && (
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
-            variant="neutral"
+            variant="secondary"
             onClick={() => setTweetPrefillOpen((v) => !v)}
             aria-pressed={tweetPrefillOpen}
           >
             <XGlyph size={12} />
             Pre-fill from an X post
           </Button>
-          <Button variant="neutral" onClick={() => setArchiveMode(true)}>
+          <Button variant="secondary" onClick={() => setArchiveMode(true)}>
             <Archive size={13} strokeWidth={1.8} />
             Import your X archive
           </Button>
@@ -420,14 +420,10 @@ function SubmitForm() {
           so its draft survives a Back. */}
       {canImport && archiveMode && (
         <div className="mt-4 space-y-4">
-          <button
-            type="button"
-            onClick={() => setArchiveMode(false)}
-            className={`inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}
-          >
+          <Button variant="ghost" onClick={() => setArchiveMode(false)}>
             <ArrowLeft size={14} strokeWidth={1.8} />
             Back to the form
-          </button>
+          </Button>
           <ImportArchivePanel username={user.username} />
         </div>
       )}
@@ -587,7 +583,7 @@ function SubmitForm() {
           </Button>
           <Link
             href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
-            className={`text-sm ${MUTED_LINK}`}
+            className={buttonClasses("ghost")}
           >
             Cancel
           </Link>
