@@ -16,9 +16,8 @@ import SourceLabel from "@/components/ui/SourceLabel";
 // components with three click models; this is the single, data-driven card.
 //
 // - Click model is uniform: the whole card navigates to `detailHref` via a
-//   stretched link. Interactive children (the author byline, the `actions`
-//   slot) sit above it (`relative z-20`) and stay independently clickable.
-//   No nested <a>.
+//   stretched link. The author byline sits above it (`relative z-20`) and
+//   stays independently clickable. No nested <a>.
 // - It renders the slots that carry data; an entity without `coords` (a bounty)
 //   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
 // - `media` shows a real thumbnail (`MediaThumb`); `mediaSeed` shows a generated
@@ -40,9 +39,6 @@ interface EntityCardProps {
   source?: { url: string; isDemo: boolean };
   working?: number;
   tags?: { id: string; name: string }[];
-  /** Edit / delete controls (the detections queue). Kept clickable above the
-   *  stretched link. */
-  actions?: ReactNode;
   variant?: "feed" | "compact";
   /** Skip the author byline (e.g. on the author's own profile). */
   hideAuthor?: boolean;
@@ -101,7 +97,6 @@ export function EntityCard({
   source,
   working,
   tags,
-  actions,
   variant = "compact",
   hideAuthor = false,
 }: EntityCardProps) {
@@ -113,13 +108,17 @@ export function EntityCard({
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
-  const thumb = media ? (
-    <MediaThumb media={media} />
-  ) : mediaSeed ? (
+  // Always a thumbnail (keeps the row height uniform): a generated placeholder
+  // for cards with no real media payload (`mediaSeed`), otherwise the real
+  // media — and `MediaThumb` renders its own "no media" box when `media` is
+  // absent (a detection with no source media yet).
+  const thumb = mediaSeed ? (
     <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
       <MediaPlaceholder seed={mediaSeed} />
     </div>
-  ) : null;
+  ) : (
+    <MediaThumb media={media} />
+  );
 
   if (variant === "feed") {
     return (
@@ -169,7 +168,9 @@ export function EntityCard({
       {thumb}
       <div className="flex-1 min-w-0 flex items-start gap-2">
         <div className="flex-1 min-w-0 space-y-1.5">
-          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
+          {/* Reserve two lines so a 1-line and a 2-line title don't change the
+              row height. */}
+          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2 min-h-[2.5rem]">
             {title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
@@ -193,14 +194,13 @@ export function EntityCard({
               <WorkingMeta count={working} />
             )}
           </div>
-          {tags && tags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              {tags.map((t) => (
-                <TagBadge key={t.id} name={t.name} />
-              ))}
-            </div>
-          )}
-          {actions && <div className="relative z-20 pt-0.5">{actions}</div>}
+          {/* Always rendered (even empty) so a tagged and a tagless card are the
+              same height. */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] min-h-[1.375rem]">
+            {tags?.map((t) => (
+              <TagBadge key={t.id} name={t.name} />
+            ))}
+          </div>
         </div>
         {badge && <div className="shrink-0">{badge}</div>}
       </div>

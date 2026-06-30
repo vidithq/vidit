@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { X } from "lucide-react";
 
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
@@ -23,9 +24,11 @@ import { useMutation } from "@/hooks/useMutation";
 import { apiFetch } from "@/lib/api";
 import {
   missingGeolocationFields,
+  rejectGeolocation,
   submitGeolocation,
   type GeolocationFieldsState,
 } from "@/lib/geolocations";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { GeolocationDetail, Tag } from "@/types";
 
@@ -118,8 +121,19 @@ export function GeolocationEditForm({
     },
   });
 
-  const busy = submitMutation.loading;
-  const actionError = submitMutation.error;
+  // Reject (soft-delete) the detection — the queue's old inline delete moved
+  // here so a detection card is just a click, like every other card.
+  const rejectMutation = useMutation(() => rejectGeolocation(geo.id), {
+    fallback: "Couldn't reject this detection.",
+    onSuccess: () => {
+      refreshDetectionCount();
+      router.push(redirectTo);
+    },
+  });
+  const confirmReject = useConfirmAction(() => rejectMutation.run());
+
+  const busy = submitMutation.loading || rejectMutation.loading;
+  const actionError = submitMutation.error ?? rejectMutation.error;
 
   // Submit floor is computed on the post-edit state: kept existing media plus
   // staged new files, and the selected curated tags.
@@ -312,6 +326,38 @@ export function GeolocationEditForm({
           >
             Cancel
           </Link>
+
+          {/* Reject (soft-delete) lives here now, not on the queue card. */}
+          {confirmReject.armed ? (
+            <span className="ml-auto inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={confirmReject.trigger}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 disabled:opacity-40 transition-colors"
+              >
+                {rejectMutation.loading ? "Rejecting…" : "Confirm reject"}
+              </button>
+              <button
+                type="button"
+                onClick={confirmReject.cancel}
+                disabled={busy}
+                aria-label="Cancel reject"
+                className="px-2 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                <X size={13} />
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={confirmReject.trigger}
+              disabled={busy}
+              className="ml-auto px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
+            >
+              Reject detection
+            </button>
+          )}
         </div>
       </form>
     </PageShell>

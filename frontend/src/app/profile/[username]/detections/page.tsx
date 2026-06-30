@@ -7,7 +7,6 @@ import Link from "next/link";
 import DetectionCard from "@/components/geolocation/DetectionCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
-import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -22,7 +21,6 @@ export default function DetectionsPage() {
   const username = typeof params.username === "string" ? params.username : "";
   const isOwn = !!user && user.username === username;
   const [page, setPage] = useState(1);
-  const { refresh: refreshDetectionCount } = useDetectionsCount();
 
   // The list is the caller's own: the endpoint scopes to ``current_user`` and
   // ignores the URL username, so viewing it under another analyst's handle
@@ -32,26 +30,13 @@ export default function DetectionsPage() {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  const { data, error, refetch } = useApiResource<PaginatedGeolocationDetails>(
+  const { data, error } = useApiResource<PaginatedGeolocationDetails>(
     isOwn ? detectionsPath(page) : null
   );
 
   if (authLoading || !user || !isOwn) {
     return <PageLoading />;
   }
-
-  // A row leaves the list once acted on (submitted then frozen, rejected then
-  // soft-deleted). Acting on the last row of a later page would strand the user
-  // on an empty page, step back instead of refetching into nothing.
-  const handleActed = () => {
-    // Keep the sidebar dot + profile entry in sync with the list.
-    refreshDetectionCount();
-    if (data && data.items.length === 1 && page > 1) {
-      setPage((p) => p - 1);
-    } else {
-      refetch();
-    }
-  };
 
   let listBody;
   if (error) {
@@ -87,7 +72,7 @@ export default function DetectionsPage() {
     listBody = (
       <div className="space-y-3">
         {data.items.map((geo) => (
-          <DetectionCard key={geo.id} geo={geo} onActed={handleActed} />
+          <DetectionCard key={geo.id} geo={geo} />
         ))}
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">

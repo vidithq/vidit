@@ -437,25 +437,18 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact actions> — détection" usage="File de détections (Edit / Delete)">
+          <Item name="<EntityCard variant=compact> — détection (sans média)" usage="File de détections: clic → édition; placeholder « no media »">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/geolocations/demo"
+                detailHref="/geolocations/demo/edit"
                 title={MOCK_DETAIL.title}
                 titleText={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
-                mediaSeed="pal-det"
                 author={{ username: MOCK_DETAIL.author.username }}
                 date={MOCK_DETAIL.event_date}
                 coords={{ lat: MOCK_DETAIL.lat, lng: MOCK_DETAIL.lng }}
                 tags={MOCK_DETAIL.tags}
-                actions={
-                  <span className="inline-flex gap-3 text-xs">
-                    <span className={TEXT_LINK}>Edit</span>
-                    <span className="text-neutral-500">Delete</span>
-                  </span>
-                }
               />
             </div>
           </Item>
