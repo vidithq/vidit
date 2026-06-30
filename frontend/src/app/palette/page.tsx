@@ -34,6 +34,10 @@ import {
   PRIMARY_BUTTON,
   SECONDARY_BUTTON,
   DANGER_BUTTON,
+  GHOST_BUTTON_ACCENT,
+  GHOST_BUTTON_DANGER,
+  GHOST_BUTTON_NEUTRAL,
+  NEUTRAL_BUTTON,
   TEXT_LINK,
   MUTED_LINK,
   TAPPABLE_HOVER,
@@ -42,6 +46,7 @@ import {
   BETA_PILL,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
+import { ProofSection } from "@/components/ui/ProofSection";
 import {
   FORM_LABEL,
   FORM_LABEL_COMPACT,
@@ -190,6 +195,16 @@ export default function PalettePage() {
             <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${DANGER_BUTTON}`}>
               Hard delete
             </button>
+          </Item>
+
+          <Item name="GHOST_BUTTON_ACCENT / _DANGER / _NEUTRAL" usage="Borderless row actions (admin grant / revoke / soft-delete), tint on hover">
+            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_ACCENT}`}>Grant trust</button>
+            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_DANGER}`}>Revoke</button>
+            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_NEUTRAL}`}>Soft delete</button>
+          </Item>
+
+          <Item name="NEUTRAL_BUTTON" usage="Bordered neutral button: Cancel, search submit, Following, reapers">
+            <button className={`px-3 py-1.5 rounded-md text-xs ${NEUTRAL_BUTTON}`}>Neutral action</button>
           </Item>
 
           <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
@@ -453,6 +468,16 @@ export default function PalettePage() {
               >
                 <div className="text-neutral-500">Cascade-hid 2 geolocations.</div>
               </DeleteReceipt>
+            </div>
+          </Item>
+
+          <Item name="<ProofSection>" usage="Proof section on geoloc + bounty detail: eyebrow + bordered box">
+            <div className="w-full max-w-xl">
+              <ProofSection>
+                <div className="text-sm text-neutral-300 leading-relaxed">
+                  The proof body goes here (a rendered doc, or a bounty's notes).
+                </div>
+              </ProofSection>
             </div>
           </Item>
 
