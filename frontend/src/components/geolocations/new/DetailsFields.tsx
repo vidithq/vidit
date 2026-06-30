@@ -1,7 +1,5 @@
 "use client";
 
-import { Lock } from "lucide-react";
-
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import FieldHelp from "@/components/ui/FieldHelp";
@@ -132,10 +130,7 @@ export function DetailsFields({
         <div className="space-y-1.5">
           <label htmlFor="detected_from_url" className={FORM_LABEL}>
             Detected from <FieldHelp concept="detected_from" />
-            <span className="inline-flex items-center gap-1 ml-1.5 normal-case tracking-normal text-[10px] text-neutral-500">
-              <Lock size={10} />
-              provenance, can&apos;t change
-            </span>
+            <LockedHint>provenance, can&apos;t change</LockedHint>
           </label>
           <Input
             variant="locked"

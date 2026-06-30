@@ -1,5 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 
+import { FORM_ERROR_BANNER } from "./form-styles";
+
 interface IncompleteFormNoticeProps {
   /** Human labels of every still-missing required field. Renders nothing when
    *  empty, so callers can mount it unconditionally. */
@@ -23,7 +25,7 @@ export function IncompleteFormNotice({ missing, lead }: IncompleteFormNoticeProp
   return (
     <div
       role="alert"
-      className="animate-notice-in flex gap-3 rounded-md border border-red-700/60 bg-red-900/40 px-4 py-3 text-sm text-red-300"
+      className={`animate-notice-in flex gap-3 ${FORM_ERROR_BANNER}`}
     >
       <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
       <div className="space-y-1">

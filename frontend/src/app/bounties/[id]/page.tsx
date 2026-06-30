@@ -23,7 +23,7 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { MUTED_LINK, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TagBadge } from "@/components/ui/TagBadge";
 
@@ -307,7 +307,7 @@ export default function BountyDetailPage() {
               type="button"
               onClick={handleClose}
               disabled={actionPending}
-              className="text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-50 transition-colors"
+              className={`text-sm disabled:opacity-50 ${MUTED_LINK}`}
             >
               Close this bounty
             </button>

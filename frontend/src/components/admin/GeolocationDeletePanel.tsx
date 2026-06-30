@@ -9,7 +9,7 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { DANGER_BUTTON, PRIMARY_BUTTON } from "@/components/ui/styles";
+import { DANGER_BUTTON, MUTED_LINK, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
@@ -160,7 +160,7 @@ export function GeolocationDeletePanel() {
             <button
               type="button"
               onClick={() => confirm.cancel()}
-              className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
+              className={`px-3 py-1.5 rounded-md text-xs ${MUTED_LINK}`}
             >
               Cancel
             </button>
