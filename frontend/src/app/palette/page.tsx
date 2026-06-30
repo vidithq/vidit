@@ -24,7 +24,6 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import FieldHelp from "@/components/ui/FieldHelp";
@@ -448,26 +447,6 @@ export default function PalettePage() {
                 <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
               </DetailCard>
-            </div>
-          </Item>
-
-          <Item name="<DeleteReceipt>" usage="Admin delete result (trust panel, geolocation delete)">
-            <div className="w-full max-w-md space-y-2">
-              <DeleteReceipt
-                icon={<MapPin size={12} className="text-orange-400" />}
-                label="Strike on a depot"
-                mode="hard"
-                modeTone="border-red-500/30 text-red-300"
-              >
-                <div className="text-neutral-500">Swept 3 media + 1 proof image.</div>
-              </DeleteReceipt>
-              <DeleteReceipt
-                label="@analyst"
-                mode="soft"
-                modeTone="border-amber-500/30 text-amber-300"
-              >
-                <div className="text-neutral-500">Cascade-hid 2 geolocations.</div>
-              </DeleteReceipt>
             </div>
           </Item>
 
