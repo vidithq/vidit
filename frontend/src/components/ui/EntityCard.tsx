@@ -4,7 +4,7 @@ import { MapPin, Users } from "lucide-react";
 
 import type { Media } from "@/types";
 import { formatDate } from "@/lib/format";
-import { TAPPABLE_HOVER } from "@/components/ui/styles";
+import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { Avatar } from "@/components/ui/Avatar";
@@ -73,7 +73,7 @@ function AuthorLink({ username }: { username: string }) {
   return (
     <Link
       href={`/profile/${username}`}
-      className="relative z-20 text-orange-400 font-medium hover:underline"
+      className={`relative z-20 font-medium ${TEXT_LINK}`}
     >
       @{username}
     </Link>

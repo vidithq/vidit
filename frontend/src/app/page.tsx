@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
-import { BETA_PILL, FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
+import { BETA_PILL, FILTER_CHIP_ACTIVE, TEXT_LINK } from "@/components/ui/styles";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -233,7 +233,7 @@ export default function LandingPage() {
                       href={link.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-block text-[13px] text-orange-400 hover:text-orange-300"
+                      className={`mt-2 inline-block text-[13px] ${TEXT_LINK}`}
                     >
                       {link.label} →
                     </a>

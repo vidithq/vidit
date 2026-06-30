@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { LinkRow } from "@/components/ui/LinkRow";
 
@@ -72,7 +73,7 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
           href="https://archive.today"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-orange-400 hover:text-orange-300"
+          className={TEXT_LINK}
         >
           archive.today
         </a>{" "}
@@ -138,7 +139,7 @@ interface SectionProps {
 
 function Section({ icon: Icon, title, description, children }: SectionProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section">
       <div className="space-y-1">
         <div className="flex items-center gap-2.5">
           <span className="size-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400 shrink-0">
@@ -151,7 +152,7 @@ function Section({ icon: Icon, title, description, children }: SectionProps) {
         )}
       </div>
       <div className="space-y-3">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -260,7 +261,7 @@ export default function AboutPage() {
             submissions, email{" "}
             <a
               href="mailto:hello@vidit.app"
-              className="text-orange-400 hover:text-orange-300"
+              className={TEXT_LINK}
             >
               hello@vidit.app
             </a>{" "}

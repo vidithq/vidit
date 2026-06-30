@@ -8,6 +8,7 @@ import FollowButton from "./FollowButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
+  FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
@@ -119,7 +120,7 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
       )}
 
       {edit.saveError && (
-        <div className="px-3 py-2 rounded-md text-xs text-red-300 bg-red-500/10 border border-red-500/30">
+        <div className={FORM_ERROR_BANNER_BOXED}>
           {edit.saveError}
         </div>
       )}
