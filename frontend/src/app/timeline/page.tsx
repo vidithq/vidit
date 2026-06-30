@@ -6,7 +6,8 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import GeolocationCard from "@/components/geolocation/GeolocationCard";
+import { EntityCard } from "@/components/ui/EntityCard";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import type { GeolocationStatus } from "@/types";
@@ -66,11 +67,24 @@ export default function TimelinePage() {
         {entries.length > 0 ? (
           <div className="space-y-4">
             {entries.map((entry) => (
-              <GeolocationCard
+              <EntityCard
                 key={entry.id}
-                geo={entry}
                 variant="feed"
+                detailHref={`/geolocations/${entry.id}`}
+                title={entry.title}
+                titleText={entry.title}
+                badge={
+                  entry.status ? <StatusBadge status={entry.status} /> : undefined
+                }
                 mediaSeed={`timeline-${entry.id}`}
+                author={entry.author}
+                date={entry.event_date}
+                coords={
+                  typeof entry.lat === "number" && typeof entry.lng === "number"
+                    ? { lat: entry.lat, lng: entry.lng }
+                    : null
+                }
+                tags={entry.tags}
               />
             ))}
           </div>

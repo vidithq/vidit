@@ -9,8 +9,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { TagPicker } from "@/components/ui/TagPicker";
-import GeolocationCard from "@/components/geolocation/GeolocationCard";
-import DetectionCard from "@/components/geolocation/DetectionCard";
+import { EntityCard } from "@/components/ui/EntityCard";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -27,7 +26,6 @@ import FieldHelp from "@/components/ui/FieldHelp";
 import SourceLabel from "@/components/ui/SourceLabel";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
-import { BountyCard } from "@/components/bounty/BountyCard";
 import {
   PRIMARY_BUTTON,
   TEXT_LINK,
@@ -377,26 +375,95 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ---- Composites ---- */}
+        {/* ---- Cartes ---- */}
         <section className="space-y-3">
-          <SectionEyebrow title="Composites" />
+          <SectionEyebrow title="Cartes (EntityCard)" />
+          <p className="text-xs text-neutral-500 -mt-1">
+            Une seule carte pour géoloc / bounty / détection, en 2 dispositions.
+            Modèle de clic uniforme: toute la carte mène au détail; l’auteur et
+            les actions restent cliquables. Les champs absents (coords pour une
+            bounty, « working » pour une géoloc) ne s’affichent pas.
+          </p>
 
-          <Item name="<BountyCard>" usage="Liste des bounties + résultats de recherche">
+          <Item name="<EntityCard variant=feed>" usage="Flux (timeline), pour les 3 types">
             <div className="w-full max-w-xl">
-              <BountyCard
-                id="demo"
-                title="Frappe sur un dépôt près de Donetsk"
-                authorUsername="analyst"
-                sourceUrl="https://t.me/channel/4242"
-                isDemo={false}
-                status="open"
-                claimerCount={3}
-                claimerSample={[{ username: "a" }, { username: "b" }]}
-                createdAt="2026-05-01"
+              <EntityCard
+                variant="feed"
+                detailHref="/geolocations/demo"
+                title={MOCK_CARD_GEO.title}
+                titleText={MOCK_CARD_GEO.title}
+                badge={<StatusBadge status="detected" />}
+                mediaSeed="pal-feed"
+                author={MOCK_CARD_GEO.author}
+                date={MOCK_CARD_GEO.event_date}
+                coords={{ lat: 48.0159, lng: 37.8024 }}
+                tags={MOCK_CARD_GEO.tags}
+              />
+            </div>
+          </Item>
+
+          <Item name="<EntityCard variant=compact> — géoloc" usage="Listes (profil « recent submissions »)">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/geolocations/demo"
+                title={MOCK_CARD_GEO.title}
+                titleText={MOCK_CARD_GEO.title}
+                badge={<StatusBadge status="submitted" />}
+                mediaSeed="pal-compact"
+                author={MOCK_CARD_GEO.author}
+                date={MOCK_CARD_GEO.event_date}
+                coords={{ lat: 48.0159, lng: 37.8024 }}
+                tags={MOCK_CARD_GEO.tags}
+              />
+            </div>
+          </Item>
+
+          <Item name="<EntityCard variant=compact> — bounty" usage="/bounties + résultats de recherche">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/bounties/demo"
+                title="Footage demandé près de Bakhmut"
+                titleText="Footage demandé près de Bakhmut"
+                badge={<BountyStatusBadge status="open" />}
+                mediaSeed="pal-bounty"
+                author={{ username: "analyst" }}
+                date="2026-05-01"
+                source={{ url: "https://t.me/channel/4242", isDemo: false }}
+                working={3}
                 tags={MOCK_TAGS}
               />
             </div>
           </Item>
+
+          <Item name="<EntityCard variant=compact actions> — détection" usage="File de détections (Edit / Delete)">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/geolocations/demo"
+                title={MOCK_DETAIL.title}
+                titleText={MOCK_DETAIL.title}
+                badge={<StatusBadge status="detected" />}
+                mediaSeed="pal-det"
+                author={{ username: MOCK_DETAIL.author.username }}
+                date={MOCK_DETAIL.event_date}
+                coords={{ lat: MOCK_DETAIL.lat, lng: MOCK_DETAIL.lng }}
+                tags={MOCK_DETAIL.tags}
+                actions={
+                  <span className="inline-flex gap-3 text-xs">
+                    <span className={TEXT_LINK}>Edit</span>
+                    <span className="text-neutral-500">Delete</span>
+                  </span>
+                }
+              />
+            </div>
+          </Item>
+        </section>
+
+        {/* ---- Composites ---- */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Composites" />
 
           <Item name="<CuratedTagsError>" usage="Formulaires submit & edit (tags curés non chargés)">
             <div className="w-full max-w-xl">
@@ -412,26 +479,9 @@ export default function PalettePage() {
             </p>
           </Item>
 
-          <Item name="<GeolocationCard>" usage="Flux & listes de géolocs (feed + compact)">
-            <div className="w-full max-w-xl space-y-3">
-              <Variant label='variant="feed"'>
-                <GeolocationCard geo={MOCK_CARD_GEO} />
-              </Variant>
-              <Variant label='variant="compact"'>
-                <GeolocationCard geo={MOCK_CARD_GEO} variant="compact" hideAuthor />
-              </Variant>
-            </div>
-          </Item>
-
           <Item name="<GeolocationDetailBody>" usage="Page détail géoloc + panneau carte (variant page/panel)">
             <div className="w-full max-w-2xl space-y-4">
               <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
-            </div>
-          </Item>
-
-          <Item name="<DetectionCard>" usage="File de détections du profil (Edit / Delete 2-clics)">
-            <div className="w-full max-w-2xl">
-              <DetectionCard geo={MOCK_DETAIL} onActed={() => {}} />
             </div>
           </Item>
 
