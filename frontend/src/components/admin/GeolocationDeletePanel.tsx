@@ -11,6 +11,7 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { DANGER_BUTTON, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -167,20 +168,16 @@ export function GeolocationDeletePanel() {
       </form>
 
       {result && (
-        <div className="px-3 py-2 rounded-md text-xs text-neutral-300 bg-neutral-800/60 border border-neutral-700 space-y-1">
-          <div className="inline-flex items-center gap-1.5">
-            <MapPin size={12} className="text-orange-400" />
-            <span className="font-medium">{result.title}</span>
-            <span
-              className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                result.mode === "hard"
-                  ? "border-red-500/30 text-red-300"
-                  : "border-orange-500/30 text-orange-300"
-              }`}
-            >
-              {result.mode}
-            </span>
-          </div>
+        <DeleteReceipt
+          icon={<MapPin size={12} className="text-orange-400" />}
+          label={result.title}
+          mode={result.mode}
+          modeTone={
+            result.mode === "hard"
+              ? "border-red-500/30 text-red-300"
+              : "border-orange-500/30 text-orange-300"
+          }
+        >
           <div className="text-neutral-500 font-mono text-[11px]">
             {result.geolocation_id}
           </div>
@@ -192,7 +189,7 @@ export function GeolocationDeletePanel() {
               {result.proof_image_count === 1 ? "" : "s"}.
             </div>
           )}
-        </div>
+        </DeleteReceipt>
       )}
     </Card>
   );

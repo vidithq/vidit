@@ -14,6 +14,7 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { DANGER_BUTTON, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -385,19 +386,15 @@ export function TrustPanel() {
       )}
 
       {lastDelete && (
-        <div className="px-3 py-2 rounded-md text-xs text-neutral-300 bg-neutral-800/60 border border-neutral-700 space-y-1">
-          <div className="inline-flex items-center gap-1.5">
-            <span className="font-medium">@{lastDelete.username}</span>
-            <span
-              className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                lastDelete.mode === "hard"
-                  ? "border-red-500/30 text-red-300"
-                  : "border-amber-500/30 text-amber-300"
-              }`}
-            >
-              {lastDelete.mode}
-            </span>
-          </div>
+        <DeleteReceipt
+          label={`@${lastDelete.username}`}
+          mode={lastDelete.mode}
+          modeTone={
+            lastDelete.mode === "hard"
+              ? "border-red-500/30 text-red-300"
+              : "border-amber-500/30 text-amber-300"
+          }
+        >
           <div className="text-neutral-500">
             {lastDelete.mode === "hard"
               ? `Dropped ${lastDelete.cascaded_geolocations} geolocation${
@@ -409,7 +406,7 @@ export function TrustPanel() {
                   lastDelete.cascaded_geolocations === 1 ? "" : "s"
                 }.`}
           </div>
-        </div>
+        </DeleteReceipt>
       )}
     </Card>
   );
