@@ -8,6 +8,7 @@ import {
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 
 export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
@@ -44,7 +45,7 @@ export function MaintenancePanel() {
   return (
     <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
       <header className="px-4 py-3 border-b border-neutral-800">
-        <h2 className="text-sm font-medium text-neutral-200">Maintenance</h2>
+        <SectionEyebrow title="Maintenance" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           On-demand reapers. Click when you remember — there&apos;s no schedule.
         </p>

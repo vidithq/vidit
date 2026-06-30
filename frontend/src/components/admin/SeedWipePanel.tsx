@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_INPUT_COMPACT,
   FORM_LABEL,
@@ -76,7 +77,7 @@ export function SeedWipePanel<S, W>({
   return (
     <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
       <header className="px-4 py-3 border-b border-neutral-800">
-        <h2 className="text-sm font-medium text-neutral-200">{title}</h2>
+        <SectionEyebrow title={title} margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">{description}</p>
       </header>
       <div className="px-4 py-3 space-y-3">

@@ -10,6 +10,7 @@ import {
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -56,9 +57,7 @@ export function GeolocationDeletePanel() {
   return (
     <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">
-          Remove a geolocation
-        </h2>
+        <SectionEyebrow title="Remove a geolocation" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Soft delete hides the row from every public read but preserves the
           proof + S3 evidence — that&apos;s the default. Hard delete is the

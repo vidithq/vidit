@@ -3,6 +3,7 @@
 import type { PublicProfile } from "@/lib/users";
 import { FORM_INPUT } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
 /** Bio card: textarea + remaining-characters counter in edit mode,
@@ -18,7 +19,7 @@ export function BioCard({
     return (
       <Card>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
+          <SectionEyebrow title="Bio" margin="none" />
           <span
             className={`text-[11px] ${
               edit.bioOver ? "text-red-400" : "text-neutral-500"
@@ -41,7 +42,7 @@ export function BioCard({
 
   return (
     <Card>
-      <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
+      <SectionEyebrow title="Bio" margin="none" />
       <p className="text-sm text-neutral-200 whitespace-pre-line">
         {profile.bio}
       </p>

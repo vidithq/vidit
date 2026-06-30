@@ -13,6 +13,7 @@ import {
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -318,7 +319,7 @@ export function TrustPanel() {
   return (
     <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">Manage analysts</h2>
+        <SectionEyebrow title="Manage analysts" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Find an analyst by username or email, then act on the row. Three
           actions per analyst: <span className="text-orange-400">grant or

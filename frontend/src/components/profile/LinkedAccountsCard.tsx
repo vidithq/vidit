@@ -5,6 +5,7 @@ import { AtSign, Code, Globe, MessageCircle } from "lucide-react";
 import { resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import type { ProfileEditState } from "./useProfileEdit";
 
@@ -32,9 +33,7 @@ export function LinkedAccountsCard({
   if (edit.editing) {
     return (
       <Card>
-        <h2 className="text-sm font-medium text-neutral-300">
-          Linked accounts
-        </h2>
+        <SectionEyebrow title="Linked accounts" margin="none" />
         <div className="space-y-2">
           {LINK_PLATFORMS.map((p) => {
             const Icon = p.Icon;
@@ -80,9 +79,7 @@ export function LinkedAccountsCard({
 
   return (
     <Card>
-      <h2 className="text-sm font-medium text-neutral-300">
-        Linked accounts
-      </h2>
+      <SectionEyebrow title="Linked accounts" margin="none" />
       <div className="space-y-2">
         {presentLinks.map((p) => {
           const value = profile.external_links[p.key] ?? "";

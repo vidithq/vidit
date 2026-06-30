@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
@@ -38,9 +39,7 @@ export function RecentSubmissions({
   return (
     <Card>
       <div className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-300">
-          Recent submissions
-        </h2>
+        <SectionEyebrow title="Recent submissions" margin="none" />
         <p className="text-xs text-neutral-500">
           {profile.geolocations_count > 0
             ? `${profile.username}'s latest geolocations, newest first.`

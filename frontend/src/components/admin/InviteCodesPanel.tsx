@@ -13,6 +13,7 @@ import {
 import { errorMessage } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -173,7 +174,7 @@ export function InviteCodesPanel() {
   return (
     <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">Invite codes</h2>
+        <SectionEyebrow title="Invite codes" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Every code is single-use — one code, one analyst — so the audit
           trail names exactly who joined with what. Mint, share via a
