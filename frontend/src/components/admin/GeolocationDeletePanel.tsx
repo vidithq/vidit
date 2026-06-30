@@ -7,6 +7,7 @@ import {
   deleteGeolocation,
   type AdminGeolocationDeleteResponse,
 } from "@/lib/admin";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
@@ -19,13 +20,12 @@ import { Card } from "@/components/ui/Card";
 export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
   const [mode, setMode] = useState<"soft" | "hard">("soft");
-  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<AdminGeolocationDeleteResponse | null>(
     null
   );
 
   const reset = () => {
-    setConfirming(false);
+    confirm.cancel();
     setId("");
     setMode("soft");
   };
@@ -40,18 +40,17 @@ export function GeolocationDeletePanel() {
       },
     }
   );
+  const confirm = useConfirmAction(() => {
+    void deleteMutation.run();
+  });
   const { error, setError } = deleteMutation;
   const submitting = deleteMutation.loading;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id.trim()) return;
-    if (!confirming) {
-      setConfirming(true);
-      setError(null);
-      return;
-    }
-    await deleteMutation.run();
+    if (!confirm.armed) setError(null);
+    confirm.trigger();
   };
 
   return (
@@ -79,7 +78,7 @@ export function GeolocationDeletePanel() {
             value={id}
             onChange={(e) => {
               setId(e.target.value);
-              setConfirming(false);
+              confirm.cancel();
             }}
             placeholder="00000000-0000-0000-0000-000000000000"
             className={`mt-1 ${FORM_INPUT_COMPACT} font-mono`}
@@ -106,7 +105,7 @@ export function GeolocationDeletePanel() {
                 checked={mode === m}
                 onChange={() => {
                   setMode(m);
-                  setConfirming(false);
+                  confirm.cancel();
                 }}
                 className="sr-only"
               />
@@ -121,7 +120,7 @@ export function GeolocationDeletePanel() {
           </div>
         )}
 
-        {confirming && (
+        {confirm.armed && (
           <div className="px-3 py-2 rounded-md text-xs text-amber-300 bg-amber-500/5 border border-amber-500/30">
             {mode === "hard" ? (
               <>
@@ -150,16 +149,16 @@ export function GeolocationDeletePanel() {
           >
             {submitting
               ? "Deleting…"
-              : confirming
+              : confirm.armed
                 ? "Confirm"
                 : mode === "hard"
                   ? "Hard delete"
                   : "Soft delete"}
           </button>
-          {confirming && (
+          {confirm.armed && (
             <button
               type="button"
-              onClick={() => setConfirming(false)}
+              onClick={() => confirm.cancel()}
               className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
             >
               Cancel

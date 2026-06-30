@@ -10,6 +10,7 @@ import {
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
@@ -31,7 +32,6 @@ function TrustUserRow({
   const [reason, setReason] = useState(user.trust_reason ?? "");
   const [showReasonForm, setShowReasonForm] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"soft" | "hard" | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
   const grantMutation = useMutation(
     () =>
@@ -70,7 +70,7 @@ function TrustUserRow({
       onSuccess: (response) => {
         onDeleted(user.id, response);
         setDeleteMode(null);
-        setConfirming(false);
+        confirmDelete.cancel();
       },
     }
   );
@@ -107,9 +107,11 @@ function TrustUserRow({
     void deleteMutation.run(deleteMode === "hard");
   };
 
+  const confirmDelete = useConfirmAction(() => submitDelete());
+
   const cancelDelete = () => {
     setDeleteMode(null);
-    setConfirming(false);
+    confirmDelete.cancel();
     grantMutation.reset();
     revokeMutation.reset();
     deleteMutation.reset();
@@ -162,7 +164,7 @@ function TrustUserRow({
                 type="button"
                 onClick={() => {
                   setDeleteMode("soft");
-                  setConfirming(false);
+                  confirmDelete.cancel();
                 }}
                 className="px-2 py-1 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 whitespace-nowrap"
               >
@@ -172,7 +174,7 @@ function TrustUserRow({
                 type="button"
                 onClick={() => {
                   setDeleteMode("hard");
-                  setConfirming(false);
+                  confirmDelete.cancel();
                 }}
                 className="px-2 py-1 rounded-md text-xs text-red-400 hover:bg-red-500/10 whitespace-nowrap"
               >
@@ -235,25 +237,19 @@ function TrustUserRow({
               <strong>Hard delete is irreversible.</strong> Drops @
               {user.username}, every geolocation they authored, their
               media, and S3 objects.{" "}
-              {!confirming && "Click “Confirm” to proceed."}
+              {!confirmDelete.armed && "Click “Confirm” to proceed."}
             </p>
           ) : (
             <p>
               Soft-deleting will hide @{user.username} from public reads and
               cascade-hide every geolocation they authored.{" "}
-              {!confirming && "Click “Confirm” to proceed."}
+              {!confirmDelete.armed && "Click “Confirm” to proceed."}
             </p>
           )}
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => {
-                if (!confirming) {
-                  setConfirming(true);
-                  return;
-                }
-                submitDelete();
-              }}
+              onClick={confirmDelete.trigger}
               disabled={deleting}
               className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${
                 deleteMode === "hard"
@@ -263,7 +259,7 @@ function TrustUserRow({
             >
               {deleting
                 ? "Deleting…"
-                : confirming
+                : confirmDelete.armed
                   ? "Confirm"
                   : deleteMode === "hard"
                     ? "Hard delete"

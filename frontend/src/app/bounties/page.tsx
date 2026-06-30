@@ -2,24 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Clock, User, Users } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
-import { formatDate, safeHostname } from "@/lib/format";
 import type { BountyListItem, BountyStatus } from "@/types";
-import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import { BountyCard } from "@/components/bounty/BountyCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { MediaThumb } from "@/components/ui/MediaThumb";
-import { TagBadge } from "@/components/ui/TagBadge";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import {
   FILTER_CHIP_ACTIVE,
   FILTER_CHIP_INACTIVE,
   PRIMARY_BUTTON,
-  TAPPABLE_HOVER,
   TEXT_LINK,
 } from "@/components/ui/styles";
 
@@ -121,86 +116,24 @@ export default function BountiesPage() {
             </div>
             <div className="space-y-3">
               {bounties.map((b) => (
-                <BountyCard key={b.id} bounty={b} />
+                <BountyCard
+                  key={b.id}
+                  id={b.id}
+                  title={b.title}
+                  authorUsername={b.author.username}
+                  sourceUrl={b.source_url}
+                  isDemo={b.is_demo}
+                  status={b.status}
+                  claimerCount={b.claimer_count}
+                  claimerSample={b.claimer_sample}
+                  createdAt={b.created_at}
+                  tags={b.tags}
+                  hero={b.media[0]}
+                />
               ))}
             </div>
           </>
         )}
     </PageShell>
-  );
-}
-
-function BountyCard({ bounty }: { bounty: BountyListItem }) {
-  const hero = bounty.media[0];
-  const sourceHost = safeHostname(bounty.source_url);
-
-  return (
-    <Link
-      href={`/bounties/${bounty.id}`}
-      className={`flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <MediaThumb media={hero} />
-      {/* Status + "N working" sit beside the whole text column, not in
-          the title row: in the title row, short titles would leave a
-          visible gap between title and meta. */}
-      <div className="flex-1 min-w-0 flex items-start gap-2">
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-            {bounty.title}
-          </h3>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-            <span className="inline-flex items-center gap-1">
-              <User size={11} />@{bounty.author.username}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Clock size={11} />
-              {formatDate(bounty.created_at)}
-            </span>
-            {/* Demo bounties carry a sentinel source_url that doesn't
-                resolve — show "synthetic" instead of an out-link that 404s.
-                Mirrors the geolocation detail page. */}
-            {bounty.is_demo ? (
-              <span className="italic text-neutral-500">synthetic</span>
-            ) : (
-              sourceHost && (
-                <span className="inline-flex items-center gap-1">
-                  {sourceHost}
-                  <ExternalLink size={11} />
-                </span>
-              )
-            )}
-          </div>
-          {bounty.tags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              {bounty.tags.map((t) => (
-                <TagBadge key={t.id} name={t.name} />
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <BountyStatusBadge status={bounty.status} />
-          {bounty.claimer_count > 0 && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] text-neutral-400"
-              title={
-                bounty.claimer_sample.length > 0
-                  ? `Working on this: ${bounty.claimer_sample
-                      .map((u) => `@${u.username}`)
-                      .join(", ")}${
-                      bounty.claimer_count > bounty.claimer_sample.length
-                        ? ` (+${bounty.claimer_count - bounty.claimer_sample.length} more)`
-                        : ""
-                    }`
-                  : undefined
-              }
-            >
-              <Users size={10} />
-              {bounty.claimer_count} working
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
   );
 }

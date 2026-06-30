@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Check, Film, MapPin, Pencil, X } from "lucide-react";
@@ -10,6 +9,7 @@ import SourceLabel from "@/components/ui/SourceLabel";
 import { FORM_ERROR_BANNER_BOXED } from "@/components/ui/form-styles";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { TagBadge } from "@/components/ui/TagBadge";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import { rejectGeolocation, sourceIsSynthetic, submitReadiness } from "@/lib/geolocations";
@@ -31,12 +31,12 @@ export default function DetectionCard({
   onActed: () => void;
 }) {
   const readiness = submitReadiness(geo);
-  const [confirmingReject, setConfirmingReject] = useState(false);
 
   const rejectMut = useMutation(() => rejectGeolocation(geo.id), {
     fallback: "Couldn't delete this geolocation.",
     onSuccess: onActed,
   });
+  const confirmReject = useConfirmAction(() => rejectMut.run());
 
   const busy = rejectMut.loading;
   const actionError = rejectMut.error;
@@ -140,11 +140,11 @@ export default function DetectionCard({
             </Link>
 
             {/* Two-click confirm so a stray click can't soft-delete a detection. */}
-            {confirmingReject ? (
+            {confirmReject.armed ? (
               <span className="inline-flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => rejectMut.run()}
+                  onClick={confirmReject.trigger}
                   disabled={busy}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 disabled:opacity-40 transition-colors"
                 >
@@ -153,7 +153,7 @@ export default function DetectionCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmingReject(false)}
+                  onClick={confirmReject.cancel}
                   disabled={busy}
                   className="px-2 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
                   aria-label="Cancel delete"
@@ -164,7 +164,7 @@ export default function DetectionCard({
             ) : (
               <button
                 type="button"
-                onClick={() => setConfirmingReject(true)}
+                onClick={confirmReject.trigger}
                 disabled={busy}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
               >

@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
@@ -41,7 +42,6 @@ export function SeedWipePanel<S, W>({
   renderWipeSummary,
 }: SeedWipePanelProps<S, W>) {
   const [count, setCount] = useState(defaultCount);
-  const [confirmWipe, setConfirmWipe] = useState(false);
   const [lastSeed, setLastSeed] = useState<S | null>(null);
   const [lastWipe, setLastWipe] = useState<W | null>(null);
 
@@ -54,6 +54,14 @@ export function SeedWipePanel<S, W>({
     onSuccess: setLastWipe,
   });
 
+  const confirmWipe = useConfirmAction(
+    () => {
+      seedMutation.reset();
+      void wipeMutation.run();
+    },
+    { timeoutMs: 3000 }
+  );
+
   const seeding = seedMutation.loading;
   const wiping = wipeMutation.loading;
   // One shared error slot, cleared whenever the other action fires (mirrors
@@ -63,17 +71,6 @@ export function SeedWipePanel<S, W>({
   const onSeed = () => {
     wipeMutation.reset();
     void seedMutation.run(count);
-  };
-
-  const onWipe = () => {
-    if (!confirmWipe) {
-      setConfirmWipe(true);
-      window.setTimeout(() => setConfirmWipe(false), 3000);
-      return;
-    }
-    setConfirmWipe(false);
-    seedMutation.reset();
-    void wipeMutation.run();
   };
 
   return (
@@ -112,17 +109,17 @@ export function SeedWipePanel<S, W>({
           </button>
           <button
             type="button"
-            onClick={onWipe}
+            onClick={confirmWipe.trigger}
             disabled={wiping}
             className={`px-3 py-1.5 rounded-md text-sm border transition-colors disabled:opacity-50 ${
-              confirmWipe
+              confirmWipe.armed
                 ? "border-red-500 bg-red-500/30 text-red-200"
                 : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
             }`}
           >
             {wiping
               ? "Wiping…"
-              : confirmWipe
+              : confirmWipe.armed
                 ? "Click again to confirm"
                 : wipeLabel}
           </button>

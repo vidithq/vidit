@@ -8,17 +8,14 @@ import {
   MapPin,
   Search as SearchIcon,
   User as UserIcon,
-  Users,
 } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import StatusBadge from "@/components/geolocation/StatusBadge";
-import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import { BountyCard } from "@/components/bounty/BountyCard";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { formatDate } from "@/lib/format";
-import SourceLabel from "@/components/ui/SourceLabel";
 import { Avatar } from "@/components/ui/Avatar";
-import { MediaThumb } from "@/components/ui/MediaThumb";
 import { TagBadge } from "@/components/ui/TagBadge";
 import type {
   SearchBountyHit,
@@ -241,7 +238,17 @@ function SearchPageBody() {
             {showGroup("bounty") && results.bounties.length > 0 && (
               <ResultGroup title="Bounties" count={results.total.bounties}>
                 {results.bounties.map((b) => (
-                  <BountyResult key={b.id} hit={b} />
+                  <BountyCard
+                    key={b.id}
+                    id={b.id}
+                    title={<Highlighted value={b.title_highlight} />}
+                    authorUsername={b.author.username}
+                    sourceUrl={b.source_url}
+                    isDemo={b.is_demo}
+                    status={b.status}
+                    claimerCount={b.claimer_count}
+                    hero={b.media[0]}
+                  />
                 ))}
               </ResultGroup>
             )}
@@ -340,42 +347,6 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
             ))}
           </div>
         )}
-      </div>
-    </Link>
-  );
-}
-
-function BountyResult({ hit }: { hit: SearchBountyHit }) {
-  const hero = hit.media[0];
-  return (
-    <Link
-      href={`/bounties/${hit.id}`}
-      className={`flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <MediaThumb media={hero} />
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-            <Highlighted value={hit.title_highlight} />
-          </h3>
-          <BountyStatusBadge status={hit.status} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <span className="inline-flex items-center gap-1">
-            <UserIcon size={11} />@{hit.author.username}
-          </span>
-          <SourceLabel
-            isDemo={hit.is_demo}
-            url={hit.source_url}
-            variant="inline"
-          />
-          {hit.claimer_count > 0 && (
-            <span className="inline-flex items-center gap-1 text-neutral-400">
-              <Users size={11} />
-              {hit.claimer_count} working
-            </span>
-          )}
-        </div>
       </div>
     </Link>
   );
