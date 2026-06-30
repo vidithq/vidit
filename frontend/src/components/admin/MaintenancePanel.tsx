@@ -9,6 +9,7 @@ import {
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { NEUTRAL_BUTTON } from "@/components/ui/styles";
 
 export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
@@ -56,7 +57,7 @@ export function MaintenancePanel() {
             type="button"
             onClick={onReapAuth}
             disabled={running}
-            className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${NEUTRAL_BUTTON}`}
           >
             {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
           </button>
@@ -72,7 +73,7 @@ export function MaintenancePanel() {
             type="button"
             onClick={onReapOrphans}
             disabled={running}
-            className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${NEUTRAL_BUTTON}`}
           >
             {reapOrphans.loading
               ? "Reaping…"

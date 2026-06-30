@@ -12,7 +12,15 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { DANGER_BUTTON, MUTED_LINK, PRIMARY_BUTTON } from "@/components/ui/styles";
+import {
+  DANGER_BUTTON,
+  GHOST_BUTTON_ACCENT,
+  GHOST_BUTTON_DANGER,
+  GHOST_BUTTON_NEUTRAL,
+  MUTED_LINK,
+  NEUTRAL_BUTTON,
+  PRIMARY_BUTTON,
+} from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DeleteReceipt } from "@/components/ui/DeleteReceipt";
 import {
@@ -147,7 +155,7 @@ function TrustUserRow({
               type="button"
               disabled={granting}
               onClick={submitRevoke}
-              className="px-2 py-1 rounded-md text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 whitespace-nowrap"
+              className={`px-2 py-1 rounded-md text-xs disabled:opacity-50 whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
             >
               Revoke trust
             </button>
@@ -155,7 +163,7 @@ function TrustUserRow({
             <button
               type="button"
               onClick={() => setShowReasonForm(true)}
-              className="px-2 py-1 rounded-md text-xs text-orange-400 hover:bg-orange-500/10 whitespace-nowrap"
+              className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_ACCENT}`}
             >
               Grant trust
             </button>
@@ -168,7 +176,7 @@ function TrustUserRow({
                   setDeleteMode("soft");
                   confirmDelete.cancel();
                 }}
-                className="px-2 py-1 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 whitespace-nowrap"
+                className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_NEUTRAL}`}
               >
                 Soft delete
               </button>
@@ -178,7 +186,7 @@ function TrustUserRow({
                   setDeleteMode("hard");
                   confirmDelete.cancel();
                 }}
-                className="px-2 py-1 rounded-md text-xs text-red-400 hover:bg-red-500/10 whitespace-nowrap"
+                className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
               >
                 Hard delete
               </button>
@@ -354,7 +362,7 @@ export function TrustPanel() {
         <button
           type="submit"
           disabled={searching || !query.trim()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 disabled:opacity-50 rounded-md text-xs text-neutral-200"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 disabled:opacity-50 rounded-md text-xs ${NEUTRAL_BUTTON}`}
         >
           <Search size={12} />
           {searching ? "Searching…" : "Search"}

@@ -6,7 +6,7 @@ import type { PublicProfile } from "@/lib/users";
 import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui/styles";
+import { NEUTRAL_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_LABEL,
@@ -68,7 +68,7 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
                   type="button"
                   onClick={edit.cancelEditing}
                   disabled={edit.saving}
-                  className="px-3 py-1.5 rounded-md text-xs text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 disabled:opacity-50"
+                  className={`px-3 py-1.5 rounded-md text-xs disabled:opacity-50 ${NEUTRAL_BUTTON}`}
                 >
                   Cancel
                 </button>

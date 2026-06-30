@@ -12,7 +12,7 @@ import {
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { GHOST_BUTTON_DANGER, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
@@ -111,7 +111,7 @@ function InviteCodeRow({
                 setRevoking(false);
               }
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 whitespace-nowrap"
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs disabled:opacity-50 whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
           >
             <Trash2 size={12} />
             Revoke

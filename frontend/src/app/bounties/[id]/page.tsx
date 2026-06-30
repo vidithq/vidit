@@ -16,6 +16,7 @@ import {
 import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import SourceLabel from "@/components/ui/SourceLabel";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ProofSection } from "@/components/ui/ProofSection";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
@@ -257,16 +258,11 @@ export default function BountyDetailPage() {
         </div>
 
         {bounty.proof && (
-          <div>
-            {/* A bounty's Proof is its in-progress `proof` doc, mirroring the
-                geolocation detail's Proof section. */}
-            <SectionEyebrow title="Proof" concept="section_proof" />
-            <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
-              <div className="text-sm text-neutral-300 leading-relaxed">
-                {renderProof(bounty.proof)}
-              </div>
+          <ProofSection>
+            <div className="text-sm text-neutral-300 leading-relaxed">
+              {renderProof(bounty.proof)}
             </div>
-          </div>
+          </ProofSection>
         )}
 
         {/* Actions at the bottom, after the user has read the bounty.

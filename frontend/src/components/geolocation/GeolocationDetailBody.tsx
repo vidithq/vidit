@@ -14,6 +14,7 @@ import StatusBadge from "@/components/geolocation/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ProofSection } from "@/components/ui/ProofSection";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
@@ -294,12 +295,5 @@ function ProofBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       </div>
     );
   }
-  return (
-    <div>
-      <SectionEyebrow title="Proof" concept="section_proof" />
-      <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
-        {body}
-      </div>
-    </div>
-  );
+  return <ProofSection>{body}</ProofSection>;
 }

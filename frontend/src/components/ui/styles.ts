@@ -26,6 +26,24 @@ export const SECONDARY_BUTTON =
 export const DANGER_BUTTON =
   "bg-red-500 hover:bg-red-400 text-white transition-colors";
 
+// Ghost button — borderless text action that fills a faint tint on hover (no
+// border, no rest fill). The quiet, unarmed entry points for row-level actions
+// (admin grant / revoke / soft-delete) where PRIMARY/SECONDARY/DANGER would be
+// too loud. One tone per intent; colour only, shape at the call site.
+export const GHOST_BUTTON_ACCENT =
+  "text-orange-400 hover:bg-orange-500/10 transition-colors";
+export const GHOST_BUTTON_DANGER =
+  "text-red-300 hover:bg-red-500/10 transition-colors";
+export const GHOST_BUTTON_NEUTRAL =
+  "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors";
+
+// Neutral secondary button — bordered, filled at rest, for non-accent actions
+// that still need button weight (Cancel in an edit cluster, a search submit, the
+// "Following" toggle state, admin reaper buttons). Colour only; shape at the
+// call site.
+export const NEUTRAL_BUTTON =
+  "bg-neutral-800 border border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 transition-colors";
+
 // Filter / tag chip in its selected state — tinted orange.
 // Pair with `FILTER_CHIP_INACTIVE` via a ternary.
 export const FILTER_CHIP_ACTIVE = "bg-orange-500/15 text-orange-400";
