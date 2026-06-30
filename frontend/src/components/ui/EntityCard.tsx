@@ -121,6 +121,7 @@ export function EntityCard({
     return (
       <article className={`${SHELL} flex-col gap-3 ${TAPPABLE_HOVER}`}>
         {stretched}
+        {badge && <div className="absolute top-3 right-3 z-20">{badge}</div>}
         <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
           <Link href={`/profile/${author.username}`}>
             <Avatar username={author.username} size="size-7" />
@@ -147,12 +148,13 @@ export function EntityCard({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-          {badge}
-          {tags?.map((t) => (
-            <TagBadge key={t.id} name={t.name} />
-          ))}
-        </div>
+        {tags && tags.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+            {tags.map((t) => (
+              <TagBadge key={t.id} name={t.name} />
+            ))}
+          </div>
+        )}
       </article>
     );
   }

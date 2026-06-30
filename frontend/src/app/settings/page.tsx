@@ -7,6 +7,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_COMPACT,
@@ -74,7 +75,7 @@ export default function SettingsPage() {
     <PageShell title="Settings">
 
         <Card spacing="3">
-          <h2 className="text-sm font-medium text-neutral-300">Account</h2>
+          <SectionEyebrow title="Account" margin="none" />
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className={FORM_LABEL}>Username</span>
@@ -89,7 +90,7 @@ export default function SettingsPage() {
 
         <Card spacing="3">
           <div className="space-y-1">
-            <h2 className="text-sm font-medium text-neutral-300">Display</h2>
+            <SectionEyebrow title="Display" margin="none" />
             <p className="text-xs text-neutral-500">
               Preferences stored in this browser.
             </p>
@@ -153,7 +154,7 @@ export default function SettingsPage() {
 
         <Card spacing="4">
           <div className="space-y-1">
-            <h2 className="text-sm font-medium text-neutral-300">Change password</h2>
+            <SectionEyebrow title="Change password" margin="none" />
             <p className="text-xs text-neutral-500">
               Update the password used to sign in to Vidit.
             </p>
