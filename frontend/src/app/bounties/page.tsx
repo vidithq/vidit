@@ -12,12 +12,8 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-import {
-  FILTER_CHIP_ACTIVE,
-  FILTER_CHIP_INACTIVE,
-  PRIMARY_BUTTON,
-  TEXT_LINK,
-} from "@/components/ui/styles";
+import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { FilterChip } from "@/components/ui/FilterChip";
 
 // Default filter "open": status pills no longer render on cards, so a
 // non-"open" default would hide which entries are still actionable.
@@ -59,16 +55,13 @@ export default function BountiesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             {STATUS_FILTERS.map((opt) => (
-              <button
+              <FilterChip
                 key={opt.value}
-                type="button"
+                active={statusFilter === opt.value}
                 onClick={() => setStatusFilter(opt.value)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                  statusFilter === opt.value ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-                }`}
               >
                 {opt.label}
-              </button>
+              </FilterChip>
             ))}
           </div>
           <Link

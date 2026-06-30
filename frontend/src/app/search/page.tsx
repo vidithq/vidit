@@ -21,12 +21,8 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-import {
-  FILTER_CHIP_ACTIVE,
-  FILTER_CHIP_INACTIVE,
-  TAPPABLE_HOVER,
-  TEXT_LINK,
-} from "@/components/ui/styles";
+import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { FilterChip } from "@/components/ui/FilterChip";
 
 const TYPE_FILTERS: { value: SearchType; label: string }[] = [
   { value: "all", label: "All" },
@@ -154,16 +150,13 @@ function SearchPageBody() {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {TYPE_FILTERS.map((opt) => (
-            <button
+            <FilterChip
               key={opt.value}
-              type="button"
+              active={typeFilter === opt.value}
               onClick={() => onChipClick(opt.value)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                typeFilter === opt.value ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-              }`}
             >
               {opt.label}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
