@@ -6,7 +6,7 @@ import type { PublicProfile } from "@/lib/users";
 import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER_BOXED,
   FORM_INPUT_COMPACT,
@@ -85,7 +85,7 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
               <button
                 type="button"
                 onClick={edit.startEditing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs ${SECONDARY_BUTTON}`}
               >
                 <Pencil size={12} />
                 Edit profile

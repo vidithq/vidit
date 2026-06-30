@@ -12,6 +12,20 @@ export const PRIMARY_BUTTON =
   "hover:bg-orange-500/20 hover:border-orange-500/60 hover:text-orange-300 " +
   "transition-colors";
 
+// Secondary action — outlined accent button. Transparent at rest with an orange
+// border + label, fills softly on hover. Quieter than PRIMARY_BUTTON (filled at
+// rest): "Edit profile", non-destructive alternate actions. Colour only; shape
+// at the call site.
+export const SECONDARY_BUTTON =
+  "text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors";
+
+// Destructive action — filled red. The one "this erases data" button (admin
+// hard delete). Stays loud (filled, white text) precisely because it's
+// irreversible; quieter armed-confirm steps keep their outlined red at the call
+// site. Colour only; shape at the call site.
+export const DANGER_BUTTON =
+  "bg-red-500 hover:bg-red-400 text-white transition-colors";
+
 // Filter / tag chip in its selected state — tinted orange.
 // Pair with `FILTER_CHIP_INACTIVE` via a ternary.
 export const FILTER_CHIP_ACTIVE = "bg-orange-500/15 text-orange-400";

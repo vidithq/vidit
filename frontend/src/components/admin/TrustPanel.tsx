@@ -12,7 +12,7 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { DANGER_BUTTON, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER_BOXED,
@@ -254,7 +254,7 @@ function TrustUserRow({
               disabled={deleting}
               className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${
                 deleteMode === "hard"
-                  ? "bg-red-500 hover:bg-red-400 text-white transition-colors"
+                  ? DANGER_BUTTON
                   : PRIMARY_BUTTON
               }`}
             >
