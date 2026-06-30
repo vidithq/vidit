@@ -15,7 +15,7 @@ import {
 } from "@/lib/bounties";
 import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import SourceLabel from "@/components/ui/SourceLabel";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
@@ -146,10 +146,7 @@ export default function BountyDetailPage() {
       }
     >
         <div>
-          <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-            Media
-            <FieldHelp concept="source_media" />
-          </h2>
+          <SectionEyebrow title="Media" concept="source_media" />
           {bounty.media.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {bounty.media.map((m) => (
@@ -189,9 +186,7 @@ export default function BountyDetailPage() {
         </div>
 
         <div>
-          <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
-            Details
-          </h2>
+          <SectionEyebrow title="Details" />
           <DetailCard>
             <DetailRow label="Status" concept="bounty_status" align="center">
               <BountyStatusBadge status={bounty.status} />
@@ -268,10 +263,7 @@ export default function BountyDetailPage() {
           <div>
             {/* A bounty's Proof is its in-progress `proof` doc, mirroring the
                 geolocation detail's Proof section. */}
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-              Proof
-              <FieldHelp concept="section_proof" />
-            </h2>
+            <SectionEyebrow title="Proof" concept="section_proof" />
             <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
               <div className="text-sm text-neutral-300 leading-relaxed">
                 {renderProof(bounty.proof)}

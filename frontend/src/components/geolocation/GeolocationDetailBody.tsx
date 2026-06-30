@@ -11,15 +11,11 @@ import { sourceIsSynthetic } from "@/lib/geolocations";
 import { renderProof } from "@/lib/proof";
 import SourceLabel from "@/components/ui/SourceLabel";
 import StatusBadge from "@/components/geolocation/StatusBadge";
-import FieldHelp from "@/components/ui/FieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
+import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TAG_CHIP, TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
-
-// Compact (map side-panel) section eyebrow — same role as the page variant's
-// `h2`, denser and without the page's `mb-3` (the panel's `space-y` owns rhythm).
-const COMPACT_HEADING =
-  "text-xs text-neutral-500 uppercase tracking-wider inline-flex items-center gap-1.5";
 
 interface GeolocationDetailBodyProps {
   geo: GeolocationDetail;
@@ -101,20 +97,19 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   if (compact) {
     return (
       <div className="space-y-2">
-        <h3 className={COMPACT_HEADING}>
-          Source media
-          <FieldHelp concept="source_media" />
-        </h3>
+        <SectionEyebrow
+          as="h3"
+          margin="none"
+          title="Source media"
+          concept="source_media"
+        />
         {geo.media.length > 0 ? items : empty}
       </div>
     );
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-        Source media
-        <FieldHelp concept="source_media" />
-      </h2>
+      <SectionEyebrow title="Source media" concept="source_media" />
       {geo.media.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
       ) : (
@@ -125,25 +120,16 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
 }
 
 function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean }) {
-  const row = compact ? "flex justify-between" : "flex justify-between px-4 py-3";
-  const rowStart = compact
-    ? "flex justify-between items-start"
-    : "flex justify-between items-start px-4 py-3";
-  const label = compact ? "text-neutral-500" : "text-sm text-neutral-500";
-  const value = compact ? "text-neutral-200" : "text-sm text-neutral-200";
-
   // Curated tags (conflict, capture source) get their own labelled rows so
   // they read as structured facts, not free-form chips lost in one row.
   const conflictTags = geo.tags.filter((t) => t.category === "conflict");
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
+  const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
+  const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: GeolocationDetail["tags"], concept?: Concept) =>
     tags.length > 0 ? (
-      <div className={rowStart}>
-        <span className={concept ? `${label} inline-flex items-center gap-1` : label}>
-          {name}
-          {concept && <FieldHelp concept={concept} />}
-        </span>
+      <DetailRow label={name} concept={concept} compact={compact} align="start">
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
           {tags.map((tag) => (
             <span
@@ -156,57 +142,46 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             </span>
           ))}
         </div>
-      </div>
+      </DetailRow>
     ) : null;
 
   const rows = (
     <>
-      <div className={row}>
-        <span className={`${label} inline-flex items-center gap-1`}>
-          Status <FieldHelp concept="status" />
-        </span>
+      <DetailRow label="Status" concept="status" compact={compact}>
         <StatusBadge status={geo.status} />
-      </div>
-      <div className={row}>
-        <span className={`${label} inline-flex items-center gap-1`}>
-          Event date <FieldHelp concept="event_date" />
-        </span>
-        <span className={value}>{formatEventDate(geo.event_date, geo.event_time)}</span>
-      </div>
-      <div className={row}>
-        <span className={`${label} inline-flex items-center gap-1`}>
-          Source posted{" "}
-          <FieldHelp concept="source_posted_at" />
-        </span>
-        <span className={value}>{formatInstant(geo.source_posted_at)}</span>
-      </div>
+      </DetailRow>
+      <DetailRow
+        label="Event date"
+        concept="event_date"
+        compact={compact}
+        value={formatEventDate(geo.event_date, geo.event_time)}
+      />
+      <DetailRow
+        label="Source posted"
+        concept="source_posted_at"
+        compact={compact}
+        value={formatInstant(geo.source_posted_at)}
+      />
       {/* The three dates read as one block: event → source → submitted. */}
-      <div className={row}>
-        <span className={`${label} inline-flex items-center gap-1`}>
-          Added <FieldHelp concept="added" />
-        </span>
-        <span className={value}>{formatDate(geo.created_at)}</span>
-      </div>
-      <div className={row}>
-        <span className={`${label} inline-flex items-center gap-1`}>
-          Source <FieldHelp concept="source_url" />
-        </span>
+      <DetailRow
+        label="Added"
+        concept="added"
+        compact={compact}
+        value={formatDate(geo.created_at)}
+      />
+      <DetailRow label="Source" concept="source_url" compact={compact}>
         <SourceLabel
           isDemo={sourceIsSynthetic(geo)}
           url={geo.source_url}
           variant="link"
-          maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
-          className={compact ? "ml-4" : "text-sm ml-4"}
+          maxWidthClass={sourceMaxWidth}
+          className={sourceClass}
         />
-      </div>
+      </DetailRow>
       {/* The post a detection was imported from, distinct from Source (the
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
-        <div className={row}>
-          <span className={`${label} inline-flex items-center gap-1`}>
-            Detected from{" "}
-            <FieldHelp concept="detected_from" />
-          </span>
+        <DetailRow label="Detected from" concept="detected_from" compact={compact}>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
               host, so the two provenance rows read alike rather than one
               host-reduced, one truncated-full. A detected row's provenance link
@@ -215,10 +190,10 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             isDemo={sourceIsSynthetic(geo)}
             url={geo.detected_from_url}
             variant="link"
-            maxWidthClass={compact ? "max-w-[200px]" : "max-w-[300px]"}
-            className={compact ? "ml-4" : "text-sm ml-4"}
+            maxWidthClass={sourceMaxWidth}
+            className={sourceClass}
           />
-        </div>
+        </DetailRow>
       )}
       {tagRow("Conflict", conflictTags, "conflict")}
       {tagRow("Capture source", captureTags, "capture_source")}
@@ -226,19 +201,17 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       {/* Compact panel omits bounty-trace + author rows: the author is in
           the panel header, the trace belongs to the full page. */}
       {!compact && geo.originated_from_bounty && (
-        <div className={row}>
-          <span className={label}>Bounty</span>
+        <DetailRow label="Bounty" compact={compact}>
           <Link
             href={`/bounties/${geo.originated_from_bounty.id}`}
             className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
           >
             {geo.originated_from_bounty.title}
           </Link>
-        </div>
+        </DetailRow>
       )}
       {!compact && (
-        <div className={row}>
-          <span className={label}>Author</span>
+        <DetailRow label="Author" compact={compact}>
           <span className="text-sm inline-flex items-center gap-1.5">
             <Link
               href={`/profile/${geo.author.username}`}
@@ -252,7 +225,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
               size={14}
             />
           </span>
-        </div>
+        </DetailRow>
       )}
     </>
   );
@@ -264,24 +237,30 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
     return (
       <>
         <div className="space-y-2">
-          <h3 className={COMPACT_HEADING}>
-            Location
-            <FieldHelp concept="section_location" />
-          </h3>
-          <div className={`${row} text-sm`}>
-            <span className={`${label} inline-flex items-center gap-1`}>
-              Coordinates <FieldHelp concept="coordinates" />
-            </span>
-            <span className={`${value} font-mono text-xs`}>
+          <SectionEyebrow
+            as="h3"
+            margin="none"
+            title="Location"
+            concept="section_location"
+          />
+          <DetailRow
+            label="Coordinates"
+            concept="coordinates"
+            compact
+            className="text-sm"
+          >
+            <span className="text-neutral-200 font-mono text-xs">
               {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
             </span>
-          </div>
+          </DetailRow>
         </div>
         <div className="space-y-2">
-          <h3 className={COMPACT_HEADING}>
-            Details
-            <FieldHelp concept="section_details" />
-          </h3>
+          <SectionEyebrow
+            as="h3"
+            margin="none"
+            title="Details"
+            concept="section_details"
+          />
           <div className="space-y-2 text-sm">{rows}</div>
         </div>
       </>
@@ -289,13 +268,8 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-        Details
-        <FieldHelp concept="section_details" />
-      </h2>
-      <div className="bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800">
-        {rows}
-      </div>
+      <SectionEyebrow title="Details" concept="section_details" />
+      <DetailCard>{rows}</DetailCard>
     </div>
   );
 }
@@ -312,20 +286,19 @@ function ProofBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
   if (compact) {
     return (
       <div className="pt-2 border-t border-neutral-800">
-        <h3 className="text-xs text-neutral-500 uppercase tracking-wider mb-1.5 inline-flex items-center gap-1.5">
-          Proof
-          <FieldHelp concept="section_proof" />
-        </h3>
+        <SectionEyebrow
+          as="h3"
+          margin="sm"
+          title="Proof"
+          concept="section_proof"
+        />
         {body}
       </div>
     );
   }
   return (
     <div>
-      <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-        Proof
-        <FieldHelp concept="section_proof" />
-      </h2>
+      <SectionEyebrow title="Proof" concept="section_proof" />
       <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-700">
         {body}
       </div>

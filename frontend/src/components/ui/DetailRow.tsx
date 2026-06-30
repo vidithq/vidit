@@ -33,6 +33,7 @@ export function DetailRow({
   children,
   compact = false,
   align = "stretch",
+  className = "",
 }: {
   label: ReactNode;
   concept?: Concept;
@@ -40,12 +41,15 @@ export function DetailRow({
   children?: ReactNode;
   compact?: boolean;
   align?: "stretch" | "center" | "start";
+  className?: string;
 }) {
   const alignClass =
     align === "center" ? "items-center " : align === "start" ? "items-start " : "";
   const rowClass = `flex justify-between ${alignClass}${
     compact ? "" : "px-4 py-3"
-  }`.trim();
+  } ${className}`
+    .replace(/\s+/g, " ")
+    .trim();
   return (
     <div className={rowClass}>
       <span

@@ -8,6 +8,7 @@ import FieldHelp from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 
 interface TagPickerProps {
   /** Live tags (referenced by ≥1 geolocation) — source of the free-tag chips
@@ -75,12 +76,7 @@ export function TagPicker({
 
   return (
     <Card as="section" spacing="4">
-      <header className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Tags
-          <FieldHelp concept="section_tags" />
-        </h2>
-      </header>
+      <SectionHeading title="Tags" concept="section_tags" />
 
       {conflictTags.length > 0 && (
         <div className="space-y-2">

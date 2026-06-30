@@ -9,6 +9,7 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import FieldHelp from "@/components/ui/FieldHelp";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { PageCenter, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 
@@ -62,10 +63,7 @@ export default function GeolocationPage() {
     >
         <GeolocationDetailBody geo={geo} variant="page">
           <div>
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-              Location
-              <FieldHelp concept="section_location" />
-            </h2>
+            <SectionEyebrow title="Location" concept="section_location" />
             {/* Map + coordinates are one module: the coords read as a Details-
                 style row fused to the bottom of the map (shared border, no gap),
                 mirroring the submit form's Location section. `overflow-hidden`
