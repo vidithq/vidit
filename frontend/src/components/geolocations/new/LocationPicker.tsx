@@ -31,7 +31,7 @@ export function LocationPicker({
   invalid = false,
 }: LocationPickerProps) {
   return (
-    <Card as="section" spacing="4">
+    <Card as="section">
       <SectionHeading title="Location" concept="section_location" />
 
       <CoordinateInputs

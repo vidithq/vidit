@@ -36,7 +36,7 @@ export function RecentSubmissions({
   isOwn: boolean;
 }) {
   return (
-    <Card spacing="4">
+    <Card>
       <div className="space-y-1">
         <h2 className="text-sm font-medium text-neutral-300">
           Recent submissions

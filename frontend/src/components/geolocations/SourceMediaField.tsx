@@ -38,7 +38,6 @@ export function SourceMediaField({
   return (
     <Card
       as="section"
-      spacing="3"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
       <SectionHeading

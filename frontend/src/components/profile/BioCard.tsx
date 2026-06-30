@@ -16,7 +16,7 @@ export function BioCard({
 }) {
   if (edit.editing) {
     return (
-      <Card spacing="2">
+      <Card>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
           <span
@@ -40,7 +40,7 @@ export function BioCard({
   if (!profile.bio) return null;
 
   return (
-    <Card spacing="2">
+    <Card>
       <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
       <p className="text-sm text-neutral-200 whitespace-pre-line">
         {profile.bio}

@@ -60,7 +60,7 @@ function Item({
   children: React.ReactNode;
 }) {
   return (
-    <Card spacing="3">
+    <Card>
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-medium text-neutral-100 font-mono">{name}</h3>
         <span className="text-[11px] text-neutral-500 text-right">{usage}</span>
@@ -241,19 +241,11 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Structure" />
 
-          <Item name="<Card spacing>" usage="Panneaux: settings, admin, profil, sections de formulaire">
-            <Variant label='spacing="2"'>
-              <Card spacing="2" className="w-48">
-                <p className="text-xs text-neutral-300">Contenu</p>
-                <p className="text-xs text-neutral-500">Plus dense</p>
-              </Card>
-            </Variant>
-            <Variant label='spacing="4"'>
-              <Card spacing="4" className="w-48">
-                <p className="text-xs text-neutral-300">Contenu</p>
-                <p className="text-xs text-neutral-500">Plus aéré</p>
-              </Card>
-            </Variant>
+          <Item name="<Card>" usage="Panneaux: settings, admin, profil, sections de formulaire. Un seul rythme (space-y-4) pour toutes.">
+            <Card className="w-48">
+              <p className="text-xs text-neutral-300">Contenu</p>
+              <p className="text-xs text-neutral-500">Deuxième ligne</p>
+            </Card>
           </Item>
 
           <Item name="<SectionHeading>" usage="En-tête de section de formulaire (Details, Location, Tags...)">

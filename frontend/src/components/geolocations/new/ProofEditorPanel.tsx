@@ -42,7 +42,6 @@ export function ProofEditorPanel({
   return (
     <Card
       as="section"
-      spacing="4"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
       <SectionHeading title="Proof" concept="section_proof" optional={optional} />

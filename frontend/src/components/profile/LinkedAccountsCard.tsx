@@ -31,7 +31,7 @@ export function LinkedAccountsCard({
 }) {
   if (edit.editing) {
     return (
-      <Card spacing="3">
+      <Card>
         <h2 className="text-sm font-medium text-neutral-300">
           Linked accounts
         </h2>
@@ -79,7 +79,7 @@ export function LinkedAccountsCard({
   if (presentLinks.length === 0) return null;
 
   return (
-    <Card spacing="3">
+    <Card>
       <h2 className="text-sm font-medium text-neutral-300">
         Linked accounts
       </h2>

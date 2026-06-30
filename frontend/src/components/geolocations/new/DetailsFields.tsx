@@ -66,7 +66,7 @@ export function DetailsFields({
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
   return (
-    <Card as="section" spacing="4">
+    <Card as="section">
       <SectionHeading title="Details" concept="section_details" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

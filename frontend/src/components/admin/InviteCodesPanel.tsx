@@ -171,7 +171,7 @@ export function InviteCodesPanel() {
   };
 
   return (
-    <Card as="section" spacing="5">
+    <Card as="section">
       <header>
         <h2 className="text-sm font-medium text-neutral-100">Invite codes</h2>
         <p className="text-xs text-neutral-500 mt-0.5">

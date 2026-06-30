@@ -75,7 +75,7 @@ export function TagPicker({
   };
 
   return (
-    <Card as="section" spacing="4">
+    <Card as="section">
       <SectionHeading title="Tags" concept="section_tags" />
 
       {conflictTags.length > 0 && (

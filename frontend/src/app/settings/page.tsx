@@ -74,7 +74,7 @@ export default function SettingsPage() {
   return (
     <PageShell title="Settings">
 
-        <Card spacing="3">
+        <Card>
           <SectionEyebrow title="Account" margin="none" />
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        <Card spacing="3">
+        <Card>
           <div className="space-y-1">
             <SectionEyebrow title="Display" margin="none" />
             <p className="text-xs text-neutral-500">
@@ -152,7 +152,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        <Card spacing="4">
+        <Card>
           <div className="space-y-1">
             <SectionEyebrow title="Change password" margin="none" />
             <p className="text-xs text-neutral-500">

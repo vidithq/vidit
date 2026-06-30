@@ -54,7 +54,7 @@ export function GeolocationDeletePanel() {
   };
 
   return (
-    <Card as="section" spacing="4">
+    <Card as="section">
       <header>
         <h2 className="text-sm font-medium text-neutral-100">
           Remove a geolocation
