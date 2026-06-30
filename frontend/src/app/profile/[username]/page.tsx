@@ -6,7 +6,7 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import type { PublicProfile } from "@/lib/users";
-import { SECONDARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import { BioCard } from "@/components/profile/BioCard";
 import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
@@ -124,18 +124,13 @@ export default function ProfilePage() {
             {/* Two-click confirm so an accidental tap doesn't end the
                 session; auto-reverts after 3s. */}
             <div className="pt-4 border-t border-neutral-800 flex justify-center">
-              <button
-                type="button"
+              <Button
+                variant={confirmingSignOut ? "danger" : "secondary"}
                 onClick={handleSignOut}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  confirmingSignOut
-                    ? "bg-red-500/15 text-red-400 border border-red-500/30"
-                    : SECONDARY_BUTTON
-                }`}
               >
                 <LogOut size={14} strokeWidth={1.8} />
                 {confirmingSignOut ? "Confirm sign out" : "Sign out"}
-              </button>
+              </Button>
             </div>
           </>
         )}

@@ -8,7 +8,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -220,13 +220,9 @@ export default function SettingsPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-            >
+            <Button type="submit" variant="primary" disabled={submitting}>
               {submitting ? "Updating..." : "Update password"}
-            </button>
+            </Button>
           </form>
         </Card>
     </PageShell>

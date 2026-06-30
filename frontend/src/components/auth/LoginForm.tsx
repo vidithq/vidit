@@ -6,12 +6,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 
@@ -91,13 +92,14 @@ export default function LoginForm({ onSuccess }: Props) {
           />
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          fullWidth
           type="submit"
           disabled={submitting}
-          className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
         >
           {submitting ? "Signing in..." : "Sign in"}
-        </button>
+        </Button>
       </form>
 
       <p className="text-center text-xs text-neutral-400">

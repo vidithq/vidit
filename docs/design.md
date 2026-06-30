@@ -74,7 +74,7 @@ The rule that governs all of it:
 
 1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. The neutral counterpart for secondary navigation (Cancel, Back, dismiss) is `MUTED_LINK`, see *Other orange shapes*.
 2. **Tappable card / row** (`TAPPABLE_HOVER`): the whole card or row is one click target (GeolocationCard, BountyCard, search rows, profile external links). Neutral at rest; on hover the **border** turns orange and the inner title picks up `group-hover:text-orange-400` (put `group` on the row).
-3. **Primary CTA** (`PRIMARY_BUTTON`): "do this now" buttons (Submit, Post a bounty, Geolocate this, Follow, admin actions, the error-boundary "Try again"). Soft-fill outlined orange, visible at rest, brightens on hover. The constant covers colour **only**; shape (padding, width, `disabled:opacity-50`) stays at the call site.
+3. **Primary CTA** (`<Button variant="primary">`): "do this now" buttons (Submit, Post a bounty, Geolocate this, Follow, admin actions, the error-boundary "Try again"). Soft-fill outlined orange, visible at rest, brightens on hover. Buttons are the [`<Button>`](../frontend/src/components/ui/Button.tsx) primitive, which bundles shape **and** colour at one uniform size; `buttonClasses("primary")` paints a `<Link>` the same for CTAs that navigate.
 4. **Selected / active state** (`FILTER_CHIP_ACTIVE` / `FILTER_CHIP_INACTIVE`): a state indicator on an interactive element (active filter chip, active sidebar nav row, the bounties status filter). Reads as `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE`. Status pills add a thin border so the badge reads as a discrete shape, in three states: `STATUS_PILL_ACTIVE` (open, orange), `STATUS_PILL_FULFILLED` (end-state, neutral **white**, not green: fulfilment isn't a win), `STATUS_PILL_CLOSED` (author-withdrawn, the quietest, neutral grey).
 5. **Decorative tag chip** (`TAG_CHIP`): display-only metadata pills (`bg-neutral-800 text-neutral-400`), rendered as `<span>` not `<button>`. Neutral, so several tags on a card don't compete with the orange CTAs / status pills / links. If a tag is clickable, use bucket ④ instead.
 
@@ -85,7 +85,7 @@ These don't fit the five buckets:
 - **`BETA_PILL`**: the fixed closed-beta corner banner + the gate-page header badge. Same family as the status pill but less saturated (decorative, shouldn't compete with active-state pills). `pointer-events-none` is added at the call site.
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
-- **Destructive actions**: the admin "Hard delete" stays `bg-red-500 text-white`; sibling soft-delete buttons use `PRIMARY_BUTTON`, so "less destructive = quieter."
+- **Destructive actions**: the admin "Hard delete" is `<Button variant="danger">` (`bg-red-500 text-white`); sibling soft-delete buttons use `variant="primary"`, so "less destructive = quieter."
 - **Navigation chrome + secondary links** (`MUTED_LINK`): back arrows, × close buttons, Cancel / Back / dismiss. Neutral grey (`text-neutral-400 hover:text-neutral-200`) that brightens on hover, so structural chrome and secondary nav don't compete with content links.
 
 ### Constants: single source of truth
@@ -94,7 +94,6 @@ All of the above export from [`styles.ts`](../frontend/src/components/ui/styles.
 
 | Export | What |
 |---|---|
-| `PRIMARY_BUTTON` | Soft-fill outlined CTA |
 | `FILTER_CHIP_ACTIVE` | Tinted selected state for toggles |
 | `FILTER_CHIP_INACTIVE` | Neutral partner of `FILTER_CHIP_ACTIVE` |
 | `TAPPABLE_HOVER` | Orange-border-on-hover for tappable cards/rows |
@@ -219,10 +218,15 @@ The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/Aut
 
 ### Buttons
 
-- **Primary CTA:** `PRIMARY_BUTTON` constant, soft-fill outlined orange. See the [Orange palette recipe](#orange-palette-recipe).
-- **Secondary:** `bg-neutral-800 border border-neutral-700 text-neutral-300`, secondary actions.
-- **Ghost:** `text-neutral-500 hover:text-neutral-300`, tertiary actions (close, clear).
-- Compact size: `px-3 py-1.5 text-sm rounded-md`.
+One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **and** colour in a single unit at one uniform size (no size scale, by design). Pick the colour with `variant`:
+
+- `primary`: soft-fill outlined orange, the "do this now" CTA.
+- `secondary`: transparent outlined orange, quieter alternate action.
+- `neutral`: bordered grey, non-accent actions (Cancel, search, Following).
+- `danger`: filled red, the one irreversible action (admin hard delete).
+- `ghost-accent` / `ghost-danger` / `ghost-neutral`: borderless row actions (admin grant / revoke / soft-delete).
+
+`fullWidth` stretches it (auth submits); orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
 
 ### Forms
 

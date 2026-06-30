@@ -1,48 +1,7 @@
-// Centralised orange-palette class strings.
-//
-// Constants cover *only* colour treatment (background, border, text, hover).
-// Shape — padding, font size, width, layout, `disabled:opacity-50` — stays at
-// the call site, since CTAs have legitimately different shapes (full-width
-// auth submits, compact icon buttons in bounty headers, etc.).
-
-// Primary action button — soft-fill outlined orange. Reserved for the
-// "do this thing now" buttons: Submit, Post a bounty, auth submits, etc.
-export const PRIMARY_BUTTON =
-  "bg-orange-500/10 text-orange-400 border border-orange-500/40 " +
-  "hover:bg-orange-500/20 hover:border-orange-500/60 hover:text-orange-300 " +
-  "transition-colors";
-
-// Secondary action — outlined accent button. Transparent at rest with an orange
-// border + label, fills softly on hover. Quieter than PRIMARY_BUTTON (filled at
-// rest): "Edit profile", non-destructive alternate actions. Colour only; shape
-// at the call site.
-export const SECONDARY_BUTTON =
-  "text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors";
-
-// Destructive action — filled red. The one "this erases data" button (admin
-// hard delete). Stays loud (filled, white text) precisely because it's
-// irreversible; quieter armed-confirm steps keep their outlined red at the call
-// site. Colour only; shape at the call site.
-export const DANGER_BUTTON =
-  "bg-red-500 hover:bg-red-400 text-white transition-colors";
-
-// Ghost button — borderless text action that fills a faint tint on hover (no
-// border, no rest fill). The quiet, unarmed entry points for row-level actions
-// (admin grant / revoke / soft-delete) where PRIMARY/SECONDARY/DANGER would be
-// too loud. One tone per intent; colour only, shape at the call site.
-export const GHOST_BUTTON_ACCENT =
-  "text-orange-400 hover:bg-orange-500/10 transition-colors";
-export const GHOST_BUTTON_DANGER =
-  "text-red-300 hover:bg-red-500/10 transition-colors";
-export const GHOST_BUTTON_NEUTRAL =
-  "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors";
-
-// Neutral secondary button — bordered, filled at rest, for non-accent actions
-// that still need button weight (Cancel in an edit cluster, a search submit, the
-// "Following" toggle state, admin reaper buttons). Colour only; shape at the
-// call site.
-export const NEUTRAL_BUTTON =
-  "bg-neutral-800 border border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 transition-colors";
+// Centralised colour-treatment class strings for the chip / pill / link family.
+// Constants cover *only* colour (background, border, text, hover); shape stays
+// at the call site. Buttons are the <Button> primitive (./Button), which bundles
+// shape + colour as variants, so no *_BUTTON colour constants live here.
 
 // Base surface paints shared across the chip / pill family: the bg + text core,
 // with border / hover layered on by each named role below. One home for the

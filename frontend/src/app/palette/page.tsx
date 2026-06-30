@@ -31,13 +31,6 @@ import SourceLabel from "@/components/ui/SourceLabel";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import {
-  PRIMARY_BUTTON,
-  SECONDARY_BUTTON,
-  DANGER_BUTTON,
-  GHOST_BUTTON_ACCENT,
-  GHOST_BUTTON_DANGER,
-  GHOST_BUTTON_NEUTRAL,
-  NEUTRAL_BUTTON,
   TEXT_LINK,
   MUTED_LINK,
   TAPPABLE_HOVER,
@@ -46,6 +39,7 @@ import {
   BETA_PILL,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import { ProofSection } from "@/components/ui/ProofSection";
 import {
   FORM_LABEL,
@@ -177,32 +171,16 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Foundations · accent & buttons" />
 
-          <Item name="PRIMARY_BUTTON" usage="Primary CTA: Submit, auth, admin actions">
-            <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}>
-              Primary action
-            </button>
-          </Item>
-
-          <Item name="SECONDARY_BUTTON" usage="Outlined accent, transparent at rest: Edit profile, alternate actions">
-            <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${SECONDARY_BUTTON}`}>
-              Secondary action
-            </button>
-          </Item>
-
-          <Item name="DANGER_BUTTON" usage="Filled red destructive action: admin hard delete">
-            <button className={`px-3 py-1.5 rounded-md text-xs font-medium ${DANGER_BUTTON}`}>
-              Hard delete
-            </button>
-          </Item>
-
-          <Item name="GHOST_BUTTON_ACCENT / _DANGER / _NEUTRAL" usage="Borderless row actions (admin grant / revoke / soft-delete), tint on hover">
-            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_ACCENT}`}>Grant trust</button>
-            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_DANGER}`}>Revoke</button>
-            <button className={`px-2 py-1 rounded-md text-xs ${GHOST_BUTTON_NEUTRAL}`}>Soft delete</button>
-          </Item>
-
-          <Item name="NEUTRAL_BUTTON" usage="Bordered neutral button: Cancel, search submit, Following, reapers">
-            <button className={`px-3 py-1.5 rounded-md text-xs ${NEUTRAL_BUTTON}`}>Neutral action</button>
+          <Item name="<Button>" usage="The one button: variant (colour) + fullWidth, one uniform size. buttonClasses() paints a <Link> the same (CTAs that navigate).">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="primary">Primary</Button>
+              <Button variant="secondary">Secondary</Button>
+              <Button variant="neutral">Neutral</Button>
+              <Button variant="danger">Hard delete</Button>
+              <Button variant="ghost-accent">Grant</Button>
+              <Button variant="ghost-danger">Revoke</Button>
+              <Button variant="ghost-neutral">Soft delete</Button>
+            </div>
           </Item>
 
           <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">

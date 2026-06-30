@@ -5,7 +5,8 @@ import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import { PRIMARY_BUTTON, WARNING_CALLOUT } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -136,14 +137,14 @@ export function TweetImportBanner({
           placeholder="https://x.com/handle/status/…"
           disabled={busy || imported}
         />
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={() => (imported ? onClear() : void runImport())}
           disabled={busy || (!imported && !url)}
-          className={`px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap ${PRIMARY_BUTTON}`}
+          className="whitespace-nowrap"
         >
           {imported ? "Imported!" : busy ? "Importing…" : "Import"}
-        </button>
+        </Button>
       </div>
     </div>
   );

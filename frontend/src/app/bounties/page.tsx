@@ -12,7 +12,8 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 import { FilterChip } from "@/components/ui/FilterChip";
 
 // Default filter "open": status pills no longer render on cards, so a
@@ -66,7 +67,7 @@ export default function BountiesPage() {
           </div>
           <Link
             href="/submit?type=bounty"
-            className={`whitespace-nowrap px-3 py-1.5 text-xs rounded-md ${PRIMARY_BUTTON}`}
+            className={buttonClasses("primary", { className: "whitespace-nowrap" })}
           >
             Post bounty
           </Link>

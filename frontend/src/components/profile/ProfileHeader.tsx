@@ -6,7 +6,7 @@ import type { PublicProfile } from "@/lib/users";
 import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { NEUTRAL_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -64,32 +64,29 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           {isOwn ? (
             edit.editing ? (
               <div className="inline-flex gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="neutral"
                   onClick={edit.cancelEditing}
                   disabled={edit.saving}
-                  className={`px-3 py-1.5 rounded-md text-xs disabled:opacity-50 ${NEUTRAL_BUTTON}`}
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={edit.saveEdits}
                   disabled={edit.saving || edit.bioOver}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${PRIMARY_BUTTON}`}
                 >
                   {edit.saving ? "Saving…" : "Save"}
-                </button>
+                </Button>
               </div>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={edit.startEditing}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs ${SECONDARY_BUTTON}`}
               >
                 <Pencil size={12} />
                 Edit profile
-              </button>
+              </Button>
             )
           ) : (
             <FollowButton

@@ -15,7 +15,8 @@ import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import FieldHelp from "@/components/ui/FieldHelp";
-import { MUTED_LINK, PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
+import { MUTED_LINK } from "@/components/ui/styles";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -290,14 +291,13 @@ export function GeolocationEditForm({
               <span className="text-xs text-amber-400/90">
                 Once submitted it can&apos;t be edited.
               </span>
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={handleSubmit}
                 disabled={busy}
-                className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
                 {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
-              </button>
+              </Button>
               <button
                 type="button"
                 onClick={() => setConfirmingSubmit(false)}
@@ -309,13 +309,13 @@ export function GeolocationEditForm({
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5">
-              <button
+              <Button
                 type="submit"
+                variant="primary"
                 disabled={busy}
-                className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
                 Submit
-              </button>
+              </Button>
               <FieldHelp concept="action_submit" />
             </span>
           )}

@@ -24,7 +24,8 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { MUTED_LINK, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { MUTED_LINK, TEXT_LINK } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TagBadge } from "@/components/ui/TagBadge";
 
@@ -272,7 +273,7 @@ export default function BountyDetailPage() {
           <div className="pt-4 border-t border-neutral-800 flex items-center gap-3 flex-wrap">
             <Link
               href={`/submit?bounty_id=${bounty.id}`}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md ${PRIMARY_BUTTON}`}
+              className={buttonClasses("primary")}
             >
               <MapPin size={14} />
               Geolocate this

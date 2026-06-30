@@ -9,7 +9,7 @@ import {
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { NEUTRAL_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 
 export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
@@ -53,14 +53,9 @@ export function MaintenancePanel() {
       </header>
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onReapAuth}
-            disabled={running}
-            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${NEUTRAL_BUTTON}`}
-          >
+          <Button variant="neutral" onClick={onReapAuth} disabled={running}>
             {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
-          </button>
+          </Button>
           {authResult && (
             <span className="text-xs text-neutral-400">
               Expired: {authResult.expired ?? 0} · Old consumed:{" "}
@@ -69,16 +64,11 @@ export function MaintenancePanel() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onReapOrphans}
-            disabled={running}
-            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${NEUTRAL_BUTTON}`}
-          >
+          <Button variant="neutral" onClick={onReapOrphans} disabled={running}>
             {reapOrphans.loading
               ? "Reaping…"
               : "Reap orphan proof images"}
-          </button>
+          </Button>
           {orphanResult && (
             <span className="text-xs text-neutral-400">
               Rows: {orphanResult.rows_deleted ?? 0} · S3:{" "}

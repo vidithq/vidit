@@ -6,7 +6,8 @@ import Link from "next/link";
 
 import DetectionCard from "@/components/geolocation/DetectionCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -54,7 +55,7 @@ export default function DetectionsPage() {
         <div className="flex flex-col items-center gap-2 pt-1">
           <Link
             href="/submit?import=1"
-            className={`px-5 py-2.5 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
+            className={buttonClasses("primary")}
           >
             Import your work
           </Link>

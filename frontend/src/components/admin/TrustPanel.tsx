@@ -12,20 +12,13 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import {
-  DANGER_BUTTON,
-  GHOST_BUTTON_ACCENT,
-  GHOST_BUTTON_DANGER,
-  GHOST_BUTTON_NEUTRAL,
-  MUTED_LINK,
-  NEUTRAL_BUTTON,
-  PRIMARY_BUTTON,
-} from "@/components/ui/styles";
+import { MUTED_LINK } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 
@@ -150,45 +143,45 @@ function TrustUserRow({
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
           {trusted ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost-danger"
               disabled={granting}
               onClick={submitRevoke}
-              className={`px-2 py-1 rounded-md text-xs disabled:opacity-50 whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
+              className="whitespace-nowrap"
             >
               Revoke trust
-            </button>
+            </Button>
           ) : showReasonForm ? null : (
-            <button
-              type="button"
+            <Button
+              variant="ghost-accent"
               onClick={() => setShowReasonForm(true)}
-              className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_ACCENT}`}
+              className="whitespace-nowrap"
             >
               Grant trust
-            </button>
+            </Button>
           )}
           {deleteMode === null && !showReasonForm && (
             <div className="inline-flex gap-1">
-              <button
-                type="button"
+              <Button
+                variant="ghost-neutral"
                 onClick={() => {
                   setDeleteMode("soft");
                   confirmDelete.cancel();
                 }}
-                className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_NEUTRAL}`}
+                className="whitespace-nowrap"
               >
                 Soft delete
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost-danger"
                 onClick={() => {
                   setDeleteMode("hard");
                   confirmDelete.cancel();
                 }}
-                className={`px-2 py-1 rounded-md text-xs whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
+                className="whitespace-nowrap"
               >
                 Hard delete
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -208,14 +201,9 @@ function TrustUserRow({
             placeholder="e.g. Established OSINT track record on X"
           />
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={submitGrant}
-              disabled={granting}
-              className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-            >
+            <Button variant="primary" onClick={submitGrant} disabled={granting}>
               {granting ? "Granting…" : "Confirm grant"}
-            </button>
+            </Button>
             <button
               type="button"
               onClick={() => {
@@ -256,15 +244,10 @@ function TrustUserRow({
             </p>
           )}
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant={deleteMode === "hard" ? "danger" : "primary"}
               onClick={confirmDelete.trigger}
               disabled={deleting}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${
-                deleteMode === "hard"
-                  ? DANGER_BUTTON
-                  : PRIMARY_BUTTON
-              }`}
             >
               {deleting
                 ? "Deleting…"
@@ -273,7 +256,7 @@ function TrustUserRow({
                   : deleteMode === "hard"
                     ? "Hard delete"
                     : "Soft delete"}
-            </button>
+            </Button>
             <button
               type="button"
               onClick={cancelDelete}
@@ -358,14 +341,14 @@ export function TrustPanel() {
             className="mt-1"
           />
         </div>
-        <button
+        <Button
           type="submit"
+          variant="neutral"
           disabled={searching || !query.trim()}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 disabled:opacity-50 rounded-md text-xs ${NEUTRAL_BUTTON}`}
         >
           <Search size={12} />
           {searching ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </form>
 
       {error && (

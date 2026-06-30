@@ -19,7 +19,8 @@ import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, MUTED_LINK, PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { FILTER_CHIP_ACTIVE, MUTED_LINK, TEXT_LINK } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -572,10 +573,10 @@ function SubmitForm() {
         )}
 
         <div className="flex items-center gap-4">
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={submitting || proofImageUploading}
-            className={`px-4 py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
           >
             {isBounty
               ? submitting
@@ -588,7 +589,7 @@ function SubmitForm() {
                   : lockedFromBounty
                     ? "Submit geolocation (archive bounty)"
                     : "Submit geolocation"}
-          </button>
+          </Button>
           <Link
             href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
             className={`text-sm ${MUTED_LINK}`}

@@ -4,9 +4,9 @@ import { useState, type ReactNode } from "react";
 
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 interface SeedWipePanelProps<S, W> {
@@ -98,30 +98,16 @@ export function SeedWipePanel<S, W>({
               }
             />
           </div>
-          <button
-            type="button"
-            onClick={onSeed}
-            disabled={seeding}
-            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
-          >
+          <Button variant="primary" onClick={onSeed} disabled={seeding}>
             {seeding ? "Generating…" : seedLabel}
-          </button>
-          <button
-            type="button"
-            onClick={confirmWipe.trigger}
-            disabled={wiping}
-            className={`px-3 py-1.5 rounded-md text-sm border transition-colors disabled:opacity-50 ${
-              confirmWipe.armed
-                ? "border-red-500 bg-red-500/30 text-red-200"
-                : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
-            }`}
-          >
+          </Button>
+          <Button variant="danger" onClick={confirmWipe.trigger} disabled={wiping}>
             {wiping
               ? "Wiping…"
               : confirmWipe.armed
                 ? "Click again to confirm"
                 : wipeLabel}
-          </button>
+          </Button>
         </div>
 
         {lastSeed !== null && (

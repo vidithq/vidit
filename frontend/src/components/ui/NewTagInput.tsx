@@ -4,7 +4,7 @@ import { useState, type KeyboardEvent } from "react";
 
 import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { Tag } from "@/types";
 
@@ -102,14 +102,13 @@ export function NewTagInput({ existingTags, onCreated, disabled }: Props) {
           aria-label="New free tag name"
           className="flex-1 max-w-xs"
         />
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={submit}
           disabled={!canSubmit}
-          className={`px-3 py-2 rounded-md text-xs disabled:opacity-50 ${PRIMARY_BUTTON}`}
         >
           + Add
-        </button>
+        </Button>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>

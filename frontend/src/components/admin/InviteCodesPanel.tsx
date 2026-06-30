@@ -12,12 +12,12 @@ import {
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { GHOST_BUTTON_DANGER, PRIMARY_BUTTON } from "@/components/ui/styles";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 
@@ -100,8 +100,8 @@ function InviteCodeRow({
       </td>
       <td className="py-2 text-right">
         {canRevoke && (
-          <button
-            type="button"
+          <Button
+            variant="ghost-danger"
             disabled={revoking}
             onClick={async () => {
               setRevoking(true);
@@ -111,11 +111,11 @@ function InviteCodeRow({
                 setRevoking(false);
               }
             }}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs disabled:opacity-50 whitespace-nowrap ${GHOST_BUTTON_DANGER}`}
+            className="whitespace-nowrap"
           >
             <Trash2 size={12} />
             Revoke
-          </button>
+          </Button>
         )}
       </td>
     </tr>
@@ -205,13 +205,9 @@ export function InviteCodesPanel() {
             className="mt-1"
           />
         </div>
-        <button
-          type="submit"
-          disabled={creating}
-          className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-        >
+        <Button type="submit" disabled={creating}>
           {creating ? "Minting…" : "Mint code"}
-        </button>
+        </Button>
       </form>
 
       {error && (

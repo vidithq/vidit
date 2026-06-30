@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { NEUTRAL_BUTTON, PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 
 interface FollowButtonProps {
   username: string;
@@ -46,15 +46,10 @@ export default function FollowButton({
 
   return (
     <div className="inline-flex flex-col items-end gap-1">
-      <button
-        type="button"
+      <Button
+        variant={following ? "neutral" : "primary"}
         onClick={toggleFollow}
         disabled={loading}
-        className={`inline-flex items-center gap-1.5 rounded-md ${
-          following
-            ? NEUTRAL_BUTTON
-            : PRIMARY_BUTTON
-        } ${compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm font-medium"}`}
       >
         {loading ? (
           <Loader2 size={compact ? 12 : 14} className="animate-spin" />
@@ -62,7 +57,7 @@ export default function FollowButton({
           <Icon size={compact ? 12 : 14} />
         )}
         {following ? "Following" : "Follow"}
-      </button>
+      </Button>
       {error && (
         <span
           role="status"

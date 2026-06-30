@@ -9,7 +9,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { EntityCard } from "@/components/ui/EntityCard";
 import StatusBadge from "@/components/geolocation/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 import type { GeolocationStatus } from "@/types";
 
 interface TimelineEntry {
@@ -97,7 +97,7 @@ export default function TimelinePage() {
             </div>
             <Link
               href="/map"
-              className={`inline-block px-4 py-2 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
+              className={buttonClasses("primary")}
             >
               Explore the map
             </Link>

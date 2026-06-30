@@ -7,11 +7,12 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 
@@ -123,13 +124,14 @@ function ResetPasswordInner() {
           />
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          fullWidth
           type="submit"
           disabled={submitting}
-          className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
         >
           {submitting ? "Saving..." : "Set new password"}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

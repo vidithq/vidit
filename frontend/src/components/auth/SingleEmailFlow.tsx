@@ -3,11 +3,11 @@
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 interface SingleEmailFlowProps {
@@ -88,13 +88,14 @@ export function SingleEmailFlow({
         />
       </div>
 
-      <button
+      <Button
+        variant="primary"
+        fullWidth
         type="submit"
         disabled={sending}
-        className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
       >
         {sending ? "Sending..." : submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }
