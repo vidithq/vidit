@@ -328,7 +328,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<TagBadge>" usage="Decorative tags on cards & detail pages">
+          <Item name="<TagBadge>" usage="Decorative tags on cards & detail pages (the TAG_CHIP tone)">
             {MOCK_TAGS.map((t) => (
               <TagBadge key={t.id} name={t.name} />
             ))}
@@ -339,7 +339,7 @@ export default function PalettePage() {
             <StatusBadge status="submitted" />
           </Item>
 
-          <Item name="<BountyStatusBadge>" usage="Bounty status: list & detail">
+          <Item name="<BountyStatusBadge>" usage="Bounty status, the STATUS_PILL_ACTIVE / STATUS_PILL_FULFILLED / STATUS_PILL_CLOSED tones: list & detail">
             <BountyStatusBadge status="open" />
             <BountyStatusBadge status="fulfilled" />
             <BountyStatusBadge status="closed" />
@@ -555,7 +555,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<TagPicker>" usage="Curated + free tag selection (submit / edit)">
+          <Item name="<TagPicker>" usage="Curated + free tag selection (composes NewTagInput + TagChip); submit / edit">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
