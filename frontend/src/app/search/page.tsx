@@ -3,22 +3,15 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  Calendar,
-  MapPin,
-  Search as SearchIcon,
-  User as UserIcon,
-} from "lucide-react";
+import { Search as SearchIcon } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import StatusBadge from "@/components/geolocation/StatusBadge";
-import { BountyCard } from "@/components/bounty/BountyCard";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
-import { formatDate } from "@/lib/format";
 import { Avatar } from "@/components/ui/Avatar";
-import { TagBadge } from "@/components/ui/TagBadge";
+import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  SearchBountyHit,
   SearchGeolocationHit,
   SearchResponse,
   SearchType,
@@ -238,16 +231,17 @@ function SearchPageBody() {
             {showGroup("bounty") && results.bounties.length > 0 && (
               <ResultGroup title="Bounties" count={results.total.bounties}>
                 {results.bounties.map((b) => (
-                  <BountyCard
+                  <EntityCard
                     key={b.id}
-                    id={b.id}
+                    variant="compact"
+                    detailHref={`/bounties/${b.id}`}
                     title={<Highlighted value={b.title_highlight} />}
-                    authorUsername={b.author.username}
-                    sourceUrl={b.source_url}
-                    isDemo={b.is_demo}
-                    status={b.status}
-                    claimerCount={b.claimer_count}
-                    hero={b.media[0]}
+                    titleText={b.title}
+                    badge={<BountyStatusBadge status={b.status} />}
+                    media={b.media[0]}
+                    author={b.author}
+                    source={{ url: b.source_url, isDemo: b.is_demo }}
+                    working={b.claimer_count}
                   />
                 ))}
               </ResultGroup>
@@ -313,42 +307,18 @@ function ResultGroup({
 function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
   // Tags render as one uniform chip regardless of category.
   return (
-    <Link
-      href={`/geolocations/${hit.id}`}
-      className={`block p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <div className="space-y-1.5">
-        <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-          <Highlighted value={hit.title_highlight} />
-        </h3>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <StatusBadge status={hit.status} />
-          <span className="inline-flex items-center gap-1">
-            <UserIcon size={11} />@{hit.author.username}
-            <TrustBadge
-              isTrusted={hit.author.is_trusted}
-              trustReason={hit.author.trust_reason}
-              size={11}
-            />
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Calendar size={11} />
-            {formatDate(hit.event_date)}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <MapPin size={11} />
-            {hit.lat.toFixed(3)}, {hit.lng.toFixed(3)}
-          </span>
-        </div>
-        {hit.tags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            {hit.tags.map((t) => (
-              <TagBadge key={t.id} name={t.name} />
-            ))}
-          </div>
-        )}
-      </div>
-    </Link>
+    <EntityCard
+      variant="compact"
+      detailHref={`/geolocations/${hit.id}`}
+      title={<Highlighted value={hit.title_highlight} />}
+      titleText={hit.title}
+      badge={<StatusBadge status={hit.status} />}
+      mediaSeed={hit.id}
+      author={hit.author}
+      date={hit.event_date}
+      coords={{ lat: hit.lat, lng: hit.lng }}
+      tags={hit.tags}
+    />
   );
 }
 

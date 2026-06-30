@@ -6,7 +6,8 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
 import type { BountyListItem, BountyStatus } from "@/types";
-import { BountyCard } from "@/components/bounty/BountyCard";
+import { EntityCard } from "@/components/ui/EntityCard";
+import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -116,19 +117,19 @@ export default function BountiesPage() {
             </div>
             <div className="space-y-3">
               {bounties.map((b) => (
-                <BountyCard
+                <EntityCard
                   key={b.id}
-                  id={b.id}
+                  variant="compact"
+                  detailHref={`/bounties/${b.id}`}
                   title={b.title}
-                  authorUsername={b.author.username}
-                  sourceUrl={b.source_url}
-                  isDemo={b.is_demo}
-                  status={b.status}
-                  claimerCount={b.claimer_count}
-                  claimerSample={b.claimer_sample}
-                  createdAt={b.created_at}
+                  titleText={b.title}
+                  badge={<BountyStatusBadge status={b.status} />}
+                  media={b.media[0]}
+                  author={b.author}
+                  date={b.created_at}
+                  source={{ url: b.source_url, isDemo: b.is_demo }}
+                  working={b.claimer_count}
                   tags={b.tags}
-                  hero={b.media[0]}
                 />
               ))}
             </div>

@@ -118,7 +118,7 @@ const MOCK_DETAIL: GeolocationDetail = {
   originated_from_bounty: null,
 };
 
-// The lighter card payload (GeolocationCard's own data shape).
+// The lighter geolocation-card payload (timeline / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
   title: "Frappe sur un dépôt près de Donetsk",

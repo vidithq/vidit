@@ -1,7 +1,8 @@
 import Link from "next/link";
 
-import GeolocationCard from "@/components/geolocation/GeolocationCard";
+import StatusBadge from "@/components/geolocation/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
 import type { GeolocationStatus } from "@/types";
@@ -50,12 +51,22 @@ export function RecentSubmissions({
       {submissions.length > 0 ? (
         <div className="space-y-2">
           {submissions.map((entry) => (
-            <GeolocationCard
+            <EntityCard
               key={entry.id}
-              geo={entry}
               variant="compact"
               hideAuthor
+              detailHref={`/geolocations/${entry.id}`}
+              title={entry.title}
+              titleText={entry.title}
+              badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               mediaSeed={`sub-${entry.id}`}
+              date={entry.event_date}
+              coords={
+                typeof entry.lat === "number" && typeof entry.lng === "number"
+                  ? { lat: entry.lat, lng: entry.lng }
+                  : null
+              }
+              tags={entry.tags}
             />
           ))}
         </div>
