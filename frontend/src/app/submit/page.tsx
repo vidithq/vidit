@@ -401,23 +401,18 @@ function SubmitForm() {
           manual form stays the default below. */}
       {canImport && !archiveMode && (
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
+          <Button
+            variant="neutral"
             onClick={() => setTweetPrefillOpen((v) => !v)}
             aria-pressed={tweetPrefillOpen}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
           >
             <XGlyph size={12} />
             Pre-fill from an X post
-          </button>
-          <button
-            type="button"
-            onClick={() => setArchiveMode(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
-          >
+          </Button>
+          <Button variant="neutral" onClick={() => setArchiveMode(true)}>
             <Archive size={13} strokeWidth={1.8} />
             Import your X archive
-          </button>
+          </Button>
         </div>
       )}
 

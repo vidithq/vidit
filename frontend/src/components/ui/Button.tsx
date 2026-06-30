@@ -11,14 +11,18 @@ import type { ButtonHTMLAttributes } from "react";
 // every call site to hand-write the shape (the source of the size drift this
 // removes). Defaults to `type="button"` so a button never submits a form by
 // accident; pass `type="submit"` explicitly where it should.
+// Two filled/outlined accent weights (primary, secondary), a neutral bordered
+// button, a loud destructive (danger), and the two borderless "ghost" weights
+// for dense row actions: neutral (ghost) and destructive (ghost-danger). The
+// red ghost stays its own variant because the colour is a safety cue on
+// revoke / delete; non-destructive row actions all share the one neutral ghost.
 export type ButtonVariant =
   | "primary"
   | "secondary"
   | "neutral"
   | "danger"
-  | "ghost-accent"
-  | "ghost-danger"
-  | "ghost-neutral";
+  | "ghost"
+  | "ghost-danger";
 
 const BASE =
   "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50";
@@ -30,9 +34,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   neutral:
     "bg-neutral-800 border border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100",
   danger: "bg-red-500 hover:bg-red-400 text-white",
-  "ghost-accent": "text-orange-400 hover:bg-orange-500/10",
+  ghost: "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800",
   "ghost-danger": "text-red-300 hover:bg-red-500/10",
-  "ghost-neutral": "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800",
 };
 
 // The class string for the one button shape plus a variant's colour. `<Button>`

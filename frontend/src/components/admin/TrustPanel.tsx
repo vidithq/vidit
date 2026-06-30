@@ -153,7 +153,7 @@ function TrustUserRow({
             </Button>
           ) : showReasonForm ? null : (
             <Button
-              variant="ghost-accent"
+              variant="ghost"
               onClick={() => setShowReasonForm(true)}
               className="whitespace-nowrap"
             >
@@ -163,7 +163,7 @@ function TrustUserRow({
           {deleteMode === null && !showReasonForm && (
             <div className="inline-flex gap-1">
               <Button
-                variant="ghost-neutral"
+                variant="ghost"
                 onClick={() => {
                   setDeleteMode("soft");
                   confirmDelete.cancel();

@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { Button } from "@/components/ui/Button";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type ResendState = "idle" | "sending" | "sent" | "failed";
@@ -62,14 +63,14 @@ function PendingInner() {
           Didn&apos;t get the email? Check spam, then resend.
         </p>
         {resend === "idle" && (
-          <button
-            type="button"
+          <Button
+            variant="neutral"
+            fullWidth
             onClick={handleResend}
             disabled={!email}
-            className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 rounded-md text-xs font-medium text-neutral-200 transition-colors"
           >
             Resend confirmation link
-          </button>
+          </Button>
         )}
         {resend === "sending" && (
           <p className="text-xs text-neutral-500">Sending…</p>
@@ -80,13 +81,9 @@ function PendingInner() {
           </p>
         )}
         {resend === "failed" && (
-          <button
-            type="button"
-            onClick={handleResend}
-            className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 rounded-md text-xs text-red-300 transition-colors"
-          >
+          <Button variant="neutral" fullWidth onClick={handleResend}>
             Try again
-          </button>
+          </Button>
         )}
       </div>
     </AuthCard>

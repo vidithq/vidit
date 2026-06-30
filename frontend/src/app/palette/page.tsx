@@ -177,9 +177,8 @@ export default function PalettePage() {
               <Button variant="secondary">Secondary</Button>
               <Button variant="neutral">Neutral</Button>
               <Button variant="danger">Hard delete</Button>
-              <Button variant="ghost-accent">Grant</Button>
+              <Button variant="ghost">Soft delete</Button>
               <Button variant="ghost-danger">Revoke</Button>
-              <Button variant="ghost-neutral">Soft delete</Button>
             </div>
           </Item>
 
@@ -208,9 +207,23 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="TAPPABLE_HOVER" usage="Clickable cards/rows: accent border on hover">
-            <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
-              Hover me
+          <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">
+            <div className="w-full max-w-md space-y-2">
+              <Variant label="compact row">
+                <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
+                  Hover me
+                </div>
+              </Variant>
+              <Variant label="full section (group + group-hover title)">
+                <div className={`group block px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-lg ${TAPPABLE_HOVER}`}>
+                  <h4 className="text-sm font-medium text-neutral-100 group-hover:text-orange-400 transition-colors">
+                    A whole clickable section
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    The entire panel is the click target. The border turns orange and the title picks up the accent on hover.
+                  </p>
+                </div>
+              </Variant>
             </div>
           </Item>
 

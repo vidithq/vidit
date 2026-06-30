@@ -330,14 +330,13 @@ export function GeolocationEditForm({
           {/* Reject (soft-delete) lives here now, not on the queue card. */}
           {confirmReject.armed ? (
             <span className="ml-auto inline-flex items-center gap-1.5">
-              <button
-                type="button"
+              <Button
+                variant="ghost-danger"
                 onClick={confirmReject.trigger}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 disabled:opacity-40 transition-colors"
               >
                 {rejectMutation.loading ? "Rejecting…" : "Confirm reject"}
-              </button>
+              </Button>
               <button
                 type="button"
                 onClick={confirmReject.cancel}
@@ -349,14 +348,14 @@ export function GeolocationEditForm({
               </button>
             </span>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="ghost-danger"
               onClick={confirmReject.trigger}
               disabled={busy}
-              className="ml-auto px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
+              className="ml-auto"
             >
               Reject detection
-            </button>
+            </Button>
           )}
         </div>
       </form>

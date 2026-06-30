@@ -25,7 +25,7 @@ import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { MUTED_LINK, TEXT_LINK } from "@/components/ui/styles";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TagBadge } from "@/components/ui/TagBadge";
 
@@ -279,19 +279,14 @@ export default function BountyDetailPage() {
               Geolocate this
             </Link>
             {!isAuthor && (
-              <button
-                type="button"
+              <Button
+                variant="neutral"
                 onClick={handleToggleClaim}
                 disabled={actionPending}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border transition-colors disabled:opacity-50 ${
-                  isClaimedByMe
-                    ? "bg-neutral-800 border-neutral-600 text-neutral-200 hover:bg-neutral-700"
-                    : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-                }`}
               >
                 <Users size={14} />
                 {isClaimedByMe ? "Stop signaling" : "I'm working on this"}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -306,26 +301,16 @@ export default function BountyDetailPage() {
             >
               Close this bounty
             </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={actionPending}
-              className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
-            >
+            <Button variant="ghost-danger" onClick={handleDelete} disabled={actionPending}>
               Delete this bounty
-            </button>
+            </Button>
           </div>
         )}
         {isAuthor && bounty.status === "closed" && (
           <div className="pt-4 border-t border-neutral-800">
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={actionPending}
-              className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
-            >
+            <Button variant="ghost-danger" onClick={handleDelete} disabled={actionPending}>
               Delete this bounty
-            </button>
+            </Button>
           </div>
         )}
     </PageShell>

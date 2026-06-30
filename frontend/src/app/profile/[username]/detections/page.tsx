@@ -7,7 +7,7 @@ import Link from "next/link";
 import DetectionCard from "@/components/geolocation/DetectionCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -77,25 +77,23 @@ export default function DetectionsPage() {
         ))}
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">
-            <button
-              type="button"
+            <Button
+              variant="neutral"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800 disabled:opacity-40 transition-colors"
             >
               Previous
-            </button>
+            </Button>
             <span>
               Page {page} of {totalPages} · {data.total} pending
             </span>
-            <button
-              type="button"
+            <Button
+              variant="neutral"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800 disabled:opacity-40 transition-colors"
             >
               Next
-            </button>
+            </Button>
           </div>
         )}
       </div>

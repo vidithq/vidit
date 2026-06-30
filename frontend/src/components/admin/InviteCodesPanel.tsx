@@ -68,17 +68,16 @@ function InviteCodeRow({
   return (
     <tr className="border-b border-neutral-800 last:border-0">
       <td className="py-2 pr-3">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={onCopy}
           title={copied ? "Copied" : `Copy ${invite.code}`}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
         >
           <Copy size={12} className="text-neutral-500" />
           <span className="font-mono">
             {copied ? "Copied" : `${invite.code.slice(0, 6)}…`}
           </span>
-        </button>
+        </Button>
       </td>
       <td className="py-2 pr-3">
         <StatusChip status={invite.status} />

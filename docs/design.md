@@ -224,7 +224,7 @@ One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **a
 - `secondary`: transparent outlined orange, quieter alternate action.
 - `neutral`: bordered grey, non-accent actions (Cancel, search, Following).
 - `danger`: filled red, the one irreversible action (admin hard delete).
-- `ghost-accent` / `ghost-danger` / `ghost-neutral`: borderless row actions (admin grant / revoke / soft-delete).
+- `ghost` / `ghost-danger`: borderless row actions for dense admin rows. Non-destructive (grant, soft-delete) share the neutral `ghost`; revoke and hard-delete take the red `ghost-danger`, where the colour is a safety cue.
 
 `fullWidth` stretches it (auth submits); orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
 
