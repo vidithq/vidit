@@ -1,8 +1,9 @@
+import { Pill } from "./Pill";
 import { TAG_CHIP } from "./styles";
 
 // Decorative (non-interactive) tag pill: the read-only counterpart to the
-// clickable `TagChip` used by TagPicker. The `px-1.5 py-0.5 rounded-full` shape
-// + neutral `TAG_CHIP` paint was inlined on every card and detail row.
+// clickable `TagChip` used by TagPicker. Shares the one `Pill` shape; neutral
+// `TAG_CHIP` paint, no icon. Inlined on every card and detail row before.
 export function TagBadge({
   name,
   className = "",
@@ -11,8 +12,8 @@ export function TagBadge({
   className?: string;
 }) {
   return (
-    <span className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP} ${className}`.trim()}>
+    <Pill tone={TAG_CHIP} className={className}>
       {name}
-    </span>
+    </Pill>
   );
 }

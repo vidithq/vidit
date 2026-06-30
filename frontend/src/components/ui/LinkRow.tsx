@@ -5,12 +5,13 @@ import { FORM_LABEL } from "./form-styles";
 // "icon + label + value" link row, shared by the profile's linked-accounts and
 // the About page's "Stay in touch" channels (it was hand-rolled in both).
 //
-// - `href` present  -> renders an <a>; the value reads as an orange link and the
-//   row picks up the orange-border hover.
-// - `href` absent   -> renders a <div>; the value stays neutral (a plain handle
-//   that doesn't resolve to a URL, e.g. a Discord username).
-// - `external`      -> opens in a new tab and shows the trailing external icon
-//   (off for in-page targets like `mailto:`).
+// - `href` present  -> renders an <a>; the value reads as an orange link, the
+//   row gets the orange-border hover, and the trailing link icon shows. The
+//   icon tracks "is this a link", not the kind of link, so it's uniform across
+//   a row group (a mailto looks like the other links).
+// - `href` absent   -> renders a <div>; the value stays neutral and there's no
+//   icon (a plain handle that doesn't resolve to a URL, e.g. a Discord name).
+// - `external`      -> opens the link in a new tab (off for `mailto:`).
 const ROW =
   "group flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md";
 
@@ -45,7 +46,7 @@ export function LinkRow({
           {value}
         </p>
       </div>
-      {href && external && (
+      {href && (
         <ExternalLink size={12} className="text-orange-400/70 shrink-0" />
       )}
     </>

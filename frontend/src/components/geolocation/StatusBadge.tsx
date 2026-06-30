@@ -1,5 +1,12 @@
 import { Bot, User } from "lucide-react";
 import type { GeolocationStatus } from "@/types";
+import { Pill } from "@/components/ui/Pill";
+import { STATUS_PILL_ACTIVE } from "@/components/ui/styles";
+
+// `submitted` is neutral, not one of the shared status-pill tones: it's the
+// quiet default that keeps the accent `detected` the attention-drawing mark.
+const SUBMITTED_TONE =
+  "bg-neutral-700/40 text-neutral-300 border border-neutral-600/50";
 
 /**
  * The geolocation's lifecycle status, shown explicitly for **both** states as a
@@ -25,22 +32,24 @@ export default function StatusBadge({
 }) {
   if (status === "detected") {
     return (
-      <span
+      <Pill
+        tone={STATUS_PILL_ACTIVE}
+        icon={<Bot size={11} />}
         title="Machine-detected from a tweet, shown until the owner submits it"
-        className={`inline-flex items-center gap-1 rounded-full border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-400 ${className}`}
+        className={className}
       >
-        <Bot size={11} />
         Detected
-      </span>
+      </Pill>
     );
   }
   return (
-    <span
+    <Pill
+      tone={SUBMITTED_TONE}
+      icon={<User size={11} />}
       title="Submitted by a person, not independently verified"
-      className={`inline-flex items-center gap-1 rounded-full border border-neutral-600/50 bg-neutral-700/40 px-1.5 py-0.5 text-[10px] font-medium text-neutral-300 ${className}`}
+      className={className}
     >
-      <User size={11} />
       Submitted
-    </span>
+    </Pill>
   );
 }
