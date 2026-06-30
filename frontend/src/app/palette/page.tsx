@@ -21,6 +21,8 @@ import { TagChip } from "@/components/ui/TagChip";
 import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import FieldHelp from "@/components/ui/FieldHelp";
 import SourceLabel from "@/components/ui/SourceLabel";
@@ -36,11 +38,14 @@ import {
 } from "@/components/ui/styles";
 import {
   FORM_LABEL,
+  FORM_LABEL_COMPACT,
   FORM_INPUT,
   FORM_INPUT_COMPACT,
   FORM_INPUT_LOCKED,
   FORM_INVALID_FIELD,
   FORM_ERROR_BANNER,
+  FORM_ERROR_BANNER_COMPACT,
+  FORM_ERROR_BANNER_BOXED,
 } from "@/components/ui/form-styles";
 
 /**
@@ -220,6 +225,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="FORM_LABEL_COMPACT" usage="Denser label for auth cards / admin rows">
+            <label className={FORM_LABEL_COMPACT}>Compact label</label>
+          </Item>
+
           <Item name="FORM_INPUT_COMPACT" usage="Data-row style fields: admin, trust reason">
             <input className={`${FORM_INPUT_COMPACT} max-w-sm`} placeholder="Compact" />
           </Item>
@@ -232,8 +241,24 @@ export default function PalettePage() {
             <input className={`${FORM_INPUT} ${FORM_INVALID_FIELD} max-w-sm`} placeholder="Invalid field" />
           </Item>
 
-          <Item name="FORM_ERROR_BANNER" usage="Form error above the actions">
-            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Something went wrong.</div>
+          <Item name="FORM_ERROR_BANNER (+ _COMPACT / _BOXED)" usage="Form error above actions; compact (auth) and boxed (admin panel) variants">
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label="default (form)">
+                <div className={FORM_ERROR_BANNER}>Something went wrong.</div>
+              </Variant>
+              <Variant label="_COMPACT (auth card)">
+                <div className={FORM_ERROR_BANNER_COMPACT}>Something went wrong.</div>
+              </Variant>
+              <Variant label="_BOXED (admin panel)">
+                <div className={FORM_ERROR_BANNER_BOXED}>Something went wrong.</div>
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / bounty)">
+            <div className="w-full max-w-sm">
+              <IncompleteFormNotice missing={["Coordinates", "Conflict tag", "Proof"]} />
+            </div>
           </Item>
         </section>
 
@@ -355,6 +380,14 @@ export default function PalettePage() {
 
           <Item name="<MediaThumb>" usage="Thumbnail on bounty cards (list & search)">
             <MediaThumb />
+          </Item>
+
+          <Item name="<MediaPlaceholder>" usage="Generated stand-in for cards with no real media (deterministic shade per seed)">
+            {["alpha", "donetsk", "x-4242"].map((seed) => (
+              <div key={seed} className="relative w-24 aspect-video rounded-md overflow-hidden bg-neutral-800">
+                <MediaPlaceholder seed={seed} />
+              </div>
+            ))}
           </Item>
 
           <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial)">
@@ -489,6 +522,7 @@ export default function PalettePage() {
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
               <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
               <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a <code>position: fixed</code> banner, already visible bottom-right</li>
+              <li><span className="font-mono text-neutral-400">Sidebar</span>: fixed nav rail, auth/route-driven, always on screen</li>
               <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page</li>
             </ul>
           </Item>
