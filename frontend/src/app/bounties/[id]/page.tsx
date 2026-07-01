@@ -27,7 +27,7 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { TagBadge } from "@/components/ui/TagBadge";
+import { Pill } from "@/components/ui/Pill";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -95,7 +95,9 @@ export default function BountyDetailPage() {
       <DetailRow label={name} concept={concept} align="start">
         <div className="flex flex-wrap gap-1.5 justify-end">
           {tags.map((tag) => (
-            <TagBadge key={tag.id} name={tag.name} className="text-xs px-2.5" />
+            <Pill key={tag.id} tone="neutral" className="text-xs px-2.5">
+              {tag.name}
+            </Pill>
           ))}
         </div>
       </DetailRow>

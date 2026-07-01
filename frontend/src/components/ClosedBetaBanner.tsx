@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { isAuthRoute } from "@/lib/auth-routes";
-import { BETA_PILL } from "@/components/ui/styles";
+import { PILL_TONE } from "@/components/ui/Pill";
 
 // Baked into the bundle by next.config.mjs — the deploy ref's
 // `git describe --tags --always --dirty`, or "dev" with no git history. See
@@ -26,7 +26,7 @@ export default function ClosedBetaBanner() {
     <div
       role="status"
       aria-label="Closed beta"
-      className={`fixed bottom-3 right-3 z-1200 inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight pointer-events-none select-none backdrop-blur-xs ${BETA_PILL}`}
+      className={`fixed bottom-3 right-3 z-1200 inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight pointer-events-none select-none backdrop-blur-xs ${PILL_TONE.accent}`}
     >
       <span className="size-1.5 rounded-full bg-orange-500" />
       <span>Closed beta · {displayVersion}</span>

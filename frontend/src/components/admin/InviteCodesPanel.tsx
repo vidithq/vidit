@@ -20,21 +20,22 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Pill, type PillTone } from "@/components/ui/Pill";
 
-const STATUS_STYLES: Record<InviteCodeStatus, string> = {
-  active: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  exhausted: "bg-neutral-800 text-neutral-400 border-neutral-700",
-  revoked: "bg-red-500/10 text-red-300 border-red-500/30",
-  expired: "bg-neutral-800 text-neutral-500 border-neutral-700",
+// Invite lifecycle mapped onto the shared pill tones: active is the accent
+// draw, revoked the red end-state, exhausted / expired the quiet neutral.
+const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
+  active: "accent",
+  exhausted: "neutral",
+  revoked: "danger",
+  expired: "neutral",
 };
 
 function StatusChip({ status }: { status: InviteCodeStatus }) {
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] uppercase tracking-wider border ${STATUS_STYLES[status]}`}
-    >
+    <Pill tone={STATUS_TONE[status]} className="uppercase tracking-wider">
       {status}
-    </span>
+    </Pill>
   );
 }
 

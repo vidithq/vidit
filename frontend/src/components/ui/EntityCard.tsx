@@ -6,7 +6,7 @@ import type { Media } from "@/types";
 import { formatDate } from "@/lib/format";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { MediaThumb } from "@/components/ui/MediaThumb";
-import { TagBadge } from "@/components/ui/TagBadge";
+import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
 import SourceLabel from "@/components/ui/SourceLabel";
@@ -151,7 +151,7 @@ export function EntityCard({
         {tags && tags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
             {tags.map((t) => (
-              <TagBadge key={t.id} name={t.name} />
+              <Pill key={t.id} tone="neutral">{t.name}</Pill>
             ))}
           </div>
         )}
@@ -193,7 +193,7 @@ export function EntityCard({
           {tags && tags.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               {tags.map((t) => (
-                <TagBadge key={t.id} name={t.name} />
+                <Pill key={t.id} tone="neutral">{t.name}</Pill>
               ))}
             </div>
           )}

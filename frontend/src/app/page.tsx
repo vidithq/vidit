@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
-import { BETA_PILL, FILTER_CHIP_ACTIVE, TEXT_LINK } from "@/components/ui/styles";
+import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { PILL_TONE } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -132,7 +133,7 @@ export default function LandingPage() {
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
           <div
-            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight ${BETA_PILL}`}
+            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight ${PILL_TONE.accent}`}
           >
             <span className="size-1.5 rounded-full bg-orange-500" />
             <span>Closed beta · invite-only</span>
@@ -216,7 +217,7 @@ export default function LandingPage() {
               >
                 <span
                   className={`shrink-0 self-start px-2 py-0.5 rounded-full font-mono text-[11px] font-medium ${
-                    current ? FILTER_CHIP_ACTIVE : "bg-neutral-800 text-neutral-500"
+                    current ? ACCENT_SURFACE : "bg-neutral-800 text-neutral-500"
                   }`}
                 >
                   {version}

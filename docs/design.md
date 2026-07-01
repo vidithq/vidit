@@ -42,7 +42,7 @@ The orange palette uses **tinted-on-dark** variants almost exclusively, and neve
 | `orange-400` | Text colour for every interactive element (inline links, button labels, tappable-card hover state, status pills). |
 | `orange-500` | The hue itself, which only appears at fractional opacity (`bg-orange-500/10`, `/15`, `/20`) on backgrounds and borders, and full strength on map points + 1.5 px state dots. |
 
-Tag chips are decorative-not-interactive and use a neutral paint (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe) (decorative tag chip).
+Tag chips are decorative-not-interactive: the `<Pill>` neutral tone (`bg-neutral-800 text-neutral-400`), a `<span>`; see the [Orange palette recipe](#orange-palette-recipe), bucket ④.
 
 **The accent hue is selectable.** Orange is the default; Settings → Display also offers blue, emerald, violet, and rose. The choice is browser-local (`localStorage`, key `vidit:palette`), applied as `data-palette` on `<html>`, which remaps the Tailwind `orange-*` scale to the chosen hue (see [`globals.css`](../frontend/src/app/globals.css)). Components keep using the `orange-*` utilities and the [`styles.ts`](../frontend/src/components/ui/styles.ts) constants unchanged: the recipe below holds for whichever hue is active. Map markers can't read CSS variables, so their hex colors live alongside the palette definitions in [`lib/palette.ts`](../frontend/src/lib/palette.ts) and are kept in step there.
 
@@ -75,14 +75,14 @@ The rule that governs all of it:
 1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. For genuine inline links only; an action that happens to read like a link (Cancel, dismiss) is a `<Button variant="ghost">`, not this.
 2. **Tappable card / row** (`TAPPABLE_HOVER`): the whole card or row is one click target (GeolocationCard, BountyCard, search rows, profile external links). Neutral at rest; on hover the **border** turns orange and the inner title picks up `group-hover:text-orange-400` (put `group` on the row).
 3. **Buttons** (`<Button>`): every action is the [`<Button>`](../frontend/src/components/ui/Button.tsx) primitive, shape **and** colour in one unit at a single size. Four variants on two axes (tone × emphasis): `primary` (accent, filled, the one main action), `secondary` (accent, outline, a secondary action), `ghost` (accent, text only, the quiet tier: cancel, dismiss, dense rows, icons), `danger` (red, outline, a destructive action). Every clickable is the accent colour; red is only destructive. `buttonClasses(variant)` paints a `<Link>` the same for CTAs that navigate; `icon` makes a square icon-only button. Full vocabulary under *Buttons* below.
-4. **Selected / active state** (`FILTER_CHIP_ACTIVE` / `FILTER_CHIP_INACTIVE`): a state indicator on an interactive element (active filter chip, active sidebar nav row, the bounties status filter). Reads as `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE`. Status pills add a thin border so the badge reads as a discrete shape, in three states: `STATUS_PILL_ACTIVE` (open, orange), `STATUS_PILL_FULFILLED` (end-state, neutral **white**, not green: fulfilment isn't a win), `STATUS_PILL_CLOSED` (author-withdrawn, the quietest, neutral grey).
-5. **Decorative tag chip** (`TAG_CHIP`): display-only metadata pills (`bg-neutral-800 text-neutral-400`), rendered as `<span>` not `<button>`. Neutral, so several tags on a card don't compete with the orange CTAs / status pills / links. If a tag is clickable, use bucket ④ instead.
+4. **Pills / chips / badges** (`<Pill>`): the whole badge family (status badges, decorative tags, interactive filter chips) is the [`<Pill>`](../frontend/src/components/ui/Pill.tsx) primitive, shape **and** colour in one unit at a single size, mirroring `<Button>`. Colour is one `tone`: `accent` (open / detected / selected), `neutral` (default / tag / closed / inactive), `danger` (revoked / error), `strong` (a completed end-state, neutral **white**, not green: completion isn't a win). A static `<span>` by default; pass `onClick` and it becomes an interactive chip (a `<button>` that brightens on hover), the caller driving the tone off its active state (`tone={active ? "accent" : "neutral"}`). Consumers: `StatusBadge`, `BountyStatusBadge`, the invite `StatusChip`, the decorative + selectable tag pills, and the map / bounties / search filters. Domain adapters (`StatusBadge`, `BountyStatusBadge`, `StatusChip`) stay as thin wrappers that map an enum to a tone + icon + label; a bare tag is just `<Pill tone="neutral">` inline, no wrapper.
+5. **Active nav / row surface** (`ACCENT_SURFACE` / `NEUTRAL_SURFACE`): the bare base paint (`bg` + text, no border) for a selected nav row or toggle that wants the accent fill without a pill's border. Reads `active ? ACCENT_SURFACE : NEUTRAL_SURFACE` (sidebar rows, the landing pager, the submit type toggle). The `<Pill>` tones compose these two paints and layer a border on top, so a pill and an active nav item can't drift apart.
 
 ### Other orange shapes
 
 These don't fit the five buckets:
 
-- **`BETA_PILL`**: the fixed closed-beta corner banner + the gate-page header badge. Same family as the status pill but less saturated (decorative, shouldn't compete with active-state pills). `pointer-events-none` is added at the call site.
+- **Closed-beta banner**: the fixed corner banner ([`ClosedBetaBanner`](../frontend/src/components/ClosedBetaBanner.tsx)) + the landing header badge reuse the `<Pill>` accent paint (`PILL_TONE.accent`) on their own bespoke shape (a pulse dot, a nested report link, fixed positioning), which is why they can't carry the `<Pill>` component itself. `pointer-events-none` is added at the call site.
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
 - **Destructive actions**: `<Button variant="danger">` is red but quiet (outline, `secondary` in red), so a delete / revoke / reject trigger doesn't shout. The one loud filled red is `DANGER_CONFIRM`, applied only to the armed second click of a two-click confirm, so the strongest red marks the point of no return.
@@ -90,18 +90,15 @@ These don't fit the five buckets:
 
 ### Constants: single source of truth
 
-All of the above export from [`styles.ts`](../frontend/src/components/ui/styles.ts):
+The pill / chip / badge tones live on the [`<Pill>`](../frontend/src/components/ui/Pill.tsx) primitive (`PILL_TONE`, one entry per tone); the colour-only surface, link, and callout constants export from [`styles.ts`](../frontend/src/components/ui/styles.ts):
 
 | Export | What |
 |---|---|
-| `FILTER_CHIP_ACTIVE` | Tinted selected state for toggles |
-| `FILTER_CHIP_INACTIVE` | Neutral partner of `FILTER_CHIP_ACTIVE` |
+| `ACCENT_SURFACE` | Base accent paint (bg + text): active nav rows; the `<Pill>` accent tone composes it + a border |
+| `NEUTRAL_SURFACE` | Base neutral paint: inactive nav rows; the `<Pill>` neutral tone composes it + a border |
 | `TAPPABLE_HOVER` | Orange-border-on-hover for tappable cards/rows |
-| `STATUS_PILL_ACTIVE` | Status pill: open / in-progress (orange) |
-| `STATUS_PILL_FULFILLED` | Status pill: completed end-state (neutral white) |
-| `STATUS_PILL_CLOSED` | Status pill: withdrawn / archived (neutral grey) |
-| `BETA_PILL` | Decorative closed-beta / system pill |
-| `TAG_CHIP` | Decorative non-clickable tag chip (neutral) |
+| `TEXT_LINK` | Inline accent text link |
+| `WARNING_CALLOUT` | Amber non-blocking caution surface |
 
 If you're writing a class string longer than ~3 Tailwind tokens for an orange element, a constant probably already fits.
 
@@ -187,8 +184,7 @@ Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for 
 - Labels: `text-[10px] uppercase tracking-wider text-neutral-500`
 - Inputs: `bg-neutral-800 border-neutral-700 text-neutral-300`
 - Focus: `border-orange-500`
-- Active filter tags/buttons: `FILTER_CHIP_ACTIVE` (tinted orange; see the [Orange palette recipe](#orange-palette-recipe))
-- Inactive filter tags/buttons: `FILTER_CHIP_INACTIVE`
+- Filter tags/buttons: `<Pill>` as an interactive chip, accent when active, neutral when inactive (see the [Orange palette recipe](#orange-palette-recipe), bucket ④)
 - Point counter at the top of the panel
 - "Clear all" button shows up only if filters are active
 
@@ -196,7 +192,7 @@ Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for 
 
 - Title: `text-lg font-medium text-neutral-100`
 - Metadata: `text-xs text-neutral-400`
-- Tags: compact badges via the shared `TAG_CHIP` constant (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe) (decorative tag chip)
+- Tags: compact badges via `<Pill tone="neutral">` (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe), bucket ④
 - Source link: `text-orange-400 hover:underline`
 - Proof: `text-sm text-neutral-300 leading-relaxed`
 - Separator border: `border-neutral-800`
@@ -225,7 +221,7 @@ One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **a
 - `ghost`: accent, text only. The quiet tier: cancel, dismiss, dense row actions, and (with `icon`) icon-only buttons like share and the × close.
 - `danger`: red, outline. A destructive action (delete, revoke, reject), quiet on purpose, `secondary` in red.
 
-Every clickable is the accent colour, red is only destructive, and there is no grey button (grey lives in `TAG_CHIP` and `disabled`). The one loud filled red is `DANGER_CONFIRM`, a class applied via `className` to the armed second click of a two-click confirm only, so the strongest red shows up once, at the point of no return.
+Every clickable is the accent colour, red is only destructive, and there is no grey button (grey lives in the `<Pill>` neutral tone and `disabled`). The one loud filled red is `DANGER_CONFIRM`, a class applied via `className` to the armed second click of a two-click confirm only, so the strongest red shows up once, at the point of no return.
 
 `fullWidth` stretches it (auth submits); `icon` makes a square icon-only button; orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
 

@@ -22,7 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
-import { FilterChip } from "@/components/ui/FilterChip";
+import { Pill } from "@/components/ui/Pill";
 
 const TYPE_FILTERS: { value: SearchType; label: string }[] = [
   { value: "all", label: "All" },
@@ -150,13 +150,13 @@ function SearchPageBody() {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {TYPE_FILTERS.map((opt) => (
-            <FilterChip
+            <Pill
               key={opt.value}
-              active={typeFilter === opt.value}
+              tone={typeFilter === opt.value ? "accent" : "neutral"}
               onClick={() => onChipClick(opt.value)}
             >
               {opt.label}
-            </FilterChip>
+            </Pill>
           ))}
         </div>
 

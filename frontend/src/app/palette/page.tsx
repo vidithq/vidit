@@ -15,11 +15,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
-import { FilterChip } from "@/components/ui/FilterChip";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { TagBadge } from "@/components/ui/TagBadge";
-import { TagChip } from "@/components/ui/TagChip";
 import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
@@ -33,9 +30,8 @@ import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
 import {
   TEXT_LINK,
   TAPPABLE_HOVER,
-  FILTER_CHIP_ACTIVE,
-  FILTER_CHIP_INACTIVE,
-  BETA_PILL,
+  ACCENT_SURFACE,
+  NEUTRAL_SURFACE,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
@@ -51,10 +47,10 @@ import { Input } from "@/components/ui/Input";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
- * note on where it's used. Dev reference, not linked in the nav. Ordered the way
- * design systems are (atomic design): foundations / tokens, then atoms,
- * molecules, organisms, and page scaffolding. Everything follows the accent
- * palette (switchable in Settings → Display).
+ * note on where it's used. Dev reference, not linked in the nav. Grouped by what
+ * you're building (tokens, controls, forms, content, containers, views) rather
+ * than by an abstraction level, so related pieces sit together. Everything
+ * follows the accent palette (switchable in Settings → Display).
  */
 
 // One showcased component: a labelled card with the live preview + a usage note.
@@ -153,8 +149,7 @@ export default function PalettePage() {
   // Dev reference only: a 404 in production / preview builds.
   if (process.env.NODE_ENV !== "development") notFound();
 
-  const [chip, setChip] = useState(true);
-  const [fc, setFc] = useState("All");
+  const [pillSel, setPillSel] = useState("Open");
   const [tpTags, setTpTags] = useState<Tag[]>([
     { id: "f1", name: "donetsk", category: "free" },
   ]);
@@ -163,12 +158,64 @@ export default function PalettePage() {
   return (
     <PageShell
       title="Palette"
-      subtitle="Reusable building blocks, ordered smallest to largest (atomic design): foundations → atoms → molecules → organisms → pages. Everything follows the accent color (Settings → Display)."
+      subtitle="Reusable building blocks, grouped by what you're building: tokens → controls → forms → content → containers → views. Everything follows the accent color (Settings → Display)."
     >
       <div className="space-y-8">
-        {/* ============ FOUNDATIONS · accent & buttons ============ */}
+        {/* ============ TOKENS ============ */}
+        {/* The raw class strings you compose with, not components. */}
         <section className="space-y-3">
-          <SectionEyebrow title="Foundations · accent & buttons" />
+          <SectionEyebrow title="Tokens" />
+
+          <Item name="ACCENT_SURFACE / NEUTRAL_SURFACE" usage="The two base surface paints (bg + text), the single source shared by the <Pill> tones (which layer a border on top) and the active nav / row treatments (Sidebar, landing, submit) that want the same fill without a pill border.">
+            <Variant label="ACCENT_SURFACE (active nav)">
+              <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${ACCENT_SURFACE}`}>
+                Active
+              </span>
+            </Variant>
+            <Variant label="NEUTRAL_SURFACE (inactive)">
+              <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${NEUTRAL_SURFACE}`}>
+                Inactive
+              </span>
+            </Variant>
+          </Item>
+
+          <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
+            <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
+              A text link
+            </a>
+          </Item>
+
+          <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">
+            <div className="w-full max-w-md space-y-2">
+              <Variant label="compact row">
+                <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
+                  Hover me
+                </div>
+              </Variant>
+              <Variant label="full section (group + group-hover title)">
+                <div className={`group block px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-lg ${TAPPABLE_HOVER}`}>
+                  <h4 className="text-sm font-medium text-neutral-100 group-hover:text-orange-400 transition-colors">
+                    A whole clickable section
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    The entire panel is the click target. The border turns orange and the title picks up the accent on hover.
+                  </p>
+                </div>
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice">
+            <div className={`rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
+              Heads up, check this before submitting.
+            </div>
+          </Item>
+        </section>
+
+        {/* ============ CONTROLS · buttons & pills ============ */}
+        {/* The two tone systems (<Button> / <Pill>) and the pills' consumers. */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Controls · buttons & pills" />
 
           <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive, no grey button. `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
             <div className="space-y-3">
@@ -192,64 +239,51 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
-            <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-              A text link
-            </a>
-          </Item>
-
-          <Item name="FILTER_CHIP_ACTIVE / _INACTIVE" usage="Selected-state colour pair (see <FilterChip>)">
-            <Variant label="active">
-              <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${FILTER_CHIP_ACTIVE}`}>
-                Selected
-              </span>
-            </Variant>
-            <Variant label="inactive">
-              <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${FILTER_CHIP_INACTIVE}`}>
-                Neutral
-              </span>
-            </Variant>
-          </Item>
-
-          <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">
-            <div className="w-full max-w-md space-y-2">
-              <Variant label="compact row">
-                <div className={`px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs text-neutral-300 ${TAPPABLE_HOVER}`}>
-                  Hover me
-                </div>
-              </Variant>
-              <Variant label="full section (group + group-hover title)">
-                <div className={`group block px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-lg ${TAPPABLE_HOVER}`}>
-                  <h4 className="text-sm font-medium text-neutral-100 group-hover:text-orange-400 transition-colors">
-                    A whole clickable section
-                  </h4>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    The entire panel is the click target. The border turns orange and the title picks up the accent on hover.
-                  </p>
-                </div>
-              </Variant>
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | neutral | danger | strong, mirroring the <Button> tones. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. Folds the old STATUS_PILL_* / FILTER_CHIP_* / TAG_CHIP / BETA_PILL constants.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
+                <Pill tone="accent" icon={<MapPin size={11} />}>
+                  accent
+                </Pill>
+                <Pill tone="neutral">neutral</Pill>
+                <Pill tone="danger">danger</Pill>
+                <Pill tone="strong">strong</Pill>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-neutral-600 self-center w-12">chips</span>
+                {["All", "Open", "Closed"].map((label) => (
+                  <Pill
+                    key={label}
+                    tone={pillSel === label ? "accent" : "neutral"}
+                    onClick={() => setPillSel(label)}
+                  >
+                    {label}
+                  </Pill>
+                ))}
+                <span className="text-[11px] text-neutral-600 self-center">← click</span>
+              </div>
             </div>
           </Item>
 
-          <Item name="BETA_PILL" usage="Closed beta banner (bottom-right corner)">
-            <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${BETA_PILL}`}>
-              <span className="size-1.5 rounded-full bg-orange-500" />
-              Closed beta
-            </span>
+          <Item name="<StatusBadge>" usage="A <Pill> consumer: maps the geoloc status to a tone + icon + label. Cards, detail, detections queue.">
+            <StatusBadge status="detected" />
+            <StatusBadge status="submitted" />
           </Item>
 
-          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice">
-            <div className={`rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
-              Heads up, check this before submitting.
-            </div>
+          <Item name="<BountyStatusBadge>" usage="A <Pill> consumer: bounty status via the accent / strong / neutral tones. List & detail.">
+            <BountyStatusBadge status="open" />
+            <BountyStatusBadge status="fulfilled" />
+            <BountyStatusBadge status="closed" />
           </Item>
         </section>
 
-        {/* ============ FOUNDATIONS · form fields ============ */}
+        {/* ============ FORMS ============ */}
+        {/* Everything you touch building a form. */}
         <section className="space-y-3">
-          <SectionEyebrow title="Foundations · form fields" />
+          <SectionEyebrow title="Forms" />
 
-          <Item name="<Input>" usage="The one form field: variant (default / compact / locked) + invalid. Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
@@ -260,8 +294,13 @@ export default function PalettePage() {
               <Variant label='variant="locked" (read-only)'>
                 <Input variant="locked" value="Locked" readOnly />
               </Variant>
-              <Variant label="invalid">
+              <Variant label="invalid (Input, = FORM_INVALID_FIELD)">
                 <Input invalid placeholder="Invalid field" />
+              </Variant>
+              <Variant label="FORM_INVALID_FIELD raw (non-input surface)">
+                <div className={`rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
+                  A section card flagged as missing.
+                </div>
               </Variant>
             </div>
           </Item>
@@ -270,12 +309,6 @@ export default function PalettePage() {
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>
-            </div>
-          </Item>
-
-          <Item name="FORM_INVALID_FIELD" usage="Red-outline token. <Input invalid> is sugar over it; non-input surfaces (media dropzone, proof editor) apply it raw.">
-            <div className={`w-full max-w-sm rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
-              A section card flagged as missing.
             </div>
           </Item>
 
@@ -292,51 +325,38 @@ export default function PalettePage() {
               <IncompleteFormNotice missing={["Coordinates", "Conflict tag", "Proof"]} />
             </div>
           </Item>
-        </section>
-
-        {/* ============ ATOMS ============ */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Atoms" />
-
-          <Item name="<Pill>" usage="Shared shape of every badge below (StatusBadge, BountyStatusBadge, TagBadge)">
-            <Variant label="tone + icon">
-              <Pill tone="bg-orange-500/15 text-orange-400 border border-orange-500/30">
-                Accent
-              </Pill>
-            </Variant>
-            <Variant label="neutral tone">
-              <Pill tone="bg-neutral-700/40 text-neutral-300 border border-neutral-600/50">
-                Neutral
-              </Pill>
-            </Variant>
-          </Item>
-
-          <Item name="<TagBadge>" usage="Decorative tags on cards & detail pages (the TAG_CHIP tone)">
-            {MOCK_TAGS.map((t) => (
-              <TagBadge key={t.id} name={t.name} />
-            ))}
-          </Item>
-
-          <Item name="<StatusBadge>" usage="Geoloc status: cards, detail, detections queue">
-            <StatusBadge status="detected" />
-            <StatusBadge status="submitted" />
-          </Item>
-
-          <Item name="<BountyStatusBadge>" usage="Bounty status, the STATUS_PILL_ACTIVE / STATUS_PILL_FULFILLED / STATUS_PILL_CLOSED tones: list & detail">
-            <BountyStatusBadge status="open" />
-            <BountyStatusBadge status="fulfilled" />
-            <BountyStatusBadge status="closed" />
-          </Item>
-
-          <Item name="<TagChip>" usage="Tag selection (TagPicker, forms)">
-            <TagChip tag={{ id: "x", name: "Clickable", category: "free" }} active={chip} onClick={() => setChip((v) => !v)} />
-            <span className="text-[11px] text-neutral-600 self-center">← click</span>
-          </Item>
 
           <Item name="<FieldHelp> + <OptionalHint>" usage="Help ? on labels/sections + optional marker">
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" /> <OptionalHint />
             </span>
+          </Item>
+
+          <Item name="<TagPicker>" usage="Curated + free tag selection (composes NewTagInput + Pill chips); submit / edit">
+            <div className="w-full max-w-2xl">
+              <TagPicker
+                tags={tpTags}
+                setTags={setTpTags}
+                curatedTags={MOCK_CURATED}
+                selectedTagIds={tpSelected}
+                setSelectedTagIds={setTpSelected}
+              />
+            </div>
+          </Item>
+        </section>
+
+        {/* ============ CONTENT ============ */}
+        {/* Small display pieces that fill rows, cards, and headers. */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Content" />
+
+          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial)">
+            <Variant label='fallback="icon"'>
+              <Avatar username="demo" size="w-16 h-16" fallback="icon" />
+            </Variant>
+            <Variant label='fallback="initial"'>
+              <Avatar username="Marius" size="size-10" />
+            </Variant>
           </Item>
 
           <Item name="<SourceLabel>" usage="Source display (shortened host, or synthetic in demo)">
@@ -356,20 +376,6 @@ export default function PalettePage() {
             ))}
           </Item>
 
-          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial)">
-            <Variant label='fallback="icon"'>
-              <Avatar username="demo" size="w-16 h-16" fallback="icon" />
-            </Variant>
-            <Variant label='fallback="initial"'>
-              <Avatar username="Marius" size="size-10" />
-            </Variant>
-          </Item>
-        </section>
-
-        {/* ============ MOLECULES ============ */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Molecules" />
-
           <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
             <div className="w-full max-w-xl">
               <StatGrid>
@@ -381,30 +387,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<FilterChip>" usage="Bounties status filter + search type filter">
-            {["All", "Open", "Closed"].map((label) => (
-              <FilterChip key={label} active={fc === label} onClick={() => setFc(label)}>
-                {label}
-              </FilterChip>
-            ))}
-          </Item>
-
           <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
               <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
             </div>
-          </Item>
-
-          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
-            <EmptyState className="max-w-sm">
-              Nothing here yet.{" "}
-              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-                Create the first one
-              </a>
-              .
-            </EmptyState>
           </Item>
 
           <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
@@ -422,9 +410,10 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ ORGANISMS ============ */}
+        {/* ============ CONTAINERS & states ============ */}
+        {/* Boxes you drop content into, and the pre-data / empty states. */}
         <section className="space-y-3">
-          <SectionEyebrow title="Organisms" />
+          <SectionEyebrow title="Containers & states" />
 
           <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
             <Card className="w-48">
@@ -454,6 +443,37 @@ export default function PalettePage() {
               </ProofSection>
             </div>
           </Item>
+
+          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
+            <EmptyState className="max-w-sm">
+              Nothing here yet.{" "}
+              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
+                Create the first one
+              </a>
+              .
+            </EmptyState>
+          </Item>
+
+          <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
+            <div className="w-full max-w-xl">
+              <CuratedTagsError onRetry={() => {}} />
+            </div>
+          </Item>
+
+          <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
+            <p className="text-xs text-neutral-500">
+              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
+              <span className="text-neutral-400">Loading…</span>, or an error message
+              with an optional Back to map link. Not rendered here (takes the full height).
+            </p>
+          </Item>
+        </section>
+
+        {/* ============ COMPOSED views ============ */}
+        {/* Full assemblies of the pieces above; the closing list is what can't
+            be mocked on a static page. */}
+        <section className="space-y-3">
+          <SectionEyebrow title="Composed views" />
 
           <Item name="<EntityCard variant=feed>" usage="Feed (timeline), for all 3 types">
             <div className="w-full max-w-xl">
@@ -523,41 +543,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
-            <div className="w-full max-w-xl">
-              <CuratedTagsError onRetry={() => {}} />
-            </div>
-          </Item>
-
-          <Item name="<TagPicker>" usage="Curated + free tag selection (composes NewTagInput + TagChip); submit / edit">
-            <div className="w-full max-w-2xl">
-              <TagPicker
-                tags={tpTags}
-                setTags={setTpTags}
-                curatedTags={MOCK_CURATED}
-                selectedTagIds={tpSelected}
-                setSelectedTagIds={setTpSelected}
-              />
-            </div>
-          </Item>
-
           <Item name="<GeolocationDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
               <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
             </div>
-          </Item>
-        </section>
-
-        {/* ============ PAGES & scaffolding ============ */}
-        <section className="space-y-3">
-          <SectionEyebrow title="Pages & scaffolding" />
-
-          <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
-            <p className="text-xs text-neutral-500">
-              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
-              <span className="text-neutral-400">Loading…</span>, or an error message
-              with an optional Back to map link. Not rendered here (takes the full height).
-            </p>
           </Item>
 
           <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">

@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Tag } from "@/types";
 import { NewTagInput } from "@/components/ui/NewTagInput";
-import { TagChip } from "@/components/ui/TagChip";
+import { Pill } from "@/components/ui/Pill";
 import FieldHelp from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_LABEL } from "@/components/ui/form-styles";
@@ -86,12 +86,13 @@ export function TagPicker({
           </span>
           <div className={`flex flex-wrap gap-2${conflictInvalid ? ` ${invalidChips}` : ""}`}>
             {conflictTags.map((tag) => (
-              <TagChip
+              <Pill
                 key={tag.id}
-                tag={tag}
-                active={selectedTagIds.includes(tag.id)}
+                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
                 onClick={() => toggleTag(tag.id)}
-              />
+              >
+                {tag.name}
+              </Pill>
             ))}
           </div>
         </div>
@@ -106,12 +107,13 @@ export function TagPicker({
           </span>
           <div className={`flex flex-wrap gap-2${captureSourceInvalid ? ` ${invalidChips}` : ""}`}>
             {captureSourceTags.map((tag) => (
-              <TagChip
+              <Pill
                 key={tag.id}
-                tag={tag}
-                active={selectedTagIds.includes(tag.id)}
+                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
                 onClick={() => selectCaptureSource(tag.id)}
-              />
+              >
+                {tag.name}
+              </Pill>
             ))}
           </div>
         </div>
@@ -124,12 +126,13 @@ export function TagPicker({
         {freeTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {freeTags.map((tag) => (
-              <TagChip
+              <Pill
                 key={tag.id}
-                tag={tag}
-                active={selectedTagIds.includes(tag.id)}
+                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
                 onClick={() => toggleTag(tag.id)}
-              />
+              >
+                {tag.name}
+              </Pill>
             ))}
           </div>
         )}

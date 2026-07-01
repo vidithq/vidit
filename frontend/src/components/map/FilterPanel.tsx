@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import type { MapPoint, Tag } from "@/types";
-import { FILTER_CHIP_ACTIVE, FILTER_CHIP_INACTIVE } from "@/components/ui/styles";
+import { Pill } from "@/components/ui/Pill";
 import FieldHelp from "@/components/ui/FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -252,15 +252,13 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
   ) => (
     <div className="flex flex-wrap gap-1.5">
       {bucket.map((tag) => (
-        <button
+        <Pill
           key={tag.id}
+          tone={selected.includes(tag.name) ? "accent" : "neutral"}
           onClick={() => toggleInBucket(tag.name, setter)}
-          className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-            selected.includes(tag.name) ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          }`}
         >
           {tag.name}
-        </button>
+        </Pill>
       ))}
     </div>
   );
@@ -331,15 +329,13 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
           >
             <div className="flex flex-wrap gap-1.5">
               {MEDIA_TYPES.map(([value, lbl]) => (
-                <button
+                <Pill
                   key={value}
+                  tone={selectedMediaTypes.includes(value) ? "accent" : "neutral"}
                   onClick={() => toggleInBucket(value, setSelectedMediaTypes)}
-                  className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                    selectedMediaTypes.includes(value) ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-                  }`}
                 >
                   {lbl}
-                </button>
+                </Pill>
               ))}
             </div>
           </FilterSection>

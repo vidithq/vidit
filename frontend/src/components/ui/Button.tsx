@@ -13,8 +13,8 @@ import type { ButtonHTMLAttributes } from "react";
 // accident; pass `type="submit"` explicitly where it should.
 // Four variants on two axes: tone (accent or danger) and emphasis (filled,
 // outline, text). Everything clickable is the accent colour; red is only for
-// destructive. There is no grey button (grey lives in TAG_CHIP + disabled
-// states), since a grey clickable reads as not-clickable.
+// destructive. There is no grey button (grey lives in the <Pill> neutral tone +
+// disabled states), since a grey clickable reads as not-clickable.
 //   primary    accent, filled    the one main action of a view
 //   secondary  accent, outline   a secondary action
 //   ghost      accent, text      quiet: cancel, dismiss, dense rows, icons

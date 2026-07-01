@@ -1,15 +1,12 @@
 import type { BountyStatus } from "@/types";
-import { Pill } from "@/components/ui/Pill";
-import {
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
-} from "@/components/ui/styles";
+import { Pill, type PillTone } from "@/components/ui/Pill";
 
-const TONE: Record<BountyStatus, string> = {
-  open: STATUS_PILL_ACTIVE,
-  fulfilled: STATUS_PILL_FULFILLED,
-  closed: STATUS_PILL_CLOSED,
+// open draws attention (accent), fulfilled is a completed end-state (strong
+// white, not green — completion isn't a win), closed is withdrawn (neutral).
+const TONE: Record<BountyStatus, PillTone> = {
+  open: "accent",
+  fulfilled: "strong",
+  closed: "neutral",
 };
 
 const LABEL: Record<BountyStatus, string> = {

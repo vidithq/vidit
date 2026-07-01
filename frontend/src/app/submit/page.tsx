@@ -19,7 +19,7 @@ import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, TEXT_LINK } from "@/components/ui/styles";
+import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
@@ -386,7 +386,7 @@ function SubmitForm() {
               aria-pressed={submitType === t}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 submitType === t
-                  ? FILTER_CHIP_ACTIVE
+                  ? ACCENT_SURFACE
                   : "text-neutral-400 hover:text-neutral-200"
               }`}
             >

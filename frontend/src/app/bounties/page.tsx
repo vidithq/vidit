@@ -14,7 +14,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
-import { FilterChip } from "@/components/ui/FilterChip";
+import { Pill } from "@/components/ui/Pill";
 
 // Default filter "open": status pills no longer render on cards, so a
 // non-"open" default would hide which entries are still actionable.
@@ -56,13 +56,13 @@ export default function BountiesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             {STATUS_FILTERS.map((opt) => (
-              <FilterChip
+              <Pill
                 key={opt.value}
-                active={statusFilter === opt.value}
+                tone={statusFilter === opt.value ? "accent" : "neutral"}
                 onClick={() => setStatusFilter(opt.value)}
               >
                 {opt.label}
-              </FilterChip>
+              </Pill>
             ))}
           </div>
           <Link

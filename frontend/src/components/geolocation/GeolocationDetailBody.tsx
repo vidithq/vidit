@@ -15,7 +15,7 @@ import TrustBadge from "@/components/profile/TrustBadge";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
-import { TagBadge } from "@/components/ui/TagBadge";
+import { Pill } from "@/components/ui/Pill";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -134,11 +134,13 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       <DetailRow label={name} concept={concept} compact={compact} align="start">
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
           {tags.map((tag) => (
-            <TagBadge
+            <Pill
               key={tag.id}
-              name={tag.name}
+              tone="neutral"
               className={compact ? "text-[10px] px-2" : "text-xs px-2.5"}
-            />
+            >
+              {tag.name}
+            </Pill>
           ))}
         </div>
       </DetailRow>
