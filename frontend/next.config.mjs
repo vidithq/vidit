@@ -83,6 +83,12 @@ const nextConfig = {
       { protocol: "https", hostname: "d10w3bld05vsky.cloudfront.net" },
       { protocol: "http", hostname: "localhost", port: "8000" },
     ],
+    // Next 16's optimizer resolves each upstream host and refuses to fetch when
+    // it lands on a private / loopback IP (an SSRF guard), which returns 400 for
+    // the `localhost:8000` dev-media host above even though it matches a
+    // remotePattern. Re-allow local IPs in development only; production media is
+    // the public CloudFront host, so the guard stays on where it matters.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== "production",
   },
 };
 
