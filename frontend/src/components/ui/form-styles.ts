@@ -6,10 +6,14 @@
 // Separate from `styles.ts` (the colour-only palette source) on purpose: form
 // widgets' identity *is* their shape (padding/sizing), so it lives here.
 
+// The bare 11px uppercase label text, for block-level hosts that can't take
+// `block` themselves (a table head row, an inline heading div). FORM_LABEL is
+// this plus `block`, for `<label>` elements.
+export const LABEL_TEXT = "text-[11px] uppercase tracking-wider text-neutral-500";
+
 // Standard form label — uppercase eyebrow above the input. `block` so the
 // input drops below; no `mb-` — the surrounding stack owns vertical rhythm.
-export const FORM_LABEL =
-  "block text-[11px] uppercase tracking-wider text-neutral-500";
+export const FORM_LABEL = `block ${LABEL_TEXT}`;
 
 // Compact label — built-in `mb-1` for the tighter auth-card rhythm.
 export const FORM_LABEL_COMPACT =

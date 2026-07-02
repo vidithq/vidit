@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Bot } from "lucide-react";
 
+import { ACCENT_SURFACE } from "@/components/ui/styles";
+
 /**
  * Own-profile entry point into the detections list. Surfaces the count of
  * machine-`detected` geolocations awaiting the owner's submission and links to
@@ -21,7 +23,7 @@ export function DetectionsEntry({
       className="group flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 hover:bg-orange-500/15 transition-colors"
     >
       <div className="flex items-center gap-3">
-        <span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+        <span className={`relative flex size-9 shrink-0 items-center justify-center rounded-full ${ACCENT_SURFACE}`}>
           <Bot size={18} />
           {/* Same orange dot as the sidebar profile row, so the user ties the
               sidebar nudge to this block. */}

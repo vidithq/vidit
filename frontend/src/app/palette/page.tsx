@@ -298,7 +298,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="FORM_LABEL (+ _COMPACT)" usage="Field labels, kept separate from <Input>">
+          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label.">
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>

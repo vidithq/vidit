@@ -212,7 +212,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           <span className="text-sm inline-flex items-center gap-1.5">
             <Link
               href={`/profile/${geo.author.username}`}
-              className={`${TEXT_LINK} transition-colors`}
+              className={`${TEXT_LINK}`}
             >
               {geo.author.username}
             </Link>

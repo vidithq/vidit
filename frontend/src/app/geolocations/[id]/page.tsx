@@ -36,7 +36,7 @@ export default function GeolocationPage() {
           by{" "}
           <Link
             href={`/profile/${geo.author.username}`}
-            className={`${TEXT_LINK} transition-colors`}
+            className={`${TEXT_LINK}`}
           >
             {geo.author.username}
           </Link>

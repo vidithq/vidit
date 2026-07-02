@@ -51,7 +51,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
                 by{" "}
                 <Link
                   href={`/profile/${detail.author.username}`}
-                  className={`${TEXT_LINK} transition-colors`}
+                  className={``}
                 >
                   {detail.author.username}
                 </Link>
@@ -80,7 +80,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             />
             <Link
               href={`/geolocations/${detail.id}`}
-              className="flex items-center gap-1 text-[11px] text-orange-400 hover:text-orange-300 transition-colors shrink-0"
+              className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
             >
               Full page
               <ExternalLink size={11} />

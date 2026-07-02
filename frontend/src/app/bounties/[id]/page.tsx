@@ -134,7 +134,7 @@ export default function BountyDetailPage() {
           by{" "}
           <Link
             href={`/profile/${bounty.author.username}`}
-            className={`${TEXT_LINK} transition-colors`}
+            className={`${TEXT_LINK}`}
           >
             {bounty.author.username}
           </Link>
@@ -230,7 +230,7 @@ export default function BountyDetailPage() {
                       <Link
                         key={c.id}
                         href={`/profile/${c.username}`}
-                        className={`text-sm ${TEXT_LINK} transition-colors`}
+                        className={`text-sm ${TEXT_LINK}`}
                       >
                         @{c.username}
                       </Link>
@@ -245,7 +245,7 @@ export default function BountyDetailPage() {
               <DetailRow label="Fulfilled by">
                 <Link
                   href={`/geolocations/${bounty.fulfilled_by.id}`}
-                  className={`text-sm ${TEXT_LINK} transition-colors truncate ml-4 max-w-[300px]`}
+                  className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
                 >
                   {bounty.fulfilled_by.title}
                 </Link>

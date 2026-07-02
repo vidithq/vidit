@@ -17,6 +17,7 @@ import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -221,10 +222,10 @@ function TrustUserRow({
 
       {deleteMode !== null && (
         <div
-          className={`px-3 py-2 rounded-md text-xs space-y-2 border ${
+          className={`px-3 py-2 rounded-md text-xs space-y-2 ${
             deleteMode === "hard"
-              ? "bg-red-500/5 border-red-500/30 text-red-200"
-              : "bg-amber-500/5 border-amber-500/30 text-amber-200"
+              ? "border bg-red-500/5 border-red-500/30 text-red-200"
+              : WARNING_CALLOUT
           }`}
         >
           {deleteMode === "hard" ? (

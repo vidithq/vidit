@@ -6,7 +6,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
+import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -209,7 +209,7 @@ function AuthorshipNudgeNoLink() {
         No X account linked on your{" "}
         <a
           href="/settings"
-          className="text-orange-400 hover:text-orange-300 transition-colors underline-offset-2 hover:underline"
+          className={`${TEXT_LINK} underline-offset-2`}
         >
           profile
         </a>

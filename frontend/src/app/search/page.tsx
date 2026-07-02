@@ -19,7 +19,8 @@ import type {
 } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
+import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
@@ -138,13 +139,13 @@ function SearchPageBody() {
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
           />
-          <input
+          <Input
             type="search"
             value={queryInput}
             onChange={(e) => setQueryInput(e.target.value)}
             placeholder="Try a location, an analyst handle, or a keyword from a title…"
             autoFocus
-            className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-hidden focus:border-orange-500"
+            className="pl-9 bg-neutral-900 placeholder:text-neutral-500"
           />
         </div>
 
@@ -289,7 +290,7 @@ function ResultGroup({
 }) {
   return (
     <section className="space-y-2">
-      <div className="text-[11px] uppercase tracking-wider text-neutral-500">
+      <div className={LABEL_TEXT}>
         {title} · <span className="text-neutral-300 font-medium">{count}</span>
       </div>
       <div className="space-y-3">{children}</div>

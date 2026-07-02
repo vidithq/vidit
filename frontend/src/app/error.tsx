@@ -13,7 +13,8 @@ import { useEffect } from "react";
 
 import * as Sentry from "@sentry/nextjs";
 
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import { LABEL_TEXT } from "@/components/ui/form-styles";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -41,7 +42,7 @@ export default function Error({ error, reset }: ErrorProps) {
         </p>
         {error.digest && (
           <div className="mt-2">
-            <p className="text-[11px] uppercase tracking-wider text-neutral-500">
+            <p className={LABEL_TEXT}>
               Error digest
             </p>
             <code
@@ -60,10 +61,7 @@ export default function Error({ error, reset }: ErrorProps) {
           >
             Try again
           </Button>
-          <a
-            href="/map"
-            className="inline-flex items-center px-3 py-1.5 rounded-md border border-neutral-700 text-neutral-300 text-sm hover:bg-neutral-800 transition-colors"
-          >
+          <a href="/map" className={buttonClasses("secondary")}>
             Back to map
           </a>
         </div>

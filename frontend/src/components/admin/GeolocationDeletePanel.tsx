@@ -14,6 +14,7 @@ import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -121,7 +122,7 @@ export function GeolocationDeletePanel() {
         )}
 
         {confirm.armed && (
-          <div className="px-3 py-2 rounded-md text-xs text-amber-300 bg-amber-500/5 border border-amber-500/30">
+          <div className={`px-3 py-2 rounded-md text-xs ${WARNING_CALLOUT}`}>
             {mode === "hard" ? (
               <>
                 <strong>Hard delete is irreversible.</strong> The row, its
