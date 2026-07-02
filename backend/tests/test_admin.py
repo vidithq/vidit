@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.geolocation import STATUS_REQUESTED, Geolocation
+from app.models.event import STATUS_REQUESTED, Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
@@ -82,10 +82,8 @@ def regular_user(db):
     # Since the merge, requests and geolocations are one table, so a single
     # author_id / requested_by_id sweep covers both.
     db.expire_all()
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
-        synchronize_session=False
-    )
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -362,7 +360,7 @@ def test_set_trust_404_for_unknown_user(admin_user):
 
 @pytest.fixture
 def geolocation(db, regular_user):
-    geo = Geolocation(
+    geo = Event(
         author_id=regular_user.id,
         title=f"Test geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -377,13 +375,13 @@ def geolocation(db, regular_user):
     # Tests may have hard-deleted the row; bulk DELETE-by-id rather than
     # db.delete(instance), which would refresh a vanished row → ObjectDeletedError.
     db.expire_all()
-    db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
     db.commit()
 
 
 def test_soft_delete_geolocation_marks_deleted_at(admin_user, geolocation, db):
     response = client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
@@ -393,14 +391,14 @@ def test_soft_delete_geolocation_marks_deleted_at(admin_user, geolocation, db):
     assert body["geolocation_id"] == str(geolocation.id)
 
     db.expire_all()
-    refreshed = db.query(Geolocation).filter(Geolocation.id == geolocation.id).first()
+    refreshed = db.query(Event).filter(Event.id == geolocation.id).first()
     assert refreshed is not None
     assert refreshed.deleted_at is not None
 
 
 def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
     client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
     event = (
@@ -421,14 +419,14 @@ def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
 
 def test_soft_delete_is_idempotent(admin_user, geolocation, db):
     first = client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
     assert first.status_code == 200
     first_ts = first.json()["deleted_at"]
 
     second = client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
     assert second.status_code == 200
@@ -450,11 +448,11 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
 
 def test_soft_deleted_row_hidden_from_public_reads(admin_user, geolocation):
     client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
     # Detail
-    detail = client.get(f"/api/v1/geolocations/{geolocation.id}")
+    detail = client.get(f"/api/v1/events/{geolocation.id}")
     assert detail.status_code == 404
 
 
@@ -463,7 +461,7 @@ def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geo
     assert before["geolocations_count"] >= 1
 
     client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
 
@@ -478,7 +476,7 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     geo_title = geolocation.title
 
     response = client.delete(
-        f"/api/v1/admin/geolocations/{geo_id}?hard=true",
+        f"/api/v1/admin/events/{geo_id}?hard=true",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
@@ -489,7 +487,7 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     assert body["title"] == geo_title
 
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.id == geo_id).first() is None
+    assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
         db.query(AdminEvent)
@@ -503,7 +501,7 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
 
 def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation):
     response = client.delete(
-        f"/api/v1/admin/geolocations/{geolocation.id}",
+        f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
@@ -511,13 +509,13 @@ def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation
 
 def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
     response = client.delete(
-        f"/api/v1/admin/geolocations/{uuid.uuid4()}",
+        f"/api/v1/admin/events/{uuid.uuid4()}",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
     assert response.json()["detail"] == {
         "code": "geolocation_not_found",
-        "message": "Geolocation not found",
+        "message": "Event not found",
     }
 
 
@@ -537,7 +535,7 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     db.expire_all()
     refreshed_user = db.query(User).filter(User.id == regular_user.id).first()
     assert refreshed_user.deleted_at is not None
-    refreshed_geo = db.query(Geolocation).filter(Geolocation.id == geolocation.id).first()
+    refreshed_geo = db.query(Event).filter(Event.id == geolocation.id).first()
     assert refreshed_geo.deleted_at is not None
 
 
@@ -618,7 +616,7 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
 
     db.expire_all()
     assert db.query(User).filter(User.id == user_id).first() is None
-    assert db.query(Geolocation).filter(Geolocation.id == geo_id).first() is None
+    assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
         db.query(AdminEvent)
@@ -643,7 +641,7 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
     )
     db.add(fulfiller)
     db.flush()
-    event = Geolocation(
+    event = Event(
         author_id=fulfiller.id,  # ownership transferred to the fulfiller at submit
         requested_by_id=regular_user.id,  # the requester we will hard-delete
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
@@ -666,7 +664,7 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
 
     db.expire_all()
     assert db.query(User).filter(User.id == requester_id).first() is None
-    surviving = db.query(Geolocation).filter(Geolocation.id == event_id).one()
+    surviving = db.query(Event).filter(Event.id == event_id).one()
     assert surviving.author_id == fulfiller_id
     assert surviving.requested_by_id is None
 
@@ -674,7 +672,7 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
     # externally-deleted requester) so the shared fixture teardown does not try to
     # refresh a vanished row; then bulk delete by id.
     db.expunge_all()
-    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == event_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
     db.commit()
 
@@ -692,7 +690,7 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
     )
     db.add(fulfiller)
     db.flush()
-    event = Geolocation(
+    event = Event(
         author_id=fulfiller.id,
         requested_by_id=regular_user.id,
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
@@ -706,7 +704,7 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
     event_id = event.id
     fulfiller_id = fulfiller.id
 
-    before = client.get(f"/api/v1/geolocations/{event_id}")
+    before = client.get(f"/api/v1/events/{event_id}")
     assert before.status_code == 200
     assert before.json()["requested_by"]["username"] == regular_user.username
 
@@ -715,7 +713,7 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
         headers=login_as(client, admin_user),
     )
 
-    after = client.get(f"/api/v1/geolocations/{event_id}")
+    after = client.get(f"/api/v1/events/{event_id}")
     assert after.status_code == 200
     assert after.json()["requested_by"] is None
 
@@ -723,7 +721,7 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
     # externally-deleted requester) so the shared fixture teardown does not try to
     # refresh a vanished row; then bulk delete by id.
     db.expunge_all()
-    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == event_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
     db.commit()
 
@@ -920,10 +918,10 @@ def test_create_unguarded_invite_code_route_is_gone(regular_user):
 def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
     """Cheap inline requested-event (bounty) fixture — parity with the
     geolocation fixture pattern in this file. A bounty is a ``requested``
-    ``Geolocation`` (no location) since the merge. Returns the row id; the
+    ``Event`` (no location) since the merge. Returns the row id; the
     caller relies on cascade-on-delete-from-user to clean up the row + its
     media."""
-    bounty = Geolocation(
+    bounty = Event(
         author_id=author_id,
         requested_by_id=author_id,
         title=f"Bounty {uuid.uuid4().hex[:8]}",
@@ -935,7 +933,7 @@ def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
     db.flush()
     db.add(
         Media(
-            geolocation_id=bounty.id,
+            event_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -965,7 +963,7 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     assert "cascaded_bounties" not in body
 
     db.expire_all()
-    cascaded = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    cascaded = db.query(Event).filter(Event.id == bounty_id).one()
     assert cascaded.deleted_at is not None
     # Public list excludes the soft-deleted request.
     listing = client.get("/api/v1/bounties").json()
@@ -996,7 +994,7 @@ def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
     Media rows cascade via the event FK; the S3 sweep happens after commit and is
     counted in ``media_count``."""
     bounty_id = _seed_bounty(db, author_id=regular_user.id)
-    media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
+    media_id = db.query(Media.id).filter(Media.event_id == bounty_id).scalar()
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
@@ -1012,7 +1010,7 @@ def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
     assert body["media_count"] >= 1
 
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
+    assert db.query(Event).filter(Event.id == bounty_id).first() is None
     assert db.query(Media).filter(Media.id == media_id).first() is None
 
 

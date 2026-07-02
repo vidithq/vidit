@@ -23,7 +23,7 @@ class _HasAuthorId(Protocol):
     """Anything carrying a ``UUID`` ``author_id`` column — duck-typed.
 
     Lets type-checkers verify callers pass the right shape without
-    importing both model classes (Geolocation, Bounty) here. ``uuid.UUID``
+    importing the concrete ``Event`` model here. ``uuid.UUID``
     (not the looser ``object``) rejects the mistake of passing ``user.id``
     itself as ``row``.
     """

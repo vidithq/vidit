@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/api/v1/admin/geolocations/{geolocation_id}": {
+    "/api/v1/admin/events/{geolocation_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -20,7 +20,7 @@ export interface paths {
          *     `?hard=true` for GDPR-grade erasure (drops the row, media rows, and
          *     S3 objects). Both paths invalidate the points cache.
          */
-        delete: operations["delete_geolocation_admin_api_v1_admin_geolocations__geolocation_id__delete"];
+        delete: operations["delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -525,8 +525,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Bounty
-         * @description Hard-delete by the author. Cascades drop ``geolocation_tags``,
-         *     ``geolocation_claims`` and ``media`` rows; the S3 objects are swept after
+         * @description Hard-delete by the author. Cascades drop ``event_tags``,
+         *     ``event_claims`` and ``media`` rows; the S3 objects are swept after
          *     the commit lands. Admin soft-delete lives behind the admin router and
          *     stamps ``deleted_at`` instead.
          */
@@ -588,7 +588,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations": {
+    "/api/v1/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -596,17 +596,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Geolocations */
-        get: operations["list_geolocations_api_v1_geolocations_get"];
+        get: operations["list_geolocations_api_v1_events_get"];
         put?: never;
         /** Create Geolocation */
-        post: operations["create_geolocation_api_v1_geolocations_post"];
+        post: operations["create_geolocation_api_v1_events_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/detections": {
+    "/api/v1/events/detections": {
         parameters: {
             query?: never;
             header?: never;
@@ -620,12 +620,12 @@ export interface paths {
          *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
-         *     ``GeolocationRead`` (media + tags) so the queue shows the evidence and the
+         *     ``EventRead`` (media + tags) so the queue shows the evidence and the
          *     frontend computes submit-readiness (>=1 media + a ``conflict`` + a
          *     ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
          *     desc: the latest import is the first thing to triage.
          */
-        get: operations["list_detections_api_v1_geolocations_detections_get"];
+        get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -634,7 +634,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/import-archive": {
+    "/api/v1/events/import-archive": {
         parameters: {
             query?: never;
             header?: never;
@@ -654,14 +654,14 @@ export interface paths {
          *     size cap (``archive_zip.MAX_UPLOAD_BYTES``); a larger archive waits for the
          *     durable-worker upgrade. Returns the assemble counts.
          */
-        post: operations["import_archive_api_v1_geolocations_import_archive_post"];
+        post: operations["import_archive_api_v1_events_import_archive_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/import-from-tweet": {
+    "/api/v1/events/import-from-tweet": {
         parameters: {
             query?: never;
             header?: never;
@@ -679,14 +679,14 @@ export interface paths {
          *     finite — an anonymous client shouldn't burn it to scrape X via our
          *     proxy. Per-IP 30/minute to bound the same risk per logged-in caller.
          */
-        post: operations["import_from_tweet_api_v1_geolocations_import_from_tweet_post"];
+        post: operations["import_from_tweet_api_v1_events_import_from_tweet_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/import-from-tweet/media": {
+    "/api/v1/events/import-from-tweet/media": {
         parameters: {
             query?: never;
             header?: never;
@@ -704,7 +704,7 @@ export interface paths {
          *     ``video.twimg.com``) keeps it from becoming an SSRF / open-redirect
          *     vector; auth-required so it can't be abused as a bandwidth pipe to X.
          */
-        get: operations["import_from_tweet_media_api_v1_geolocations_import_from_tweet_media_get"];
+        get: operations["import_from_tweet_media_api_v1_events_import_from_tweet_media_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -713,7 +713,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/points": {
+    "/api/v1/events/points": {
         parameters: {
             query?: never;
             header?: never;
@@ -732,7 +732,7 @@ export interface paths {
          *     geolocated row, a flag, not the state string, to keep the payload small.
          *     Cached in-memory for 60s per unique filter combination.
          */
-        get: operations["list_points_api_v1_geolocations_points_get"];
+        get: operations["list_points_api_v1_events_points_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -741,7 +741,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/possible-duplicates": {
+    "/api/v1/events/possible-duplicates": {
         parameters: {
             query?: never;
             header?: never;
@@ -769,7 +769,7 @@ export interface paths {
          *     No caching — the input space (every coordinate) is unbounded so the hit
          *     rate is ~0, and a 500ms-debounced probe doesn't need it.
          */
-        get: operations["list_possible_duplicates_api_v1_geolocations_possible_duplicates_get"];
+        get: operations["list_possible_duplicates_api_v1_events_possible_duplicates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -778,7 +778,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/proof-images": {
+    "/api/v1/events/proof-images": {
         parameters: {
             query?: never;
             header?: never;
@@ -801,14 +801,14 @@ export interface paths {
          *     rolling-24h DB ceiling, so one account can't fill the bucket via IP
          *     rotation.
          */
-        post: operations["upload_proof_image_endpoint_api_v1_geolocations_proof_images_post"];
+        post: operations["upload_proof_image_endpoint_api_v1_events_proof_images_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/{geolocation_id}": {
+    "/api/v1/events/{geolocation_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -816,17 +816,17 @@ export interface paths {
             cookie?: never;
         };
         /** Get Geolocation */
-        get: operations["get_geolocation_api_v1_geolocations__geolocation_id__get"];
+        get: operations["get_geolocation_api_v1_events__geolocation_id__get"];
         put?: never;
         post?: never;
         /** Delete Geolocation */
-        delete: operations["delete_geolocation_api_v1_geolocations__geolocation_id__delete"];
+        delete: operations["delete_geolocation_api_v1_events__geolocation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/{geolocation_id}/reject": {
+    "/api/v1/events/{geolocation_id}/reject": {
         parameters: {
             query?: never;
             header?: never;
@@ -844,14 +844,14 @@ export interface paths {
          *     ``detected`` → 409 (a ``geolocated`` row goes through ``DELETE``).
          *     Soft-deleted → 404.
          */
-        post: operations["reject_geolocation_api_v1_geolocations__geolocation_id__reject_post"];
+        post: operations["reject_geolocation_api_v1_events__geolocation_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/geolocations/{geolocation_id}/submit": {
+    "/api/v1/events/{geolocation_id}/submit": {
         parameters: {
             query?: never;
             header?: never;
@@ -875,7 +875,7 @@ export interface paths {
          *     ``conflict`` + ``capture_source`` tags, 400 otherwise). Off ``requested`` /
          *     ``detected`` → 409. Soft-deleted rows read as 404.
          */
-        post: operations["submit_geolocation_api_v1_geolocations__geolocation_id__submit_post"];
+        post: operations["submit_geolocation_api_v1_events__geolocation_id__submit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1006,6 +1006,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{username}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User Geolocations */
+        get: operations["get_user_geolocations_api_v1_users__username__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}/follow": {
         parameters: {
             query?: never;
@@ -1034,23 +1051,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{username}/geolocations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get User Geolocations */
-        get: operations["get_user_geolocations_api_v1_users__username__geolocations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -1073,13 +1073,13 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * AdminGeolocationDeleteResponse
-         * @description Response for `DELETE /admin/geolocations/{id}`.
+         * AdminEventDeleteResponse
+         * @description Response for `DELETE /admin/events/{id}`.
          *
          *     Confirms what happened (which row, soft vs hard, what was swept) without a
          *     client re-query.
          */
-        AdminGeolocationDeleteResponse: {
+        AdminEventDeleteResponse: {
             /** Deleted At */
             deleted_at?: string | null;
             /**
@@ -1399,8 +1399,8 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_create_geolocation_api_v1_geolocations_post */
-        Body_create_geolocation_api_v1_geolocations_post: {
+        /** Body_create_geolocation_api_v1_events_post */
+        Body_create_geolocation_api_v1_events_post: {
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1422,13 +1422,13 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_import_archive_api_v1_geolocations_import_archive_post */
-        Body_import_archive_api_v1_geolocations_import_archive_post: {
+        /** Body_import_archive_api_v1_events_import_archive_post */
+        Body_import_archive_api_v1_events_import_archive_post: {
             /** File */
             file: string;
         };
-        /** Body_submit_geolocation_api_v1_geolocations__geolocation_id__submit_post */
-        Body_submit_geolocation_api_v1_geolocations__geolocation_id__submit_post: {
+        /** Body_submit_geolocation_api_v1_events__geolocation_id__submit_post */
+        Body_submit_geolocation_api_v1_events__geolocation_id__submit_post: {
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1452,8 +1452,8 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_upload_proof_image_endpoint_api_v1_geolocations_proof_images_post */
-        Body_upload_proof_image_endpoint_api_v1_geolocations_proof_images_post: {
+        /** Body_upload_proof_image_endpoint_api_v1_events_proof_images_post */
+        Body_upload_proof_image_endpoint_api_v1_events_proof_images_post: {
             /** File */
             file: string;
         };
@@ -1492,9 +1492,9 @@ export interface components {
         };
         /**
          * BountyRead
-         * @description The requested-events view over the unified ``Geolocation`` model.
+         * @description The requested-events view over the unified ``Event`` model.
          *
-         *     A bounty is a ``Geolocation`` with ``status='requested'`` (an open call to
+         *     A bounty is a ``Event`` with ``status='requested'`` (an open call to
          *     geolocate) that may later become ``closed`` when the author withdraws it.
          *     Since the merge, fulfilment is a lifecycle move on this same row rather than
          *     a copy into a new geolocation, so there is no ``fulfilled_by`` trace.
@@ -1602,34 +1602,8 @@ export interface components {
             /** Title */
             title: string;
         };
-        /**
-         * ExternalLinks
-         * @description Linktree-style external account links rendered on the profile.
-         *
-         *     Stored as JSONB on ``users.external_links``. Each value is a free-form
-         *     string (handle *or* URL — Discord/X handles often aren't URLs); the frontend
-         *     decides whether to render it as a link by sniffing for an http scheme.
-         */
-        ExternalLinks: {
-            /** Discord */
-            discord?: string | null;
-            /** Github */
-            github?: string | null;
-            /** Website */
-            website?: string | null;
-            /** X */
-            x?: string | null;
-        };
-        /** ForgotPasswordRequest */
-        ForgotPasswordRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-        };
-        /** GeolocationList */
-        GeolocationList: {
+        /** EventList */
+        EventList: {
             author: components["schemas"]["AuthorRef"];
             /** Event Date */
             event_date?: string | null;
@@ -1655,8 +1629,8 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** GeolocationRead */
-        GeolocationRead: {
+        /** EventRead */
+        EventRead: {
             author: components["schemas"]["AuthorRef"];
             /**
              * Created At
@@ -1711,6 +1685,32 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ExternalLinks
+         * @description Linktree-style external account links rendered on the profile.
+         *
+         *     Stored as JSONB on ``users.external_links``. Each value is a free-form
+         *     string (handle *or* URL — Discord/X handles often aren't URLs); the frontend
+         *     decides whether to render it as a link by sniffing for an http scheme.
+         */
+        ExternalLinks: {
+            /** Discord */
+            discord?: string | null;
+            /** Github */
+            github?: string | null;
+            /** Website */
+            website?: string | null;
+            /** X */
+            x?: string | null;
+        };
+        /** ForgotPasswordRequest */
+        ForgotPasswordRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1753,18 +1753,18 @@ export interface components {
             url: string;
         };
         /**
-         * PaginatedGeolocationDetails
+         * PaginatedEventDetails
          * @description Full-detail paginated geolocations: the owner Detections-queue payload.
          *
-         *     Mirrors ``PaginatedGeolocations`` but carries ``GeolocationRead`` items
-         *     (media + tags + provenance) rather than the lightweight ``GeolocationList``
+         *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
+         *     (media + tags + provenance) rather than the lightweight ``EventList``
          *     card: the Detections queue needs the media to judge a detection and the tags
          *     to compute submit-readiness (>=1 media + a ``conflict`` + a
          *     ``capture_source`` tag) without a per-row round-trip.
          */
-        PaginatedGeolocationDetails: {
+        PaginatedEventDetails: {
             /** Items */
-            items: components["schemas"]["GeolocationRead"][];
+            items: components["schemas"]["EventRead"][];
             /** Page */
             page: number;
             /** Per Page */
@@ -1772,10 +1772,10 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** PaginatedGeolocations */
-        PaginatedGeolocations: {
+        /** PaginatedEvents */
+        PaginatedEvents: {
             /** Items */
-            items: components["schemas"]["GeolocationList"][];
+            items: components["schemas"]["EventList"][];
             /** Page */
             page: number;
             /** Per Page */
@@ -1899,8 +1899,8 @@ export interface components {
             /** Title Highlight */
             title_highlight: string;
         };
-        /** SearchGeolocationHit */
-        SearchGeolocationHit: {
+        /** SearchEventHit */
+        SearchEventHit: {
             author: components["schemas"]["AuthorRef"];
             /** Event Date */
             event_date?: string | null;
@@ -1936,7 +1936,7 @@ export interface components {
             /** Bounties */
             bounties: components["schemas"]["SearchBountyHit"][];
             /** Geolocations */
-            geolocations: components["schemas"]["SearchGeolocationHit"][];
+            geolocations: components["schemas"]["SearchEventHit"][];
             /** Query */
             query: string;
             /** Total */
@@ -2200,7 +2200,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    delete_geolocation_admin_api_v1_admin_geolocations__geolocation_id__delete: {
+    delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete: {
         parameters: {
             query?: {
                 hard?: boolean;
@@ -2221,7 +2221,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminGeolocationDeleteResponse"];
+                    "application/json": components["schemas"]["AdminEventDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3226,7 +3226,7 @@ export interface operations {
             };
         };
     };
-    list_geolocations_api_v1_geolocations_get: {
+    list_geolocations_api_v1_events_get: {
         parameters: {
             query?: {
                 conflict?: string[] | null;
@@ -3252,7 +3252,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeolocationList"][];
+                    "application/json": components["schemas"]["EventList"][];
                 };
             };
             /** @description Validation Error */
@@ -3266,7 +3266,7 @@ export interface operations {
             };
         };
     };
-    create_geolocation_api_v1_geolocations_post: {
+    create_geolocation_api_v1_events_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3277,7 +3277,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_create_geolocation_api_v1_geolocations_post"];
+                "multipart/form-data": components["schemas"]["Body_create_geolocation_api_v1_events_post"];
             };
         };
         responses: {
@@ -3287,7 +3287,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeolocationRead"];
+                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */
@@ -3301,7 +3301,7 @@ export interface operations {
             };
         };
     };
-    list_detections_api_v1_geolocations_detections_get: {
+    list_detections_api_v1_events_detections_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -3321,7 +3321,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedGeolocationDetails"];
+                    "application/json": components["schemas"]["PaginatedEventDetails"];
                 };
             };
             /** @description Validation Error */
@@ -3335,7 +3335,7 @@ export interface operations {
             };
         };
     };
-    import_archive_api_v1_geolocations_import_archive_post: {
+    import_archive_api_v1_events_import_archive_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3346,7 +3346,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_import_archive_api_v1_geolocations_import_archive_post"];
+                "multipart/form-data": components["schemas"]["Body_import_archive_api_v1_events_import_archive_post"];
             };
         };
         responses: {
@@ -3370,7 +3370,7 @@ export interface operations {
             };
         };
     };
-    import_from_tweet_api_v1_geolocations_import_from_tweet_post: {
+    import_from_tweet_api_v1_events_import_from_tweet_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3405,7 +3405,7 @@ export interface operations {
             };
         };
     };
-    import_from_tweet_media_api_v1_geolocations_import_from_tweet_media_get: {
+    import_from_tweet_media_api_v1_events_import_from_tweet_media_get: {
         parameters: {
             query: {
                 u: string;
@@ -3438,7 +3438,7 @@ export interface operations {
             };
         };
     };
-    list_points_api_v1_geolocations_points_get: {
+    list_points_api_v1_events_points_get: {
         parameters: {
             query?: {
                 conflict?: string[] | null;
@@ -3479,7 +3479,7 @@ export interface operations {
             };
         };
     };
-    list_possible_duplicates_api_v1_geolocations_possible_duplicates_get: {
+    list_possible_duplicates_api_v1_events_possible_duplicates_get: {
         parameters: {
             query: {
                 lat: number;
@@ -3515,7 +3515,7 @@ export interface operations {
             };
         };
     };
-    upload_proof_image_endpoint_api_v1_geolocations_proof_images_post: {
+    upload_proof_image_endpoint_api_v1_events_proof_images_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3526,7 +3526,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_proof_image_endpoint_api_v1_geolocations_proof_images_post"];
+                "multipart/form-data": components["schemas"]["Body_upload_proof_image_endpoint_api_v1_events_proof_images_post"];
             };
         };
         responses: {
@@ -3550,7 +3550,7 @@ export interface operations {
             };
         };
     };
-    get_geolocation_api_v1_geolocations__geolocation_id__get: {
+    get_geolocation_api_v1_events__geolocation_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3567,7 +3567,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeolocationRead"];
+                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */
@@ -3581,7 +3581,7 @@ export interface operations {
             };
         };
     };
-    delete_geolocation_api_v1_geolocations__geolocation_id__delete: {
+    delete_geolocation_api_v1_events__geolocation_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -3612,7 +3612,7 @@ export interface operations {
             };
         };
     };
-    reject_geolocation_api_v1_geolocations__geolocation_id__reject_post: {
+    reject_geolocation_api_v1_events__geolocation_id__reject_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3643,7 +3643,7 @@ export interface operations {
             };
         };
     };
-    submit_geolocation_api_v1_geolocations__geolocation_id__submit_post: {
+    submit_geolocation_api_v1_events__geolocation_id__submit_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3656,7 +3656,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_submit_geolocation_api_v1_geolocations__geolocation_id__submit_post"];
+                "multipart/form-data": components["schemas"]["Body_submit_geolocation_api_v1_events__geolocation_id__submit_post"];
             };
         };
         responses: {
@@ -3666,7 +3666,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeolocationRead"];
+                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */
@@ -3805,7 +3805,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedGeolocations"];
+                    "application/json": components["schemas"]["PaginatedEvents"];
                 };
             };
             /** @description Validation Error */
@@ -3887,6 +3887,40 @@ export interface operations {
             };
         };
     };
+    get_user_geolocations_api_v1_users__username__events_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedEvents"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     follow_user_api_v1_users__username__follow_post: {
         parameters: {
             query?: never;
@@ -3937,40 +3971,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_geolocations_api_v1_users__username__geolocations_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-            };
-            header?: never;
-            path: {
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedGeolocations"];
-                };
             };
             /** @description Validation Error */
             422: {

@@ -70,7 +70,7 @@ export function DuplicateProbe({
       if (sourceUrl) params.set("source_url", sourceUrl);
       if (eventDate) params.set("event_date", eventDate);
       apiFetch<PossibleDuplicate[]>(
-        `/geolocations/possible-duplicates?${params.toString()}`,
+        `/events/possible-duplicates?${params.toString()}`,
         { signal: controller.signal },
       )
         .then((rows) => {
@@ -126,7 +126,7 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
         {hits.map((hit) => (
           <li key={hit.id}>
             <Link
-              href={`/geolocations/${hit.id}`}
+              href={`/events/${hit.id}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between gap-3 px-3 py-2 bg-neutral-900/60 border border-neutral-700 rounded-md hover:border-orange-500/50 hover:bg-neutral-900 transition-colors"

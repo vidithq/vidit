@@ -3,8 +3,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
-from app.models.geolocation import Geolocation
-from app.models.tag import Tag, geolocation_tags
+from app.models.event import Event
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.tag import TagCreate, TagRead
@@ -18,7 +18,7 @@ router = APIRouter()
 USER_CREATABLE_CATEGORIES = {"free"}
 
 # Server-managed taxonomies: every new geolocation must carry at least one
-# tag from each (enforced in `routers/geolocations.py`). Surfaced as the
+# tag from each (enforced in `routers/events.py`). Surfaced as the
 # two required selectors on the submit form via `?curated=true`.
 CURATED_CATEGORIES = ("conflict", "capture_source")
 
@@ -52,9 +52,9 @@ def list_tags(
 
     query = (
         db.query(Tag)
-        .join(geolocation_tags, geolocation_tags.c.tag_id == Tag.id)
-        .join(Geolocation, Geolocation.id == geolocation_tags.c.geolocation_id)
-        .filter(Geolocation.deleted_at.is_(None))
+        .join(event_tags, event_tags.c.tag_id == Tag.id)
+        .join(Event, Event.id == event_tags.c.event_id)
+        .filter(Event.deleted_at.is_(None))
         .distinct()
     )
     if category:

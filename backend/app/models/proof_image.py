@@ -30,7 +30,7 @@ class ProofImage(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     geolocation_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("geolocations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=True
     )
     # Hex-encoded SHA-256 of the uploaded bytes — see ``models/media.py``
     # for the rationale. Nullable for the same reason: orphan rows

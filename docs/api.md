@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /geolocations` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof`; the located and requested views share the file/media codes via `services/evidence_intake`). The submit transition (`POST /geolocations/{id}/submit`) adds `invalid_state` when the row is already `geolocated`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), every `POST /events` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`), and every `POST /bounties` business-rule branch (codes: `too_many_files`, `media_required`, `invalid_file`, `evidence_processing_failed`, `invalid_proof`; the located and requested views share the file/media codes via `services/evidence_intake`). The submit transition (`POST /events/{id}/submit`) adds `invalid_state` when the row is already `geolocated`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -31,20 +31,20 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/forgot-password` | 🌐 | Email a single-use reset token (always 204) |
 | POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
-| **Geolocations** | | | |
-| GET | `/geolocations` | 🌐 | List geolocations for the map (lightweight format) |
-| GET | `/geolocations/points` | 🌐 | Compact map-points tuples (cached) |
-| GET | `/geolocations/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
-| POST | `/geolocations/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
-| GET | `/geolocations/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
-| POST | `/geolocations/import-archive` | 🔒 | Backfill your profile from your X data archive (zip) |
-| GET | `/geolocations/{id}` | 🌐 | Full geolocation detail |
-| POST | `/geolocations` | 🔒 | Create a geolocation (multipart, uploads media) |
-| DELETE | `/geolocations/{id}` | 🔒 | Author-only hard delete + S3 sweep |
-| POST | `/geolocations/{id}/submit` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
-| POST | `/geolocations/{id}/reject` | 🔒 | Owner soft-deletes a `detected` draft (re-importable) |
-| GET | `/geolocations/detections` | 🔒 | Your `detected` geolocations awaiting submission (paginated) |
-| POST | `/geolocations/proof-images` | 🔒 | Upload an inline image referenced by the Tiptap proof |
+| **Events** | | | |
+| GET | `/events` | 🌐 | List geolocations for the map (lightweight format) |
+| GET | `/events/points` | 🌐 | Compact map-points tuples (cached) |
+| GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
+| POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
+| GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
+| POST | `/events/import-archive` | 🔒 | Backfill your profile from your X data archive (zip) |
+| GET | `/events/{id}` | 🌐 | Full geolocation detail |
+| POST | `/events` | 🔒 | Create a geolocation (multipart, uploads media) |
+| DELETE | `/events/{id}` | 🔒 | Author-only hard delete + S3 sweep |
+| POST | `/events/{id}/submit` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
+| POST | `/events/{id}/reject` | 🔒 | Owner soft-deletes a `detected` draft (re-importable) |
+| GET | `/events/detections` | 🔒 | Your `detected` geolocations awaiting submission (paginated) |
+| POST | `/events/proof-images` | 🔒 | Upload an inline image referenced by the Tiptap proof |
 | **Bounties** (requested-events view) | | | |
 | GET | `/bounties` | 🌐 | List `requested` / `closed` events (newest first, soft-delete filtered) |
 | GET | `/bounties/{id}` | 🌐 | Requested-event detail |
@@ -61,7 +61,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Users** | | | |
 | GET | `/users/{username}` | 🌐 | Public analyst profile |
 | PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
-| GET | `/users/{username}/geolocations` | 🌐 | List an analyst's geolocations |
+| GET | `/users/{username}/events` | 🌐 | List an analyst's geolocations |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Timeline** | | | |
@@ -71,7 +71,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
-| DELETE | `/admin/geolocations/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
+| DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/trust` | 🛡️ | Grant / revoke `is_trusted` + `trust_reason` |
 | POST/DELETE | `/admin/seed-demo[-bounties]` | 🛡️ | Generate / drop demo geos + users / bounties |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, proof orphans, pending regs) |
@@ -92,19 +92,19 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /auth/forgot-password` | 5/hour |
 | `POST /auth/reset-password` | 10/hour |
 | `POST /auth/change-password` | 10/hour (keyed per session) |
-| **Geolocations** | |
-| `GET /geolocations` | 120/min |
-| `GET /geolocations/points` | 60/min |
-| `GET /geolocations/possible-duplicates` | 60/min |
-| `GET /geolocations/{id}` | 120/min |
-| `GET /geolocations/detections` | 120/min |
-| `POST /geolocations/import-from-tweet` | 30/min |
-| `GET /geolocations/import-from-tweet/media` | 60/min |
-| `POST /geolocations/import-archive` | 10/hour |
-| `POST /geolocations` | 30/min |
-| `DELETE /geolocations/{id}` | 30/min |
-| `POST /geolocations/{id}/submit` · `POST /geolocations/{id}/reject` | 30/min |
-| `POST /geolocations/proof-images` | 30/min (+ per-user 24h DB ceiling) |
+| **Events** | |
+| `GET /events` | 120/min |
+| `GET /events/points` | 60/min |
+| `GET /events/possible-duplicates` | 60/min |
+| `GET /events/{id}` | 120/min |
+| `GET /events/detections` | 120/min |
+| `POST /events/import-from-tweet` | 30/min |
+| `GET /events/import-from-tweet/media` | 60/min |
+| `POST /events/import-archive` | 10/hour |
+| `POST /events` | 30/min |
+| `DELETE /events/{id}` | 30/min |
+| `POST /events/{id}/submit` · `POST /events/{id}/reject` | 30/min |
+| `POST /events/proof-images` | 30/min (+ per-user 24h DB ceiling) |
 | **Bounties** (requested-events view) | |
 | `GET /bounties`, `GET /bounties/{id}` | 120/min |
 | `POST /bounties`, `DELETE /bounties/{id}` | 30/min |
@@ -114,12 +114,12 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /tags` | 60/min |
 | `POST /tags` | 30/min |
 | **Users / Timeline** | |
-| `GET /users/{username}`, `GET /users/{username}/geolocations`, `GET /timeline` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` | 30/hour |
-| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `DELETE /admin/geolocations/{id}` | 60/hour |
+| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-bounties]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
@@ -325,9 +325,9 @@ Rate-limited to 10/hour per session.
 
 ---
 
-## Geolocations
+## Events
 
-### `GET /geolocations`
+### `GET /events`
 
 List geolocations for the map. Returns a lightweight format (no full proof).
 
@@ -373,7 +373,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 
 ---
 
-### `GET /geolocations/points`
+### `GET /events/points`
 
 Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `added_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a `geolocated` row, a flag, not the status string, to keep the no-LIMIT catalog payload small. The scan carries located rows only, so `requested` events (no coordinates) never appear here.
 
@@ -382,7 +382,7 @@ echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
 to 60/min/IP.
 
 **Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`
-`submitted_from`, `submitted_to`, `author` (see `GET /geolocations` for semantics), plus
+`submitted_from`, `submitted_to`, `author` (see `GET /events` for semantics), plus
 map-only filters `media` (repeatable, `?media=image&media=video`, matches a geolocation
 carrying any attachment of a listed type; values are constrained to `image`/`video`, else
 422), `trusted_only` (author `is_trusted`), and `hide_demo` (exclude demo rows). The date
@@ -398,7 +398,7 @@ params are still accepted but the map now filters dates client-side from the pay
 
 ---
 
-### `GET /geolocations/possible-duplicates` 🔒
+### `GET /events/possible-duplicates` 🔒
 
 Soft-warning probe wired into the submit form. Returns geolocations that might describe the same event. **Never blocks submission**, rendered as a "did you mean…" prompt; the analyst decides.
 
@@ -448,7 +448,7 @@ Inputs are tolerated gracefully:
 
 ---
 
-### `POST /geolocations/import-from-tweet` 🔒
+### `POST /events/import-from-tweet` 🔒
 
 Parse a public tweet URL into a pre-fill payload for the submit form. Read-only, never creates a row; the analyst submits the form. Rate-limited to 30/min/IP.
 
@@ -513,7 +513,7 @@ Every field is best-effort. `parsed_coords` runs four extractors over `tweet_tex
 `media[].origin` records where the media came from (`op` = analyst's own attachment, `quote` = quoted tweet) but does NOT drive the primary-vs-proof split. The frontend uses **media type** instead:
 
 - `kind: "video"` → **primary** (lands in `files[]` on the submit form).
-- `kind: "image"` → **proof** (uploaded to `/geolocations/proof-images` and embedded inline in the Tiptap doc).
+- `kind: "image"` → **proof** (uploaded to `/events/proof-images` and embedded inline in the Tiptap doc).
 - No video in the response → no primary media is loaded; the analyst attaches the source media manually.
 
 The syndication endpoint doesn't expose reply-chain media, so a video the analyst posted as a self-reply on the same thread is invisible to this route.
@@ -527,7 +527,7 @@ The syndication endpoint doesn't expose reply-chain media, so a video the analys
 
 ---
 
-### `GET /geolocations/import-from-tweet/media?u=<url>` 🔒
+### `GET /events/import-from-tweet/media?u=<url>` 🔒
 
 Thin proxy that fetches a single X CDN media URL and streams the bytes back.
 
@@ -549,7 +549,7 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 
 ---
 
-### `POST /geolocations/import-archive` 🔒
+### `POST /events/import-archive` 🔒
 
 Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The import runs **synchronously behind a size cap**; a larger archive waits for the durable-worker upgrade.
 
@@ -574,7 +574,7 @@ Pipeline: extract → `read_tweets` → stitch self-threads → detect coordinat
 
 ---
 
-### `GET /geolocations/{id}`
+### `GET /events/{id}`
 
 Full detail for a single geolocation.
 
@@ -632,9 +632,9 @@ Full detail for a single geolocation.
 
 ---
 
-### `POST /geolocations` 🔒
+### `POST /events` 🔒
 
-Create a geolocation directly (born `geolocated`). To open a request without coordinates, use `POST /bounties`; to give an existing `requested` / `detected` event a location, use `POST /geolocations/{id}/submit`.
+Create a geolocation directly (born `geolocated`). To open a request without coordinates, use `POST /bounties`; to give an existing `requested` / `detected` event a location, use `POST /events/{id}/submit`.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Required | Description |
@@ -650,7 +650,7 @@ Create a geolocation directly (born `geolocated`). To open a request without coo
 | `tag_ids` | string (JSON array) | yes | `["uuid1", "uuid2"]`. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
 | `files` | File[] | yes | At least one file (image or video). Capped at **12 files per submission**. |
 
-**Response 201:** same shape as `GET /geolocations/{id}`, born `"status": "geolocated"` with `requested_by: null`.
+**Response 201:** same shape as `GET /events/{id}`, born `"status": "geolocated"` with `requested_by: null`.
 
 **Required categories.** The resolved `tag_ids` must reference at least one tag of category `conflict` and at least one of category `capture_source`, the two curated, server-managed taxonomies (see [`Tags`](#tags)). The check runs against the tags' categories *before* any media upload, so a missing or free-tag-only selection 400s without paying an S3 round-trip. Both categories ship an escape value (`conflict → "Other"`, `capture_source → "Unknown"`) so the requirement is always satisfiable.
 
@@ -659,13 +659,13 @@ Create a geolocation directly (born `geolocated`). To open a request without coo
 |------|------|
 | 400 | Validation (invalid coordinates, **file too large**, no file, **missing required `conflict` or `capture_source` tag**) |
 | 413 | Request body exceeds the platform body-size cap (`max(max_video_size, 12 × max_image_size) + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
-| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /geolocations` filter params and `_parse_bbox`. |
+| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than 12 files** in the multipart batch, `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
 
 ---
 
-### `DELETE /geolocations/{id}` 🔒
+### `DELETE /events/{id}` 🔒
 
-Author-only delete. Cascades media. A **hard** delete, distinct from `POST /geolocations/{id}/reject`, which soft-deletes a machine detection so a re-import can recreate it.
+Author-only delete. Cascades media. A **hard** delete, distinct from `POST /events/{id}/reject`, which soft-deletes a machine detection so a re-import can recreate it.
 
 **Response 204:** no body.
 
@@ -677,7 +677,7 @@ Author-only delete. Cascades media. A **hard** delete, distinct from `POST /geol
 
 ---
 
-### `GET /geolocations/detections` 🔒
+### `GET /events/detections` 🔒
 
 The owner "Detections" queue: the caller's machine-`detected` geolocations awaiting submission, newest first (`created_at` desc). **Scoped to `current_user`**, it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where the owner reviews and submits or rejects each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes submit-readiness (≥1 media + a `conflict` + a `capture_source` tag) client-side without a per-row fetch.
 
@@ -687,7 +687,7 @@ The owner "Detections" queue: the caller's machine-`detected` geolocations await
 | `page` | int | Page number (default 1) |
 | `per_page` | int | Results per page (default 20, max 100) |
 
-**Response 200:** each item is the same shape as `GET /geolocations/{id}`.
+**Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
 {
   "items": [ { "id": "uuid", "status": "detected", "media": [], "tags": [] } ],
@@ -706,9 +706,9 @@ A detection carries no location it was promoted from; `requested_by` is always `
 
 ---
 
-### `POST /geolocations/{id}/submit` 🔒
+### `POST /events/{id}/submit` 🔒
 
-Give an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing the caller's whole edited form. This is the **single** fulfil / submit path (it replaced the old bounty-fulfilment-via-create flow). A `detected` row is immutable machine output, so this submit is the **only** write to it; a `requested` event is answerable by anyone, and the fulfiller becomes its `author` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /geolocations`: the form posts the whole row state and the server applies the field updates, media removals, and new-media uploads, then freezes the row as `geolocated`, in one transaction. Allowed **only while `requested` / `detected`**; a `geolocated` row is frozen.
+Give an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing the caller's whole edited form. This is the **single** fulfil / submit path (it replaced the old bounty-fulfilment-via-create flow). A `detected` row is immutable machine output, so this submit is the **only** write to it; a `requested` event is answerable by anyone, and the fulfiller becomes its `author` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /events`: the form posts the whole row state and the server applies the field updates, media removals, and new-media uploads, then freezes the row as `geolocated`, in one transaction. Allowed **only while `requested` / `detected`**; a `geolocated` row is frozen.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -720,14 +720,14 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required: a post always has a time |
-| `proof` | JSON string | Tiptap document (sanitised); inline proof images upload via `POST /geolocations/proof-images` |
+| `proof` | JSON string | Tiptap document (sanitised); inline proof images upload via `POST /events/proof-images` |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
 | `files` | file[] | New source media to add (same allowlist + size limits as create) |
 
 `detected_from_url` (the provenance anchor, the post the detection was imported from) and `status` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a direct create meets is satisfied by the post-submit state: **at least one media** (kept + new) and **one `conflict` + one `capture_source` tag**. A `requested` event and a machine detection are both born without the curated tags, so the floor is enforced here; the fulfiller adds the tags as part of the submit.
 
-**Response 200:** same shape as `GET /geolocations/{id}` (now `"status": "geolocated"`).
+**Response 200:** same shape as `GET /events/{id}` (now `"status": "geolocated"`).
 
 **Errors:**
 | Code | Case |
@@ -740,7 +740,7 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 
 ---
 
-### `POST /geolocations/{id}/reject` 🔒
+### `POST /events/{id}/reject` 🔒
 
 Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), dropping it from every public read. Distinct from `DELETE` (hard delete): a rejected detection is recreated as a fresh `detected` row if the same tweet is later re-imported (the assemble step's `recreate` verdict matches a soft-deleted pair). A `geolocated` row is not rejectable here, use `DELETE`; a `requested` event is withdrawn via `POST /bounties/{id}/close`.
 
@@ -755,9 +755,9 @@ Owner-only. **Soft-delete** a `detected` geolocation (sets `deleted_at`), droppi
 
 ---
 
-### `POST /geolocations/proof-images` 🔒
+### `POST /events/proof-images` 🔒
 
-Upload a single inline image referenced by the proof Tiptap document. Inserts a `proof_images` row with `geolocation_id = NULL`; the row is linked to a geolocation when `POST /geolocations` runs and the URL survives sanitisation.
+Upload a single inline image referenced by the proof Tiptap document. Inserts a `proof_images` row with `event_id = NULL`; the row is linked to a geolocation when `POST /events` runs and the URL survives sanitisation.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -774,9 +774,9 @@ Upload a single inline image referenced by the proof Tiptap document. Inserts a 
 
 `sha256` is the hex-encoded SHA-256 of the bytes that landed on S3, useful for clients that want to verify integrity post-upload without re-downloading, and for any auditor cross-referencing later. The same hash is persisted on the `proof_images` row.
 
-**EXIF strip.** Image uploads (`image/jpeg`, `image/png`, `image/webp`) are decoded by Pillow and re-encoded **without** EXIF / IPTC / XMP / ICC profile / GPS coordinates / camera-make-and-model / thumbnails before they touch S3. The `sha256` therefore reflects the post-strip bytes; an auditor downloading the public URL gets a file whose hash matches what we recorded. Corrupt / undecodable images, decompression bombs (>60 MP), and animated images surface as 400 before any storage write. **The same strip applies to image uploads under `POST /geolocations` and `POST /bounties` multipart bodies**; only videos pass through untouched (mp4-side metadata strip is a separate slice, not yet implemented).
+**EXIF strip.** Image uploads (`image/jpeg`, `image/png`, `image/webp`) are decoded by Pillow and re-encoded **without** EXIF / IPTC / XMP / ICC profile / GPS coordinates / camera-make-and-model / thumbnails before they touch S3. The `sha256` therefore reflects the post-strip bytes; an auditor downloading the public URL gets a file whose hash matches what we recorded. Corrupt / undecodable images, decompression bombs (>60 MP), and animated images surface as 400 before any storage write. **The same strip applies to image uploads under `POST /events` and `POST /bounties` multipart bodies**; only videos pass through untouched (mp4-side metadata strip is a separate slice, not yet implemented).
 
-**Display derivatives.** Image uploads under `POST /geolocations` and `POST /bounties` produce three S3 objects per file: the EXIF-stripped original at `<key>.<ext>`, a JPEG hero derivative at `<key_stem>_hero.jpg` (max-dim 1280, q80) for detail-page renders, and a JPEG thumbnail at `<key_stem>_thumb.jpg` (max-dim 400, q80) for map popups / index cards. The frontend resolves the right derivative URL via `frontend/src/lib/mediaUrls.ts`; the API response still carries only the original URL on the `media.storage_url` field. Inline proof-image uploads (`POST /geolocations/proof-images`) intentionally **skip** derivative production because the Tiptap renderer consumes the raw URL directly. Video uploads never produce derivatives (first-frame extraction is tracked separately).
+**Display derivatives.** Image uploads under `POST /events` and `POST /bounties` produce three S3 objects per file: the EXIF-stripped original at `<key>.<ext>`, a JPEG hero derivative at `<key_stem>_hero.jpg` (max-dim 1280, q80) for detail-page renders, and a JPEG thumbnail at `<key_stem>_thumb.jpg` (max-dim 400, q80) for map popups / index cards. The frontend resolves the right derivative URL via `frontend/src/lib/mediaUrls.ts`; the API response still carries only the original URL on the `media.storage_url` field. Inline proof-image uploads (`POST /events/proof-images`) intentionally **skip** derivative production because the Tiptap renderer consumes the raw URL directly. Video uploads never produce derivatives (first-frame extraction is tracked separately).
 
 **Rate limits:** 30/min/IP (slowapi) plus a per-user rolling-24h ceiling enforced against the DB (`MAX_PROOF_IMAGES_PER_USER_PER_DAY`).
 
@@ -790,13 +790,13 @@ Upload a single inline image referenced by the proof Tiptap document. Inserts a 
 
 ## Bounties
 
-The **requested-events view** over the one `geolocations` table: a bounty is a `requested` event (media + a source the poster couldn't place, no coordinates yet), and stays visible as `closed` once withdrawn. These endpoints scope reads and lifecycle ops to those two states, so a located `geolocated` / `detected` event (served by `/geolocations`) never surfaces here. Fulfilling a request is not a bounty endpoint: it is `POST /geolocations/{id}/submit` (`requested` → `geolocated`), which transfers `author` to the fulfiller and preserves the poster in `requested_by`.
+The **requested-events view** over the one `events` table: a bounty is a `requested` event (media + a source the poster couldn't place, no coordinates yet), and stays visible as `closed` once withdrawn. These endpoints scope reads and lifecycle ops to those two states, so a located `geolocated` / `detected` event (served by `/events`) never surfaces here. Fulfilling a request is not a bounty endpoint: it is `POST /events/{id}/submit` (`requested` → `geolocated`), which transfers `author` to the fulfiller and preserves the poster in `requested_by`.
 
 **Statuses:** `requested` (an open call to geolocate, the default on `POST /bounties`) and `closed` (the author withdrew, or the fulfilled request has left the view as a `geolocated` event). The "claimed" state is intentionally absent: "I'm working on this" is a parallel multi-analyst signal via `POST /bounties/{id}/claim`, not a lifecycle state.
 
 ### `GET /bounties`
 
-List `requested` / `closed` events, newest first. Soft-deleted rows are filtered out (same invariant as `/geolocations`).
+List `requested` / `closed` events, newest first. Soft-deleted rows are filtered out (same invariant as `/events`).
 
 **Query params:**
 | Param | Type | Description |
@@ -877,7 +877,7 @@ Full detail for one bounty.
 }
 ```
 
-`claimers` is the full ordered (newest-first) list of analysts currently signaling. Empty when no one is working on the request. There is no `fulfilled_by` trace: fulfilment is a lifecycle move on this same row (`POST /geolocations/{id}/submit`), after which the row leaves the requested view as a `geolocated` event.
+`claimers` is the full ordered (newest-first) list of analysts currently signaling. Empty when no one is working on the request. There is no `fulfilled_by` trace: fulfilment is a lifecycle move on this same row (`POST /events/{id}/submit`), after which the row leaves the requested view as a `geolocated` event.
 
 **Errors:**
 | Code | Case |
@@ -888,7 +888,7 @@ Full detail for one bounty.
 
 ### `POST /bounties` 🔒
 
-Open a request. Creates a `requested` event (no coordinates yet). `lat` / `lng` carry no field: a request has no location until it is fulfilled via `POST /geolocations/{id}/submit`. The caller is recorded as both `author` and `requested_by`; the latter survives fulfilment.
+Open a request. Creates a `requested` event (no coordinates yet). `lat` / `lng` carry no field: a request has no location until it is fulfilled via `POST /events/{id}/submit`. The caller is recorded as both `author` and `requested_by`; the latter survives fulfilment.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Required | Description |
@@ -904,20 +904,20 @@ Open a request. Creates a `requested` event (no coordinates yet). `lat` / `lng` 
 
 **Response 201:** same shape as `GET /bounties/{id}`, with `status: "requested"`.
 
-Multipart parsing + JSON-shape checks live in the router; business rules + the S3 upload run in `services/bounties.create_with_evidence`, which shares the file-cap, upload loop, and rollback-sweep with `POST /geolocations` via `services/evidence_intake` (no per-router duplication).
+Multipart parsing + JSON-shape checks live in the router; business rules + the S3 upload run in `services/bounties.create_with_evidence`, which shares the file-cap, upload loop, and rollback-sweep with `POST /events` via `services/evidence_intake` (no per-router duplication).
 
 **Errors:**
 | Code | Case |
 |------|------|
 | 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`, malformed `proof` / `tag_ids` JSON) **or** a typed `{code, message}` business-rule branch: `media_required` (no files), `invalid_proof` (sanitiser rejection), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`. |
-| 413 | Request body exceeds the platform body-size cap, same middleware + `max(max_video_size, 12 × max_image_size) + 10 MB` headroom as `POST /geolocations`. |
+| 413 | Request body exceeds the platform body-size cap, same middleware + `max(max_video_size, 12 × max_image_size) + 10 MB` headroom as `POST /events`. |
 | 422 | `title` over 255 chars / `source_url` over 2000 chars (Pydantic array), malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, `event_time` without `event_date`, or **more than 12 files** (`too_many_files` typed envelope). |
 
 ---
 
 ### `DELETE /bounties/{id}` 🔒
 
-Hard-delete by the author. Cascades drop `geolocation_tags`, `geolocation_claims` and `media` rows; the S3 objects are swept after the DB commit lands. Scoped to the requested view, so it acts only on a `requested` / `closed` event, a fulfilled request is a `geolocated` event and 404s here (use `DELETE /geolocations/{id}`). No 409-on-delete: fulfilment no longer creates a separate descendant row that could dangle.
+Hard-delete by the author. Cascades drop `event_tags`, `event_claims` and `media` rows; the S3 objects are swept after the DB commit lands. Scoped to the requested view, so it acts only on a `requested` / `closed` event, a fulfilled request is a `geolocated` event and 404s here (use `DELETE /events/{id}`). No 409-on-delete: fulfilment no longer creates a separate descendant row that could dangle.
 
 **Response 204:** no body.
 
@@ -973,9 +973,9 @@ Author withdraws the request without anyone geolocating it. Moves the event `req
 
 ## Search
 
-Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `geolocations.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). Since the bounty + geolocation merge there is one FTS query path over the single `geolocations` table; the located and requested groups run the same `title` index with different `WHERE`s (`location IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
+Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). Since the bounty + geolocation merge there is one FTS query path over the single `events` table; the located and requested groups run the same `title` index with different `WHERE`s (`location IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
 
-**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`geolocations.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
+**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`events.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
 
 ### `GET /search` 🔒
 
@@ -1172,7 +1172,7 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 ---
 
-### `GET /users/{username}/geolocations`
+### `GET /users/{username}/events`
 
 Geolocations for a given analyst.
 
@@ -1247,7 +1247,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 | `page` | int | Page number (default 1) |
 | `per_page` | int | Results per page (default 20, max 100) |
 
-**Response 200:** same `PaginatedGeolocations` shape as `GET /users/{username}/geolocations`.
+**Response 200:** same `PaginatedEvents` shape as `GET /users/{username}/events`.
 
 **Errors:**
 | Code | Case |
@@ -1347,7 +1347,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 **Soft delete**: the user can no longer log in (opaque 401 like wrong credentials); their public profile 404s; their author handle still renders on events preserved in the audit trail. Idempotent: re-soft-deleting preserves the original timestamp.
 
-**Hard delete**: drops the user row, cascade-drops every event they authored (which cascade to media + proof_images + geolocation_claims + geolocation_tags), then sweeps the S3 objects (event media + proof images). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
+**Hard delete**: drops the user row, cascade-drops every event they authored (which cascade to media + proof_images + event_claims + event_tags), then sweeps the S3 objects (event media + proof images). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
 
 **Response 200:**
 ```json
@@ -1366,9 +1366,9 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 **Response 404:** unknown id.
 
-### `DELETE /admin/geolocations/{id}` 🛡️
+### `DELETE /admin/events/{id}` 🛡️
 
-Remove a geolocation. Default is soft delete (sets `deleted_at`); pass `?hard=true` for GDPR-grade erasure. Both modes invalidate the `/geolocations/points` cache. Audited via `admin_events` (`action = "geolocation_soft_deleted"` / `"geolocation_hard_deleted"`).
+Remove a geolocation. Default is soft delete (sets `deleted_at`); pass `?hard=true` for GDPR-grade erasure. Both modes invalidate the `/events/points` cache. Audited via `admin_events` (`action = "geolocation_soft_deleted"` / `"geolocation_hard_deleted"`).
 
 **Soft delete** (`?hard=false` or omitted): the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
 
@@ -1512,7 +1512,7 @@ Endpoints that return paginated lists use this shape:
 }
 ```
 
-`GET /geolocations` and `GET /geolocations/points` are intentionally **unpaginated** today. A hard server-side `LIMIT` will land before public read access.
+`GET /events` and `GET /events/points` are intentionally **unpaginated** today. A hard server-side `LIMIT` will land before public read access.
 
 ### Errors
 

@@ -22,7 +22,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { stripArchive } from "@/lib/archive";
-import { importArchive } from "@/lib/geolocations";
+import { importArchive } from "@/lib/events";
 import type { ArchiveImportResult } from "@/types";
 
 /** X's official walkthrough for requesting the data archive. */

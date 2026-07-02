@@ -10,7 +10,7 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
 from app.schemas.admin import (
-    AdminGeolocationDeleteResponse,
+    AdminEventDeleteResponse,
     AdminInviteCodeCreate,
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
@@ -173,8 +173,8 @@ def delete_user_admin(
 
 
 @router.delete(
-    "/geolocations/{geolocation_id}",
-    response_model=AdminGeolocationDeleteResponse,
+    "/events/{geolocation_id}",
+    response_model=AdminEventDeleteResponse,
 )
 @limiter.limit("60/hour")
 def delete_geolocation_admin(
@@ -183,7 +183,7 @@ def delete_geolocation_admin(
     hard: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> AdminGeolocationDeleteResponse:
+) -> AdminEventDeleteResponse:
     """Remove a geolocation. Default is soft (sets `deleted_at`); pass
     `?hard=true` for GDPR-grade erasure (drops the row, media rows, and
     S3 objects). Both paths invalidate the points cache."""
@@ -193,7 +193,7 @@ def delete_geolocation_admin(
                 db, actor_id=current_user.id, geolocation_id=geolocation_id
             )
             points_cache.invalidate()
-            return AdminGeolocationDeleteResponse(
+            return AdminEventDeleteResponse(
                 geolocation_id=geolocation_id,
                 title=result["title"],
                 mode="hard",
@@ -208,7 +208,7 @@ def delete_geolocation_admin(
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
     points_cache.invalidate()
-    return AdminGeolocationDeleteResponse(
+    return AdminEventDeleteResponse(
         geolocation_id=geo.id,
         title=geo.title,
         mode="soft",

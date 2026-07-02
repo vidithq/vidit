@@ -5,13 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Search as SearchIcon } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  SearchGeolocationHit,
+  SearchEventHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
@@ -211,7 +211,7 @@ function SearchPageBody() {
                 count={results.total.geolocations}
               >
                 {results.geolocations.map((g) => (
-                  <GeolocationResult key={g.id} hit={g} />
+                  <EventResult key={g.id} hit={g} />
                 ))}
               </ResultGroup>
             )}
@@ -292,12 +292,12 @@ function ResultGroup({
   );
 }
 
-function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
+function EventResult({ hit }: { hit: SearchEventHit }) {
   // Tags render as one uniform chip regardless of category.
   return (
     <EntityCard
       variant="compact"
-      detailHref={`/geolocations/${hit.id}`}
+      detailHref={`/events/${hit.id}`}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}

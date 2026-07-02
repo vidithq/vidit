@@ -65,7 +65,7 @@ export function setUserTrust(
   });
 }
 
-export interface AdminGeolocationDeleteResponse {
+export interface AdminEventDeleteResponse {
   geolocation_id: string;
   title: string;
   mode: "soft" | "hard";
@@ -74,12 +74,12 @@ export interface AdminGeolocationDeleteResponse {
   proof_image_count: number;
 }
 
-export function deleteGeolocation(
+export function deleteEvent(
   id: string,
   options: { hard: boolean }
-): Promise<AdminGeolocationDeleteResponse> {
-  const path = `/admin/geolocations/${id}${options.hard ? "?hard=true" : ""}`;
-  return apiFetch<AdminGeolocationDeleteResponse>(path, { method: "DELETE" });
+): Promise<AdminEventDeleteResponse> {
+  const path = `/admin/events/${id}${options.hard ? "?hard=true" : ""}`;
+  return apiFetch<AdminEventDeleteResponse>(path, { method: "DELETE" });
 }
 
 export interface AdminUserDeleteResponse {

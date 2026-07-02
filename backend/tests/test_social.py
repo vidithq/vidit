@@ -36,8 +36,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.event import Event
 from app.models.follow import Follow
-from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -66,8 +66,8 @@ def _make_user(db, *, suffix: str | None = None) -> User:
     return user
 
 
-def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = None) -> Geolocation:
-    geo = Geolocation(
+def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = None) -> Event:
+    geo = Event(
         author_id=author.id,
         title=title,
         location=from_shape(Point(37.802, 48.012), srid=4326),
@@ -98,16 +98,14 @@ def cleanup(db):
     def _record_user(user: User) -> None:
         created_user_ids.append(user.id)
 
-    def _record_geo(geo: Geolocation) -> None:
+    def _record_geo(geo: Event) -> None:
         created_geo_ids.append(geo.id)
 
     yield _record_user, _record_geo
 
     db.expire_all()
     if created_geo_ids:
-        db.query(Geolocation).filter(Geolocation.id.in_(created_geo_ids)).delete(
-            synchronize_session=False
-        )
+        db.query(Event).filter(Event.id.in_(created_geo_ids)).delete(synchronize_session=False)
     if created_user_ids:
         # Follow rows carry ON DELETE CASCADE so deleting the users removes
         # the social edges automatically — no explicit purge.
@@ -316,7 +314,7 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     db.add(Follow(follower_id=viewer.id, followed_id=author_b.id))
     db.add(
         Media(
-            geolocation_id=geo_a.id,
+            event_id=geo_a.id,
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo_a.id}/thumb.jpg",
             media_type="image",
         )

@@ -1,6 +1,6 @@
 """Shared evidence-intake orchestration for media-backed submissions.
 
-The located view (``services/geolocations``) and the requested view
+The located view (``services/events``) and the requested view
 (``services/bounties``) are both evidence-backed submissions over the one
 ``geolocations`` table: each validates an upload batch, streams every file to
 S3 with key tracking, attaches one ``Media`` row per file, and must leave no
@@ -142,7 +142,7 @@ async def attach_media_and_commit(
             except EvidenceProcessingError as exc:
                 raise EvidenceProcessingFailedError(str(exc)) from exc
             media = Media(
-                geolocation_id=owner_id,
+                event_id=owner_id,
                 storage_url=result.url,
                 media_type=media_type,
                 sha256=result.sha256,

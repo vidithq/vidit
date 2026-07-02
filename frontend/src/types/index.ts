@@ -33,7 +33,7 @@ export interface User {
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 
-/** Result of an archive backfill (`POST /geolocations/import-archive`). */
+/** Result of an archive backfill (`POST /events/import-archive`). */
 export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
 
 export interface Tag {
@@ -48,9 +48,9 @@ export interface Tag {
  *  person vouched for it: via the form, or by submitting a reviewed detection;
  *  not an independent-verification claim, frozen) → ``closed`` (a withdrawn
  *  request). */
-export type GeolocationStatus = components["schemas"]["GeolocationRead"]["status"];
+export type EventStatus = components["schemas"]["EventRead"]["status"];
 
-interface GeolocationListItem {
+interface EventListItem {
   id: string;
   title: string;
   /** Optional: a ``requested`` event has no coordinates yet, and a ``detected``
@@ -59,12 +59,12 @@ interface GeolocationListItem {
   lng: number | null;
   event_date: string | null;
   is_demo: boolean;
-  status: GeolocationStatus;
+  status: EventStatus;
   author: Author;
   tags: Tag[];
 }
 
-/** Compact point from /geolocations/points:
+/** Compact point from /events/points:
  *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings,
  *  the timeline scrubbers bucket them for the histograms and filter their
@@ -74,7 +74,7 @@ interface GeolocationListItem {
 export type MapPoint = [string, number, number, string, string, 0 | 1];
 
 /**
- * Pre-fill payload from POST /geolocations/import-from-tweet. Best-effort:
+ * Pre-fill payload from POST /events/import-from-tweet. Best-effort:
  * any field can be empty if the tweet lacks the signal (e.g. no coords in
  * the text → ``parsed_coords`` is ``[]``).
  */
@@ -142,7 +142,7 @@ export interface TweetImportResponse {
 
 /**
  * One candidate from the submit-form duplicate probe
- * (GET /geolocations/possible-duplicates). Soft-warning shape — just enough
+ * (GET /events/possible-duplicates). Soft-warning shape, just enough
  * to recognise the same event and decide whether to abandon the submission.
  */
 export interface PossibleDuplicate {
@@ -169,7 +169,7 @@ export interface Media {
   original_filename?: string | null;
 }
 
-export interface GeolocationDetail extends GeolocationListItem {
+export interface EventDetail extends EventListItem {
   source_url: string;
   /** Optional time-of-day for ``event_date`` (UTC, ``HH:MM:SS``); null when the
    *  hour is unknown. */
@@ -197,7 +197,7 @@ export interface GeolocationDetail extends GeolocationListItem {
 
 /** The requested-view (bounty) shares the one unified lifecycle enum; a
  *  requested row is ``requested`` or (once withdrawn) ``closed``. */
-export type BountyStatus = GeolocationStatus;
+export type BountyStatus = EventStatus;
 
 export interface BountyListItem {
   id: string;
@@ -207,7 +207,7 @@ export interface BountyListItem {
   created_at: string;
   /** TRUE iff seeded by the admin "Demo bounties" panel. The UI swaps the
    *  synthetic source_url for a "synthetic" label so beta testers don't
-   *  click out to a 404. Mirrors GeolocationListItem.is_demo. */
+   *  click out to a 404. Mirrors EventListItem.is_demo. */
   is_demo: boolean;
   author: Author;
   media: Media[];
@@ -254,7 +254,7 @@ export type SearchType = "all" | "geolocation" | "bounty" | "user";
  * the even/odd parity. The frontend renders the fragments as ``<mark>``
  * client-side; no raw HTML crosses the API boundary (XSS-safe).
  */
-export interface SearchGeolocationHit {
+export interface SearchEventHit {
   id: string;
   title: string;
   title_highlight: string;
@@ -262,7 +262,7 @@ export interface SearchGeolocationHit {
   lng: number;
   event_date: string | null;
   is_demo: boolean;
-  status: GeolocationStatus;
+  status: EventStatus;
   author: Author;
   tags: Tag[];
 }
@@ -297,7 +297,7 @@ export interface SearchUserHit {
 }
 
 export interface SearchResponse {
-  geolocations: SearchGeolocationHit[];
+  geolocations: SearchEventHit[];
   bounties: SearchBountyHit[];
   users: SearchUserHit[];
   /** Denormalised counts so the group headers don't re-sum the lists. */

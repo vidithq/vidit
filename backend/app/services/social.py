@@ -5,8 +5,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.models.event import Event
 from app.models.follow import Follow
-from app.models.geolocation import Geolocation
 from app.models.user import User
 
 
@@ -74,27 +74,27 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
         return {"items": [], "total": 0}
 
     where_clause = and_(
-        Geolocation.author_id.in_(followed_ids),
-        Geolocation.deleted_at.is_(None),
+        Event.author_id.in_(followed_ids),
+        Event.deleted_at.is_(None),
     )
-    total = db.query(func.count(Geolocation.id)).filter(where_clause).scalar() or 0
+    total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     rows = (
         db.query(
-            Geolocation,
-            ST_Y(Geolocation.location).label("lat"),
-            ST_X(Geolocation.location).label("lng"),
+            Event,
+            ST_Y(Event.location).label("lat"),
+            ST_X(Event.location).label("lng"),
         )
         # ``selectinload`` for tags + media: a many-to-many / one-to-many
         # ``joinedload`` would row-multiply against ``LIMIT`` and silently
         # truncate the page.
         # ``joinedload`` is safe for the author (many-to-one, no inflation).
         .options(
-            joinedload(Geolocation.author),
-            selectinload(Geolocation.tags),
-            selectinload(Geolocation.media),
+            joinedload(Event.author),
+            selectinload(Event.tags),
+            selectinload(Event.media),
         )
         .filter(where_clause)
-        .order_by(Geolocation.event_date.desc(), Geolocation.created_at.desc())
+        .order_by(Event.event_date.desc(), Event.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

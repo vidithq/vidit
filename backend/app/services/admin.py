@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
-from app.models.geolocation import Geolocation
+from app.models.event import Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.proof_image import ProofImage
@@ -34,7 +34,7 @@ class UserNotFoundError(AdminError):
     code = "user_not_found"
 
 
-class GeolocationNotFoundError(AdminError):
+class EventNotFoundError(AdminError):
     code = "geolocation_not_found"
 
 
@@ -218,16 +218,16 @@ def soft_delete_geolocation(
     *,
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
-) -> Geolocation:
+) -> Event:
     """Mark a geolocation as removed-from-public-view.
 
     Idempotent — on an already soft-deleted row, preserves the original
     timestamp and skips a fresh audit row. The S3 objects + media rows
     stay put; evidence is preserved, just hidden.
     """
-    geo = db.query(Geolocation).filter(Geolocation.id == geolocation_id).first()
+    geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
-        raise GeolocationNotFoundError("Geolocation not found")
+        raise EventNotFoundError("Event not found")
     if geo.deleted_at is not None:
         return geo
 
@@ -257,9 +257,9 @@ def hard_delete_geolocation(
     the proof-image reaper. Reachable on already-soft-deleted rows
     (escalation: soft now, hard later) and on live rows (admin override).
     """
-    geo = db.query(Geolocation).filter(Geolocation.id == geolocation_id).first()
+    geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
-        raise GeolocationNotFoundError("Geolocation not found")
+        raise EventNotFoundError("Event not found")
 
     # Capture S3 keys *before* the cascade fires. Media rows store the
     # public URL; reverse-lookup via the storage layer so `delete_many`
@@ -336,12 +336,12 @@ def soft_delete_user(
     # NULL`` leaves earlier soft-delete timestamps untouched, so the count
     # reflects only what *this* call flipped.
     cascaded_geolocations = (
-        db.query(Geolocation)
+        db.query(Event)
         .filter(
-            Geolocation.author_id == user.id,
-            Geolocation.deleted_at.is_(None),
+            Event.author_id == user.id,
+            Event.deleted_at.is_(None),
         )
-        .update({Geolocation.deleted_at: now}, synchronize_session=False)
+        .update({Event.deleted_at: now}, synchronize_session=False)
     )
 
     log_admin_event(
@@ -410,7 +410,7 @@ def hard_delete_user(
                 )
         return keys
 
-    geolocations = db.query(Geolocation).filter(Geolocation.author_id == user.id).all()
+    geolocations = db.query(Event).filter(Event.author_id == user.id).all()
     geo_media_keys: list[str] = []
     for geo in geolocations:
         geo_media_keys.extend(_resolve_keys(list(geo.media)))

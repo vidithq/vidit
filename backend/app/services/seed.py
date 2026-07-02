@@ -37,16 +37,16 @@ from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.geolocation import (
+from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Geolocation,
-    GeolocationClaim,
-    GeolocationStatus,
+    Event,
+    EventClaim,
+    EventStatus,
 )
 from app.models.media import Media
-from app.models.tag import Tag, geolocation_tags
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.services import social
 from app.services.auth import hash_password
@@ -662,7 +662,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
     # Buffer M2M link rows per batch, flushed via one Core
-    # `INSERT INTO geolocation_tags` — far cheaper than 1-4 ORM
+    # `INSERT INTO event_tags` — far cheaper than 1-4 ORM
     # relationship writes per geo.
     pending_links: list[dict[str, uuid.UUID]] = []
 
@@ -674,7 +674,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         # committed and tagless on a mid-flush failure.
         db.flush()
         if pending_links:
-            db.execute(insert(geolocation_tags), pending_links)
+            db.execute(insert(event_tags), pending_links)
             pending_links.clear()
         db.commit()
         db.expire_all()
@@ -691,7 +691,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         geo_id = uuid.uuid4()
 
         event_date = _random_event_date()
-        geo = Geolocation(
+        geo = Event(
             id=geo_id,
             author_id=author_id,
             title=DEMO_TITLE,
@@ -733,7 +733,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         # Pick tag IDs from the memoised dict and stage the link rows for
         # the bulk Core insert — no DB hit, no ORM traversal.
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
-            pending_links.append({"geolocation_id": geo_id, "tag_id": tid})
+            pending_links.append({"event_id": geo_id, "tag_id": tid})
 
         db.add(geo)
 
@@ -804,14 +804,14 @@ DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
 # "open queue" view feels populated; ``geolocated`` is the fulfilled case (a
 # located event with the original poster preserved on ``requested_by_id``), and
 # ``closed`` is a withdrawn request. Weights sum to 1.0; sampled per-row.
-DEMO_BOUNTY_STATUS_WEIGHTS: tuple[tuple[GeolocationStatus, float], ...] = (
+DEMO_BOUNTY_STATUS_WEIGHTS: tuple[tuple[EventStatus, float], ...] = (
     (STATUS_REQUESTED, 0.70),
     (STATUS_GEOLOCATED, 0.15),
     (STATUS_CLOSED, 0.15),
 )
 
 
-def _pick_demo_bounty_status() -> GeolocationStatus:
+def _pick_demo_bounty_status() -> EventStatus:
     """Weighted draw from ``DEMO_BOUNTY_STATUS_WEIGHTS``.
 
     Explicit loop rather than ``random.choices`` so the weights stay
@@ -870,7 +870,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 
     pending_geo_tag_links: list[dict[str, uuid.UUID]] = []
     pending_claim_rows: list[dict[str, Any]] = []
-    counts: dict[GeolocationStatus, int] = {
+    counts: dict[EventStatus, int] = {
         STATUS_REQUESTED: 0,
         STATUS_GEOLOCATED: 0,
         STATUS_CLOSED: 0,
@@ -897,7 +897,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             other_authors = [aid for aid in author_ids if aid != author_id]
             fulfiller_id = random.choice(other_authors) if other_authors else author_id
             lat, lon = _pick_point_for(region)
-            geo = Geolocation(
+            geo = Event(
                 id=geo_id,
                 author_id=fulfiller_id,
                 requested_by_id=author_id,
@@ -912,7 +912,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         else:
             # Requested or closed — no location; the poster owns the row and is
             # also the requester. ``closed_at`` stamped for the withdrawn case.
-            geo = Geolocation(
+            geo = Event(
                 id=geo_id,
                 author_id=author_id,
                 requested_by_id=author_id,
@@ -933,7 +933,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         for key in media_subset:
             db.add(
                 Media(
-                    geolocation_id=geo_id,
+                    event_id=geo_id,
                     storage_url=storage.public_url(key),
                     media_type=_media_type_from_key(key),
                     sha256=pool_sha256_by_key.get(key),
@@ -941,7 +941,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             )
 
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
-            pending_geo_tag_links.append({"geolocation_id": geo_id, "tag_id": tid})
+            pending_geo_tag_links.append({"event_id": geo_id, "tag_id": tid})
 
         # Claims only make sense on the open queue — closed / geolocated events
         # don't accept new claims, and stale backfilled claims would mislead the UI.
@@ -952,7 +952,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                 for claimer_id in random.sample(other_authors, k=claim_count):
                     pending_claim_rows.append(
                         {
-                            "geolocation_id": geo_id,
+                            "event_id": geo_id,
                             "user_id": claimer_id,
                             "created_at": datetime.now(UTC),
                         }
@@ -961,12 +961,12 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 
     db.flush()
     if pending_geo_tag_links:
-        db.execute(insert(geolocation_tags), pending_geo_tag_links)
+        db.execute(insert(event_tags), pending_geo_tag_links)
     if pending_claim_rows:
         # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
         # ``Table`` and ``insert()`` accepts it — same as the
-        # ``insert(geolocation_tags)`` call above.
-        db.execute(insert(GeolocationClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
+        # ``insert(event_tags)`` call above.
+        db.execute(insert(EventClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
     db.commit()
 
     return {
@@ -991,10 +991,10 @@ def wipe_demo_bounties(db: Session) -> dict[str, int]:
     ``demo-pool/`` S3 objects stay (keys shared with the geo seeder).
     """
     deleted = (
-        db.query(Geolocation)
+        db.query(Event)
         .filter(
-            Geolocation.is_demo.is_(True),
-            Geolocation.status.in_((STATUS_REQUESTED, STATUS_CLOSED)),
+            Event.is_demo.is_(True),
+            Event.status.in_((STATUS_REQUESTED, STATUS_CLOSED)),
         )
         .delete(synchronize_session=False)
     )
@@ -1009,23 +1009,19 @@ def wipe_demo(db: Session) -> dict[str, int]:
 
     1. Speed — at 50k+ scale, per-row `db.delete(geo)` plus the ORM's
        autoflush of M2M-secondary cascades is orders of magnitude slower
-       than a single `DELETE FROM geolocations WHERE is_demo = true`.
+       than a single `DELETE FROM events WHERE is_demo = true`.
 
-    2. Correctness — the M2M `Geolocation.tags` makes the ORM manage
-       `geolocation_tags` deletes itself, *fighting* the DB
+    2. Correctness — the M2M `Event.tags` makes the ORM manage
+       `event_tags` deletes itself, *fighting* the DB
        `ON DELETE CASCADE`: when the cascade drops the secondary rows
        first, the ORM's queued DELETE finds zero rows and raises
        `StaleDataError`. Bulk Core DELETE bypasses ORM cascade; the DB FK
-       cascade handles `geolocation_tags`, `media`, `proof_images`.
+       cascade handles `event_tags`, `media`, `proof_images`.
 
     The `demo-pool/` S3 objects are NOT touched — shared re-seeding assets,
     not per-geo media.
     """
-    geo_count = (
-        db.query(Geolocation)
-        .filter(Geolocation.is_demo.is_(True))
-        .delete(synchronize_session=False)
-    )
+    geo_count = db.query(Event).filter(Event.is_demo.is_(True)).delete(synchronize_session=False)
     deleted_users = db.query(User).filter(User.is_demo.is_(True)).delete(synchronize_session=False)
     db.commit()
     return {"deleted_geos": geo_count or 0, "deleted_users": deleted_users or 0}

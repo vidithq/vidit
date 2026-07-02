@@ -2,7 +2,7 @@
 
 Since the bounty + geolocation merge, `/bounties` is a VIEW over the one
 ``geolocations`` table scoped to the requested lifecycle: a bounty is a
-``Geolocation`` with ``status='requested'`` (an open call to geolocate, with
+``Event`` with ``status='requested'`` (an open call to geolocate, with
 evidence media but no coordinates), and it stays visible as ``closed`` once the
 author withdraws it. Fulfilment is no longer a row copy into a new geolocation:
 the requested row is transitioned in place to ``geolocated`` by
@@ -41,12 +41,12 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import (
+from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Geolocation,
-    GeolocationClaim,
+    Event,
+    EventClaim,
 )
 from app.models.media import Media
 from app.models.tag import Tag
@@ -91,14 +91,10 @@ def author(db):
     yield user
     db.expire_all()
     # Manual cascade: events (requested + fulfilled) authored OR requested by the
-    # user → media + geolocation_claims (DB FK CASCADE); their claims; then user.
-    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
-        synchronize_session=False
-    )
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
-        synchronize_session=False
-    )
+    # user → media + event_claims (DB FK CASCADE); their claims; then user.
+    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -115,13 +111,9 @@ def second_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
-        synchronize_session=False
-    )
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
-        synchronize_session=False
-    )
+    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -138,9 +130,7 @@ def third_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
-        synchronize_session=False
-    )
+    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -195,11 +185,11 @@ def _make_bounty(
     deleted: bool = False,
     tags: list[Tag] | None = None,
     with_media: bool = True,
-) -> Geolocation:
-    """A bounty row: a ``requested`` (or ``closed``) ``Geolocation`` with no
+) -> Event:
+    """A bounty row: a ``requested`` (or ``closed``) ``Event`` with no
     location and ``requested_by_id`` set to the poster, mirroring the create path.
     """
-    bounty = Geolocation(
+    bounty = Event(
         author_id=author.id,
         requested_by_id=author.id,
         title=title or f"Bounty {uuid.uuid4().hex[:8]}",
@@ -216,7 +206,7 @@ def _make_bounty(
     if with_media:
         db.add(
             Media(
-                geolocation_id=bounty.id,
+                event_id=bounty.id,
                 storage_url=(
                     f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"
                 ),
@@ -320,8 +310,8 @@ def test_list_carries_claimer_aggregates(db, author, second_user, third_user):
     """The list response gives every card a count + a small avatar sample
     without N+1. The detail endpoint serves the full claimers list."""
     bounty = _make_bounty(db, author=author)
-    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
-    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=third_user.id))
+    db.add(EventClaim(event_id=bounty.id, user_id=second_user.id))
+    db.add(EventClaim(event_id=bounty.id, user_id=third_user.id))
     db.commit()
     try:
         response = client.get("/api/v1/bounties")
@@ -331,7 +321,7 @@ def test_list_carries_claimer_aggregates(db, author, second_user, third_user):
         usernames = {u["username"] for u in row["claimer_sample"]}
         assert usernames == {second_user.username, third_user.username}
     finally:
-        db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).delete(
+        db.query(EventClaim).filter(EventClaim.event_id == bounty.id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -376,8 +366,8 @@ def test_detail_404_for_located_event(db, author):
 
 def test_detail_lists_every_claimer(db, author, second_user, third_user):
     bounty = _make_bounty(db, author=author)
-    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
-    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=third_user.id))
+    db.add(EventClaim(event_id=bounty.id, user_id=second_user.id))
+    db.add(EventClaim(event_id=bounty.id, user_id=third_user.id))
     db.commit()
     try:
         response = client.get(f"/api/v1/bounties/{bounty.id}")
@@ -386,7 +376,7 @@ def test_detail_lists_every_claimer(db, author, second_user, third_user):
         usernames = {c["username"] for c in body["claimers"]}
         assert usernames == {second_user.username, third_user.username}
     finally:
-        db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).delete(
+        db.query(EventClaim).filter(EventClaim.event_id == bounty.id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -558,13 +548,13 @@ def test_create_happy_path(db, author, free_tag):
     bounty_id = uuid.UUID(body["id"])
     # The created row is a requested event with no location and the poster on
     # ``requested_by_id`` — the invariant fulfilment relies on.
-    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == bounty_id).one()
     assert row.status == STATUS_REQUESTED
     assert row.location is None
     assert row.requested_by_id == author.id
 
-    db.query(Media).filter(Media.geolocation_id == bounty_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+    db.query(Media).filter(Media.event_id == bounty_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -602,8 +592,8 @@ def test_create_event_date_optional_source_required(db, author):
 
     for created in (with_dates.json(), without.json()):
         bid = uuid.UUID(created["id"])
-        db.query(Media).filter(Media.geolocation_id == bid).delete(synchronize_session=False)
-        db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
+        db.query(Media).filter(Media.event_id == bid).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
     db.commit()
 
 
@@ -644,8 +634,8 @@ def test_create_strips_inline_images_from_proof(db, author):
     ]
 
     bid = uuid.UUID(response.json()["id"])
-    db.query(Media).filter(Media.geolocation_id == bid).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
+    db.query(Media).filter(Media.event_id == bid).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
     db.commit()
 
 
@@ -707,8 +697,8 @@ def test_create_populates_sha256_on_media(db, author):
     assert row.uploaded_user_agent is not None
 
     bounty_id = uuid.UUID(body["id"])
-    db.query(Media).filter(Media.geolocation_id == bounty_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+    db.query(Media).filter(Media.event_id == bounty_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -744,8 +734,8 @@ def test_delete_succeeds_for_author_and_cascades_media(db, author):
     response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
-    assert db.query(Media).filter(Media.geolocation_id == bounty_id).count() == 0
+    assert db.query(Event).filter(Event.id == bounty_id).first() is None
+    assert db.query(Media).filter(Media.event_id == bounty_id).count() == 0
 
 
 def test_delete_no_longer_blocked_by_a_later_geolocation(db, author, second_user):
@@ -763,7 +753,7 @@ def test_delete_no_longer_blocked_by_a_later_geolocation(db, author, second_user
     response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
+    assert db.query(Event).filter(Event.id == bounty_id).first() is None
 
 
 # ── POST /bounties/{id}/claim ─────────────────────────────────────────────
@@ -782,7 +772,7 @@ def test_claim_inserts_row(db, author, second_user):
     )
     assert response.status_code == 204
     db.expire_all()
-    claims = db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).all()
+    claims = db.query(EventClaim).filter(EventClaim.event_id == bounty.id).all()
     assert len(claims) == 1
     assert claims[0].user_id == second_user.id
 
@@ -796,10 +786,10 @@ def test_claim_is_idempotent(db, author, second_user):
         assert response.status_code == 204
     db.expire_all()
     assert (
-        db.query(GeolocationClaim)
+        db.query(EventClaim)
         .filter(
-            GeolocationClaim.geolocation_id == bounty.id,
-            GeolocationClaim.user_id == second_user.id,
+            EventClaim.event_id == bounty.id,
+            EventClaim.user_id == second_user.id,
         )
         .count()
         == 1
@@ -815,10 +805,7 @@ def test_multiple_analysts_can_claim_same_bounty(db, author, second_user, third_
     assert r2.status_code == 204
     db.expire_all()
     user_ids = {
-        c.user_id
-        for c in db.query(GeolocationClaim)
-        .filter(GeolocationClaim.geolocation_id == bounty.id)
-        .all()
+        c.user_id for c in db.query(EventClaim).filter(EventClaim.event_id == bounty.id).all()
     }
     assert user_ids == {second_user.id, third_user.id}
 
@@ -844,7 +831,7 @@ def test_claim_404_for_soft_deleted(db, author, second_user):
 
 def test_unclaim_removes_row(db, author, second_user):
     bounty = _make_bounty(db, author=author)
-    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
+    db.add(EventClaim(event_id=bounty.id, user_id=second_user.id))
     db.commit()
 
     response = client.delete(
@@ -853,10 +840,10 @@ def test_unclaim_removes_row(db, author, second_user):
     assert response.status_code == 204
     db.expire_all()
     assert (
-        db.query(GeolocationClaim)
+        db.query(EventClaim)
         .filter(
-            GeolocationClaim.geolocation_id == bounty.id,
-            GeolocationClaim.user_id == second_user.id,
+            EventClaim.event_id == bounty.id,
+            EventClaim.user_id == second_user.id,
         )
         .count()
         == 0
@@ -908,13 +895,13 @@ def test_close_rejected_on_terminal_state(db, author):
 # ``requested_by`` keeps the original poster.
 
 
-def _make_geolocated(db, *, author: User) -> Geolocation:
+def _make_geolocated(db, *, author: User) -> Event:
     """A directly-submitted ``geolocated`` event (has a location). Helper for the
     "located events don't show in the requested view" assertions."""
     from geoalchemy2.shape import from_shape
     from shapely.geometry import Point
 
-    geo = Geolocation(
+    geo = Event(
         author_id=author.id,
         title=f"Located {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -942,7 +929,7 @@ def _submit_fulfilment(client, bounty_id, fulfiller, *tags, **overrides):
     }
     data.update(overrides)
     return client.post(
-        f"/api/v1/geolocations/{bounty_id}/submit",
+        f"/api/v1/events/{bounty_id}/submit",
         headers=login_as(client, fulfiller),
         data=data,
     )
@@ -969,7 +956,7 @@ def test_submit_fulfils_requested_and_transfers_ownership(
     assert body["requested_by"]["username"] == author.username
 
     db.expire_all()
-    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == bounty_id).one()
     assert row.status == STATUS_GEOLOCATED
     assert row.author_id == second_user.id
     assert row.requested_by_id == author.id
@@ -997,7 +984,7 @@ def test_submit_keeps_requesters_source_url(
     assert response.json()["source_url"] == "https://requester.example/evidence"
 
     db.expire_all()
-    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == bounty_id).one()
     assert row.source_url == "https://requester.example/evidence"
 
 
@@ -1017,7 +1004,7 @@ def test_submit_fulfilled_event_leaves_requested_view(
     assert client.get(f"/api/v1/bounties/{bounty_id}").status_code == 404
     assert all(row["id"] != str(bounty_id) for row in client.get("/api/v1/bounties").json())
     # Present on the located surface.
-    located = client.get(f"/api/v1/geolocations/{bounty_id}")
+    located = client.get(f"/api/v1/events/{bounty_id}")
     assert located.status_code == 200
     assert located.json()["status"] == "geolocated"
 
@@ -1029,14 +1016,14 @@ def test_submit_fulfilment_reuses_existing_media(
     the bounty's one media survives the transition without any new upload."""
     bounty = _make_bounty(db, author=author)
     bounty_id = bounty.id
-    media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
+    media_id = db.query(Media.id).filter(Media.event_id == bounty_id).scalar()
 
     assert (
         _submit_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
     ).status_code == 200
 
     db.expire_all()
-    medias = db.query(Media).filter(Media.geolocation_id == bounty_id).all()
+    medias = db.query(Media).filter(Media.event_id == bounty_id).all()
     assert [m.id for m in medias] == [media_id]
 
 
@@ -1047,10 +1034,10 @@ def test_submit_fulfilment_accepts_extra_files(
     upload lands alongside the request's existing media on the same row."""
     bounty = _make_bounty(db, author=author)
     bounty_id = bounty.id
-    existing_media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
+    existing_media_id = db.query(Media.id).filter(Media.event_id == bounty_id).scalar()
 
     response = client.post(
-        f"/api/v1/geolocations/{bounty_id}/submit",
+        f"/api/v1/events/{bounty_id}/submit",
         headers=login_as(client, second_user),
         data={
             "title": "x",
@@ -1066,7 +1053,7 @@ def test_submit_fulfilment_accepts_extra_files(
     assert response.status_code == 200, response.text
 
     db.expire_all()
-    medias = db.query(Media).filter(Media.geolocation_id == bounty_id).all()
+    medias = db.query(Media).filter(Media.event_id == bounty_id).all()
     # One kept from the request + one fresh upload = two total.
     assert len(medias) == 2
     assert existing_media_id in {m.id for m in medias}
@@ -1102,7 +1089,7 @@ def test_submit_fulfilment_blocked_without_required_tags(db, author, second_user
     conflict + capture_source tags 400s (the request itself may be tagless)."""
     bounty = _make_bounty(db, author=author)
     response = client.post(
-        f"/api/v1/geolocations/{bounty.id}/submit",
+        f"/api/v1/events/{bounty.id}/submit",
         headers=login_as(client, second_user),
         data={
             "title": "x",

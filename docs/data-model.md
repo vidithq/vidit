@@ -76,7 +76,7 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
-    geolocations {
+    events {
         UUID id PK
         UUID author_id FK "edit-rights owner"
         UUID requested_by_id FK "nullable, who opened the request"
@@ -97,15 +97,15 @@ erDiagram
         TIMESTAMPTZ updated_at
     }
 
-    geolocation_claims {
-        UUID geolocation_id FK
+    event_claims {
+        UUID event_id FK
         UUID user_id FK
         TIMESTAMPTZ created_at
     }
 
     media {
         UUID id PK
-        UUID geolocation_id FK
+        UUID event_id FK
         TEXT storage_url
         VARCHAR media_type
         VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
@@ -119,7 +119,7 @@ erDiagram
         UUID id PK
         TEXT s3_key
         UUID user_id FK
-        UUID geolocation_id FK "nullable"
+        UUID event_id FK "nullable"
         VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
         INET uploaded_ip "nullable, submitter IP at upload time"
         TEXT uploaded_user_agent "nullable, submitter UA at upload time"
@@ -133,8 +133,8 @@ erDiagram
         VARCHAR category
     }
 
-    geolocation_tags {
-        UUID geolocation_id FK
+    event_tags {
+        UUID event_id FK
         UUID tag_id FK
     }
 
@@ -150,15 +150,15 @@ erDiagram
     users ||--o{ auth_tokens : "user_id"
     users ||--o{ admin_events : "actor_id"
     users ||--o{ auth_events : "user_id"
-    users ||--o{ geolocations : "author_id"
-    users ||--o{ geolocations : "requested_by_id"
-    geolocations ||--o{ media : "geolocation_id"
-    geolocations ||--o{ proof_images : "geolocation_id"
+    users ||--o{ events : "author_id"
+    users ||--o{ events : "requested_by_id"
+    events ||--o{ media : "event_id"
+    events ||--o{ proof_images : "event_id"
     users ||--o{ proof_images : "user_id"
-    geolocations ||--o{ geolocation_tags : "geolocation_id"
-    tags ||--o{ geolocation_tags : "tag_id"
-    geolocations ||--o{ geolocation_claims : "geolocation_id"
-    users ||--o{ geolocation_claims : "user_id"
+    events ||--o{ event_tags : "event_id"
+    tags ||--o{ event_tags : "tag_id"
+    events ||--o{ event_claims : "event_id"
+    users ||--o{ event_claims : "user_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -308,7 +308,7 @@ Indexes:
 
 ---
 
-### `geolocations`
+### `events`
 
 One row is one event across the whole lifecycle. `status` is the lifecycle; `location` is an independent nullable axis tied to it by a CHECK. A bounty is a `requested` event on this table (no coordinates yet); fulfilling it is a single `UPDATE status='geolocated', location=…` on the same row.
 
@@ -318,7 +318,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `loc
 | `author_id` | `UUID` | FK → `users.id`, NOT NULL. Edit-rights owner. For a `requested` event this is the poster; it transfers to the fulfiller at the `geolocated` transition, so permissions stay a single-owner check across the lifecycle. |
 | `requested_by_id` | `UUID` | FK → `users.id`, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation (no request preceded it). |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `location` | `GEOMETRY(Point, 4326)` | nullable, tied to `status` by `ck_geolocations_location_status`: forbidden for `requested` (no coordinates yet), required for `geolocated` (a vouched geolocation has a place), free for `detected` / `closed`. |
+| `location` | `GEOMETRY(Point, 4326)` | nullable, tied to `status` by `ck_events_location_status`: forbidden for `requested` (no coordinates yet), required for `geolocated` (a vouched geolocation has a place), free for `detected` / `closed`. |
 | `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
@@ -334,7 +334,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `loc
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 **Check constraint:**
-- `ck_geolocations_location_status`: `(status <> 'requested' OR location IS NULL) AND (status <> 'geolocated' OR location IS NOT NULL)`. A `requested` event carries no location; a `geolocated` one always does; `detected` / `closed` are free either way.
+- `ck_events_location_status`: `(status <> 'requested' OR location IS NULL) AND (status <> 'geolocated' OR location IS NOT NULL)`. A `requested` event carries no location; a `geolocated` one always does; `detected` / `closed` are free either way.
 
 **Temporal fields: four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
 
@@ -358,32 +358,32 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `(author_id)`, profile lookup
 - `(event_date)`, `(created_at)`, time-based queries
 - `(author_id, created_at DESC)`, composite for profile listing
-- `ix_geolocations_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
-- `ix_geolocations_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
-- `ix_geolocations_status_created_at` on `(status, created_at)`, the requested-view (ex-bounty) list, the map, and the detection queue all filter on `status` newest-first
-- `ix_geolocations_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
-- `ix_geolocations_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
+- `ix_events_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
+- `ix_events_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
+- `ix_events_status_created_at` on `(status, created_at)`, the requested-view (ex-bounty) list, the map, and the detection queue all filter on `status` newest-first
+- `ix_events_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
+- `ix_events_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 
 > `location` is a PostGIS point in WGS84 (SRID 4326 = standard GPS coordinates), nullable per the CHECK above.
 > GeoAlchemy2 exposes `.lat` / `.lng` via `WKBElement`, or `ST_X` / `ST_Y` in raw SQL.
 
 ---
 
-### `geolocation_claims`
+### `event_claims`
 
 Multi-analyst "I'm working on this" signal on a `requested` event (folded in from the old `bounty_claims` table at the merge). Several analysts can hold a claim on the same event simultaneously, the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-Composite PK: `(geolocation_id, user_id)`
+Composite PK: `(event_id, user_id)`
 
 **Indexes:**
-- `ix_geolocation_claims_geolocation_id_created_at` on `(geolocation_id, created_at)`, "who's working on request X right now?" detail-page query, newest-first ordering
-- `ix_geolocation_claims_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
+- `ix_event_claims_event_id_created_at` on `(event_id, created_at)`, "who's working on request X right now?" detail-page query, newest-first ordering
+- `ix_event_claims_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
 
 Claims don't gate the lifecycle: a request can be fulfilled by an analyst who never claimed, and claims aren't cleared when the event terminates. Hard-delete on the event cascades-drops the rows.
 
@@ -412,12 +412,12 @@ Indexes:
 
 ### `media`
 
-One `geolocation_id` owner. A bounty is a `requested` geolocation, so all evidence hangs off the one table; fulfilling a request no longer moves media between tables (the row already points at the event that gains a location).
+One `event_id` owner. A bounty is a `requested` geolocation, so all evidence hangs off the one table; fulfilling a request no longer moves media between tables (the row already points at the event that gains a location).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE, NOT NULL |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `storage_url` | `TEXT` | NOT NULL, S3 / CloudFront URL |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
 | `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too, `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so demo content matches real upload integrity. **The hash is computed on the bytes that land on S3, for images that means after the EXIF strip, so an auditor downloading the public URL can independently verify the hash matches.** |
@@ -437,14 +437,14 @@ The `media` table stores the **top-level evidence files** uploaded with the form
 
 ### `proof_images`
 
-Inline images embedded inside the Tiptap proof body (one row per image referenced from the `<image>` nodes in `geolocations.proof`).
+Inline images embedded inside the Tiptap proof body (one row per image referenced from the `<image>` nodes in `events.proof`).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `s3_key` | `TEXT` | UNIQUE, NOT NULL, canonical key (host-stripped); inverse of `Storage.public_url` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE, **nullable** until form submit |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, **nullable** until form submit |
 | `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes (same rationale and NULL-cohort as `media.sha256`). |
 | `uploaded_ip` | `INET` | nullable, submitter IP at upload (same rationale and admin-only visibility as `media.uploaded_ip`). |
 | `uploaded_user_agent` | `TEXT` | nullable, submitter UA, capped at 1 KB. Admin-only. |
@@ -453,15 +453,15 @@ Inline images embedded inside the Tiptap proof body (one row per image reference
 
 **Indexes:**
 - `(user_id)`, orphan reaper scopes by user; future per-user quota
-- `(geolocation_id)`, collect keys for the cascade-delete S3 sweep
-- `(created_at) WHERE geolocation_id IS NULL`, partial index for the orphan reaper
+- `(event_id)`, collect keys for the cascade-delete S3 sweep
+- `(created_at) WHERE event_id IS NULL`, partial index for the orphan reaper
 - `(sha256) WHERE sha256 IS NOT NULL`, partial content-hash index, mirrors `ix_media_sha256`
 
 **Lifecycle:**
-1. Editor uploads an image → `POST /geolocations/proof-images` writes to S3 and inserts a row with `geolocation_id = NULL`.
-2. User submits the geolocation form → after sanitization, `POST /geolocations` extracts the `<image>` srcs from the proof JSON, derives s3_keys, and `UPDATE proof_images SET geolocation_id = :geo WHERE s3_key IN (...) AND user_id = :u AND geolocation_id IS NULL`. The user-id scope blocks one user from claiming another user's keys.
+1. Editor uploads an image → `POST /events/proof-images` writes to S3 and inserts a row with `event_id = NULL`.
+2. User submits the geolocation form → after sanitization, `POST /events` extracts the `<image>` srcs from the proof JSON, derives s3_keys, and `UPDATE proof_images SET event_id = :geo WHERE s3_key IN (...) AND user_id = :u AND event_id IS NULL`. The user-id scope blocks one user from claiming another user's keys.
 3. Geolocation deletion → the router collects matching `s3_key`s, deletes the S3 objects, then commits the cascade DB delete. (S3 is deleted post-commit so a failed transaction can't strand referenced files.)
-4. Form abandoned → the row stays with `geolocation_id = NULL` and is reaped on-demand from the admin Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`, 24h grace), which deletes both the S3 object and the row.
+4. Form abandoned → the row stays with `event_id = NULL` and is reaped on-demand from the admin Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`, 24h grace), which deletes both the S3 object and the row.
 
 Why a separate table instead of embedding the URL in the proof JSON: gives O(1) orphan reaping, lets us sweep S3 on geolocation delete, and supports per-user quotas / takedown lookups without scanning the bucket or parsing JSONB.
 
@@ -479,20 +479,20 @@ Tags with category `conflict` are the main conflicts (Ukraine, Gaza, Sudan…), 
 Tags with category `capture_source` are the original "lens" that captured the media, `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Seeded in prod by migration `s5n7p9r1t3v5` (the demo seeder is local-only, but the category is required on the submit form, so the options must exist on a fresh prod DB).
 Tags with category `free` are user-created and free-form.
 
-`conflict` and `capture_source` are **curated** (server-managed, not user-creatable) and **required**: `POST /geolocations` rejects a submission that doesn't carry at least one tag from each category (see [`api.md`](api.md) → `POST /geolocations`). The rule is enforced at the API layer, not by a DB constraint, pre-existing rows and the demo seeder are unaffected, and each category ships an escape value. `name` is globally UNIQUE across all three categories, so a `capture_source` tag can't share a name with a `free` or `conflict` tag.
+`conflict` and `capture_source` are **curated** (server-managed, not user-creatable) and **required**: `POST /events` rejects a submission that doesn't carry at least one tag from each category (see [`api.md`](api.md) → `POST /events`). The rule is enforced at the API layer, not by a DB constraint, pre-existing rows and the demo seeder are unaffected, and each category ships an escape value. `name` is globally UNIQUE across all three categories, so a `capture_source` tag can't share a name with a `free` or `conflict` tag.
 
 ---
 
-### `geolocation_tags`
+### `event_tags`
 
-Many-to-many junction table between `geolocations` and `tags`.
+Many-to-many junction table between `events` and `tags`.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
 | `tag_id` | `UUID` | FK → `tags.id` ON DELETE CASCADE |
 
-Composite PK: `(geolocation_id, tag_id)`
+Composite PK: `(event_id, tag_id)`
 
 ---
 
@@ -501,15 +501,15 @@ Composite PK: `(geolocation_id, tag_id)`
 ### Why JSONB for `proof`?
 Tiptap (the rich editor) serializes content as ProseMirror JSON. Storing that JSON as-is in a JSONB column avoids any conversion. PostgreSQL can index and query JSONB natively.
 
-### Why `geolocation_tags` and not an array column on `geolocations`?
-Many-to-many: a geolocation can carry several tags, and a tag can appear on many geolocations. The `geolocation_tags` junction table is the standard solution: it allows efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative (a `tag_ids[]` array on `geolocations`) would make filters more complex and less performant at scale.
+### Why `event_tags` and not an array column on `events`?
+Many-to-many: a geolocation can carry several tags, and a tag can appear on many geolocations. The `event_tags` junction table is the standard solution: it allows efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative (a `tag_ids[]` array on `events`) would make filters more complex and less performant at scale.
 
 ```sql
 -- Tags for a given geolocation
 SELECT t.name, t.category
 FROM tags t
-JOIN geolocation_tags gt ON gt.tag_id = t.id
-WHERE gt.geolocation_id = 'a3f8c2d1-...';
+JOIN event_tags gt ON gt.tag_id = t.id
+WHERE gt.event_id = 'a3f8c2d1-...';
 -- → [{ name: "Ukraine", category: "conflict" }, { name: "airstrike", category: "free" }]
 ```
 
@@ -526,18 +526,18 @@ PostGIS unlocks native geospatial queries (bounding-box filtering, distance comp
 ```sql
 -- All points for the map (initial load)
 SELECT id, title, ST_X(location) AS lng, ST_Y(location) AS lat, event_date
-FROM geolocations;
+FROM events;
 
 -- Filter by conflict
 SELECT g.id, g.title, ST_X(g.location) AS lng, ST_Y(g.location) AS lat
-FROM geolocations g
-JOIN geolocation_tags gt ON gt.geolocation_id = g.id
+FROM events g
+JOIN event_tags gt ON gt.event_id = g.id
 JOIN tags t ON t.id = gt.tag_id
 WHERE t.name = 'Ukraine' AND t.category = 'conflict';
 
 -- An analyst's geolocations (profile)
 SELECT id, title, event_date, created_at
-FROM geolocations
+FROM events
 WHERE author_id = :user_id
 ORDER BY event_date DESC;
 ```
@@ -552,11 +552,11 @@ A third-party KMZ export can be mapped locally to generate test data. Large bina
 
 | KML field | → | Vidit column |
 |-----------|---|---------------|
-| `coordinates` (lng, lat) | → | `geolocations.location` |
-| `description` (first line) | → | `geolocations.title` |
-| `TimeStamp` | → | `geolocations.event_date` |
-| "Source(s)" URLs in `description` | → | `geolocations.source_url` |
-| "Geolocation(s)" URLs in `description` | → | `geolocations.proof` |
+| `coordinates` (lng, lat) | → | `events.location` |
+| `description` (first line) | → | `events.title` |
+| `TimeStamp` | → | `events.event_date` |
+| "Source(s)" URLs in `description` | → | `events.source_url` |
+| "Geolocation(s)" URLs in `description` | → | `events.proof` |
 | `styleUrl` (icon color) | → | `tags` (side / event type) |
 
 Local KMZ import is no longer scripted in this repo (the prior `seed_external.py` / `enrich_media.py` were deleted, the admin Demo data panel replaces them with a synthetic-data flow that references a curated `demo-pool/` S3 prefix). Mapping kept for a future agreement-bound import.

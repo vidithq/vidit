@@ -3,7 +3,7 @@
 The shapes the ``GET/POST /geolocations/import-from-tweet`` endpoints return: the
 human pre-fill (``TweetImportResponse`` + its ``Coord`` / ``Media`` /
 ``QuotedTweet`` parts) and the no-persist machine ``DetectedGeolocPreview``. Kept
-separate from the core geolocation read/write schemas in ``geolocation.py`` —
+separate from the core geolocation read/write schemas in ``event.py`` —
 they're a self-contained sub-feature, consumed only by the import router.
 """
 

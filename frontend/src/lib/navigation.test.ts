@@ -11,8 +11,8 @@ describe("safeNext", () => {
 
   it("honours a same-origin path and preserves search + hash", () => {
     expect(safeNext("/timeline")).toBe("/timeline");
-    expect(safeNext("/geolocations/abc?tab=proof#media")).toBe(
-      "/geolocations/abc?tab=proof#media"
+    expect(safeNext("/events/abc?tab=proof#media")).toBe(
+      "/events/abc?tab=proof#media"
     );
   });
 

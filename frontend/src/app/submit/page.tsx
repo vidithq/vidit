@@ -12,16 +12,16 @@ import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
 // Aliased: a local `submitGeolocation` validation handler below would otherwise
 // shadow this API call.
 import {
-  missingGeolocationFields,
-  submitGeolocation as submitGeolocationApi,
-} from "@/lib/geolocations";
+  missingEventFields,
+  submitEvent as submitEventApi,
+} from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Archive, ArrowLeft } from "lucide-react";
-import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
+import { TweetImportBanner } from "@/components/event/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -222,7 +222,7 @@ function SubmitForm() {
       // (``requested`` → ``geolocated``) transfers ownership to the fulfiller.
       // Its media is already on the row, so no files are staged / removed here.
       if (bounty) {
-        return submitGeolocationApi(bounty.id, {
+        return submitEventApi(bounty.id, {
           title,
           lat: latNum,
           lng: lngNum,
@@ -253,14 +253,14 @@ function SubmitForm() {
       for (const file of files) {
         formData.append("files", file);
       }
-      return apiFetch<{ id: string }>("/geolocations", {
+      return apiFetch<{ id: string }>("/events", {
         method: "POST",
         body: formData,
       });
     },
     {
       fallback: "Submission failed",
-      onSuccess: (result) => router.push(`/geolocations/${result.id}`),
+      onSuccess: (result) => router.push(`/events/${result.id}`),
     }
   );
 
@@ -298,7 +298,7 @@ function SubmitForm() {
     // Mirrors the server submission check, inline so the analyst fixes the whole
     // form in one pass instead of as a 400. When fulfilling a bounty its media
     // transfers in, so staged files aren't required.
-    const missing = missingGeolocationFields(
+    const missing = missingEventFields(
       {
         title,
         lat,

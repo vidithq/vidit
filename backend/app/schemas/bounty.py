@@ -4,16 +4,16 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.geolocation import GeolocationStatus
+from app.models.event import EventStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
 class BountyRead(BaseModel):
-    """The requested-events view over the unified ``Geolocation`` model.
+    """The requested-events view over the unified ``Event`` model.
 
-    A bounty is a ``Geolocation`` with ``status='requested'`` (an open call to
+    A bounty is a ``Event`` with ``status='requested'`` (an open call to
     geolocate) that may later become ``closed`` when the author withdraws it.
     Since the merge, fulfilment is a lifecycle move on this same row rather than
     a copy into a new geolocation, so there is no ``fulfilled_by`` trace.
@@ -31,11 +31,11 @@ class BountyRead(BaseModel):
     event_time: time | None = None
     source_posted_at: datetime
     # A requested-view row is ``requested`` or (once withdrawn) ``closed``.
-    status: GeolocationStatus
+    status: EventStatus
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None
-    # Mirrors ``GeolocationRead.is_demo`` — TRUE iff seeded by the admin "Demo
+    # Mirrors ``EventRead.is_demo`` — TRUE iff seeded by the admin "Demo
     # bounties" panel. The frontend swaps the synthetic source_url for an inert
     # label so testers don't click out to a 404; the visible demo signal is the
     # always-attached `demo` tag, not a badge.
@@ -52,7 +52,7 @@ class BountyList(BaseModel):
     id: uuid.UUID
     title: str
     source_url: str
-    status: GeolocationStatus
+    status: EventStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef

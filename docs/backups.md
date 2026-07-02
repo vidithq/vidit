@@ -81,7 +81,7 @@ docker compose exec db pg_restore --no-owner --no-acl \
 # 5. Sanity check: row counts on the tables that matter, alembic head, PostGIS smoke test
 docker compose exec db psql -U vision -d vidit_restore_drill -c "
     SELECT 'users' AS t, COUNT(*) FROM users
-    UNION ALL SELECT 'geolocations', COUNT(*) FROM geolocations
+    UNION ALL SELECT 'events', COUNT(*) FROM events
     UNION ALL SELECT 'media', COUNT(*) FROM media
     UNION ALL SELECT 'follows', COUNT(*) FROM follows
     UNION ALL SELECT 'tags', COUNT(*) FROM tags

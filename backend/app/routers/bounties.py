@@ -19,11 +19,11 @@ from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from app.dependencies import get_current_user, get_db
-from app.models.geolocation import (
+from app.models.event import (
     STATUS_CLOSED,
     STATUS_REQUESTED,
-    Geolocation,
-    GeolocationClaim,
+    Event,
+    EventClaim,
 )
 from app.models.media import Media
 from app.models.tag import Tag
@@ -91,23 +91,23 @@ def _apply_filters(
     ``?status=closed``).
     """
     query = query.filter(
-        Geolocation.deleted_at.is_(None),
-        Geolocation.status.in_(_REQUESTED_VIEW_STATUSES),
+        Event.deleted_at.is_(None),
+        Event.status.in_(_REQUESTED_VIEW_STATUSES),
     )
 
     if status_filter:
-        query = query.filter(Geolocation.status == status_filter)
+        query = query.filter(Event.status == status_filter)
 
     if tag:
-        query = query.join(Geolocation.tags).filter(Tag.name == tag)
+        query = query.join(Event.tags).filter(Tag.name == tag)
 
     if author:
-        query = query.join(Geolocation.author).filter(User.username.ilike(f"%{author}%"))
+        query = query.join(Event.author).filter(User.username.ilike(f"%{author}%"))
 
     return query
 
 
-def _serialize_list(db: Session, bounties: list[Geolocation]) -> list[BountyList]:
+def _serialize_list(db: Session, bounties: list[Event]) -> list[BountyList]:
     """Attach claimer aggregates to each requested event without N+1.
 
     Detail can afford `joinedload(claims)` on its one row; the list runs
@@ -119,9 +119,9 @@ def _serialize_list(db: Session, bounties: list[Geolocation]) -> list[BountyList
     bounty_ids = [b.id for b in bounties]
     counts: dict[uuid.UUID, int] = {
         bid: int(count)
-        for bid, count in db.query(GeolocationClaim.geolocation_id, func.count("*"))
-        .filter(GeolocationClaim.geolocation_id.in_(bounty_ids))
-        .group_by(GeolocationClaim.geolocation_id)
+        for bid, count in db.query(EventClaim.event_id, func.count("*"))
+        .filter(EventClaim.event_id.in_(bounty_ids))
+        .group_by(EventClaim.event_id)
         .all()
     }
 
@@ -130,14 +130,14 @@ def _serialize_list(db: Session, bounties: list[Geolocation]) -> list[BountyList
     # order_by + Python-side cap is simpler and the working set is small.
     sample: dict[uuid.UUID, list[User]] = {}
     claims = (
-        db.query(GeolocationClaim)
-        .options(joinedload(GeolocationClaim.user))
-        .filter(GeolocationClaim.geolocation_id.in_(bounty_ids))
-        .order_by(GeolocationClaim.geolocation_id, GeolocationClaim.created_at.desc())
+        db.query(EventClaim)
+        .options(joinedload(EventClaim.user))
+        .filter(EventClaim.event_id.in_(bounty_ids))
+        .order_by(EventClaim.event_id, EventClaim.created_at.desc())
         .all()
     )
     for claim in claims:
-        bucket = sample.setdefault(claim.geolocation_id, [])
+        bucket = sample.setdefault(claim.event_id, [])
         if len(bucket) < LIST_CLAIMER_SAMPLE_SIZE:
             bucket.append(claim.user)
 
@@ -161,7 +161,7 @@ def _serialize_list(db: Session, bounties: list[Geolocation]) -> list[BountyList
     ]
 
 
-def _serialize_detail(bounty: Geolocation) -> BountyRead:
+def _serialize_detail(bounty: Event) -> BountyRead:
     return BountyRead(
         id=bounty.id,
         title=bounty.title,
@@ -186,10 +186,10 @@ def _serialize_detail(bounty: Geolocation) -> BountyRead:
 # claimer. Shared by the detail GET, the post-create reload, and close — all
 # return the full ``BountyRead``.
 _DETAIL_LOADS = (
-    joinedload(Geolocation.author),
-    joinedload(Geolocation.media),
-    joinedload(Geolocation.tags),
-    joinedload(Geolocation.claims).joinedload(GeolocationClaim.user),
+    joinedload(Event.author),
+    joinedload(Event.media),
+    joinedload(Event.tags),
+    joinedload(Event.claims).joinedload(EventClaim.user),
 )
 
 
@@ -198,7 +198,7 @@ def _load_live_bounty(
     bounty_id: uuid.UUID,
     *,
     options: tuple[Any, ...] = (),
-) -> Geolocation:
+) -> Event:
     """Load a non-deleted requested-view event by id, or 404.
 
     ``options`` carries eager-loads (pass ``_DETAIL_LOADS`` for a full read). The
@@ -206,10 +206,10 @@ def _load_live_bounty(
     status filter keeps a located event (served by ``/geolocations``) from being
     read or mutated through the requested-view router.
     """
-    query = db.query(Geolocation).filter(
-        Geolocation.id == bounty_id,
-        Geolocation.deleted_at.is_(None),
-        Geolocation.status.in_(_REQUESTED_VIEW_STATUSES),
+    query = db.query(Event).filter(
+        Event.id == bounty_id,
+        Event.deleted_at.is_(None),
+        Event.status.in_(_REQUESTED_VIEW_STATUSES),
     )
     if options:
         query = query.options(*options)
@@ -235,22 +235,20 @@ def list_bounties(
     if limit < 1 or limit > 200:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
 
-    id_query = _apply_filters(
-        db.query(Geolocation.id), status_filter=status, tag=tag, author=author
-    )
-    ids = [row[0] for row in id_query.order_by(Geolocation.created_at.desc()).limit(limit).all()]
+    id_query = _apply_filters(db.query(Event.id), status_filter=status, tag=tag, author=author)
+    ids = [row[0] for row in id_query.order_by(Event.created_at.desc()).limit(limit).all()]
     if not ids:
         return []
 
     rows = (
-        db.query(Geolocation)
+        db.query(Event)
         .options(
-            subqueryload(Geolocation.author),
-            subqueryload(Geolocation.media),
-            subqueryload(Geolocation.tags),
+            subqueryload(Event.author),
+            subqueryload(Event.media),
+            subqueryload(Event.tags),
         )
-        .filter(Geolocation.id.in_(ids))
-        .order_by(Geolocation.created_at.desc())
+        .filter(Event.id.in_(ids))
+        .order_by(Event.created_at.desc())
         .all()
     )
     return _serialize_list(db, rows)
@@ -326,7 +324,7 @@ async def create_bounty(
     # Reload with the relationships the detail serializer reads. Not via
     # _load_live_bounty: the row was just created, so it can't be soft-deleted —
     # .one() asserts that invariant instead of the helper's fetch-or-404.
-    bounty = db.query(Geolocation).options(*_DETAIL_LOADS).filter(Geolocation.id == bounty.id).one()
+    bounty = db.query(Event).options(*_DETAIL_LOADS).filter(Event.id == bounty.id).one()
     return _serialize_detail(bounty)
 
 
@@ -338,8 +336,8 @@ def delete_bounty(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Hard-delete by the author. Cascades drop ``geolocation_tags``,
-    ``geolocation_claims`` and ``media`` rows; the S3 objects are swept after
+    """Hard-delete by the author. Cascades drop ``event_tags``,
+    ``event_claims`` and ``media`` rows; the S3 objects are swept after
     the commit lands. Admin soft-delete lives behind the admin router and
     stamps ``deleted_at`` instead.
     """
@@ -348,8 +346,7 @@ def delete_bounty(
 
     storage = get_storage()
     media_urls = [
-        row[0]
-        for row in db.query(Media.storage_url).filter(Media.geolocation_id == bounty.id).all()
+        row[0] for row in db.query(Media.storage_url).filter(Media.event_id == bounty.id).all()
     ]
     media_keys = [k for k in (storage.key_from_url(u) for u in media_urls) if k is not None]
 
@@ -379,17 +376,17 @@ def claim_bounty(
         )
 
     existing = (
-        db.query(GeolocationClaim)
+        db.query(EventClaim)
         .filter(
-            GeolocationClaim.geolocation_id == bounty.id,
-            GeolocationClaim.user_id == current_user.id,
+            EventClaim.event_id == bounty.id,
+            EventClaim.user_id == current_user.id,
         )
         .first()
     )
     if existing is not None:
         return
 
-    # The SELECT above is the friendly-path read; the ``GeolocationClaim``
+    # The SELECT above is the friendly-path read; the ``EventClaim``
     # composite-PK ``(geolocation_id, user_id)`` is the actual race backstop.
     # A double-click or two tabs both pass the SELECT, only one wins the
     # INSERT — without this SAVEPOINT the loser sees a 500 from the
@@ -397,7 +394,7 @@ def claim_bounty(
     # ``services/social.follow_user``.
     try:
         with db.begin_nested():
-            db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=current_user.id))
+            db.add(EventClaim(event_id=bounty.id, user_id=current_user.id))
     except IntegrityError:
         # Loser of the race — the row exists, which IS the post-condition.
         pass
@@ -418,9 +415,9 @@ def unclaim_bounty(
     """
     bounty = _load_live_bounty(db, bounty_id)
 
-    db.query(GeolocationClaim).filter(
-        GeolocationClaim.geolocation_id == bounty.id,
-        GeolocationClaim.user_id == current_user.id,
+    db.query(EventClaim).filter(
+        EventClaim.event_id == bounty.id,
+        EventClaim.user_id == current_user.id,
     ).delete(synchronize_session=False)
     db.commit()
 

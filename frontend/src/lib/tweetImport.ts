@@ -21,7 +21,7 @@ import type { TweetImportMedia, TweetImportResponse } from "@/types";
  *   reply-chain media, so a video posted in a reply is invisible here.
  *
  * Upstream X CDN URLs are pulled via the backend proxy
- * ``/geolocations/import-from-tweet/media`` because the X CDN omits the
+ * ``/events/import-from-tweet/media`` because the X CDN omits the
  * CORS headers a browser ``fetch`` needs. The proxy is whitelisted to
  * ``pbs.twimg.com`` / ``video.twimg.com`` so a hostile or schema-drifted
  * ``remote_url`` can't open it to arbitrary outbound fetches.
@@ -34,7 +34,7 @@ export async function fetchProxyBlob(
   signal: AbortSignal
 ): Promise<{ blob: Blob; contentType: string } | null> {
   try {
-    const proxyUrl = `/geolocations/import-from-tweet/media?u=${encodeURIComponent(remoteUrl)}`;
+    const proxyUrl = `/events/import-from-tweet/media?u=${encodeURIComponent(remoteUrl)}`;
     const res = await fetch(`${apiBase}${proxyUrl}`, {
       credentials: "include",
       signal,
@@ -86,7 +86,7 @@ export async function uploadAsProofImage(
   );
   try {
     const result = await apiFetch<{ url: string }>(
-      "/geolocations/proof-images",
+      "/events/proof-images",
       { method: "POST", body: fd, signal }
     );
     return result.url;

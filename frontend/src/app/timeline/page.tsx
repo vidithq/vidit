@@ -8,19 +8,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
-import type { GeolocationStatus, Media } from "@/types";
+import type { EventStatus, Media } from "@/types";
 
 interface TimelineEntry {
   id: string;
   title: string;
   /** Nullable: a coordless / undated event can surface here. See
-   *  ``GeolocationList``. */
+   *  ``EventList``. */
   event_date: string | null;
   is_demo: boolean;
-  status: GeolocationStatus;
+  status: EventStatus;
   lat: number | null;
   lng: number | null;
   author: {
@@ -73,7 +73,7 @@ export default function TimelinePage() {
               <EntityCard
                 key={entry.id}
                 variant="feed"
-                detailHref={`/geolocations/${entry.id}`}
+                detailHref={`/events/${entry.id}`}
                 title={entry.title}
                 badge={
                   entry.status ? <StatusBadge status={entry.status} /> : undefined

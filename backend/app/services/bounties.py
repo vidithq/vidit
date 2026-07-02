@@ -1,13 +1,13 @@
 """Requested-view (bounty) orchestration over the unified event model.
 
-A bounty is a ``Geolocation`` with ``status='requested'``: an open call to
+A bounty is a ``Event`` with ``status='requested'``: an open call to
 geolocate, with evidence media but no coordinates yet.
 `routers/bounties.py::create_bounty` parses the multipart form into clean
 Python types and hands them to `create_with_evidence`, which owns the business
 rules, tag resolution, and the shared evidence-intake tail
 (`services/evidence_intake.py`): the file-count cap, per-file validation, the S3
 upload loop with key tracking, the DB commit, and the post-rollback S3 sweep.
-Same shape `routers/geolocations/*` delegate to `services/geolocations.py`; both
+Same shape `routers/events/*` delegate to `services/events.py`; both
 consume the one helper rather than mirroring the orchestration.
 
 Errors are typed `EvidenceIntakeError` subclasses (shared file/media
@@ -23,7 +23,7 @@ from datetime import date, datetime, time
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.models.geolocation import STATUS_REQUESTED, Geolocation
+from app.models.event import STATUS_REQUESTED, Event
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.evidence_intake import (
@@ -64,7 +64,7 @@ async def create_with_evidence(
     files: list[UploadFile],
     uploaded_ip: str | None,
     uploaded_user_agent: str | None,
-) -> Geolocation:
+) -> Event:
     """Create a ``requested`` event row + its media.
 
     The router has already parsed the multipart form into clean Python
@@ -86,7 +86,7 @@ async def create_with_evidence(
       ``EvidenceProcessingFailedError``)
 
     Any failure rolls back the transaction and best-effort sweeps every S3
-    key that landed. Returns the persisted ``Geolocation``, refreshed from the
+    key that landed. Returns the persisted ``Event``, refreshed from the
     row.
     """
     enforce_file_count(files)
@@ -103,7 +103,7 @@ async def create_with_evidence(
         except ValueError as exc:
             raise InvalidProofError(str(exc)) from exc
 
-    geo = Geolocation(
+    geo = Event(
         author_id=current_user.id,
         # Preserved across fulfilment so the merge doesn't erase who opened the
         # request; ``author_id`` transfers to the fulfiller, ``requested_by_id``

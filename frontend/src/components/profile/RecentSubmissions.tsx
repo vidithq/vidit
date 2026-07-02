@@ -1,22 +1,22 @@
 import Link from "next/link";
 
-import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
-import type { GeolocationStatus, Media } from "@/types";
+import type { EventStatus, Media } from "@/types";
 
 export interface RecentSubmission {
   id: string;
   title: string;
   /** Nullable: a coordless / undated event (a ``requested`` row) can surface
-   *  here. See ``GeolocationList``. */
+   *  here. See ``EventList``. */
   event_date: string | null;
   is_demo: boolean;
-  status: GeolocationStatus;
+  status: EventStatus;
   lat: number | null;
   lng: number | null;
   /** The card thumbnail: the geolocation's first media row, or null. */
@@ -24,7 +24,7 @@ export interface RecentSubmission {
   tags: { id: string; name: string; category: "conflict" | "free" }[];
 }
 
-/** Shape returned by `GET /users/{username}/geolocations`. */
+/** Shape returned by `GET /users/{username}/events`. */
 export interface PaginatedSubmissions {
   items: RecentSubmission[];
   total: number;
@@ -59,7 +59,7 @@ export function RecentSubmissions({
               key={entry.id}
               variant="compact"
               author={{ username: profile.username }}
-              detailHref={`/geolocations/${entry.id}`}
+              detailHref={`/events/${entry.id}`}
               title={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}

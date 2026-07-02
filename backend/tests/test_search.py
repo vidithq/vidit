@@ -28,7 +28,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import STATUS_REQUESTED, Geolocation
+from app.models.event import STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -131,7 +131,7 @@ def test_limit_outside_range_returns_422(caller):
 
 def test_search_matches_geolocation_by_title(db, caller):
     token = _unique_token()
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title=f"Spotted {token} convoy near checkpoint",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -157,7 +157,7 @@ def test_search_matches_geolocation_by_title(db, caller):
         # the frontend will turn those into <mark> elements.
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -169,7 +169,7 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
     the index expression will surface here and need to read the
     migration's rationale block."""
     token = _unique_token()
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title="Plain title with no match",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -189,13 +189,13 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
         ids = [h["id"] for h in response.json()["geolocations"]]
         assert str(geo_id) not in ids
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
 
 
 def test_search_excludes_soft_deleted_geolocations(db, caller):
     token = _unique_token()
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title=f"Soft-deleted {token} should be hidden",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -215,7 +215,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
         assert response.status_code == 200
         assert response.json()["geolocations"] == []
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -226,7 +226,7 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
     token = _unique_token()
     # A bounty is a ``requested`` event: no location (the requested-view search
     # filter is ``status = 'requested'``).
-    bounty = Geolocation(
+    bounty = Event(
         author_id=caller.id,
         title=f"Bounty {token} — please geolocate",
         source_url="https://example.com/bounty-a",
@@ -237,7 +237,7 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
     db.flush()
     db.add(
         Media(
-            geolocation_id=bounty.id,
+            event_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -260,13 +260,13 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
         assert hit["status"] == STATUS_REQUESTED
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:
-        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
 def test_search_excludes_soft_deleted_bounties(db, caller):
     token = _unique_token()
-    bounty = Geolocation(
+    bounty = Event(
         author_id=caller.id,
         title=f"Hidden bounty {token}",
         source_url="https://example.com/bounty-b",
@@ -284,7 +284,7 @@ def test_search_excludes_soft_deleted_bounties(db, caller):
         )
         assert response.json()["bounties"] == []
     finally:
-        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -384,7 +384,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     token = _unique_token()
     # Plant one matching row per entity so we can prove all three
     # branches fire on type=all without depending on dev-DB demo data.
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title=f"Geo {token} unique-token row",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -392,7 +392,7 @@ def test_search_type_all_returns_three_groups(db, caller):
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
-    bounty = Geolocation(
+    bounty = Event(
         author_id=caller.id,
         title=f"Bounty {token} unique-token row",
         source_url="https://example.com",
@@ -408,7 +408,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     db.flush()
     db.add(
         Media(
-            geolocation_id=bounty.id,
+            event_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -431,8 +431,8 @@ def test_search_type_all_returns_three_groups(db, caller):
         assert body["query"] == token
         assert body["type"] == "all"
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
         db.commit()
 
@@ -442,7 +442,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     other groups — the JSON shape stays stable so the frontend doesn't
     have to gate on key presence."""
     token = _unique_token()
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title=f"Geo only {token}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -450,7 +450,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
-    bounty = Geolocation(
+    bounty = Event(
         author_id=caller.id,
         title=f"Bounty also {token}",
         source_url="https://example.com",
@@ -461,7 +461,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     db.flush()
     db.add(
         Media(
-            geolocation_id=bounty.id,
+            event_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -480,8 +480,8 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         assert body["bounties"] == []
         assert body["users"] == []
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -492,7 +492,7 @@ def test_search_limit_caps_per_group(db, caller):
     token = _unique_token()
     bounties = []
     for i in range(4):
-        b = Geolocation(
+        b = Event(
             author_id=caller.id,
             title=f"Bounty {token} number {i}",
             source_url="https://example.com",
@@ -505,7 +505,7 @@ def test_search_limit_caps_per_group(db, caller):
     for b in bounties:
         db.add(
             Media(
-                geolocation_id=b.id,
+                event_id=b.id,
                 storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{b.id}/x.jpg"),
                 media_type="image",
             )
@@ -526,7 +526,7 @@ def test_search_limit_caps_per_group(db, caller):
         assert body["total"]["bounties"] == 4
     finally:
         for bid in bounty_ids:
-            db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
+            db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
         db.commit()
 
 
@@ -587,7 +587,7 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     sentinel bytes in a geo's title, search by an adjacent word, and
     expect the response to have balanced sentinel parity."""
     token = _unique_token()
-    geo = Geolocation(
+    geo = Event(
         author_id=caller.id,
         title=f"planted \x02bad\x03 then {token} fragment",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -609,5 +609,5 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
         assert th.count(HIGHLIGHT_START) == th.count(HIGHLIGHT_STOP)
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in th
     finally:
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()

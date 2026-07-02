@@ -1,7 +1,7 @@
 """Persist machine detections — ``DetectedGeoloc`` DTOs become ``detected`` rows.
 
 The caller (the archive backfill, later the bot) owns acquire → stitch →
-detect; this turns the resulting DTOs into ``Geolocation`` rows owned by the
+detect; this turns the resulting DTOs into ``Event`` rows owned by the
 backfiller, with media through the evidence pipeline and idempotency on
 ``(detected_from_url, coordinate)``. The DTO never reaches the ORM — that
 boundary is what keeps ``detect`` pure and reusable across the preview, the
@@ -22,7 +22,7 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from app.models.geolocation import STATUS_DETECTED, Geolocation
+from app.models.event import STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
@@ -65,7 +65,7 @@ _COORD_PLACES = 6
 
 @dataclass
 class AssembleOutcome:
-    created: list[Geolocation] = field(default_factory=list)
+    created: list[Event] = field(default_factory=list)
     skipped: int = 0  # a live row already held the pair
     recreated: int = 0  # a soft-deleted (rejected) pair was re-detected
     failed: int = 0  # a detection raised mid-persist and was skipped
@@ -99,10 +99,10 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     ``create``.
     """
     rows = (
-        db.query(Geolocation)
+        db.query(Event)
         .filter(
-            Geolocation.author_id == owner.id,
-            Geolocation.detected_from_url == dto.detected_from_url,
+            Event.author_id == owner.id,
+            Event.detected_from_url == dto.detected_from_url,
         )
         .all()
     )
@@ -158,10 +158,10 @@ async def _persist_one(
     fetch_media: MediaFetcher,
     is_demo: bool,
     media_cache: _MediaCache,
-) -> Geolocation:
+) -> Event:
     uploaded_keys: list[str] = []
     try:
-        geo = Geolocation(
+        geo = Event(
             author_id=owner.id,
             title=dto.title,
             location=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
@@ -194,7 +194,7 @@ async def _persist_one(
             )
             db.add(
                 Media(
-                    geolocation_id=geo.id,
+                    event_id=geo.id,
                     storage_url=result.url,
                     media_type=_media_type(prepared.content_type),
                     sha256=result.sha256,
@@ -225,7 +225,7 @@ async def assemble_detections(
     fetch_media: MediaFetcher,
     is_demo: bool = False,
 ) -> AssembleOutcome:
-    """Persist each detection as a ``detected`` ``Geolocation`` owned by ``owner``.
+    """Persist each detection as a ``detected`` ``Event`` owned by ``owner``.
 
     ``owner`` is the backfiller — the account whose verified handle the archive
     belongs to; every row is attributed to it. Idempotent on

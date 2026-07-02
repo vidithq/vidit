@@ -4,13 +4,13 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.geolocation import GeolocationList, PaginatedGeolocations
+from app.schemas.event import EventList, PaginatedEvents
 from app.services import social
 
 router = APIRouter()
 
 
-@router.get("/timeline", response_model=PaginatedGeolocations)
+@router.get("/timeline", response_model=PaginatedEvents)
 @limiter.limit("120/minute")
 def get_timeline(
     request: Request,
@@ -18,7 +18,7 @@ def get_timeline(
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> PaginatedGeolocations:
+) -> PaginatedEvents:
     """Geolocations authored by accounts the current user follows.
 
     Empty when the user follows nobody — the frontend renders an empty-state
@@ -27,7 +27,7 @@ def get_timeline(
     """
     result = social.get_timeline(db, user_id=current_user.id, page=page, per_page=per_page)
     items = [
-        GeolocationList(
+        EventList(
             id=geo.id,
             title=geo.title,
             lat=lat,
@@ -41,4 +41,4 @@ def get_timeline(
         )
         for geo, lat, lng in result["items"]
     ]
-    return PaginatedGeolocations(items=items, total=result["total"], page=page, per_page=per_page)
+    return PaginatedEvents(items=items, total=result["total"], page=page, per_page=per_page)

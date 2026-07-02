@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import DetectionCard from "@/components/geolocation/DetectionCard";
+import DetectionCard from "@/components/event/DetectionCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -13,8 +13,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   detectionsPath,
-  type PaginatedGeolocationDetails,
-} from "@/lib/geolocations";
+  type PaginatedEventDetails,
+} from "@/lib/events";
 
 export default function DetectionsPage() {
   const params = useParams();
@@ -32,7 +32,7 @@ export default function DetectionsPage() {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  const { data, error } = useApiResource<PaginatedGeolocationDetails>(
+  const { data, error } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsPath(page) : null
   );
 
