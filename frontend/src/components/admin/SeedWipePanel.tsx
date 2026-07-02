@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DevToolPanel } from "@/components/admin/DevToolPanel";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -73,12 +73,7 @@ export function SeedWipePanel<S, W>({
   };
 
   return (
-    <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
-      <header className="px-4 py-3 border-b border-neutral-800">
-        <SectionEyebrow title={title} margin="none" />
-        <p className="text-xs text-neutral-500 mt-0.5">{description}</p>
-      </header>
-      <div className="px-4 py-3 space-y-3">
+    <DevToolPanel title={title} description={description}>
         <div className="flex items-end gap-3">
           <div className="flex-1 max-w-[180px]">
             <label className={FORM_LABEL} htmlFor={countInputId}>
@@ -126,7 +121,6 @@ export function SeedWipePanel<S, W>({
           </p>
         )}
         {error && <p className="text-xs text-red-400">{error}</p>}
-      </div>
-    </section>
+    </DevToolPanel>
   );
 }

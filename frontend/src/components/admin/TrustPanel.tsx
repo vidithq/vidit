@@ -21,6 +21,8 @@ import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Pill } from "@/components/ui/Pill";
+import { ActionReceipt } from "@/components/admin/ActionReceipt";
 
 function TrustUserRow({
   user,
@@ -129,9 +131,7 @@ function TrustUserRow({
               <BadgeCheck size={14} className="text-orange-500" strokeWidth={1.8} />
             )}
             {user.is_admin && (
-              <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded-sm px-1">
-                admin
-              </span>
+              <Pill className="uppercase tracking-wider">admin</Pill>
             )}
           </div>
           <div className="text-xs text-neutral-500 truncate">{user.email}</div>
@@ -373,19 +373,10 @@ export function TrustPanel() {
       )}
 
       {lastDelete && (
-        <div className="px-3 py-2 rounded-md text-xs text-neutral-300 bg-neutral-800/60 border border-neutral-700 space-y-1">
-          <div className="inline-flex items-center gap-1.5">
-            <span className="font-medium">@{lastDelete.username}</span>
-            <span
-              className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                lastDelete.mode === "hard"
-                  ? "border-red-500/30 text-red-300"
-                  : "border-amber-500/30 text-amber-300"
-              }`}
-            >
-              {lastDelete.mode}
-            </span>
-          </div>
+        <ActionReceipt
+          mode={lastDelete.mode}
+          header={<span className="font-medium">@{lastDelete.username}</span>}
+        >
           <div className="text-neutral-500">
             {lastDelete.mode === "hard"
               ? `Dropped ${lastDelete.cascaded_geolocations} geolocation${
@@ -397,7 +388,7 @@ export function TrustPanel() {
                   lastDelete.cascaded_geolocations === 1 ? "" : "s"
                 }.`}
           </div>
-        </div>
+        </ActionReceipt>
       )}
     </Card>
   );
