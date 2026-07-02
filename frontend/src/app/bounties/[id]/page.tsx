@@ -17,7 +17,7 @@ import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
-import { displayUrlsFor } from "@/lib/mediaUrls";
+import { MediaGallery } from "@/components/ui/MediaGallery";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
@@ -148,42 +148,7 @@ export default function BountyDetailPage() {
     >
         <div>
           <SectionEyebrow title="Media" concept="source_media" />
-          {bounty.media.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {bounty.media.map((m) => (
-                <div
-                  key={m.id}
-                  className="rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900"
-                >
-                  {m.media_type === "image" ? (
-                    // 2-up grid ≈ 384 CSS px wide; `hero` renders sharply
-                    // at 2x DPI without the original's full payload.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={displayUrlsFor(m).hero}
-                      alt={bounty.title}
-                      className="w-full h-48 object-cover"
-                    />
-                  ) : (
-                    // `#t=0.1` media-fragment URI seeks to t=0.1s on
-                    // metadata load; with `preload="metadata"` this paints
-                    // the first frame as a poster, so the tile isn't a
-                    // black box before play — no per-bounty poster needed.
-                    <video
-                      src={`${m.storage_url}#t=0.1`}
-                      controls
-                      preload="metadata"
-                      className="w-full h-48 object-cover"
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-neutral-700 bg-neutral-800 h-48 flex items-center justify-center">
-              <span className="text-sm text-neutral-500">No media</span>
-            </div>
-          )}
+          <MediaGallery media={bounty.media} alt={bounty.title} />
         </div>
 
         <div>

@@ -212,7 +212,10 @@ describe("GeolocationDetailBody", () => {
     );
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
-    expect(video).toHaveAttribute("src", "/local-storage/clip.mp4");
+    // `#t=0.1` + preload="metadata" paints the first frame as a poster
+    // (MediaGallery's video treatment) instead of a black box before play.
+    expect(video).toHaveAttribute("src", "/local-storage/clip.mp4#t=0.1");
+    expect(video).toHaveAttribute("preload", "metadata");
     expect(video).toHaveAttribute("controls");
     // The image sibling still renders through next/image.
     expect(screen.getByRole("img")).toBeInTheDocument();
