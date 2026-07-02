@@ -450,14 +450,41 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
-            <EmptyState className="max-w-sm">
-              Nothing here yet.{" "}
-              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-                Create the first one
-              </a>
-              .
-            </EmptyState>
+          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (bounties, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
+            <div className="w-full max-w-md space-y-3">
+              <Variant label='variant="boxed" (default)'>
+                <EmptyState>
+                  Nothing here yet.{" "}
+                  <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
+                    Create the first one
+                  </a>
+                  .
+                </EmptyState>
+              </Variant>
+              <Variant label='variant="plain"'>
+                <EmptyState
+                  variant="plain"
+                  lead="Nothing to review."
+                  cta={
+                    <a href="#" className={`text-xs ${TEXT_LINK}`} onClick={(e) => e.preventDefault()}>
+                      Back to profile
+                    </a>
+                  }
+                >
+                  New items land here once something happens.
+                </EmptyState>
+              </Variant>
+              <Variant label='variant="invite" (+ icon)'>
+                <EmptyState
+                  variant="invite"
+                  icon={MapPin}
+                  lead="Your timeline is empty"
+                  cta={<Button variant="primary">Explore the map</Button>}
+                >
+                  Follow other analysts to see their latest geolocations here.
+                </EmptyState>
+              </Variant>
+            </div>
           </Item>
 
           <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
