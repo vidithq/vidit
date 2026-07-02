@@ -10,7 +10,7 @@ import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
-import type { GeolocationStatus } from "@/types";
+import type { GeolocationStatus, Media } from "@/types";
 
 interface TimelineEntry {
   id: string;
@@ -23,6 +23,8 @@ interface TimelineEntry {
   author: {
     username: string;
   };
+  /** The card thumbnail: the geolocation's first media row, or null. */
+  media: Media | null;
   tags: { id: string; name: string; category: "conflict" | "free" }[];
 }
 
@@ -74,6 +76,7 @@ export default function TimelinePage() {
                 badge={
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }
+                media={entry.media ?? undefined}
                 author={entry.author}
                 date={entry.event_date}
                 coords={

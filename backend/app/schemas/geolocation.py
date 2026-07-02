@@ -83,6 +83,11 @@ class GeolocationList(BaseModel):
     # See ``GeolocationRead.status``; a list card marks ``detected`` too.
     status: GeolocationStatus
     author: AuthorRef
+    # The card thumbnail: the geolocation's first media row, None when it has
+    # none. One media on purpose so the list payload stays light; the full set
+    # lives on ``GeolocationRead.media``. Required (no default) so a
+    # constructor can't silently omit it and ship a false "no media".
+    media: MediaRead | None
     tags: list[TagRead]
 
     model_config = {"from_attributes": True}

@@ -1193,6 +1193,7 @@ Geolocations for a given analyst.
       "lat": 48.123,
       "lng": 37.456,
       "event_date": "2026-03-15",
+      "media": { "id": "uuid", "storage_url": "https://…/abc.jpg", "media_type": "image" },
       "tags": [{ "name": "Ukraine", "category": "conflict" }]
     }
   ],
@@ -1201,6 +1202,8 @@ Geolocations for a given analyst.
   "per_page": 20
 }
 ```
+
+`media` is the geolocation's first media row (the card thumbnail), `null` when it has none; the full media list is on the detail payload only.
 
 ---
 

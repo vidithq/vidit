@@ -6,7 +6,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
-import type { GeolocationStatus } from "@/types";
+import type { GeolocationStatus, Media } from "@/types";
 
 export interface RecentSubmission {
   id: string;
@@ -16,6 +16,8 @@ export interface RecentSubmission {
   status: GeolocationStatus;
   lat: number;
   lng: number;
+  /** The card thumbnail: the geolocation's first media row, or null. */
+  media: Media | null;
   tags: { id: string; name: string; category: "conflict" | "free" }[];
 }
 
@@ -58,6 +60,7 @@ export function RecentSubmissions({
               title={entry.title}
               titleText={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
+              media={entry.media ?? undefined}
               date={entry.event_date}
               coords={
                 typeof entry.lat === "number" && typeof entry.lng === "number"

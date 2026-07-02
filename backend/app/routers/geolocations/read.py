@@ -391,7 +391,11 @@ def list_geolocations(
             ST_Y(Geolocation.location).label("lat"),
             ST_X(Geolocation.location).label("lng"),
         )
-        .options(subqueryload(Geolocation.author), subqueryload(Geolocation.tags))
+        .options(
+            subqueryload(Geolocation.author),
+            subqueryload(Geolocation.tags),
+            subqueryload(Geolocation.media),
+        )
         .filter(Geolocation.id.in_(ids))
         .order_by(Geolocation.created_at.desc())
         .all()
@@ -407,6 +411,7 @@ def list_geolocations(
             is_demo=geo.is_demo,
             status=geo.status,
             author=geo.author,
+            media=geo.media[0] if geo.media else None,
             tags=geo.tags,
         )
         for geo, lat, lng in rows
