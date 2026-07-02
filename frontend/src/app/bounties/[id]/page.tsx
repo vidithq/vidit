@@ -95,7 +95,7 @@ export default function BountyDetailPage() {
       <DetailRow label={name} concept={concept} align="start">
         <div className="flex flex-wrap gap-1.5 justify-end">
           {tags.map((tag) => (
-            <Pill key={tag.id} tone="neutral" className="text-xs px-2.5">
+            <Pill key={tag.id} tone="neutral">
               {tag.name}
             </Pill>
           ))}

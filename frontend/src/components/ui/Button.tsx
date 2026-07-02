@@ -1,5 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
+import { cn } from "@/lib/cn";
+
 // The one button primitive: shape and colour in a single unit, so call sites
 // never re-roll padding / sizing. `variant` picks the colour treatment; the
 // shape is uniform (one size) by design, the single home if the button size
@@ -60,9 +62,13 @@ export function buttonClasses(
     className = "",
   }: { fullWidth?: boolean; icon?: boolean; className?: string } = {},
 ): string {
-  return `${BASE} ${icon ? ICON_SHAPE : TEXT_SHAPE} ${VARIANT[variant]}${
-    fullWidth ? " w-full" : ""
-  }${className ? ` ${className}` : ""}`;
+  return cn(
+    BASE,
+    icon ? ICON_SHAPE : TEXT_SHAPE,
+    VARIANT[variant],
+    fullWidth && "w-full",
+    className,
+  );
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

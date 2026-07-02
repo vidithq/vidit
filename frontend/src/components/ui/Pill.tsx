@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/cn";
 import { ACCENT_SURFACE, NEUTRAL_SURFACE } from "./styles";
 
 // The one pill for the whole status / tag / chip family: a single rounded-full
@@ -32,6 +33,8 @@ interface PillProps {
   tone?: PillTone;
   icon?: ReactNode;
   title?: string;
+  /** Orthogonal extras (margins, tracking, casing). Conflicting utilities
+   *  resolve caller-wins via `cn`, but the pill stays one size by design. */
   className?: string;
   children: ReactNode;
   /** When set, the pill is an interactive chip: a `<button>` that brightens on
@@ -47,9 +50,12 @@ export function Pill({
   children,
   onClick,
 }: PillProps) {
-  const cls = `${BASE} ${PILL_TONE[tone]}${
-    onClick ? " transition-colors hover:brightness-110 cursor-pointer" : ""
-  }${className ? ` ${className}` : ""}`.trim();
+  const cls = cn(
+    BASE,
+    PILL_TONE[tone],
+    onClick && "transition-colors hover:brightness-110 cursor-pointer",
+    className,
+  );
   if (onClick) {
     return (
       <button type="button" onClick={onClick} title={title} className={cls}>

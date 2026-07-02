@@ -134,11 +134,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       <DetailRow label={name} concept={concept} compact={compact} align="start">
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
           {tags.map((tag) => (
-            <Pill
-              key={tag.id}
-              tone="neutral"
-              className={compact ? "text-[10px] px-2" : "text-xs px-2.5"}
-            >
+            <Pill key={tag.id} tone="neutral">
               {tag.name}
             </Pill>
           ))}

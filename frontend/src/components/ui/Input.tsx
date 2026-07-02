@@ -1,5 +1,6 @@
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
 
+import { cn } from "@/lib/cn";
 import { FORM_INVALID_FIELD } from "./form-styles";
 
 // The one form field. `variant` picks the shape, `invalid` adds the red outline
@@ -28,9 +29,7 @@ function fieldClass(
   invalid: boolean,
   className: string,
 ): string {
-  return `${VARIANT[variant]}${invalid ? ` ${FORM_INVALID_FIELD}` : ""}${
-    className ? ` ${className}` : ""
-  }`;
+  return cn(VARIANT[variant], invalid && FORM_INVALID_FIELD, className);
 }
 
 interface FieldProps {

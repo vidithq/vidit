@@ -1,5 +1,7 @@
 import type { ElementType, ReactNode } from "react";
 
+import { cn } from "@/lib/cn";
+
 // Panel / section card: the `bg-neutral-900 rounded-lg border border-neutral-700
 // p-5` shell that wrapped every settings, admin, profile, and form section by
 // hand. Colour + shape live here once; callers pass their own content. One
@@ -17,7 +19,10 @@ export function Card({
 }) {
   return (
     <Tag
-      className={`bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4 ${className}`.trim()}
+      className={cn(
+        "bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4",
+        className,
+      )}
     >
       {children}
     </Tag>

@@ -25,7 +25,8 @@
     "next": "^16.2.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-map-gl": "^8.1.0"
+    "react-map-gl": "^8.1.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

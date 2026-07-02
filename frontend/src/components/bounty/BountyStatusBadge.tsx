@@ -2,7 +2,7 @@ import type { BountyStatus } from "@/types";
 import { Pill, type PillTone } from "@/components/ui/Pill";
 
 // open draws attention (accent), fulfilled is a completed end-state (strong
-// white, not green — completion isn't a win), closed is withdrawn (neutral).
+// white, not green: completion isn't a win), closed is withdrawn (neutral).
 const TONE: Record<BountyStatus, PillTone> = {
   open: "accent",
   fulfilled: "strong",
