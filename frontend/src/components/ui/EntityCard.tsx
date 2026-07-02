@@ -8,7 +8,6 @@ import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
-import { MediaPlaceholder } from "@/components/ui/MediaPlaceholder";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
 // One card for every catalogue entity (submitted / detected geolocation,
@@ -20,8 +19,9 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   stays independently clickable. No nested <a>.
 // - It renders the slots that carry data; an entity without `coords` (a bounty)
 //   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
-// - `media` shows a real thumbnail (`MediaThumb`); `mediaSeed` shows a generated
-//   `MediaPlaceholder` (the geolocation list cards have no real media payload).
+// - The thumbnail is one `<MediaThumb media seed>`: the real media when
+//   `media` is present, a generated stand-in shade off `mediaSeed` otherwise
+//   (the geolocation list cards have no real media payload).
 
 interface EntityCardProps {
   detailHref: string;
@@ -105,17 +105,10 @@ export function EntityCard({
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
-  // Always a thumbnail (keeps the row height uniform): a generated placeholder
-  // for cards with no real media payload (`mediaSeed`), otherwise the real
-  // media — and `MediaThumb` renders its own "no media" box when `media` is
-  // absent (a detection with no source media yet).
-  const thumb = mediaSeed ? (
-    <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
-      <MediaPlaceholder seed={mediaSeed} />
-    </div>
-  ) : (
-    <MediaThumb media={media} />
-  );
+  // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
+  // real media, the seeded stand-in, or its own "no media" box (a detection
+  // with no source media yet).
+  const thumb = <MediaThumb media={media} seed={mediaSeed} />;
 
   if (variant === "feed") {
     return (
@@ -139,13 +132,11 @@ export function EntityCard({
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
           {(media || mediaSeed) && (
-            <div className="relative aspect-video rounded-md overflow-hidden bg-neutral-800 border border-neutral-800">
-              {media ? (
-                <MediaThumb media={media} className="absolute inset-0 w-full h-full" />
-              ) : (
-                <MediaPlaceholder seed={mediaSeed!} />
-              )}
-            </div>
+            <MediaThumb
+              media={media}
+              seed={mediaSeed}
+              className="w-full border border-neutral-800"
+            />
           )}
         </div>
         {tags && tags.length > 0 && (

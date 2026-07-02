@@ -21,7 +21,6 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import { MediaPlaceholder } from "@/components/ui/MediaPlaceholder";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -364,15 +363,14 @@ export default function PalettePage() {
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
-          <Item name="<MediaThumb>" usage="The real media on bounty cards (image thumbnail / video first-frame); its sibling <MediaPlaceholder> below is the generated stand-in when there is none">
-            <MediaThumb />
-          </Item>
-
-          <Item name="<MediaPlaceholder>" usage="Generated stand-in for cards with no real media (deterministic shade per seed)">
+          <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), a generated stand-in when given a seed (deterministic shade, self-hosted so no third-party fetch leaks the analyst's IP), or a no-media box.">
+            <Variant label="no media">
+              <MediaThumb />
+            </Variant>
             {["alpha", "donetsk", "x-4242"].map((seed) => (
-              <div key={seed} className="relative w-24 aspect-video rounded-md overflow-hidden bg-neutral-800">
-                <MediaPlaceholder seed={seed} />
-              </div>
+              <Variant key={seed} label={`seed="${seed}"`}>
+                <MediaThumb seed={seed} />
+              </Variant>
             ))}
           </Item>
 
