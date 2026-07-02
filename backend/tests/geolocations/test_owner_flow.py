@@ -1,10 +1,10 @@
 """Owner mutation lifecycle for `/geolocations`.
 
 `DELETE` (hard delete, author-only) plus the machine-`detected` owner flow:
-`POST .../submit` (writes the owner's edits and flips the row to `submitted`)
-and `POST .../reject` (soft-delete, re-importable). Both state-gated to
-`detected`. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
-`_helpers.py`.
+`POST .../submit` (writes the owner's edits and flips the row to `geolocated`)
+and `POST .../reject` (soft-delete, re-importable). Reject is state-gated to
+`detected`; submit accepts `detected` (owner-only) or `requested` (anyone).
+Shared fixtures live in `conftest.py`; `client` / `_make_geo` in `_helpers.py`.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_GEOLOCATED, Geolocation
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -82,11 +82,11 @@ def test_delete_invalidates_points_cache(db, author):
 
 
 # ── Owner flow: POST .../submit / POST .../reject ──────────────────────────
-# Both owner-only and state-gated to ``detected``; a ``submitted`` row is frozen.
-# A ``detected`` row is immutable machine output: submit writes the owner's edits
-# AND flips it to ``submitted`` in one step (the create-time evidence floor is
-# enforced there). The detected → submitted freeze and the soft-delete-then-
-# re-import recreate seam (test_detection.py::
+# Reject is owner-only and state-gated to ``detected``; a ``geolocated`` row is
+# frozen. Submit writes the owner's edits AND flips a ``detected`` (owner-only)
+# or ``requested`` (anyone) row to ``geolocated`` in one step (the create-time
+# evidence floor is enforced there). The detected → geolocated freeze and the
+# soft-delete-then-re-import recreate seam (test_detection.py::
 # test_idempotency_recreates_soft_deleted_pair) are what these lock in.
 
 
@@ -102,7 +102,7 @@ def _detected(db, author, **kwargs):
     )
 
 
-# ── POST /geolocations/{id}/submit: write the form + freeze (detected → submitted) ──
+# ── POST /geolocations/{id}/submit: write the form + freeze (detected → geolocated) ──
 
 
 def _submit_form(**overrides):
@@ -165,9 +165,9 @@ def test_submit_returns_403_when_not_author(db, author, second_user):
     assert response.status_code == 403
 
 
-def test_submit_rejects_submitted_row(db, author):
-    """A ``submitted`` row is frozen, submit 409s with the invalid_state code."""
-    geo = _make_geo(db, author=author)  # default state = submitted
+def test_submit_rejects_geolocated_row(db, author):
+    """A ``geolocated`` row is frozen, submit 409s with the invalid_state code."""
+    geo = _make_geo(db, author=author)  # default status = geolocated
     response = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",
         data=_submit_form(),
@@ -178,7 +178,7 @@ def test_submit_rejects_submitted_row(db, author):
 
 
 def test_submit_writes_fields_and_freezes(db, author, conflict_tag, capture_source_tag):
-    """Submit writes the whole form and flips the row to ``submitted``."""
+    """Submit writes the whole form and flips the row to ``geolocated``."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",
@@ -201,21 +201,21 @@ def test_submit_writes_fields_and_freezes(db, author, conflict_tag, capture_sour
     assert body["event_date"] == "2026-07-01"
     assert body["source_posted_at"].startswith("2026-06-30T07:45")
     assert {t["id"] for t in body["tags"]} == {str(conflict_tag.id), str(capture_source_tag.id)}
-    # Submit freezes it: a detected row becomes submitted.
-    assert body["status"] == "submitted"
+    # Submit freezes it: a detected row becomes geolocated.
+    assert body["status"] == "geolocated"
 
     db.expire_all()
     refreshed = db.query(Geolocation).filter(Geolocation.id == geo.id).one()
     assert refreshed.title == "Completed title"
-    assert refreshed.status == STATUS_SUBMITTED
+    assert refreshed.status == STATUS_GEOLOCATED
 
 
 def test_submit_applies_source_url_but_ignores_provenance_and_state(
     db, author, conflict_tag, capture_source_tag
 ):
     """The owner curates the form: ``source_url`` is editable. Only
-    ``detected_from_url`` (provenance) and ``state`` have no field, so sending
-    them is silently ignored. The row ends ``submitted`` via the submit itself."""
+    ``detected_from_url`` (provenance) and ``status`` have no field, so sending
+    them is silently ignored. The row ends ``geolocated`` via the submit itself."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",
@@ -232,7 +232,7 @@ def test_submit_applies_source_url_but_ignores_provenance_and_state(
     body = response.json()
     assert body["source_url"] == "https://example.com/new-source"  # editable
     assert body["detected_from_url"] == "https://x.com/a/status/1"  # immutable
-    assert body["status"] == "submitted"  # set by submit, not the ignored field
+    assert body["status"] == "geolocated"  # set by submit, not the ignored field
 
 
 def test_submit_source_posted_at_round_trips(db, author, conflict_tag, capture_source_tag):
@@ -299,7 +299,7 @@ def test_submit_blocked_with_partial_tags(db, author, conflict_tag):
 
 
 def test_submit_freezes_against_resubmit(db, author, conflict_tag, capture_source_tag):
-    """After submit the row is ``submitted``; a follow-up submit 409s."""
+    """After submit the row is ``geolocated``; a follow-up submit 409s."""
     geo = _detected(db, author, with_media=True)
     ok = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",
@@ -307,7 +307,7 @@ def test_submit_freezes_against_resubmit(db, author, conflict_tag, capture_sourc
         headers=login_as(client, author),
     )
     assert ok.status_code == 200
-    assert ok.json()["status"] == "submitted"
+    assert ok.json()["status"] == "geolocated"
 
     frozen = client.post(
         f"/api/v1/geolocations/{geo.id}/submit",
@@ -355,8 +355,8 @@ def test_reject_returns_403_when_not_author(db, author, second_user):
     assert response.status_code == 403
 
 
-def test_reject_rejects_submitted_row(db, author):
-    geo = _make_geo(db, author=author)  # submitted, DELETE owns its removal
+def test_reject_rejects_geolocated_row(db, author):
+    geo = _make_geo(db, author=author)  # geolocated, DELETE owns its removal
     response = client.post(
         f"/api/v1/geolocations/{geo.id}/reject", headers=login_as(client, author)
     )

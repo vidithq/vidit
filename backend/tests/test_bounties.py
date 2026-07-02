@@ -1,9 +1,14 @@
 """End-to-end tests for `/bounties`.
 
-Scope: public read surface (list, detail) + the author-side mutation
-contract (create, delete, close) + the multi-analyst claim signal +
-the fulfilment flow that promotes a bounty into a geolocation. Local
-storage backend so file uploads exercise the real path without S3.
+Since the bounty + geolocation merge, `/bounties` is a VIEW over the one
+``geolocations`` table scoped to the requested lifecycle: a bounty is a
+``Geolocation`` with ``status='requested'`` (an open call to geolocate, with
+evidence media but no coordinates), and it stays visible as ``closed`` once the
+author withdraws it. Fulfilment is no longer a row copy into a new geolocation:
+the requested row is transitioned in place to ``geolocated`` by
+``POST /geolocations/{id}/submit`` (any authed user, ownership transfers to the
+fulfiller while ``requested_by`` keeps the poster). Local storage backend so file
+uploads exercise the real path without S3.
 
 What we lock in:
 
@@ -11,41 +16,38 @@ What we lock in:
 * List filters honour status / tag / author contracts.
 * List response carries ``claimer_count`` + a small ``claimer_sample``.
 * ``POST /bounties`` rejects empty title / source_url / files; auth
-  required; bounty is created with status=open.
-* ``DELETE /bounties/{id}`` author-only; 404 for unknown / soft-deleted;
-  409 when a geolocation already traces back to the row.
+  required; the bounty is created with status=requested.
+* ``DELETE /bounties/{id}`` author-only; 404 for unknown / soft-deleted.
+  The old 409-on-delete-when-fulfilled guard is gone (no promotion trace),
+  so a delete now succeeds regardless of any later located event.
 * ``POST /bounties/{id}/claim`` is idempotent, multi-analyst (no single-
-  claimer reservation), rejected on non-open status. ``DELETE`` is a
+  claimer reservation), rejected on non-requested status. ``DELETE`` is a
   no-op when the caller wasn't a claimer.
 * ``POST /bounties/{id}/close`` author-only; rejects already-terminal
   states; transitions to ``closed`` + stamps ``closed_at``.
-* ``POST /geolocations`` with ``bounty_id`` transfers the bounty's media
-  rows in place (no S3 churn), sets ``originated_from_bounty_id`` on
-  the new geo, and flips the bounty to ``fulfilled``.
+* ``POST /geolocations/{id}/submit`` fulfils a requested event in place:
+  it transitions to ``geolocated``, transfers ``author_id`` to the
+  fulfiller, and keeps ``requested_by`` as the original poster.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
-from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.bounty import (
+from app.models.geolocation import (
     STATUS_CLOSED,
-    STATUS_FULFILLED,
-    STATUS_OPEN,
-    Bounty,
-    BountyClaim,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Geolocation,
+    GeolocationClaim,
 )
-from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
@@ -88,9 +90,15 @@ def author(db):
     user_id = user.id
     yield user
     db.expire_all()
-    # Manual cascade: bounties → media + bounty_claims (handled by FK CASCADE); then user.
-    db.query(Bounty).filter(Bounty.author_id == user_id).delete(synchronize_session=False)
-    db.query(BountyClaim).filter(BountyClaim.user_id == user_id).delete(synchronize_session=False)
+    # Manual cascade: events (requested + fulfilled) authored OR requested by the
+    # user → media + geolocation_claims (DB FK CASCADE); their claims; then user.
+    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -107,8 +115,13 @@ def second_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Bounty).filter(Bounty.author_id == user_id).delete(synchronize_session=False)
-    db.query(BountyClaim).filter(BountyClaim.user_id == user_id).delete(synchronize_session=False)
+    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -125,7 +138,9 @@ def third_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(BountyClaim).filter(BountyClaim.user_id == user_id).delete(synchronize_session=False)
+    db.query(GeolocationClaim).filter(GeolocationClaim.user_id == user_id).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -163,14 +178,11 @@ def capture_source_tag(db):
     db.commit()
 
 
-# `POST /geolocations` requires one conflict + one capture_source tag.
-# The bounty-fulfilment path is no exception (tags come from the form's
-# `tag_ids`), so the 201-expecting fulfilment tests below thread both
-# through this helper.
+# The submit transition (fulfilment) requires one conflict + one capture_source
+# tag, same floor as a direct geolocation create. The 200-expecting fulfilment
+# tests below thread both through this helper.
 def _required_tag_ids(*tags: Tag) -> str:
-    import json as _json
-
-    return _json.dumps([str(t.id) for t in tags])
+    return json.dumps([str(t.id) for t in tags])
 
 
 def _make_bounty(
@@ -179,13 +191,17 @@ def _make_bounty(
     author: User,
     title: str | None = None,
     source_url: str = "https://example.com/post",
-    status: str = STATUS_OPEN,
+    status: str = STATUS_REQUESTED,
     deleted: bool = False,
     tags: list[Tag] | None = None,
     with_media: bool = True,
-) -> Bounty:
-    bounty = Bounty(
+) -> Geolocation:
+    """A bounty row: a ``requested`` (or ``closed``) ``Geolocation`` with no
+    location and ``requested_by_id`` set to the poster, mirroring the create path.
+    """
+    bounty = Geolocation(
         author_id=author.id,
+        requested_by_id=author.id,
         title=title or f"Bounty {uuid.uuid4().hex[:8]}",
         source_url=source_url,
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
@@ -200,7 +216,7 @@ def _make_bounty(
     if with_media:
         db.add(
             Media(
-                bounty_id=bounty.id,
+                geolocation_id=bounty.id,
                 storage_url=(
                     f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"
                 ),
@@ -233,14 +249,26 @@ def test_list_excludes_soft_deleted(db, author):
 
 
 def test_list_filters_by_status(db, author):
-    open_one = _make_bounty(db, author=author, status=STATUS_OPEN)
+    open_one = _make_bounty(db, author=author, status=STATUS_REQUESTED)
     closed = _make_bounty(db, author=author, status=STATUS_CLOSED)
 
-    response = client.get(f"/api/v1/bounties?status={STATUS_OPEN}")
+    response = client.get(f"/api/v1/bounties?status={STATUS_REQUESTED}")
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
     assert str(open_one.id) in ids
     assert str(closed.id) not in ids
+
+
+def test_list_excludes_located_events(db, author):
+    """A ``geolocated`` event (a fulfilled request, or a direct submit) is served
+    by ``/geolocations`` and must never surface in the requested view — even
+    though it shares the table."""
+    requested = _make_bounty(db, author=author)
+    located = _make_geolocated(db, author=author)
+
+    ids = {row["id"] for row in client.get("/api/v1/bounties").json()}
+    assert str(requested.id) in ids
+    assert str(located.id) not in ids
 
 
 def test_list_filters_by_tag(db, author, free_tag):
@@ -292,8 +320,8 @@ def test_list_carries_claimer_aggregates(db, author, second_user, third_user):
     """The list response gives every card a count + a small avatar sample
     without N+1. The detail endpoint serves the full claimers list."""
     bounty = _make_bounty(db, author=author)
-    db.add(BountyClaim(bounty_id=bounty.id, user_id=second_user.id))
-    db.add(BountyClaim(bounty_id=bounty.id, user_id=third_user.id))
+    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
+    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=third_user.id))
     db.commit()
     try:
         response = client.get("/api/v1/bounties")
@@ -303,7 +331,7 @@ def test_list_carries_claimer_aggregates(db, author, second_user, third_user):
         usernames = {u["username"] for u in row["claimer_sample"]}
         assert usernames == {second_user.username, third_user.username}
     finally:
-        db.query(BountyClaim).filter(BountyClaim.bounty_id == bounty.id).delete(
+        db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -320,12 +348,11 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["id"] == str(bounty.id)
     assert body["title"] == bounty.title
     assert body["source_url"] == bounty.source_url
-    assert body["status"] == STATUS_OPEN
+    assert body["status"] == STATUS_REQUESTED
     assert body["author"]["username"] == author.username
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
     assert len(body["media"]) == 1
     assert body["claimers"] == []
-    assert body["fulfilled_by"] is None
 
 
 def test_detail_404_for_unknown_id():
@@ -339,10 +366,18 @@ def test_detail_404_for_soft_deleted(db, author):
     assert response.status_code == 404
 
 
+def test_detail_404_for_located_event(db, author):
+    """A ``geolocated`` row isn't in the requested view; reading it through the
+    bounty router 404s (it lives at ``/geolocations`` now)."""
+    located = _make_geolocated(db, author=author)
+    response = client.get(f"/api/v1/bounties/{located.id}")
+    assert response.status_code == 404
+
+
 def test_detail_lists_every_claimer(db, author, second_user, third_user):
     bounty = _make_bounty(db, author=author)
-    db.add(BountyClaim(bounty_id=bounty.id, user_id=second_user.id))
-    db.add(BountyClaim(bounty_id=bounty.id, user_id=third_user.id))
+    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
+    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=third_user.id))
     db.commit()
     try:
         response = client.get(f"/api/v1/bounties/{bounty.id}")
@@ -351,35 +386,9 @@ def test_detail_lists_every_claimer(db, author, second_user, third_user):
         usernames = {c["username"] for c in body["claimers"]}
         assert usernames == {second_user.username, third_user.username}
     finally:
-        db.query(BountyClaim).filter(BountyClaim.bounty_id == bounty.id).delete(
+        db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).delete(
             synchronize_session=False
         )
-        db.commit()
-
-
-def test_detail_reflects_fulfilled_geolocation(db, author):
-    bounty = _make_bounty(db, author=author)
-    geo = Geolocation(
-        author_id=author.id,
-        title="Promoted",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url=bounty.source_url,
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
-        originated_from_bounty_id=bounty.id,
-    )
-    db.add(geo)
-    db.commit()
-    try:
-        response = client.get(f"/api/v1/bounties/{bounty.id}")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["fulfilled_by"] is not None
-        assert body["fulfilled_by"]["id"] == str(geo.id)
-        assert body["fulfilled_by"]["title"] == "Promoted"
-    finally:
-        db.expire_all()
-        db.query(Geolocation).filter(Geolocation.id == geo.id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -540,15 +549,22 @@ def test_create_happy_path(db, author, free_tag):
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["status"] == STATUS_OPEN
+    assert body["status"] == STATUS_REQUESTED
     assert body["author"]["username"] == author.username
     assert any(t["name"] == free_tag.name for t in body["tags"])
     assert len(body["media"]) == 1
     assert body["claimers"] == []
 
     bounty_id = uuid.UUID(body["id"])
-    db.query(Media).filter(Media.bounty_id == bounty_id).delete(synchronize_session=False)
-    db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+    # The created row is a requested event with no location and the poster on
+    # ``requested_by_id`` — the invariant fulfilment relies on.
+    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    assert row.status == STATUS_REQUESTED
+    assert row.location is None
+    assert row.requested_by_id == author.id
+
+    db.query(Media).filter(Media.geolocation_id == bounty_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -586,8 +602,8 @@ def test_create_event_date_optional_source_required(db, author):
 
     for created in (with_dates.json(), without.json()):
         bid = uuid.UUID(created["id"])
-        db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
-        db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+        db.query(Media).filter(Media.geolocation_id == bid).delete(synchronize_session=False)
+        db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
     db.commit()
 
 
@@ -628,8 +644,8 @@ def test_create_strips_inline_images_from_proof(db, author):
     ]
 
     bid = uuid.UUID(response.json()["id"])
-    db.query(Media).filter(Media.bounty_id == bid).delete(synchronize_session=False)
-    db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+    db.query(Media).filter(Media.geolocation_id == bid).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
     db.commit()
 
 
@@ -691,8 +707,8 @@ def test_create_populates_sha256_on_media(db, author):
     assert row.uploaded_user_agent is not None
 
     bounty_id = uuid.UUID(body["id"])
-    db.query(Media).filter(Media.bounty_id == bounty_id).delete(synchronize_session=False)
-    db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+    db.query(Media).filter(Media.geolocation_id == bounty_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -728,30 +744,26 @@ def test_delete_succeeds_for_author_and_cascades_media(db, author):
     response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
-    assert db.query(Bounty).filter(Bounty.id == bounty_id).first() is None
-    assert db.query(Media).filter(Media.bounty_id == bounty_id).count() == 0
+    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
+    assert db.query(Media).filter(Media.geolocation_id == bounty_id).count() == 0
 
 
-def test_delete_returns_409_when_fulfilled(db, author):
+def test_delete_no_longer_blocked_by_a_later_geolocation(db, author, second_user):
+    """The old 409-on-delete guard is gone. Fulfilment no longer copies the
+    request into a separate geolocation (it transitions the same row in place),
+    so there is no promotion trace to protect: an unrelated later located event
+    doesn't block deleting a still-open request. Deleting the request succeeds.
+    """
     bounty = _make_bounty(db, author=author)
-    geo = Geolocation(
-        author_id=author.id,
-        title="Promoted",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url=bounty.source_url,
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
-        originated_from_bounty_id=bounty.id,
-    )
-    db.add(geo)
-    db.commit()
-    try:
-        response = client.delete(f"/api/v1/bounties/{bounty.id}", headers=login_as(client, author))
-        assert response.status_code == 409
-    finally:
-        db.expire_all()
-        db.query(Geolocation).filter(Geolocation.id == geo.id).delete(synchronize_session=False)
-        db.commit()
+    bounty_id = bounty.id
+    # An independent located event by another analyst — no relationship to the
+    # request now that the promotion apparatus is gone.
+    _make_geolocated(db, author=second_user)
+
+    response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
+    assert response.status_code == 204
+    db.expire_all()
+    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
 
 
 # ── POST /bounties/{id}/claim ─────────────────────────────────────────────
@@ -770,7 +782,7 @@ def test_claim_inserts_row(db, author, second_user):
     )
     assert response.status_code == 204
     db.expire_all()
-    claims = db.query(BountyClaim).filter(BountyClaim.bounty_id == bounty.id).all()
+    claims = db.query(GeolocationClaim).filter(GeolocationClaim.geolocation_id == bounty.id).all()
     assert len(claims) == 1
     assert claims[0].user_id == second_user.id
 
@@ -784,8 +796,11 @@ def test_claim_is_idempotent(db, author, second_user):
         assert response.status_code == 204
     db.expire_all()
     assert (
-        db.query(BountyClaim)
-        .filter(BountyClaim.bounty_id == bounty.id, BountyClaim.user_id == second_user.id)
+        db.query(GeolocationClaim)
+        .filter(
+            GeolocationClaim.geolocation_id == bounty.id,
+            GeolocationClaim.user_id == second_user.id,
+        )
         .count()
         == 1
     )
@@ -800,7 +815,10 @@ def test_multiple_analysts_can_claim_same_bounty(db, author, second_user, third_
     assert r2.status_code == 204
     db.expire_all()
     user_ids = {
-        c.user_id for c in db.query(BountyClaim).filter(BountyClaim.bounty_id == bounty.id).all()
+        c.user_id
+        for c in db.query(GeolocationClaim)
+        .filter(GeolocationClaim.geolocation_id == bounty.id)
+        .all()
     }
     assert user_ids == {second_user.id, third_user.id}
 
@@ -826,7 +844,7 @@ def test_claim_404_for_soft_deleted(db, author, second_user):
 
 def test_unclaim_removes_row(db, author, second_user):
     bounty = _make_bounty(db, author=author)
-    db.add(BountyClaim(bounty_id=bounty.id, user_id=second_user.id))
+    db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=second_user.id))
     db.commit()
 
     response = client.delete(
@@ -835,8 +853,11 @@ def test_unclaim_removes_row(db, author, second_user):
     assert response.status_code == 204
     db.expire_all()
     assert (
-        db.query(BountyClaim)
-        .filter(BountyClaim.bounty_id == bounty.id, BountyClaim.user_id == second_user.id)
+        db.query(GeolocationClaim)
+        .filter(
+            GeolocationClaim.geolocation_id == bounty.id,
+            GeolocationClaim.user_id == second_user.id,
+        )
         .count()
         == 0
     )
@@ -874,358 +895,214 @@ def test_close_transitions_to_closed(db, author):
 
 
 def test_close_rejected_on_terminal_state(db, author):
-    bounty = _make_bounty(db, author=author, status=STATUS_FULFILLED)
+    """An already-closed request can't be re-closed (terminal state) — 409."""
+    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
     response = client.post(f"/api/v1/bounties/{bounty.id}/close", headers=login_as(client, author))
     assert response.status_code == 409
 
 
-# ── POST /geolocations bounty_id=… ────────────────────────────────────────
+# ── POST /geolocations/{id}/submit — fulfilment in place ──────────────────
+# Since the merge, fulfilling a bounty is not a row copy: the requested event is
+# transitioned in place to ``geolocated`` by the submit endpoint. Any authed user
+# may answer an open request; ``author_id`` transfers to the fulfiller while
+# ``requested_by`` keeps the original poster.
 
 
-def test_geolocate_from_bounty_transfers_media_and_fulfills(
+def _make_geolocated(db, *, author: User) -> Geolocation:
+    """A directly-submitted ``geolocated`` event (has a location). Helper for the
+    "located events don't show in the requested view" assertions."""
+    from geoalchemy2.shape import from_shape
+    from shapely.geometry import Point
+
+    geo = Geolocation(
+        author_id=author.id,
+        title=f"Located {uuid.uuid4().hex[:8]}",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/located",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        status=STATUS_GEOLOCATED,
+    )
+    db.add(geo)
+    db.commit()
+    db.refresh(geo)
+    return geo
+
+
+def _submit_fulfilment(client, bounty_id, fulfiller, *tags, **overrides):
+    """POST the submit form that fulfils a requested event. The request already
+    carries media (a bounty requires it), so no new files are needed."""
+    data = {
+        "title": "Fulfilled from a request",
+        "lat": "48.5",
+        "lng": "34.5",
+        "source_url": "https://example.com/post",
+        "event_date": "2026-05-01",
+        "source_posted_at": "2026-05-01T12:00",
+        "tag_ids": _required_tag_ids(*tags),
+    }
+    data.update(overrides)
+    return client.post(
+        f"/api/v1/geolocations/{bounty_id}/submit",
+        headers=login_as(client, fulfiller),
+        data=data,
+    )
+
+
+def test_submit_fulfils_requested_and_transfers_ownership(
     db, author, second_user, conflict_tag, capture_source_tag
 ):
-    """The end-to-end promise: another analyst submits a geolocation from a
-    bounty, the bounty's media moves over in place, and it flips to fulfilled."""
+    """The end-to-end promise: another analyst answers an open request, the row
+    transitions to ``geolocated`` in place, ``author_id`` moves to the fulfiller,
+    and ``requested_by`` keeps the original poster."""
     bounty = _make_bounty(db, author=author)
     bounty_id = bounty.id
-    media_id = db.query(Media.id).filter(Media.bounty_id == bounty_id).scalar()
 
-    response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, second_user),
-        data={
-            "title": "Promoted from bounty",
-            "lat": "48.5",
-            "lng": "34.5",
-            "source_url": bounty.source_url,
-            "event_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(bounty_id),
-            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
-        },
-        # No files — the bounty's existing media transfers in.
-    )
-    assert response.status_code == 201, response.text
+    response = _submit_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
+    assert response.status_code == 200, response.text
     body = response.json()
-    geo_id = uuid.UUID(body["id"])
+    assert body["id"] == str(bounty_id)
+    assert body["status"] == "geolocated"
+    assert body["lat"] == 48.5
+    assert body["lng"] == 34.5
+    # Ownership transferred to the fulfiller; the poster stays on requested_by.
+    assert body["author"]["username"] == second_user.username
+    assert body["requested_by"]["username"] == author.username
 
     db.expire_all()
-    # Bounty flipped to fulfilled, closed_at stamped.
-    reloaded = db.query(Bounty).filter(Bounty.id == bounty_id).one()
-    assert reloaded.status == STATUS_FULFILLED
-    assert reloaded.closed_at is not None
-    # New geo carries the trace.
-    geo = db.query(Geolocation).filter(Geolocation.id == geo_id).one()
-    assert geo.originated_from_bounty_id == bounty_id
-    # Media row moved over in place: same media id, now owned by the geo.
-    moved = db.query(Media).filter(Media.id == media_id).one()
-    assert moved.geolocation_id == geo_id
-    assert moved.bounty_id is None
-
-    # Cleanup
-    db.query(Media).filter(Media.geolocation_id == geo_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-    db.commit()
+    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    assert row.status == STATUS_GEOLOCATED
+    assert row.author_id == second_user.id
+    assert row.requested_by_id == author.id
+    assert row.location is not None
 
 
-def test_geolocate_from_bounty_rejected_when_bounty_not_open(db, author, second_user):
-    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+def test_submit_fulfilled_event_leaves_requested_view(
+    db, author, second_user, conflict_tag, capture_source_tag
+):
+    """Once fulfilled the row is ``geolocated``, so it drops off the bounty
+    (requested) surface and appears on ``/geolocations`` instead."""
+    bounty = _make_bounty(db, author=author)
+    bounty_id = bounty.id
+
+    assert (
+        _submit_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
+    ).status_code == 200
+
+    # Gone from the requested-view detail + list.
+    assert client.get(f"/api/v1/bounties/{bounty_id}").status_code == 404
+    assert all(row["id"] != str(bounty_id) for row in client.get("/api/v1/bounties").json())
+    # Present on the located surface.
+    located = client.get(f"/api/v1/geolocations/{bounty_id}")
+    assert located.status_code == 200
+    assert located.json()["status"] == "geolocated"
+
+
+def test_submit_fulfilment_reuses_existing_media(
+    db, author, second_user, conflict_tag, capture_source_tag
+):
+    """Fulfilment keeps the request's media on the same row (no transfer / churn):
+    the bounty's one media survives the transition without any new upload."""
+    bounty = _make_bounty(db, author=author)
+    bounty_id = bounty.id
+    media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
+
+    assert (
+        _submit_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
+    ).status_code == 200
+
+    db.expire_all()
+    medias = db.query(Media).filter(Media.geolocation_id == bounty_id).all()
+    assert [m.id for m in medias] == [media_id]
+
+
+def test_submit_fulfilment_accepts_extra_files(
+    db, author, second_user, conflict_tag, capture_source_tag
+):
+    """The submit form may add media on top of what the request carries; the new
+    upload lands alongside the request's existing media on the same row."""
+    bounty = _make_bounty(db, author=author)
+    bounty_id = bounty.id
+    existing_media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
+
     response = client.post(
-        "/api/v1/geolocations",
+        f"/api/v1/geolocations/{bounty_id}/submit",
         headers=login_as(client, second_user),
         data={
             "title": "x",
             "lat": "48.5",
             "lng": "34.5",
-            "source_url": "https://example.com",
+            "source_url": "https://example.com/post",
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(bounty.id),
+            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
         },
+        files=[("files", _tiny_jpeg())],
     )
-    assert response.status_code == 409
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    medias = db.query(Media).filter(Media.geolocation_id == bounty_id).all()
+    # One kept from the request + one fresh upload = two total.
+    assert len(medias) == 2
+    assert existing_media_id in {m.id for m in medias}
 
 
-def test_geolocate_from_bounty_404_for_unknown(author):
+def test_submit_fulfilment_honors_analyst_title_and_tags(
+    db, author, second_user, free_tag, conflict_tag, capture_source_tag
+):
+    """The fulfilling analyst CAN refine the title and tags — they know more than
+    the poster did (place name resolved, conflict tag added). The refined values
+    land on the row; the required conflict + capture_source floor is enforced."""
+    bounty = _make_bounty(db, author=author, title="Original bounty title", tags=[free_tag])
+    bounty_id = bounty.id
+
+    response = _submit_fulfilment(
+        client,
+        bounty_id,
+        second_user,
+        free_tag,
+        conflict_tag,
+        capture_source_tag,
+        title="Refined title with place name",
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["title"] == "Refined title with place name"
+    tag_names = {t["name"] for t in body["tags"]}
+    assert {free_tag.name, conflict_tag.name, capture_source_tag.name}.issubset(tag_names)
+
+
+def test_submit_fulfilment_blocked_without_required_tags(db, author, second_user):
+    """The submit floor still applies to fulfilment: a requested row without the
+    conflict + capture_source tags 400s (the request itself may be tagless)."""
+    bounty = _make_bounty(db, author=author)
     response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, author),
+        f"/api/v1/geolocations/{bounty.id}/submit",
+        headers=login_as(client, second_user),
         data={
             "title": "x",
             "lat": "48.5",
             "lng": "34.5",
-            "source_url": "https://example.com",
-            "event_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(uuid.uuid4()),
-        },
-    )
-    assert response.status_code == 404
-
-
-def test_geolocate_without_bounty_still_requires_media(author):
-    response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, author),
-        data={
-            "title": "x",
-            "lat": "48.5",
-            "lng": "34.5",
-            "source_url": "https://example.com",
+            "source_url": "https://example.com/post",
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 400
-    detail = response.json()["detail"]
-    assert detail["code"] == "media_required"
-    assert "media" in detail["message"].lower()
+    assert response.json()["detail"]["code"] == "tag_requirements_not_met"
 
 
-# ── Hardening: trust the bounty, never the form ───────────────────────────
-
-
-def test_geolocate_from_bounty_overrides_form_source_url(
-    db, author, second_user, free_tag, conflict_tag, capture_source_tag
-):
-    """The fulfilling analyst cannot swap the bounty's source URL. The
-    bounty's ``source_url`` is the evidence link the bounty was opened
-    against; if the fulfilling analyst could swap it, they could
-    "fulfill" the bounty with proof from an unrelated event. The
-    frontend renders this field locked, and the API enforces the same
-    so a hostile caller can't bypass the UI lock."""
-    bounty = _make_bounty(
-        db,
-        author=author,
-        title="Real bounty title",
-        source_url="https://real-source.example.com/post",
-        tags=[free_tag],
-    )
-
-    response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, second_user),
-        data={
-            "title": "Analyst-refined title",
-            # Hostile source_url — must be ignored server-side.
-            "source_url": "https://evil.example.com/redirect",
-            "lat": "48.5",
-            "lng": "34.5",
-            "event_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(bounty.id),
-            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
-        },
-    )
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["source_url"] == "https://real-source.example.com/post"
-    geo_id = uuid.UUID(body["id"])
-
-    # Cleanup
-    db.query(Media).filter(Media.geolocation_id == geo_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def test_geolocate_from_bounty_honors_analyst_title_and_tags(
-    db, author, second_user, free_tag, conflict_tag, capture_source_tag
-):
-    """The fulfilling analyst CAN refine the title and tags. They know
-    more than the bounty author did at posting time (place name resolved,
-    conflict tag added, etc.). The bounty's own title/tags remain on the
-    bounty row, so the bounty page stays accurate too. Moderation sees
-    bad-faith refinements via the ``originated_from_bounty`` trace on
-    the geolocation."""
-    other_tag = Tag(name=f"other-{uuid.uuid4().hex[:8]}", category="free")
-    db.add(other_tag)
-    db.commit()
-    other_tag_id = other_tag.id
-
-    bounty = _make_bounty(
-        db,
-        author=author,
-        title="Original bounty title",
-        tags=[free_tag],
-    )
-
-    try:
-        import json as _json
-
-        response = client.post(
-            "/api/v1/geolocations",
-            headers=login_as(client, second_user),
-            data={
-                "title": "Refined title with place name",
-                "lat": "48.5",
-                "lng": "34.5",
-                "source_url": "https://example.com",
-                "event_date": "2026-05-01",
-                "source_posted_at": "2026-05-01T12:00",
-                "bounty_id": str(bounty.id),
-                # Analyst attaches a tag that wasn't on the bounty AND
-                # drops the bounty's original tag — both moves are allowed.
-                # Required conflict + capture_source tags ride along.
-                "tag_ids": _json.dumps(
-                    [str(other_tag_id), str(conflict_tag.id), str(capture_source_tag.id)]
-                ),
-            },
-        )
-        assert response.status_code == 201, response.text
-        body = response.json()
-        assert body["title"] == "Refined title with place name"
-        tag_names = {t["name"] for t in body["tags"]}
-        assert other_tag.name in tag_names
-        assert free_tag.name not in tag_names
-
-        # Bounty row itself is unchanged — the bounty page stays accurate.
-        db.expire_all()
-        reloaded = db.query(Bounty).filter(Bounty.id == bounty.id).one()
-        assert reloaded.title == "Original bounty title"
-        bounty_tag_names = {t.name for t in reloaded.tags}
-        assert free_tag.name in bounty_tag_names
-
-        geo_id = uuid.UUID(body["id"])
-        db.query(Media).filter(Media.geolocation_id == geo_id).delete(synchronize_session=False)
-        db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-        db.commit()
-    finally:
-        db.execute(Tag.__table__.delete().where(Tag.id == other_tag_id))
-        db.commit()
-
-
-def test_partial_unique_index_blocks_double_fulfilment(db, author, second_user):
-    """Fix #2 — even if the application-level row lock + status guard
-    were somehow bypassed (future refactor forgets the lock, races on a
-    replica, etc), the partial unique index on
-    ``originated_from_bounty_id`` makes a duplicate fulfilment a DB
-    constraint violation, not a silent doubling."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
-
-    # First geo: legitimately fulfils the bounty (we just write the row
-    # directly to keep the test focused on the constraint, not the route).
-    geo_a = Geolocation(
-        author_id=second_user.id,
-        title="first",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
-        originated_from_bounty_id=bounty_id,
-    )
-    db.add(geo_a)
-    db.commit()
-    geo_a_id = geo_a.id
-
-    # Second geo with the same bounty pointer must fail at commit.
-    geo_b = Geolocation(
-        author_id=second_user.id,
-        title="second",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
-        originated_from_bounty_id=bounty_id,
-    )
-    db.add(geo_b)
-    with pytest.raises(IntegrityError):
-        db.commit()
-    db.rollback()
-
-    # Cleanup
-    db.query(Geolocation).filter(Geolocation.id == geo_a_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def test_fulfilled_by_excludes_soft_deleted_geolocation(
+def test_submit_fulfilment_rejected_when_closed(
     db, author, second_user, conflict_tag, capture_source_tag
 ):
-    """Fix #4 — once a fulfilment geolocation is admin-soft-deleted, the
-    ``fulfilled_by`` relationship must hide it instead of surfacing a
-    row that's supposed to be invisible. The partial unique index keeps
-    ``uselist=False`` safe (no chance of two live geos colliding here)."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
-
-    response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, second_user),
-        data={
-            "title": "fulfiller",
-            "lat": "48.5",
-            "lng": "34.5",
-            "source_url": bounty.source_url,
-            "event_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(bounty_id),
-            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
-        },
-    )
-    assert response.status_code == 201
-    geo_id = uuid.UUID(response.json()["id"])
-
-    # Pre-condition: bounty's detail surfaces the fulfilling geo.
-    pre = client.get(f"/api/v1/bounties/{bounty_id}")
-    assert pre.status_code == 200
-    assert pre.json()["fulfilled_by"] is not None
-    assert pre.json()["fulfilled_by"]["id"] == str(geo_id)
-
-    # Soft-delete the geo directly (admin path stamps deleted_at).
-    db.query(Geolocation).filter(Geolocation.id == geo_id).update(
-        {Geolocation.deleted_at: datetime.now(UTC)},
-        synchronize_session=False,
-    )
-    db.commit()
-
-    # Post-condition: detail no longer leaks the soft-deleted row.
-    post = client.get(f"/api/v1/bounties/{bounty_id}")
-    assert post.status_code == 200
-    assert post.json()["fulfilled_by"] is None
-
-    # Cleanup
-    db.query(Media).filter(Media.geolocation_id == geo_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-    db.commit()
+    """A withdrawn (``closed``) request is terminal, not answerable — submit 409s
+    with the invalid_state code (only ``requested`` / ``detected`` transition)."""
+    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    response = _submit_fulfilment(client, bounty.id, second_user, conflict_tag, capture_source_tag)
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state"
 
 
-def test_geolocate_from_bounty_accepts_extra_files(
-    db, author, second_user, conflict_tag, capture_source_tag
-):
-    """The form may include additional media on top of what the bounty
-    carries — those files should land alongside the transferred bounty
-    media on the resulting geolocation."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
-    bounty_media_id = db.query(Media.id).filter(Media.bounty_id == bounty_id).scalar()
-
-    response = client.post(
-        "/api/v1/geolocations",
-        headers=login_as(client, second_user),
-        data={
-            "title": "x",
-            "lat": "48.5",
-            "lng": "34.5",
-            "source_url": bounty.source_url,
-            "event_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "bounty_id": str(bounty_id),
-            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
-        },
-        files=[("files", _tiny_jpeg())],
-    )
-    assert response.status_code == 201, response.text
-    geo_id = uuid.UUID(response.json()["id"])
-
-    db.expire_all()
-    medias = db.query(Media).filter(Media.geolocation_id == geo_id).all()
-    # One transferred from the bounty + one fresh upload = two total.
-    assert len(medias) == 2
-    transferred_ids = {m.id for m in medias if m.id == bounty_media_id}
-    assert transferred_ids == {bounty_media_id}
-
-    # Cleanup
-    db.query(Media).filter(Media.geolocation_id == geo_id).delete(synchronize_session=False)
-    db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-    db.commit()
+def test_submit_fulfilment_404_for_unknown(author, conflict_tag, capture_source_tag):
+    response = _submit_fulfilment(client, uuid.uuid4(), author, conflict_tag, capture_source_tag)
+    assert response.status_code == 404
