@@ -57,8 +57,9 @@ export function PageShell({
 }
 
 // Centered loading / error / empty state. Sibling to PageShell so the sidebar
-// offset (`pl-14`) stays in one place.
-export function PageCenter({ children }: { children: ReactNode }) {
+// offset (`pl-14`) stays in one place. Internal: pages reach it through
+// PageLoading / PageError, never directly.
+function PageCenter({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center pl-14">
       {children}
@@ -81,11 +82,9 @@ export function PageLoading({ label = "Loading…" }: { label?: string }) {
 export function PageError({
   message,
   backHref,
-  backLabel = "Back to map",
 }: {
   message: ReactNode;
   backHref?: string;
-  backLabel?: string;
 }) {
   return (
     <PageCenter>
@@ -93,7 +92,7 @@ export function PageError({
         <p className="text-sm text-neutral-300">{message}</p>
         {backHref && (
           <Link href={backHref} className={`text-xs ${TEXT_LINK}`}>
-            {backLabel}
+            Back to map
           </Link>
         )}
       </div>

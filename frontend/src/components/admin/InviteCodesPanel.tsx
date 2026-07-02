@@ -16,6 +16,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
+  LABEL_TEXT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -219,7 +220,7 @@ export function InviteCodesPanel() {
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-neutral-500">
+            <tr className={LABEL_TEXT}>
               <th className="py-2 pr-3 font-medium">Code</th>
               <th className="py-2 pr-3 font-medium">Status</th>
               <th className="py-2 pr-3 font-medium">Used by</th>

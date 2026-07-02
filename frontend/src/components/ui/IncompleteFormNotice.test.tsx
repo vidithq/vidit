@@ -16,9 +16,4 @@ describe("IncompleteFormNotice", () => {
     expect(screen.getByText("Proof")).toBeInTheDocument();
     expect(screen.getByText("Source media")).toBeInTheDocument();
   });
-
-  it("uses a custom lead when given", () => {
-    render(<IncompleteFormNotice missing={["Title"]} lead="Almost there:" />);
-    expect(screen.getByText("Almost there:")).toBeInTheDocument();
-  });
 });

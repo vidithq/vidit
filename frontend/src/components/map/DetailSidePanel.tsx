@@ -5,8 +5,8 @@ import { ExternalLink } from "lucide-react";
 
 import type { GeolocationDetail } from "@/types";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 
@@ -47,19 +47,8 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
               {detail.title}
             </h2>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-neutral-400 inline-flex items-center gap-1">
-                by{" "}
-                <Link
-                  href={`/profile/${detail.author.username}`}
-                  className={`${TEXT_LINK} transition-colors`}
-                >
-                  {detail.author.username}
-                </Link>
-                <TrustBadge
-                  isTrusted={detail.author.is_trusted}
-                  trustReason={detail.author.trust_reason}
-                  size={12}
-                />
+              <p className="text-xs text-neutral-400">
+                <AuthorByline author={detail.author} size="xs" />
               </p>
             </div>
           </div>
@@ -80,7 +69,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             />
             <Link
               href={`/geolocations/${detail.id}`}
-              className="flex items-center gap-1 text-[11px] text-orange-400 hover:text-orange-300 transition-colors shrink-0"
+              className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
             >
               Full page
               <ExternalLink size={11} />

@@ -17,20 +17,13 @@ import { Pill } from "@/components/ui/Pill";
  *
  * Shown on cards, the detail page, search results, and the Detections queue.
  */
-export function StatusBadge({
-  status,
-  className = "",
-}: {
-  status: GeolocationStatus;
-  className?: string;
-}) {
+export function StatusBadge({ status }: { status: GeolocationStatus }) {
   if (status === "detected") {
     return (
       <Pill
         tone="accent"
         icon={<Bot size={11} />}
         title="Machine-detected from a tweet, shown until the owner submits it"
-        className={className}
       >
         Detected
       </Pill>
@@ -41,7 +34,6 @@ export function StatusBadge({
       tone="neutral"
       icon={<User size={11} />}
       title="Submitted by a person, not independently verified"
-      className={className}
     >
       Submitted
     </Pill>

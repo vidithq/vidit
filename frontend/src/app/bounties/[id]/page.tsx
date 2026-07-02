@@ -17,10 +17,10 @@ import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
-import { displayUrlsFor } from "@/lib/mediaUrls";
+import { MediaGallery } from "@/components/ui/MediaGallery";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
-import TrustBadge from "@/components/profile/TrustBadge";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -129,61 +129,11 @@ export default function BountyDetailPage() {
     <PageShell
       back
       title={bounty.title}
-      subtitle={
-        <span className="inline-flex items-center gap-1.5">
-          by{" "}
-          <Link
-            href={`/profile/${bounty.author.username}`}
-            className={`${TEXT_LINK} transition-colors`}
-          >
-            {bounty.author.username}
-          </Link>
-          <TrustBadge
-            isTrusted={bounty.author.is_trusted}
-            trustReason={bounty.author.trust_reason}
-            size={14}
-          />
-        </span>
-      }
+      subtitle={<AuthorByline author={bounty.author} />}
     >
         <div>
           <SectionEyebrow title="Media" concept="source_media" />
-          {bounty.media.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {bounty.media.map((m) => (
-                <div
-                  key={m.id}
-                  className="rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900"
-                >
-                  {m.media_type === "image" ? (
-                    // 2-up grid ≈ 384 CSS px wide; `hero` renders sharply
-                    // at 2x DPI without the original's full payload.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={displayUrlsFor(m).hero}
-                      alt={bounty.title}
-                      className="w-full h-48 object-cover"
-                    />
-                  ) : (
-                    // `#t=0.1` media-fragment URI seeks to t=0.1s on
-                    // metadata load; with `preload="metadata"` this paints
-                    // the first frame as a poster, so the tile isn't a
-                    // black box before play — no per-bounty poster needed.
-                    <video
-                      src={`${m.storage_url}#t=0.1`}
-                      controls
-                      preload="metadata"
-                      className="w-full h-48 object-cover"
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-neutral-700 bg-neutral-800 h-48 flex items-center justify-center">
-              <span className="text-sm text-neutral-500">No media</span>
-            </div>
-          )}
+          <MediaGallery media={bounty.media} alt={bounty.title} />
         </div>
 
         <div>
@@ -230,7 +180,7 @@ export default function BountyDetailPage() {
                       <Link
                         key={c.id}
                         href={`/profile/${c.username}`}
-                        className={`text-sm ${TEXT_LINK} transition-colors`}
+                        className={`text-sm ${TEXT_LINK}`}
                       >
                         @{c.username}
                       </Link>
@@ -245,7 +195,7 @@ export default function BountyDetailPage() {
               <DetailRow label="Fulfilled by">
                 <Link
                   href={`/geolocations/${bounty.fulfilled_by.id}`}
-                  className={`text-sm ${TEXT_LINK} transition-colors truncate ml-4 max-w-[300px]`}
+                  className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
                 >
                   {bounty.fulfilled_by.title}
                 </Link>

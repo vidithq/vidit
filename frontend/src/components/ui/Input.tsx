@@ -1,4 +1,8 @@
-import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 
 import { cn } from "@/lib/cn";
 import { FORM_INVALID_FIELD } from "./form-styles";
@@ -41,9 +45,26 @@ interface FieldProps {
 export function Input({
   variant = "default",
   invalid = false,
+  icon,
   className = "",
   ...props
-}: FieldProps & InputHTMLAttributes<HTMLInputElement>) {
+}: FieldProps & {
+  /** Leading icon (e.g. a search glass), overlaid inside the field. */
+  icon?: ReactNode;
+} & InputHTMLAttributes<HTMLInputElement>) {
+  if (icon) {
+    return (
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">
+          {icon}
+        </span>
+        <input
+          className={cn(fieldClass(variant, invalid, ""), "pl-9", className)}
+          {...props}
+        />
+      </div>
+    );
+  }
   return <input className={fieldClass(variant, invalid, className)} {...props} />;
 }
 

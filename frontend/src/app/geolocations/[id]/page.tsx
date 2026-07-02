@@ -2,16 +2,14 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import type { GeolocationDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
-import TrustBadge from "@/components/profile/TrustBadge";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { TEXT_LINK } from "@/components/ui/styles";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -31,22 +29,7 @@ export default function GeolocationPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={
-        <span className="inline-flex items-center gap-1.5">
-          by{" "}
-          <Link
-            href={`/profile/${geo.author.username}`}
-            className={`${TEXT_LINK} transition-colors`}
-          >
-            {geo.author.username}
-          </Link>
-          <TrustBadge
-            isTrusted={geo.author.is_trusted}
-            trustReason={geo.author.trust_reason}
-            size={14}
-          />
-        </span>
-      }
+      subtitle={<AuthorByline author={geo.author} />}
       actions={
         <ShareButtons
           id={geo.id}

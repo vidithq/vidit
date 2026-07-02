@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
 import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -19,7 +20,10 @@ export function DetailCard({
 }) {
   return (
     <div
-      className={`bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800 ${className}`.trim()}
+      className={cn(
+        "bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800",
+        className,
+      )}
     >
       {children}
     </div>
@@ -43,13 +47,13 @@ export function DetailRow({
   align?: "stretch" | "center" | "start";
   className?: string;
 }) {
-  const alignClass =
-    align === "center" ? "items-center " : align === "start" ? "items-start " : "";
-  const rowClass = `flex justify-between ${alignClass}${
-    compact ? "" : "px-4 py-3"
-  } ${className}`
-    .replace(/\s+/g, " ")
-    .trim();
+  const rowClass = cn(
+    "flex justify-between",
+    align === "center" && "items-center",
+    align === "start" && "items-start",
+    !compact && "px-4 py-3",
+    className,
+  );
   return (
     <div className={rowClass}>
       <span

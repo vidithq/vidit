@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { buttonClasses } from "@/components/ui/Button";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 // Hero CTA island that swaps on auth state (signed-in sees "Open the map").
 // While auth resolves on a hard load of `/`, `user` is null and the signed-out
@@ -35,7 +36,7 @@ export default function HeroCtas() {
           href="https://x.com/vidithq"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-orange-400 hover:text-orange-300"
+          className={TEXT_LINK}
         >
           @vidithq
         </a>{" "}
@@ -44,7 +45,7 @@ export default function HeroCtas() {
           href="https://discord.gg/9wPtsrrKyJ"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-orange-400 hover:text-orange-300"
+          className={TEXT_LINK}
         >
           Discord
         </a>

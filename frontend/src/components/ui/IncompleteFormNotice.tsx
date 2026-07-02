@@ -6,8 +6,6 @@ interface IncompleteFormNoticeProps {
   /** Human labels of every still-missing required field. Renders nothing when
    *  empty, so callers can mount it unconditionally. */
   missing: string[];
-  /** Lead line above the list. Defaults to the submit/validate wording. */
-  lead?: string;
 }
 
 /**
@@ -20,7 +18,7 @@ interface IncompleteFormNoticeProps {
  * entrance animation each attempt: give it a `key` that changes per failed
  * submit (e.g. an attempt counter) so a repeat click visibly re-fires.
  */
-export function IncompleteFormNotice({ missing, lead }: IncompleteFormNoticeProps) {
+export function IncompleteFormNotice({ missing }: IncompleteFormNoticeProps) {
   if (missing.length === 0) return null;
   return (
     <div
@@ -30,7 +28,7 @@ export function IncompleteFormNotice({ missing, lead }: IncompleteFormNoticeProp
       <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
       <div className="space-y-1">
         <p className="font-medium">
-          {lead ?? "Fill in the required fields before continuing:"}
+          Fill in the required fields before continuing:
         </p>
         <ul className="list-disc space-y-0.5 pl-4 text-red-300/90">
           {missing.map((field) => (

@@ -1,4 +1,5 @@
 import type { ElementType } from "react";
+import { cn } from "@/lib/cn";
 import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -22,11 +23,11 @@ export function SectionEyebrow({
 }) {
   return (
     <Tag
-      className={`text-xs text-neutral-500 uppercase tracking-wider ${MARGIN[margin]}${
-        concept ? " inline-flex items-center gap-1.5" : ""
-      }`
-        .replace(/\s+/g, " ")
-        .trim()}
+      className={cn(
+        "text-xs text-neutral-500 uppercase tracking-wider",
+        MARGIN[margin],
+        concept && "inline-flex items-center gap-1.5",
+      )}
     >
       {title}
       {concept && <FieldHelp concept={concept} />}

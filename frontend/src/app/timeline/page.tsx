@@ -7,6 +7,7 @@ import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { EntityCard } from "@/components/ui/EntityCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
@@ -72,7 +73,6 @@ export default function TimelinePage() {
                 variant="feed"
                 detailHref={`/geolocations/${entry.id}`}
                 title={entry.title}
-                titleText={entry.title}
                 badge={
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }
@@ -89,21 +89,18 @@ export default function TimelinePage() {
             ))}
           </div>
         ) : (
-          <div className="bg-neutral-900/50 border border-dashed border-neutral-800 rounded-lg p-12 text-center space-y-3 max-w-md mx-auto">
-            <MapPin size={32} className="mx-auto text-neutral-600" />
-            <div className="space-y-1">
-              <p className="text-sm text-neutral-300">Your timeline is empty</p>
-              <p className="text-xs text-neutral-500 max-w-[240px] mx-auto">
-                Follow other analysts to see their latest geolocations here.
-              </p>
-            </div>
-            <Link
-              href="/map"
-              className={buttonClasses("primary")}
-            >
-              Explore the map
-            </Link>
-          </div>
+          <EmptyState
+            variant="invite"
+            icon={MapPin}
+            lead="Your timeline is empty"
+            cta={
+              <Link href="/map" className={buttonClasses("primary")}>
+                Explore the map
+              </Link>
+            }
+          >
+            Follow other analysts to see their latest geolocations here.
+          </EmptyState>
         )}
     </PageShell>
   );

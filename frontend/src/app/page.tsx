@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
-import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
+import { Dot } from "@/components/ui/Dot";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -133,7 +134,7 @@ export default function LandingPage() {
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
           <Pill tone="accent" className="gap-2 tracking-tight">
-            <span className="size-1.5 rounded-full bg-orange-500" />
+            <Dot />
             <span>Closed beta · invite-only</span>
           </Pill>
           <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
@@ -213,13 +214,12 @@ export default function LandingPage() {
                     : "border-neutral-800 bg-neutral-900"
                 }`}
               >
-                <span
-                  className={`shrink-0 self-start px-2 py-0.5 rounded-full font-mono text-[11px] font-medium ${
-                    current ? ACCENT_SURFACE : "bg-neutral-800 text-neutral-500"
-                  }`}
+                <Pill
+                  tone={current ? "accent" : "neutral"}
+                  className="self-start font-mono"
                 >
                   {version}
-                </span>
+                </Pill>
                 <div>
                   <h3 className="text-sm font-medium text-neutral-100">
                     {title}

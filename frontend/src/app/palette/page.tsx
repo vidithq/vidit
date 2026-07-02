@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { notFound } from "next/navigation";
-import { AtSign, Mail, MessageCircle, MapPin, Users, UserPlus, Calendar } from "lucide-react";
+import {
+  AtSign,
+  Calendar,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Search as SearchIcon,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 import type { GeolocationDetail, GeolocationStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
@@ -18,7 +27,9 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
-import { MediaThumb } from "@/components/ui/MediaThumb";
+import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Dot } from "@/components/ui/Dot";
+import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { OptionalHint } from "@/components/ui/OptionalHint";
@@ -30,10 +41,11 @@ import {
   TEXT_LINK,
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
-  NEUTRAL_SURFACE,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
 import {
   FORM_LABEL,
@@ -149,6 +161,9 @@ export default function PalettePage() {
   if (process.env.NODE_ENV !== "development") notFound();
 
   const [pillSel, setPillSel] = useState("Open");
+  const [segSel, setSegSel] = useState<"geolocation" | "bounty">("geolocation");
+  const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
+  const [swOn, setSwOn] = useState(true);
   const [tpTags, setTpTags] = useState<Tag[]>([
     { id: "f1", name: "donetsk", category: "free" },
   ]);
@@ -165,15 +180,10 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Tokens" />
 
-          <Item name="ACCENT_SURFACE / NEUTRAL_SURFACE" usage="The two base surface paints (bg + text), the single source shared by the <Pill> tones (which layer a border on top) and the active nav / row treatments (Sidebar, landing, submit) that want the same fill without a pill border.">
-            <Variant label="ACCENT_SURFACE (active nav)">
+          <Item name="ACCENT_SURFACE" usage="The base accent surface paint (bg + text), the single source shared by the <Pill> accent tone (which layers a border on top) and the active nav / row treatments (Sidebar, landing, submit) that want the same fill without a pill border.">
+            <Variant label="active nav">
               <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${ACCENT_SURFACE}`}>
                 Active
-              </span>
-            </Variant>
-            <Variant label="NEUTRAL_SURFACE (inactive)">
-              <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${NEUTRAL_SURFACE}`}>
-                Inactive
               </span>
             </Variant>
           </Item>
@@ -204,8 +214,8 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice">
-            <div className={`rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
+          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice, admin armed confirms. Colour only; callers add rounded-md + their own padding.">
+            <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
             </div>
           </Item>
@@ -265,6 +275,38 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit type (geolocation / bounty), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
+            <div className="space-y-3">
+              <SegmentedControl
+                aria-label="Demo type"
+                options={[
+                  { value: "geolocation", label: "Geolocation" },
+                  { value: "bounty", label: "Bounty" },
+                ]}
+                value={segSel}
+                onChange={setSegSel}
+              />
+              <SegmentedControl
+                aria-label="Demo delete mode"
+                options={[
+                  { value: "soft", label: "Soft delete" },
+                  { value: "hard", label: "Hard delete", tone: "danger" },
+                ]}
+                value={segMode}
+                onChange={setSegMode}
+              />
+            </div>
+          </Item>
+
+          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles).">
+            <Variant label='size="md"'>
+              <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch" />
+            </Variant>
+            <Variant label='size="sm"'>
+              <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch small" />
+            </Variant>
+          </Item>
+
           <Item name="<StatusBadge>" usage="A <Pill> consumer: maps the geoloc status to a tone + icon + label. Cards, detail, detections queue.">
             <StatusBadge status="detected" />
             <StatusBadge status="submitted" />
@@ -282,10 +324,13 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon (the search box). Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
+              </Variant>
+              <Variant label="icon (search box)">
+                <Input icon={<SearchIcon size={14} />} type="search" placeholder="Search…" />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
                 <Input variant="compact" placeholder="Compact" />
@@ -304,7 +349,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="FORM_LABEL (+ _COMPACT)" usage="Field labels, kept separate from <Input>">
+          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label.">
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>
@@ -331,7 +376,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="Curated + free tag selection (composes NewTagInput + Pill chips); submit / edit">
+          <Item name="<TagPicker>" usage="Curated + free tag selection (Pill chips + inline free-tag creation); submit / edit">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
@@ -358,13 +403,40 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
+          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author.">
+            <Variant label="default (subtitle)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.author} />
+              </span>
+            </Variant>
+            <Variant label='size="xs" (panel header)'>
+              <span className="text-xs text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.author} size="xs" />
+              </span>
+            </Variant>
+          </Item>
+
           <Item name="<SourceLabel>" usage="Source display (shortened host, or synthetic in demo)">
             <SourceLabel isDemo={false} url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
-          <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), else a marked no-media box. No generated stand-ins.">
-            <MediaThumb />
+          <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges, landing + beta pills, detections entry. Position / ring / size via className.">
+            <Variant label="bare">
+              <Dot />
+            </Variant>
+            <Variant label="on an icon corner">
+              <span className="relative inline-flex size-7 items-center justify-center rounded-md bg-neutral-800 border border-neutral-700">
+                <MapPin size={14} className="text-neutral-400" />
+                <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
+              </span>
+            </Variant>
+          </Item>
+
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + bounty detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here). The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+            <div className="w-full max-w-sm">
+              <MediaGallery media={[]} alt="demo" />
+            </div>
           </Item>
 
           <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
@@ -435,14 +507,41 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EmptyState>" usage="Empty lists: bounties, search">
-            <EmptyState className="max-w-sm">
-              Nothing here yet.{" "}
-              <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
-                Create the first one
-              </a>
-              .
-            </EmptyState>
+          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (bounties, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
+            <div className="w-full max-w-md space-y-3">
+              <Variant label='variant="boxed" (default)'>
+                <EmptyState>
+                  Nothing here yet.{" "}
+                  <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
+                    Create the first one
+                  </a>
+                  .
+                </EmptyState>
+              </Variant>
+              <Variant label='variant="plain"'>
+                <EmptyState
+                  variant="plain"
+                  lead="Nothing to review."
+                  cta={
+                    <a href="#" className={`text-xs ${TEXT_LINK}`} onClick={(e) => e.preventDefault()}>
+                      Back to profile
+                    </a>
+                  }
+                >
+                  New items land here once something happens.
+                </EmptyState>
+              </Variant>
+              <Variant label='variant="invite" (+ icon)'>
+                <EmptyState
+                  variant="invite"
+                  icon={MapPin}
+                  lead="Your timeline is empty"
+                  cta={<Button variant="primary">Explore the map</Button>}
+                >
+                  Follow other analysts to see their latest geolocations here.
+                </EmptyState>
+              </Variant>
+            </div>
           </Item>
 
           <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
@@ -453,7 +552,7 @@ export default function PalettePage() {
 
           <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
             <p className="text-xs text-neutral-500">
-              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
+              Full-screen centered states: a quiet{" "}
               <span className="text-neutral-400">Loading…</span>, or an error message
               with an optional Back to map link. Not rendered here (takes the full height).
             </p>
@@ -472,7 +571,6 @@ export default function PalettePage() {
                 variant="feed"
                 detailHref="/geolocations/demo"
                 title={MOCK_CARD_GEO.title}
-                titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="detected" />}
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
@@ -488,7 +586,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/geolocations/demo"
                 title={MOCK_CARD_GEO.title}
-                titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="submitted" />}
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
@@ -504,7 +601,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/bounties/demo"
                 title="Footage wanted near Bakhmut"
-                titleText="Footage wanted near Bakhmut"
                 badge={<BountyStatusBadge status="open" />}
                 author={{ username: "analyst" }}
                 date="2026-05-01"
@@ -521,7 +617,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/geolocations/demo/edit"
                 title={MOCK_DETAIL.title}
-                titleText={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.author.username }}
                 date={MOCK_DETAIL.event_date}

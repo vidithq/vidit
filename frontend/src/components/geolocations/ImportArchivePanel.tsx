@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
 import { useMutation } from "@/hooks/useMutation";
@@ -170,7 +170,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
               key={step.title}
               className="flex items-start gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-3"
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-semibold text-orange-400">
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${ACCENT_SURFACE}`}>
                 {i + 1}
               </span>
               <step.icon size={18} strokeWidth={1.8} className="mt-0.5 shrink-0 text-neutral-500" />

@@ -96,7 +96,7 @@ function ResetPasswordInner() {
           </div>
         )}
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             New password
           </label>
@@ -110,7 +110,7 @@ function ResetPasswordInner() {
           />
         </div>
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="confirm" className={FORM_LABEL_COMPACT}>
             Confirm
           </label>

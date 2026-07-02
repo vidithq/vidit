@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { ACCENT_SURFACE, NEUTRAL_SURFACE } from "./styles";
+import { ACCENT_SURFACE } from "./styles";
 
 // The one pill for the whole status / tag / chip family: a single rounded-full
 // shape at one size, the colour picked by `tone`. Static `<span>` by default;
@@ -19,14 +19,14 @@ export type PillTone = "accent" | "neutral" | "danger" | "strong";
 const BASE =
   "inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium";
 
-// Each tone is a base surface paint (../ui/styles, the single source shared with
-// the active-nav treatments) plus the pill's own border. `danger` / `strong`
-// have no nav counterpart, so they carry their full paint here. Internal on
-// purpose: the tones are only reachable through `<Pill tone>`, so a pill look
-// can't be recomposed on bespoke markup.
+// The accent tone is the base surface paint (../ui/styles, the single source
+// shared with the active-nav treatments) plus the pill's own border. The other
+// tones have no nav counterpart, so they carry their full paint here. Internal
+// on purpose: the tones are only reachable through `<Pill tone>`, so a pill
+// look can't be recomposed on bespoke markup.
 const PILL_TONE: Record<PillTone, string> = {
   accent: `${ACCENT_SURFACE} border border-orange-500/30`,
-  neutral: `${NEUTRAL_SURFACE} border border-neutral-700`,
+  neutral: "bg-neutral-800 text-neutral-400 border border-neutral-700",
   danger: "bg-red-500/10 text-red-300 border border-red-500/30",
   strong: "bg-neutral-100/10 text-neutral-100 border border-neutral-100/20",
 };

@@ -8,7 +8,7 @@ import {
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DevToolPanel } from "@/components/admin/DevToolPanel";
 import { Button } from "@/components/ui/Button";
 
 export function MaintenancePanel() {
@@ -44,14 +44,12 @@ export function MaintenancePanel() {
   };
 
   return (
-    <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
-      <header className="px-4 py-3 border-b border-neutral-800">
-        <SectionEyebrow title="Maintenance" margin="none" />
-        <p className="text-xs text-neutral-500 mt-0.5">
-          On-demand reapers. Click when you remember — there&apos;s no schedule.
-        </p>
-      </header>
-      <div className="px-4 py-3 space-y-3">
+    <DevToolPanel
+      title="Maintenance"
+      description={
+        <>On-demand reapers. Click when you remember; there&apos;s no schedule.</>
+      }
+    >
         <div className="flex items-center gap-3">
           <Button variant="secondary" onClick={onReapAuth} disabled={running}>
             {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
@@ -80,7 +78,6 @@ export function MaintenancePanel() {
           )}
         </div>
         {error && <p className="text-xs text-red-400">{error}</p>}
-      </div>
-    </section>
+    </DevToolPanel>
   );
 }

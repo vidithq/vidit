@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import type { PublicProfile } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
 import { BioCard } from "@/components/profile/BioCard";
@@ -45,7 +46,6 @@ export default function ProfilePage() {
   // it's the signed-in user's pending count regardless of whose profile this is
   // (gated to the own-profile render below).
   const { count: detectionCount } = useDetectionsCount();
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const edit = useProfileEdit({
@@ -55,22 +55,15 @@ export default function ProfilePage() {
     refetchProfile,
   });
 
-  // Auto-revert the sign-out confirm state if not followed through within 3s.
-  useEffect(() => {
-    if (!confirmingSignOut) return;
-    const t = setTimeout(() => setConfirmingSignOut(false), 3000);
-    return () => clearTimeout(t);
-  }, [confirmingSignOut]);
-
-  const handleSignOut = () => {
-    if (confirmingSignOut) {
+  // Two-click confirm so an accidental tap doesn't end the session;
+  // auto-reverts after 3s.
+  const signOut = useConfirmAction(
+    () => {
       setSigningOut(true);
-      setConfirmingSignOut(false);
       logout();
-    } else {
-      setConfirmingSignOut(true);
-    }
-  };
+    },
+    { timeoutMs: 3000 }
+  );
 
   // Auth guard
   useEffect(() => {
@@ -120,19 +113,15 @@ export default function ProfilePage() {
         />
 
         {isOwn && (
-          <>
-            {/* Two-click confirm so an accidental tap doesn't end the
-                session; auto-reverts after 3s. */}
-            <div className="pt-4 border-t border-neutral-800 flex justify-center">
-              <Button
-                variant={confirmingSignOut ? "danger" : "secondary"}
-                onClick={handleSignOut}
-              >
-                <LogOut size={14} strokeWidth={1.8} />
-                {confirmingSignOut ? "Confirm sign out" : "Sign out"}
-              </Button>
-            </div>
-          </>
+          <div className="pt-4 border-t border-neutral-800 flex justify-center">
+            <Button
+              variant={signOut.armed ? "danger" : "secondary"}
+              onClick={signOut.trigger}
+            >
+              <LogOut size={14} strokeWidth={1.8} />
+              {signOut.armed ? "Confirm sign out" : "Sign out"}
+            </Button>
+          </div>
         )}
     </PageShell>
   );

@@ -9,14 +9,12 @@ export function Avatar({
   username,
   size,
   fallback = "initial",
-  iconSize = 28,
 }: {
   src?: string | null;
   username: string;
   /** Sizing utility, e.g. `w-16 h-16` or `size-10`. */
   size: string;
   fallback?: "initial" | "icon";
-  iconSize?: number;
 }) {
   return (
     <div
@@ -30,7 +28,7 @@ export function Avatar({
           className="w-full h-full object-cover"
         />
       ) : fallback === "icon" ? (
-        <User size={iconSize} className="text-neutral-500" />
+        <User size={28} className="text-neutral-500" />
       ) : (
         <span className="text-neutral-300 font-medium">
           {username[0]?.toUpperCase() ?? "?"}

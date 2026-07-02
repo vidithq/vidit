@@ -90,7 +90,7 @@ export default function RegisterForm({
           </div>
         )}
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="invite_code" className={FORM_LABEL_COMPACT}>
             Invite code
           </label>
@@ -105,13 +105,13 @@ export default function RegisterForm({
             placeholder="Paste your invite code"
           />
           {inviteCodeLocked && (
-            <p className="text-[10px] text-neutral-500 mt-1">
+            <p className="text-[10px] text-neutral-500">
               From your invite link
             </p>
           )}
         </div>
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="username" className={FORM_LABEL_COMPACT}>
             Username
           </label>
@@ -124,7 +124,7 @@ export default function RegisterForm({
           />
         </div>
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
@@ -137,7 +137,7 @@ export default function RegisterForm({
           />
         </div>
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             Password
           </label>

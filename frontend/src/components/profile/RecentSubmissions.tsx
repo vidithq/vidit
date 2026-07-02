@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -58,7 +59,6 @@ export function RecentSubmissions({
               author={{ username: profile.username }}
               detailHref={`/geolocations/${entry.id}`}
               title={entry.title}
-              titleText={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
               date={entry.event_date}
@@ -75,17 +75,15 @@ export function RecentSubmissions({
         // Own profile, nothing submitted yet — give the freshly-invited
         // analyst a clear next action instead of dead-ending on an italic
         // sentence.
-        <div className="py-4 text-center space-y-3">
-          <p className="text-sm text-neutral-400">
-            No geolocations submitted yet.
-          </p>
-          <Link
-            href="/submit"
-            className={`inline-block text-xs ${TEXT_LINK}`}
-          >
-            Submit your first geolocation →
-          </Link>
-        </div>
+        <EmptyState
+          variant="plain"
+          lead="No geolocations submitted yet."
+          cta={
+            <Link href="/submit" className={`text-xs ${TEXT_LINK}`}>
+              Submit your first geolocation →
+            </Link>
+          }
+        />
       ) : (
         <p className="text-xs text-neutral-500 italic">Nothing yet.</p>
       )}

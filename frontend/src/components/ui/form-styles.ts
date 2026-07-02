@@ -6,14 +6,20 @@
 // Separate from `styles.ts` (the colour-only palette source) on purpose: form
 // widgets' identity *is* their shape (padding/sizing), so it lives here.
 
+// The bare 11px uppercase label text, for block-level hosts that can't take
+// `block` themselves (a table head row, an inline heading div). FORM_LABEL is
+// this plus `block`, for `<label>` elements.
+export const LABEL_TEXT = "text-[11px] uppercase tracking-wider text-neutral-500";
+
 // Standard form label — uppercase eyebrow above the input. `block` so the
 // input drops below; no `mb-` — the surrounding stack owns vertical rhythm.
-export const FORM_LABEL =
-  "block text-[11px] uppercase tracking-wider text-neutral-500";
+export const FORM_LABEL = `block ${LABEL_TEXT}`;
 
-// Compact label — built-in `mb-1` for the tighter auth-card rhythm.
+// Compact label: one size step down for the denser auth-card fields. No
+// baked-in margin (like FORM_LABEL, the surrounding stack owns vertical
+// rhythm), so its wrappers carry `space-y-1`.
 export const FORM_LABEL_COMPACT =
-  "block text-[10px] uppercase tracking-wider text-neutral-500 mb-1";
+  "block text-[10px] uppercase tracking-wider text-neutral-500";
 
 // Red outline for a field / section flagged by `IncompleteFormNotice`. The `!`
 // overrides the element's own `border-*` (inputs and section cards already carry
@@ -30,6 +36,7 @@ export const FORM_ERROR_BANNER =
 // Positive confirmation banner. Orange, not green (see design.md's palette: a
 // "success" green next to red destructive actions reads wrong, so the app stays
 // in the orange family). Covers success + info notices (password updated, reset
-// confirmation). Sibling to the FORM_ERROR_BANNER family.
+// confirmation). Same shape as FORM_ERROR_BANNER, which it replaces in the same
+// slot of the same forms, so the box must not shrink when the action succeeds.
 export const FORM_SUCCESS_BANNER =
-  "bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs";
+  "bg-orange-500/15 border border-orange-500/30 text-orange-200 px-4 py-3 rounded-md text-sm";

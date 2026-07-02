@@ -1,18 +1,17 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 import type { GeolocationDetail } from "@/types";
 import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
-import { displayUrlsFor } from "@/lib/mediaUrls";
 import { sourceIsSynthetic } from "@/lib/geolocations";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
-import TrustBadge from "@/components/profile/TrustBadge";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { Pill } from "@/components/ui/Pill";
@@ -55,47 +54,6 @@ export function GeolocationDetailBody({
 }
 
 function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean }) {
-  const itemHeight = compact ? "h-40" : "h-48";
-  const items = geo.media.map((m) => (
-    <div
-      key={m.id}
-      className={`relative ${itemHeight} rounded-lg overflow-hidden border border-neutral-700${
-        compact ? "" : " bg-neutral-900"
-      }`}
-    >
-      {m.media_type === "image" ? (
-        // Resolution per surface. The panel (~380 CSS px) is the most-fetched
-        // surface — every map popup — so ``thumbnail`` (max-dim 400) avoids
-        // bleeding bandwidth. Detail-page cards (~384 CSS px) use ``hero``
-        // (max-dim 1280) to stay sharp at 2x DPI without the original's
-        // multi-megabyte payload.
-        <Image
-          src={compact ? displayUrlsFor(m).thumbnail : displayUrlsFor(m).hero}
-          alt={geo.title}
-          fill
-          sizes={compact ? "380px" : "(min-width: 768px) 384px, 100vw"}
-          className="object-cover"
-        />
-      ) : (
-        <video
-          src={m.storage_url}
-          controls
-          className={`w-full ${itemHeight} object-cover`}
-        />
-      )}
-    </div>
-  ));
-
-  const empty = (
-    <div
-      className={`rounded-lg border border-neutral-700 bg-neutral-800 ${itemHeight} flex items-center justify-center`}
-    >
-      <span className={`${compact ? "text-xs" : "text-sm"} text-neutral-500`}>
-        No media available
-      </span>
-    </div>
-  );
-
   if (compact) {
     return (
       <div className="space-y-2">
@@ -105,18 +63,14 @@ function MediaBlock({ geo, compact }: { geo: GeolocationDetail; compact: boolean
           title="Source media"
           concept="source_media"
         />
-        {geo.media.length > 0 ? items : empty}
+        <MediaGallery media={geo.media} alt={geo.title} variant="panel" />
       </div>
     );
   }
   return (
     <div>
       <SectionEyebrow title="Source media" concept="source_media" />
-      {geo.media.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
-      ) : (
-        empty
-      )}
+      <MediaGallery media={geo.media} alt={geo.title} />
     </div>
   );
 }
@@ -209,19 +163,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       )}
       {!compact && (
         <DetailRow label="Author" compact={compact}>
-          <span className="text-sm inline-flex items-center gap-1.5">
-            <Link
-              href={`/profile/${geo.author.username}`}
-              className={`${TEXT_LINK} transition-colors`}
-            >
-              {geo.author.username}
-            </Link>
-            <TrustBadge
-              isTrusted={geo.author.is_trusted}
-              trustReason={geo.author.trust_reason}
-              size={14}
-            />
-          </span>
+          <AuthorByline author={geo.author} prefix={false} className="text-sm" />
         </DetailRow>
       )}
     </>

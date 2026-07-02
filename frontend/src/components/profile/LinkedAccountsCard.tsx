@@ -6,7 +6,7 @@ import { resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { LinkRow } from "@/components/ui/LinkRow";
 import type { ProfileEditState } from "./useProfileEdit";
 
@@ -47,7 +47,7 @@ export function LinkedAccountsCard({
                 <div className="flex-1 min-w-0">
                   <label
                     htmlFor={`link-${p.key}`}
-                    className={FORM_LABEL_COMPACT}
+                    className={FORM_LABEL}
                   >
                     {p.label}
                   </label>

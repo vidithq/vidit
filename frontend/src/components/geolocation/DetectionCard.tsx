@@ -15,7 +15,6 @@ export default function DetectionCard({ geo }: { geo: GeolocationDetail }) {
       variant="compact"
       detailHref={`/geolocations/${geo.id}/edit`}
       title={geo.title}
-      titleText={geo.title}
       author={geo.author}
       badge={<StatusBadge status={geo.status} />}
       media={geo.media[0]}

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import DetectionCard from "@/components/geolocation/DetectionCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -46,27 +47,23 @@ export default function DetectionsPage() {
     listBody = <p className="text-sm text-neutral-500">Loading…</p>;
   } else if (data.items.length === 0) {
     listBody = (
-      <div className="py-8 text-center space-y-3">
-        <p className="text-sm text-neutral-400">No detections to submit.</p>
-        <p className="text-xs text-neutral-500">
-          New detections land here after you import your archive or tag the bot
-          on a geolocation tweet.
-        </p>
-        <div className="flex flex-col items-center gap-2 pt-1">
-          <Link
-            href="/submit?import=1"
-            className={buttonClasses("primary")}
-          >
-            Import your work
-          </Link>
-          <Link
-            href={`/profile/${username}`}
-            className={`text-xs ${TEXT_LINK}`}
-          >
-            Back to profile
-          </Link>
-        </div>
-      </div>
+      <EmptyState
+        variant="plain"
+        lead="No detections to submit."
+        cta={
+          <>
+            <Link href="/submit?import=1" className={buttonClasses("primary")}>
+              Import your work
+            </Link>
+            <Link href={`/profile/${username}`} className={`text-xs ${TEXT_LINK}`}>
+              Back to profile
+            </Link>
+          </>
+        }
+      >
+        New detections land here after you import your archive or tag the bot
+        on a geolocation tweet.
+      </EmptyState>
     );
   } else {
     const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
