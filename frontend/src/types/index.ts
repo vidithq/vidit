@@ -42,18 +42,22 @@ export interface Tag {
   category: TagCategory;
 }
 
-/** Lifecycle status. ``submitted`` = a person submitted it (the norm: via the
- *  form, or by submitting a reviewed detection; not an independent-verification
- *  claim); ``detected`` = machine output, rendered marked everywhere until its
- *  owner submits it. */
+/** The unified 4-value event lifecycle: ``requested`` (an open call to
+ *  geolocate, the requested/bounty view) → ``detected`` (machine output,
+ *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
+ *  person vouched for it: via the form, or by submitting a reviewed detection;
+ *  not an independent-verification claim, frozen) → ``closed`` (a withdrawn
+ *  request). */
 export type GeolocationStatus = components["schemas"]["GeolocationRead"]["status"];
 
 interface GeolocationListItem {
   id: string;
   title: string;
-  lat: number;
-  lng: number;
-  event_date: string;
+  /** Optional: a ``requested`` event has no coordinates yet, and a ``detected``
+   *  draft may be locationless. Present for every ``geolocated`` row. */
+  lat: number | null;
+  lng: number | null;
+  event_date: string | null;
   is_demo: boolean;
   status: GeolocationStatus;
   author: Author;
@@ -65,7 +69,8 @@ interface GeolocationListItem {
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings,
  *  the timeline scrubbers bucket them for the histograms and filter their
  *  windows client-side. ``detected`` is 1 for a machine detection (marked on
- *  the map), 0 for a submitted row. */
+ *  the map), 0 for a geolocated row. The endpoint only returns located rows, so
+ *  every point has coordinates. */
 export type MapPoint = [string, number, number, string, string, 0 | 1];
 
 /**
@@ -145,7 +150,7 @@ export interface PossibleDuplicate {
   title: string;
   lat: number;
   lng: number;
-  event_date: string;
+  event_date: string | null;
   source_url: string;
   /** Geodesic distance in metres from the proposed coordinates. */
   distance_m: number;
@@ -184,16 +189,15 @@ export interface GeolocationDetail extends GeolocationListItem {
   created_at: string;
   updated_at: string;
   media: Media[];
-  /** Set when promoted from a bounty — lets the detail page render
-   *  "originally posted as a bounty by @x". */
-  originated_from_bounty: {
-    id: string;
-    title: string;
-    author: Author;
-  } | null;
+  /** Who opened the request this event was fulfilled from, preserved across
+   *  fulfilment — lets the detail page render "originally requested by @x". Null
+   *  for a directly-submitted geolocation (no request preceded it). */
+  requested_by: Author | null;
 }
 
-export type BountyStatus = components["schemas"]["BountyRead"]["status"];
+/** The requested-view (bounty) shares the one unified lifecycle enum; a
+ *  requested row is ``requested`` or (once withdrawn) ``closed``. */
+export type BountyStatus = GeolocationStatus;
 
 export interface BountyListItem {
   id: string;
@@ -238,7 +242,6 @@ export interface BountyDetail {
   tags: Tag[];
   /** Full list of analysts currently signaling on this bounty. */
   claimers: Author[];
-  fulfilled_by: { id: string; title: string } | null;
 }
 
 export type SearchType = "all" | "geolocation" | "bounty" | "user";
@@ -257,7 +260,7 @@ export interface SearchGeolocationHit {
   title_highlight: string;
   lat: number;
   lng: number;
-  event_date: string;
+  event_date: string | null;
   is_demo: boolean;
   status: GeolocationStatus;
   author: Author;

@@ -36,7 +36,6 @@ import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
-import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import {
   TEXT_LINK,
   TAPPABLE_HOVER,
@@ -109,7 +108,7 @@ const MOCK_DETAIL: GeolocationDetail = {
   lng: 37.8024,
   event_date: "2026-05-09",
   is_demo: true,
-  status: "submitted",
+  status: "geolocated",
   author: {
     id: "a1",
     username: "analyst",
@@ -130,7 +129,7 @@ const MOCK_DETAIL: GeolocationDetail = {
   created_at: "2026-06-01T00:00:00Z",
   updated_at: "2026-06-01T00:00:00Z",
   media: [],
-  originated_from_bounty: null,
+  requested_by: null,
 };
 
 // The lighter geolocation-card payload (timeline / recent-submissions shape).
@@ -307,15 +306,11 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<StatusBadge>" usage="A <Pill> consumer: maps the geoloc status to a tone + icon + label. Cards, detail, detections queue.">
+          <Item name="<StatusBadge>" usage="A <Pill> consumer: maps the unified event status (requested / detected / geolocated / closed) to a tone + icon + label. Cards, both detail pages, search, detections queue.">
+            <StatusBadge status="requested" />
             <StatusBadge status="detected" />
-            <StatusBadge status="submitted" />
-          </Item>
-
-          <Item name="<BountyStatusBadge>" usage="A <Pill> consumer: bounty status via the accent / strong / neutral tones. List & detail.">
-            <BountyStatusBadge status="open" />
-            <BountyStatusBadge status="fulfilled" />
-            <BountyStatusBadge status="closed" />
+            <StatusBadge status="geolocated" />
+            <StatusBadge status="closed" />
           </Item>
         </section>
 
@@ -489,7 +484,7 @@ export default function PalettePage() {
             <div className="w-full max-w-md">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
-                  <StatusBadge status="submitted" />
+                  <StatusBadge status="geolocated" />
                 </DetailRow>
                 <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
@@ -586,7 +581,7 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/geolocations/demo"
                 title={MOCK_CARD_GEO.title}
-                badge={<StatusBadge status="submitted" />}
+                badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
@@ -601,7 +596,7 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/bounties/demo"
                 title="Footage wanted near Bakhmut"
-                badge={<BountyStatusBadge status="open" />}
+                badge={<StatusBadge status="requested" />}
                 author={{ username: "analyst" }}
                 date="2026-05-01"
                 source={{ url: "https://t.me/channel/4242", isDemo: false }}
@@ -619,8 +614,12 @@ export default function PalettePage() {
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.author.username }}
-                date={MOCK_DETAIL.event_date}
-                coords={{ lat: MOCK_DETAIL.lat, lng: MOCK_DETAIL.lng }}
+                date={MOCK_DETAIL.event_date ?? undefined}
+                coords={
+                  MOCK_DETAIL.lat != null && MOCK_DETAIL.lng != null
+                    ? { lat: MOCK_DETAIL.lat, lng: MOCK_DETAIL.lng }
+                    : null
+                }
                 tags={MOCK_DETAIL.tags}
               />
             </div>

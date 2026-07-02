@@ -43,37 +43,42 @@ export default function GeolocationPage() {
       }
     >
         <GeolocationDetailBody geo={geo} variant="page">
-          <div>
-            <SectionEyebrow title="Location" concept="section_location" />
-            {/* Map + coordinates are one module: the coords read as a Details-
-                style row fused to the bottom of the map (shared border, no gap),
-                mirroring the submit form's Location section. `overflow-hidden`
-                sits on the map alone (to clip its rounded top corners) — not the
-                whole module, which would clip the coordinate row's `?` tooltip. */}
-            <div className="rounded-lg border border-neutral-700">
-              <div className="h-64 overflow-hidden rounded-t-lg">
-                {/* Single-point map reads [id, lat, lng] + the detected flag
-                    (so the marker colours match the rest of the app); the two
-                    date slots are inert here, so pass empty strings. */}
-                <Map
-                  points={[
-                    [geo.id, geo.lat, geo.lng, "", "", geo.status === "detected" ? 1 : 0],
-                  ]}
-                  center={{ lat: geo.lat, lng: geo.lng }}
-                  zoom={12}
-                />
+          {/* A located row (``geolocated`` / ``detected`` with coords) gets the
+              Location module; a coordless event (a ``requested`` row served here
+              by id) has no point, so the block is omitted. */}
+          {geo.lat != null && geo.lng != null && (
+            <div>
+              <SectionEyebrow title="Location" concept="section_location" />
+              {/* Map + coordinates are one module: the coords read as a Details-
+                  style row fused to the bottom of the map (shared border, no gap),
+                  mirroring the submit form's Location section. `overflow-hidden`
+                  sits on the map alone (to clip its rounded top corners) — not the
+                  whole module, which would clip the coordinate row's `?` tooltip. */}
+              <div className="rounded-lg border border-neutral-700">
+                <div className="h-64 overflow-hidden rounded-t-lg">
+                  {/* Single-point map reads [id, lat, lng] + the detected flag
+                      (so the marker colours match the rest of the app); the two
+                      date slots are inert here, so pass empty strings. */}
+                  <Map
+                    points={[
+                      [geo.id, geo.lat, geo.lng, "", "", geo.status === "detected" ? 1 : 0],
+                    ]}
+                    center={{ lat: geo.lat, lng: geo.lng }}
+                    zoom={12}
+                  />
+                </div>
+                <DetailRow
+                  label="Coordinates"
+                  concept="coordinates"
+                  className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
+                >
+                  <span className="text-sm text-neutral-200 font-mono">
+                    {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+                  </span>
+                </DetailRow>
               </div>
-              <DetailRow
-                label="Coordinates"
-                concept="coordinates"
-                className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
-              >
-                <span className="text-sm text-neutral-200 font-mono">
-                  {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-                </span>
-              </DetailRow>
             </div>
-          </div>
+          )}
         </GeolocationDetailBody>
     </PageShell>
   );

@@ -12,11 +12,13 @@ import type { GeolocationStatus, Media } from "@/types";
 export interface RecentSubmission {
   id: string;
   title: string;
-  event_date: string;
+  /** Nullable: a coordless / undated event (a ``requested`` row) can surface
+   *  here. See ``GeolocationList``. */
+  event_date: string | null;
   is_demo: boolean;
   status: GeolocationStatus;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   /** The card thumbnail: the geolocation's first media row, or null. */
   media: Media | null;
   tags: { id: string; name: string; category: "conflict" | "free" }[];
@@ -61,7 +63,7 @@ export function RecentSubmissions({
               title={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
-              date={entry.event_date}
+              date={entry.event_date ?? undefined}
               coords={
                 typeof entry.lat === "number" && typeof entry.lng === "number"
                   ? { lat: entry.lat, lng: entry.lng }

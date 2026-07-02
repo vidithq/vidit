@@ -50,11 +50,11 @@ export const FIELD_HELP = {
     label: "What is the added date?",
   },
   status: {
-    text: "Submitted: a person submitted it (via the form, or by submitting a reviewed detection), not independently verified. Detected: machine output from a tweet, shown marked until its owner submits it.",
+    text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the author withdrew the request.",
     label: "What does the status mean?",
   },
   bounty_status: {
-    text: "Open: waiting for an analyst to geolocate it. Fulfilled: a geolocation was submitted and the bounty archived. Closed: the author withdrew it.",
+    text: "Requested: waiting for an analyst to geolocate it. Once someone does, it becomes a geolocation. Closed: the author withdrew it.",
     label: "What does the status mean?",
   },
   detected_from: {
@@ -84,7 +84,7 @@ export const FIELD_HELP = {
   },
   // Detection submit action, spelled out here.
   action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Submitted (a person stands behind it), frozen and no longer editable. Give it a full read first.",
+    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it), frozen and no longer editable. Give it a full read first.",
     label: "What does Submit do?",
   },
 } as const;

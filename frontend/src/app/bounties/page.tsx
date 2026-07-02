@@ -7,7 +7,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
 import type { BountyListItem, BountyStatus } from "@/types";
 import { EntityCard } from "@/components/ui/EntityCard";
-import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -16,11 +16,12 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 
-// Default filter "open": status pills no longer render on cards, so a
-// non-"open" default would hide which entries are still actionable.
+// The requested view exposes only ``requested`` (open) and ``closed``
+// (withdrawn); a fulfilled request becomes a ``geolocated`` event and leaves
+// this view. Default "requested" so the queue opens on the still-actionable
+// entries.
 const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
-  { value: "open", label: "Open" },
-  { value: "fulfilled", label: "Fulfilled" },
+  { value: "requested", label: "Open" },
   { value: "closed", label: "Closed" },
   { value: "all", label: "All" },
 ];
@@ -28,7 +29,7 @@ const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
 export default function BountiesPage() {
   const { user, loading } = useRequireAuth();
 
-  const [statusFilter, setStatusFilter] = useState<BountyStatus | "all">("open");
+  const [statusFilter, setStatusFilter] = useState<BountyStatus | "all">("requested");
   const { data: bounties, error } = useApiResource<BountyListItem[]>(
     user
       ? bountyListPath(statusFilter === "all" ? {} : { status: statusFilter })
@@ -39,12 +40,15 @@ export default function BountiesPage() {
     return <PageLoading />;
   }
 
+  // "requested" reads awkwardly as a count noun, so the open state shows as
+  // "open" in prose; the wire value stays ``requested``.
+  const filterWord = statusFilter === "requested" ? "open" : statusFilter;
   const countLabel =
     bounties === null
       ? null
       : statusFilter === "all"
         ? `${bounties.length} bounties`
-        : `${bounties.length} ${statusFilter}`;
+        : `${bounties.length} ${filterWord}`;
 
   return (
     <PageShell
@@ -85,7 +89,7 @@ export default function BountiesPage() {
 
         {!error && bounties !== null && bounties.length === 0 && (
           <EmptyState>
-            No {statusFilter === "all" ? "bounties" : `${statusFilter} bounties`} yet.
+            No {statusFilter === "all" ? "bounties" : `${filterWord} bounties`} yet.
             {statusFilter === "all" && (
               <>
                 {" "}
@@ -116,7 +120,7 @@ export default function BountiesPage() {
                   variant="compact"
                   detailHref={`/bounties/${b.id}`}
                   title={b.title}
-                  badge={<BountyStatusBadge status={b.status} />}
+                  badge={<StatusBadge status={b.status} />}
                   media={b.media[0]}
                   author={b.author}
                   date={b.created_at}

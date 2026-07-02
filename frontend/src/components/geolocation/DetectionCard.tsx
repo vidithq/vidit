@@ -18,8 +18,12 @@ export default function DetectionCard({ geo }: { geo: GeolocationDetail }) {
       author={geo.author}
       badge={<StatusBadge status={geo.status} />}
       media={geo.media[0]}
-      date={geo.event_date}
-      coords={{ lat: geo.lat, lng: geo.lng }}
+      date={geo.event_date ?? undefined}
+      coords={
+        geo.lat != null && geo.lng != null
+          ? { lat: geo.lat, lng: geo.lng }
+          : null
+      }
       source={
         geo.detected_from_url
           ? { url: geo.detected_from_url, isDemo: sourceIsSynthetic(geo) }

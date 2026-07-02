@@ -105,7 +105,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
         label="Event date"
         concept="event_date"
         compact={compact}
-        value={formatEventDate(geo.event_date, geo.event_time)}
+        value={
+          geo.event_date ? formatEventDate(geo.event_date, geo.event_time) : "—"
+        }
       />
       <DetailRow
         label="Source posted"
@@ -149,15 +151,17 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       {tagRow("Conflict", conflictTags, "conflict")}
       {tagRow("Capture source", captureTags, "capture_source")}
       {tagRow("Tags", freeTags)}
-      {/* Compact panel omits bounty-trace + author rows: the author is in
-          the panel header, the trace belongs to the full page. */}
-      {!compact && geo.originated_from_bounty && (
-        <DetailRow label="Bounty" compact={compact}>
+      {/* Compact panel omits requested-by + author rows: the author is in
+          the panel header, the trace belongs to the full page. Since the merge,
+          fulfilment is a lifecycle move on this same row, so the trace is who
+          opened the request (``requested_by``), not a link to a separate bounty. */}
+      {!compact && geo.requested_by && (
+        <DetailRow label="Requested by" compact={compact}>
           <Link
-            href={`/bounties/${geo.originated_from_bounty.id}`}
+            href={`/profile/${geo.requested_by.username}`}
             className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
           >
-            {geo.originated_from_bounty.title}
+            @{geo.requested_by.username}
           </Link>
         </DetailRow>
       )}
@@ -189,7 +193,9 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
             className="text-sm"
           >
             <span className="text-neutral-200 font-mono text-xs">
-              {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+              {geo.lat != null && geo.lng != null
+                ? `${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}`
+                : "—"}
             </span>
           </DetailRow>
         </div>

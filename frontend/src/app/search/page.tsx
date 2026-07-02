@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Search as SearchIcon } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
-import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
@@ -226,7 +225,7 @@ function SearchPageBody() {
                     detailHref={`/bounties/${b.id}`}
                     title={<Highlighted value={b.title_highlight} />}
                     titleText={b.title}
-                    badge={<BountyStatusBadge status={b.status} />}
+                    badge={<StatusBadge status={b.status} />}
                     media={b.media[0]}
                     author={b.author}
                     source={{ url: b.source_url, isDemo: b.is_demo }}
@@ -303,7 +302,7 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
       author={hit.author}
-      date={hit.event_date}
+      date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}
     />

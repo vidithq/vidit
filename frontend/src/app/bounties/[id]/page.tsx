@@ -21,7 +21,7 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -83,7 +83,7 @@ export default function BountyDetailPage() {
 
   const isAuthor = user?.id === bounty.author.id;
   const isClaimedByMe = !!user && bounty.claimers.some((c) => c.id === user.id);
-  const canGeolocate = bounty.status === "open";
+  const canGeolocate = bounty.status === "requested";
 
   // Curated tags get their own labelled rows (like a geolocation's detail) so
   // conflict / capture source read as structured facts, not free-form chips.
@@ -140,7 +140,7 @@ export default function BountyDetailPage() {
           <SectionEyebrow title="Details" />
           <DetailCard>
             <DetailRow label="Status" concept="bounty_status" align="center">
-              <BountyStatusBadge status={bounty.status} />
+              <StatusBadge status={bounty.status} />
             </DetailRow>
             {/* The dates read as one block — event → source → posted. */}
             {bounty.event_date && (
@@ -172,7 +172,7 @@ export default function BountyDetailPage() {
             {tagRow("Conflict", conflictTags, "conflict")}
             {tagRow("Capture source", captureTags, "capture_source")}
             {tagRow("Tags", freeTags)}
-            {bounty.status === "open" && (
+            {bounty.status === "requested" && (
               <DetailRow label="Working on" align="start">
                 {bounty.claimers.length > 0 ? (
                   <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
@@ -191,21 +191,8 @@ export default function BountyDetailPage() {
                 )}
               </DetailRow>
             )}
-            {bounty.fulfilled_by && (
-              <DetailRow label="Fulfilled by">
-                <Link
-                  href={`/geolocations/${bounty.fulfilled_by.id}`}
-                  className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
-                >
-                  {bounty.fulfilled_by.title}
-                </Link>
-              </DetailRow>
-            )}
             {bounty.closed_at && (
-              <DetailRow
-                label={bounty.status === "fulfilled" ? "Fulfilled" : "Closed"}
-                value={formatDate(bounty.closed_at)}
-              />
+              <DetailRow label="Closed" value={formatDate(bounty.closed_at)} />
             )}
           </DetailCard>
         </div>
@@ -243,7 +230,7 @@ export default function BountyDetailPage() {
           </div>
         )}
 
-        {isAuthor && bounty.status === "open" && (
+        {isAuthor && bounty.status === "requested" && (
           <div className="pt-4 border-t border-neutral-800 flex items-center gap-4">
             <Button variant="ghost" onClick={handleClose} disabled={actionPending}>
               Close this bounty

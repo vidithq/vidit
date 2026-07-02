@@ -498,9 +498,9 @@ export interface paths {
         put?: never;
         /**
          * Create Bounty
-         * @description Post a bounty. At least one media file is required — the platform
-         *     treats bounties as "unfinished geolocations", so the evidence the
-         *     poster has must be on the row from the start.
+         * @description Post a bounty (a ``requested`` event). At least one media file is
+         *     required — the platform treats bounties as "unfinished geolocations", so
+         *     the evidence the poster has must be on the row from the start.
          *
          *     Parses the multipart form into clean Python types; business rules + IO
          *     live in ``services/bounties.create_with_evidence``.
@@ -525,10 +525,10 @@ export interface paths {
         post?: never;
         /**
          * Delete Bounty
-         * @description Hard-delete by the author. Cascades drop ``bounty_tags``,
-         *     ``bounty_claims`` and ``media`` rows; the S3 objects are swept after
-         *     the commit lands. Admin soft-delete lives behind the admin router
-         *     and stamps ``deleted_at`` instead.
+         * @description Hard-delete by the author. Cascades drop ``geolocation_tags``,
+         *     ``geolocation_claims`` and ``media`` rows; the S3 objects are swept after
+         *     the commit lands. Admin soft-delete lives behind the admin router and
+         *     stamps ``deleted_at`` instead.
          */
         delete: operations["delete_bounty_api_v1_bounties__bounty_id__delete"];
         options?: never;
@@ -548,8 +548,8 @@ export interface paths {
         /**
          * Claim Bounty
          * @description Signal "I'm working on this". Idempotent — re-claiming is a 204
-         *     no-op, not a 409. Only open bounties accept new claims; once a
-         *     bounty is fulfilled or closed, claiming is rejected with 409.
+         *     no-op, not a 409. Only open requests accept new claims; once a request
+         *     is closed, claiming is rejected with 409.
          */
         post: operations["claim_bounty_api_v1_bounties__bounty_id__claim_post"];
         /**
@@ -575,12 +575,11 @@ export interface paths {
         put?: never;
         /**
          * Close Bounty
-         * @description Author withdraws the bounty without anyone geolocating it.
+         * @description Author withdraws the request without anyone geolocating it.
          *
-         *     Only the author can close. Fulfilled bounties can't be re-closed
-         *     (terminal state). Closed bounties are still readable — they live
-         *     on as an audit row showing the queue tried but didn't produce a
-         *     geolocation.
+         *     Only the author can close. Already-closed requests can't be re-closed
+         *     (terminal state). Closed requests are still readable — they live on as an
+         *     audit row showing the queue tried but didn't produce a geolocation.
          */
         post: operations["close_bounty_api_v1_bounties__bounty_id__close_post"];
         delete?: never;
@@ -620,14 +619,11 @@ export interface paths {
          *
          *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
-         *     ``detected`` row becomes ``submitted`` over time. Returns full
+         *     ``detected`` row becomes ``geolocated`` over time. Returns full
          *     ``GeolocationRead`` (media + tags) so the queue shows the evidence and the
          *     frontend computes submit-readiness (>=1 media + a ``conflict`` + a
-         *     ``capture_source`` tag) with no per-row round-trip. A ``detected`` row never
-         *     originates from a bounty (fulfilments are born ``submitted``), so
-         *     ``originated_from_bounty`` is always null here, passed as such to skip the
-         *     join. Ordered by ``created_at`` desc: the latest import is the first thing to
-         *     triage.
+         *     ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
+         *     desc: the latest import is the first thing to triage.
          */
         get: operations["list_detections_api_v1_geolocations_detections_get"];
         put?: never;
@@ -733,7 +729,7 @@ export interface paths {
          *     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
          *     scrubbers and filters the windows client-side (no refetch per drag).
          *     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-         *     submitted row, a flag, not the state string, to keep the payload small.
+         *     geolocated row, a flag, not the state string, to keep the payload small.
          *     Cached in-memory for 60s per unique filter combination.
          */
         get: operations["list_points_api_v1_geolocations_points_get"];
@@ -845,7 +841,7 @@ export interface paths {
          *
          *     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
          *     distinct from the hard ``DELETE`` that removes a row for good. Off
-         *     ``detected`` → 409 (a ``submitted`` row goes through ``DELETE``).
+         *     ``detected`` → 409 (a ``geolocated`` row goes through ``DELETE``).
          *     Soft-deleted → 404.
          */
         post: operations["reject_geolocation_api_v1_geolocations__geolocation_id__reject_post"];
@@ -866,16 +862,18 @@ export interface paths {
         put?: never;
         /**
          * Submit Geolocation
-         * @description Submit a ``detected`` geolocation (owner flow): ``detected → submitted``.
+         * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
          *
-         *     A ``detected`` row is immutable machine output; this is the only write to it.
-         *     The owner posts the whole form (title, coordinate, source URL, dates, proof,
-         *     tags, and the source media: ``files`` added, ``remove_media_ids`` dropped),
-         *     and on success the row is written and frozen as ``submitted``. Only
-         *     ``detected_from_url`` (provenance) and ``status`` carry no field. Blocked until
-         *     the evidence floor is met (at least one media and the ``conflict`` +
-         *     ``capture_source`` tags, 400 otherwise). Off ``detected`` → 409. Soft-deleted
-         *     rows read as 404.
+         *     The one generalized fulfil / submit transition. The caller posts the whole
+         *     form (title, coordinate, source URL, dates, proof, tags, and the source
+         *     media: ``files`` added, ``remove_media_ids`` dropped), and on success the row
+         *     is written and frozen as ``geolocated``. Only ``detected_from_url``
+         *     (provenance) and ``status`` carry no field. A ``detected`` draft is owner-only
+         *     (403 otherwise); a ``requested`` event is answerable by anyone, and the
+         *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
+         *     Blocked until the evidence floor is met (at least one media and the
+         *     ``conflict`` + ``capture_source`` tags, 400 otherwise). Off ``requested`` /
+         *     ``detected`` → 409. Soft-deleted rows read as 404.
          */
         post: operations["submit_geolocation_api_v1_geolocations__geolocation_id__submit_post"];
         delete?: never;
@@ -1271,11 +1269,6 @@ export interface components {
          */
         AdminUserDeleteResponse: {
             /**
-             * Cascaded Bounties
-             * @default 0
-             */
-            cascaded_bounties: number;
-            /**
              * Cascaded Geolocations
              * @default 0
              */
@@ -1408,8 +1401,6 @@ export interface components {
         };
         /** Body_create_geolocation_api_v1_geolocations_post */
         Body_create_geolocation_api_v1_geolocations_post: {
-            /** Bounty Id */
-            bounty_id?: string | null;
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1493,13 +1484,21 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "fulfilled" | "closed";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
             title: string;
         };
-        /** BountyRead */
+        /**
+         * BountyRead
+         * @description The requested-events view over the unified ``Geolocation`` model.
+         *
+         *     A bounty is a ``Geolocation`` with ``status='requested'`` (an open call to
+         *     geolocate) that may later become ``closed`` when the author withdraws it.
+         *     Since the merge, fulfilment is a lifecycle move on this same row rather than
+         *     a copy into a new geolocation, so there is no ``fulfilled_by`` trace.
+         */
         BountyRead: {
             author: components["schemas"]["AuthorRef"];
             /** Claimers */
@@ -1515,7 +1514,6 @@ export interface components {
             event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
-            fulfilled_by: components["schemas"]["_FulfilledByNested"] | null;
             /**
              * Id
              * Format: uuid
@@ -1540,7 +1538,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "fulfilled" | "closed";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1633,11 +1631,8 @@ export interface components {
         /** GeolocationList */
         GeolocationList: {
             author: components["schemas"]["AuthorRef"];
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
+            /** Event Date */
+            event_date?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1646,15 +1641,15 @@ export interface components {
             /** Is Demo */
             is_demo: boolean;
             /** Lat */
-            lat: number;
+            lat?: number | null;
             /** Lng */
-            lng: number;
+            lng?: number | null;
             media: components["schemas"]["MediaRead"] | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "submitted" | "detected";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1672,11 +1667,8 @@ export interface components {
             detected_from_url?: string | null;
             /** Detected Post At */
             detected_post_at?: string | null;
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
+            /** Event Date */
+            event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
             /**
@@ -1687,16 +1679,16 @@ export interface components {
             /** Is Demo */
             is_demo: boolean;
             /** Lat */
-            lat: number;
+            lat?: number | null;
             /** Lng */
-            lng: number;
+            lng?: number | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
-            originated_from_bounty?: components["schemas"]["_OriginatedFromBountyNested"] | null;
             /** Proof */
             proof: {
                 [key: string]: unknown;
             } | null;
+            requested_by?: components["schemas"]["AuthorRef"] | null;
             /**
              * Source Posted At
              * Format: date-time
@@ -1708,7 +1700,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "submitted" | "detected";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1803,11 +1795,8 @@ export interface components {
             author: components["schemas"]["AuthorRef"];
             /** Distance M */
             distance_m: number;
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
+            /** Event Date */
+            event_date?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1902,7 +1891,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "fulfilled" | "closed";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -1913,11 +1902,8 @@ export interface components {
         /** SearchGeolocationHit */
         SearchGeolocationHit: {
             author: components["schemas"]["AuthorRef"];
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
+            /** Event Date */
+            event_date?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1933,7 +1919,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "submitted" | "detected";
+            status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -2204,33 +2190,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-        };
-        /** _FulfilledByNested */
-        _FulfilledByNested: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Title */
-            title: string;
-        };
-        /**
-         * _OriginatedFromBountyNested
-         * @description Compact bounty trace surfaced on the geolocation detail.
-         *
-         *     Enough to render "originally posted as a bounty by @x" with a click-through;
-         *     the full bounty row is one extra fetch when the reader wants it.
-         */
-        _OriginatedFromBountyNested: {
-            author: components["schemas"]["AuthorRef"];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Title */
-            title: string;
         };
     };
     responses: never;
