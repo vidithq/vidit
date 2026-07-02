@@ -4,13 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import type { GeolocationStatus } from "@/types";
-
-// Ghost orange, icon-only — mirrors the sidebar's icon shortcuts (square,
-// hover-bg) so share reads as a light affordance, not a primary CTA competing
-// with the content. The label lives in an sr-only span (+ a hover title), so
-// the buttons stay compact without losing their accessible name.
-const SHARE_BUTTON =
-  "inline-flex items-center justify-center size-8 rounded-md text-orange-400 hover:text-orange-300 hover:bg-neutral-800 transition-colors";
+import { Button } from "@/components/ui/Button";
 
 interface ShareButtonsProps {
   id: string;
@@ -134,10 +128,11 @@ export default function ShareButtons({
           {armed === "copy" ? "copy" : "share"}.
         </span>
       )}
-      <button
-        type="button"
+      <Button
+        icon
+        variant="ghost"
         onClick={onCopy}
-        className={`${SHARE_BUTTON}${armed === "copy" ? " bg-neutral-800 ring-1 ring-neutral-500" : ""}`}
+        className={armed === "copy" ? "bg-neutral-800 ring-1 ring-neutral-500" : ""}
         title={
           armed === "copy"
             ? "Click again to copy this draft link"
@@ -156,18 +151,19 @@ export default function ShareButtons({
               ? "Click again to copy draft"
               : "Copy link"}
         </span>
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        icon
+        variant="ghost"
         onClick={onShareX}
-        className={`${SHARE_BUTTON}${armed === "share" ? " bg-neutral-800 ring-1 ring-neutral-500" : ""}`}
+        className={armed === "share" ? "bg-neutral-800 ring-1 ring-neutral-500" : ""}
         title={armed === "share" ? "Click again to share this draft" : "Share on X"}
       >
         <XLogo size={14} />
         <span className="sr-only">
           {armed === "share" ? "Click again to share draft" : "Share on X"}
         </span>
-      </button>
+      </Button>
     </div>
   );
 }

@@ -32,6 +32,21 @@ function resolveBuildVersion() {
 
 const buildVersion = resolveBuildVersion();
 
+/**
+ * True when the backend this build talks to is local, i.e. when the
+ * `localhost:8000` remotePattern below is the live media host. Next loads the
+ * `.env*` files before evaluating this config, so NEXT_PUBLIC_API_URL is
+ * already set here.
+ */
+function apiIsLocal() {
+  try {
+    const host = new URL(process.env.NEXT_PUBLIC_API_URL ?? "").hostname;
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
@@ -83,6 +98,14 @@ const nextConfig = {
       { protocol: "https", hostname: "d10w3bld05vsky.cloudfront.net" },
       { protocol: "http", hostname: "localhost", port: "8000" },
     ],
+    // Next 16's optimizer resolves each upstream host and refuses to fetch when
+    // it lands on a private / loopback IP (an SSRF guard), which returns 400 for
+    // the `localhost:8000` dev-media host above even though it matches a
+    // remotePattern. Re-allow local IPs exactly when the backend is local
+    // (keyed off the API host, not NODE_ENV, so a local `next start` still gets
+    // its images); against a deployed backend media is the public CloudFront
+    // host and the guard stays on where it matters.
+    dangerouslyAllowLocalIP: apiIsLocal(),
   },
 };
 

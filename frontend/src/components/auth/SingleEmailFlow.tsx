@@ -3,12 +3,12 @@
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 interface SingleEmailFlowProps {
   /** POST target; receives `{ email }` (trimmed). */
@@ -70,32 +70,32 @@ export function SingleEmailFlow({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {errorMessage && (
-        <div className={FORM_ERROR_BANNER_COMPACT}>{errorMessage}</div>
+        <div className={FORM_ERROR_BANNER}>{errorMessage}</div>
       )}
 
       <div>
         <label htmlFor="email" className={FORM_LABEL_COMPACT}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           required
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={FORM_INPUT}
           placeholder={placeholder}
         />
       </div>
 
-      <button
+      <Button
+        variant="primary"
+        fullWidth
         type="submit"
         disabled={sending}
-        className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
       >
         {sending ? "Sending..." : submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }

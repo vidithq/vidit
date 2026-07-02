@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 import type { GeolocationDetail } from "@/types";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
@@ -24,13 +26,15 @@ interface DetailSidePanelProps {
 export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelProps) {
   return (
     <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
-      <button
+      <Button
+        icon
+        variant="ghost"
         onClick={onClose}
         aria-label="Close detail panel"
-        className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-300 text-lg z-10"
+        className="absolute top-3 right-3 z-10 text-lg"
       >
         &times;
-      </button>
+      </Button>
 
       {loading || !detail ? (
         <div className="flex items-center justify-center h-full">
@@ -47,7 +51,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
                 by{" "}
                 <Link
                   href={`/profile/${detail.author.username}`}
-                  className="text-orange-400 hover:underline transition-colors"
+                  className={`${TEXT_LINK} transition-colors`}
                 >
                   {detail.author.username}
                 </Link>

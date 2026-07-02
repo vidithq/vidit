@@ -2,12 +2,12 @@
 
 import { useState, type ReactNode } from "react";
 
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import {
-  FORM_INPUT_COMPACT,
-  FORM_LABEL,
-} from "@/components/ui/form-styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 interface SeedWipePanelProps<S, W> {
   title: string;
@@ -41,7 +41,6 @@ export function SeedWipePanel<S, W>({
   renderWipeSummary,
 }: SeedWipePanelProps<S, W>) {
   const [count, setCount] = useState(defaultCount);
-  const [confirmWipe, setConfirmWipe] = useState(false);
   const [lastSeed, setLastSeed] = useState<S | null>(null);
   const [lastWipe, setLastWipe] = useState<W | null>(null);
 
@@ -54,6 +53,14 @@ export function SeedWipePanel<S, W>({
     onSuccess: setLastWipe,
   });
 
+  const confirmWipe = useConfirmAction(
+    () => {
+      seedMutation.reset();
+      void wipeMutation.run();
+    },
+    { timeoutMs: 3000 }
+  );
+
   const seeding = seedMutation.loading;
   const wiping = wipeMutation.loading;
   // One shared error slot, cleared whenever the other action fires (mirrors
@@ -65,21 +72,10 @@ export function SeedWipePanel<S, W>({
     void seedMutation.run(count);
   };
 
-  const onWipe = () => {
-    if (!confirmWipe) {
-      setConfirmWipe(true);
-      window.setTimeout(() => setConfirmWipe(false), 3000);
-      return;
-    }
-    setConfirmWipe(false);
-    seedMutation.reset();
-    void wipeMutation.run();
-  };
-
   return (
     <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
       <header className="px-4 py-3 border-b border-neutral-800">
-        <h2 className="text-sm font-medium text-neutral-200">{title}</h2>
+        <SectionEyebrow title={title} margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">{description}</p>
       </header>
       <div className="px-4 py-3 space-y-3">
@@ -88,7 +84,8 @@ export function SeedWipePanel<S, W>({
             <label className={FORM_LABEL} htmlFor={countInputId}>
               Count
             </label>
-            <input
+            <Input
+              variant="compact"
               id={countInputId}
               type="number"
               min={1}
@@ -99,33 +96,23 @@ export function SeedWipePanel<S, W>({
                   Math.max(1, Math.min(maxCount, Number(e.target.value) || 1))
                 )
               }
-              className={FORM_INPUT_COMPACT}
             />
           </div>
-          <button
-            type="button"
-            onClick={onSeed}
-            disabled={seeding}
-            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
-          >
+          <Button variant="primary" onClick={onSeed} disabled={seeding}>
             {seeding ? "Generating…" : seedLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onWipe}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={confirmWipe.trigger}
             disabled={wiping}
-            className={`px-3 py-1.5 rounded-md text-sm border transition-colors disabled:opacity-50 ${
-              confirmWipe
-                ? "border-red-500 bg-red-500/30 text-red-200"
-                : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
-            }`}
+            className={confirmWipe.armed ? DANGER_CONFIRM : ""}
           >
             {wiping
               ? "Wiping…"
-              : confirmWipe
+              : confirmWipe.armed
                 ? "Click again to confirm"
                 : wipeLabel}
-          </button>
+          </Button>
         </div>
 
         {lastSeed !== null && (

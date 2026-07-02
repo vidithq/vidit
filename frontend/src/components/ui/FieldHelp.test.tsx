@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import FieldHelp from "./FieldHelp";
+import { FieldHelp } from "./FieldHelp";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 
 afterEach(() => {

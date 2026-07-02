@@ -7,24 +7,26 @@ import {
   deleteGeolocation,
   type AdminGeolocationDeleteResponse,
 } from "@/lib/admin";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
-  FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 
 export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
   const [mode, setMode] = useState<"soft" | "hard">("soft");
-  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<AdminGeolocationDeleteResponse | null>(
     null
   );
 
   const reset = () => {
-    setConfirming(false);
+    confirm.cancel();
     setId("");
     setMode("soft");
   };
@@ -39,26 +41,23 @@ export function GeolocationDeletePanel() {
       },
     }
   );
+  const confirm = useConfirmAction(() => {
+    void deleteMutation.run();
+  });
   const { error, setError } = deleteMutation;
   const submitting = deleteMutation.loading;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id.trim()) return;
-    if (!confirming) {
-      setConfirming(true);
-      setError(null);
-      return;
-    }
-    await deleteMutation.run();
+    if (!confirm.armed) setError(null);
+    confirm.trigger();
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">
-          Remove a geolocation
-        </h2>
+        <SectionEyebrow title="Remove a geolocation" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Soft delete hides the row from every public read but preserves the
           proof + S3 evidence — that&apos;s the default. Hard delete is the
@@ -72,16 +71,17 @@ export function GeolocationDeletePanel() {
           <label className={FORM_LABEL} htmlFor="geo-id">
             Geolocation ID (UUID)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="geo-id"
             type="text"
             value={id}
             onChange={(e) => {
               setId(e.target.value);
-              setConfirming(false);
+              confirm.cancel();
             }}
             placeholder="00000000-0000-0000-0000-000000000000"
-            className={`mt-1 ${FORM_INPUT_COMPACT} font-mono`}
+            className="mt-1 font-mono"
           />
         </div>
 
@@ -105,7 +105,7 @@ export function GeolocationDeletePanel() {
                 checked={mode === m}
                 onChange={() => {
                   setMode(m);
-                  setConfirming(false);
+                  confirm.cancel();
                 }}
                 className="sr-only"
               />
@@ -115,12 +115,12 @@ export function GeolocationDeletePanel() {
         </fieldset>
 
         {error && (
-          <div className={FORM_ERROR_BANNER_BOXED}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}
 
-        {confirming && (
+        {confirm.armed && (
           <div className="px-3 py-2 rounded-md text-xs text-amber-300 bg-amber-500/5 border border-amber-500/30">
             {mode === "hard" ? (
               <>
@@ -138,31 +138,24 @@ export function GeolocationDeletePanel() {
         )}
 
         <div className="flex gap-2">
-          <button
+          <Button
             type="submit"
+            variant="danger"
             disabled={submitting || !id.trim()}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${
-              mode === "hard"
-                ? "bg-red-500 hover:bg-red-400 text-white transition-colors"
-                : PRIMARY_BUTTON
-            }`}
+            className={confirm.armed ? DANGER_CONFIRM : ""}
           >
             {submitting
               ? "Deleting…"
-              : confirming
+              : confirm.armed
                 ? "Confirm"
                 : mode === "hard"
                   ? "Hard delete"
                   : "Soft delete"}
-          </button>
-          {confirming && (
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
-            >
+          </Button>
+          {confirm.armed && (
+            <Button variant="ghost" onClick={() => confirm.cancel()}>
               Cancel
-            </button>
+            </Button>
           )}
         </div>
       </form>
@@ -195,6 +188,6 @@ export function GeolocationDeletePanel() {
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 type TiptapNode = {
   type?: string;
@@ -39,7 +40,7 @@ function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
             href={href}
             target={target ?? "_blank"}
             rel="noopener noreferrer"
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             {acc}
           </a>

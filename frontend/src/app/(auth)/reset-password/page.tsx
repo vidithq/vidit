@@ -7,12 +7,13 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 
 /**
@@ -68,7 +69,7 @@ function ResetPasswordInner() {
           the email we sent, or{" "}
           <Link
             href="/forgot-password"
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             request a new one
           </Link>
@@ -83,14 +84,14 @@ function ResetPasswordInner() {
       title="Set a new password"
       subtitle={`Pick something at least ${PASSWORD_MIN_LENGTH} characters long. The link is single-use, so finish here.`}
       footer={
-        <Link href="/login" className="text-orange-400 hover:underline">
+        <Link href="/login" className={TEXT_LINK}>
           Back to sign in
         </Link>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}
@@ -99,14 +100,13 @@ function ResetPasswordInner() {
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             New password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -114,24 +114,24 @@ function ResetPasswordInner() {
           <label htmlFor="confirm" className={FORM_LABEL_COMPACT}>
             Confirm
           </label>
-          <input
+          <Input
             id="confirm"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          fullWidth
           type="submit"
           disabled={submitting}
-          className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
         >
           {submitting ? "Saving..." : "Set new password"}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
-import { BETA_PILL, FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
+import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -131,12 +132,10 @@ export default function LandingPage() {
           rhythm. */}
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
-          <div
-            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight ${BETA_PILL}`}
-          >
+          <Pill tone="accent" className="gap-2 tracking-tight">
             <span className="size-1.5 rounded-full bg-orange-500" />
             <span>Closed beta · invite-only</span>
-          </div>
+          </Pill>
           <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
             The home for conflict geolocations
           </h1>
@@ -216,7 +215,7 @@ export default function LandingPage() {
               >
                 <span
                   className={`shrink-0 self-start px-2 py-0.5 rounded-full font-mono text-[11px] font-medium ${
-                    current ? FILTER_CHIP_ACTIVE : "bg-neutral-800 text-neutral-500"
+                    current ? ACCENT_SURFACE : "bg-neutral-800 text-neutral-500"
                   }`}
                 >
                   {version}
@@ -233,7 +232,7 @@ export default function LandingPage() {
                       href={link.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-block text-[13px] text-orange-400 hover:text-orange-300"
+                      className={`mt-2 inline-block text-[13px] ${TEXT_LINK}`}
                     >
                       {link.label} →
                     </a>

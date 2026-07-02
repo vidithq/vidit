@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Mail } from "lucide-react";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { SingleEmailFlow } from "@/components/auth/SingleEmailFlow";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
  * Standalone "resend confirmation" surface for users who closed the
@@ -20,7 +21,7 @@ export default function ResendConfirmationPage() {
       footer={
         <>
           Already confirmed?{" "}
-          <Link href="/login" className="text-orange-400 hover:underline">
+          <Link href="/login" className={TEXT_LINK}>
             Sign in
           </Link>
         </>
@@ -45,7 +46,7 @@ export default function ResendConfirmationPage() {
             <button
               type="button"
               onClick={reset}
-              className="text-[11px] text-orange-400 hover:underline"
+              className={`text-[11px] ${TEXT_LINK}`}
             >
               Send to a different address
             </button>

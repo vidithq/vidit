@@ -14,7 +14,8 @@ import {
   Upload,
 } from "lucide-react";
 
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
 import { useMutation } from "@/hooks/useMutation";
@@ -28,7 +29,6 @@ import type { ArchiveImportResult } from "@/types";
 const X_ARCHIVE_HELP =
   "https://help.x.com/en/managing-your-account/how-to-download-your-x-archive";
 
-const BUTTON_SHAPE = "px-5 py-2.5 rounded-md text-sm font-medium disabled:opacity-50";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -136,13 +136,13 @@ export function ImportArchivePanel({ username }: { username: string }) {
           {alreadyImported ? (
             <Link
               href={`/profile/${username}/detections`}
-              className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+              className={buttonClasses("primary")}
             >
               Review detections
             </Link>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => {
                 setResult(null);
                 if (failedSome) {
@@ -151,10 +151,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
                   setFile(null);
                 }
               }}
-              className={`${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
             >
               {failedSome ? "Try again" : "Choose a different file"}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -191,7 +190,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
             href={X_ARCHIVE_HELP}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-orange-400 hover:underline"
+            className={`inline-flex items-center gap-1 ${TEXT_LINK}`}
           >
             {"X's guide"}
             <ExternalLink size={12} strokeWidth={2} />
@@ -241,13 +240,15 @@ export function ImportArchivePanel({ username }: { username: string }) {
 
         {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
-        <button
+        <Button
           type="submit"
+          variant="primary"
+          fullWidth
           disabled={!file || loading}
-          className={`w-full sm:w-auto ${BUTTON_SHAPE} ${PRIMARY_BUTTON}`}
+          className="sm:w-auto"
         >
           {loading ? "Importing…" : "Import archive"}
-        </button>
+        </Button>
         {loading && (
           <p className="text-xs text-neutral-500">
             Keeping only your posts, then uploading and detecting geolocations. A large

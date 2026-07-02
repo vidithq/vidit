@@ -1649,6 +1649,7 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            media: components["schemas"]["MediaRead"] | null;
             /**
              * Status
              * @enum {string}

@@ -14,12 +14,14 @@ import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { BountyDetail, Tag } from "@/types";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { FILTER_CHIP_ACTIVE, PRIMARY_BUTTON } from "@/components/ui/styles";
+import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
@@ -45,13 +47,7 @@ export default function SubmitPage() {
   // component under a Suspense boundary. Fallback is minimal — the inner form
   // shows its own "Loading…" once auth resolves.
   return (
-    <Suspense
-      fallback={
-        <PageCenter>
-          <span className="text-neutral-500">Loading...</span>
-        </PageCenter>
-      }
-    >
+    <Suspense fallback={<PageLoading />}>
       <SubmitForm />
     </Suspense>
   );
@@ -326,11 +322,7 @@ function SubmitForm() {
   };
 
   if (authLoading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   // Bounty referenced but couldn't load (404 / wrong status / network).
@@ -338,7 +330,7 @@ function SubmitForm() {
     return (
       <PageShell title="Geolocate a bounty">
         <div className={FORM_ERROR_BANNER}>{bountyError}</div>
-        <Link href="/bounties" className="text-sm text-orange-400 hover:underline">
+        <Link href="/bounties" className={`text-sm ${TEXT_LINK}`}>
           ← Back to bounties
         </Link>
       </PageShell>
@@ -348,11 +340,7 @@ function SubmitForm() {
   // Bounty referenced but still loading — block the form until the
   // title / source / tags are known to pre-fill.
   if (bountyIdParam && !bounty) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading bounty…</span>
-      </PageCenter>
-    );
+    return <PageLoading label="Loading bounty…" />;
   }
 
   // Header is uniform across both toggle states — the toggle below owns the
@@ -364,7 +352,7 @@ function SubmitForm() {
       You&apos;re fulfilling a bounty posted by{" "}
       <Link
         href={`/profile/${bounty!.author.username}`}
-        className="text-orange-400 hover:underline"
+        className={TEXT_LINK}
       >
         @{bounty!.author.username}
       </Link>
@@ -398,7 +386,7 @@ function SubmitForm() {
               aria-pressed={submitType === t}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 submitType === t
-                  ? FILTER_CHIP_ACTIVE
+                  ? ACCENT_SURFACE
                   : "text-neutral-400 hover:text-neutral-200"
               }`}
             >
@@ -413,23 +401,18 @@ function SubmitForm() {
           manual form stays the default below. */}
       {canImport && !archiveMode && (
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => setTweetPrefillOpen((v) => !v)}
             aria-pressed={tweetPrefillOpen}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
           >
             <XGlyph size={12} />
             Pre-fill from an X post
-          </button>
-          <button
-            type="button"
-            onClick={() => setArchiveMode(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:border-orange-500/40 transition-colors"
-          >
+          </Button>
+          <Button variant="secondary" onClick={() => setArchiveMode(true)}>
             <Archive size={13} strokeWidth={1.8} />
             Import your X archive
-          </button>
+          </Button>
         </div>
       )}
 
@@ -437,14 +420,10 @@ function SubmitForm() {
           so its draft survives a Back. */}
       {canImport && archiveMode && (
         <div className="mt-4 space-y-4">
-          <button
-            type="button"
-            onClick={() => setArchiveMode(false)}
-            className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-          >
+          <Button variant="ghost" onClick={() => setArchiveMode(false)}>
             <ArrowLeft size={14} strokeWidth={1.8} />
             Back to the form
-          </button>
+          </Button>
           <ImportArchivePanel username={user.username} />
         </div>
       )}
@@ -519,18 +498,7 @@ function SubmitForm() {
         />
 
         {showGeoFields && curatedTagsError && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <span>
-              Couldn&apos;t load the required Conflict and Capture source options.
-            </span>
-            <button
-              type="button"
-              onClick={reloadCuratedTags}
-              className="shrink-0 font-medium text-orange-400 hover:underline"
-            >
-              Retry
-            </button>
-          </div>
+          <CuratedTagsError onRetry={reloadCuratedTags} />
         )}
         <TagPicker
           tags={tags}
@@ -596,10 +564,10 @@ function SubmitForm() {
         )}
 
         <div className="flex items-center gap-4">
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={submitting || proofImageUploading}
-            className={`px-4 py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
           >
             {isBounty
               ? submitting
@@ -612,10 +580,10 @@ function SubmitForm() {
                   : lockedFromBounty
                     ? "Submit geolocation (archive bounty)"
                     : "Submit geolocation"}
-          </button>
+          </Button>
           <Link
             href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
-            className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            className={buttonClasses("ghost")}
           >
             Cancel
           </Link>

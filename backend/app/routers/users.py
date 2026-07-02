@@ -178,9 +178,14 @@ def get_user_geolocations(
             ST_Y(Geolocation.location).label("lat"),
             ST_X(Geolocation.location).label("lng"),
         )
-        # ``selectinload`` for tags — a many-to-many ``joinedload`` would
-        # row-multiply against ``LIMIT`` and silently truncate the page.
-        .options(joinedload(Geolocation.author), selectinload(Geolocation.tags))
+        # ``selectinload`` for tags + media: a many-to-many / one-to-many
+        # ``joinedload`` would row-multiply against ``LIMIT`` and silently
+        # truncate the page.
+        .options(
+            joinedload(Geolocation.author),
+            selectinload(Geolocation.tags),
+            selectinload(Geolocation.media),
+        )
         .filter(Geolocation.author_id == user.id, Geolocation.deleted_at.is_(None))
         .order_by(Geolocation.event_date.desc())
         .offset((page - 1) * per_page)
@@ -198,6 +203,7 @@ def get_user_geolocations(
             is_demo=geo.is_demo,
             status=geo.status,
             author=geo.author,
+            media=geo.media[0] if geo.media else None,
             tags=geo.tags,
         )
         for geo, lat, lng in rows

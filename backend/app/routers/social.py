@@ -36,6 +36,7 @@ def get_timeline(
             is_demo=geo.is_demo,
             status=geo.status,
             author=geo.author,
+            media=geo.media[0] if geo.media else None,
             tags=geo.tags,
         )
         for geo, lat, lng in result["items"]

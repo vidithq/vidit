@@ -6,10 +6,11 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import GeolocationCard from "@/components/geolocation/GeolocationCard";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
-import type { GeolocationStatus } from "@/types";
+import { EntityCard } from "@/components/ui/EntityCard";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { buttonClasses } from "@/components/ui/Button";
+import type { GeolocationStatus, Media } from "@/types";
 
 interface TimelineEntry {
   id: string;
@@ -22,6 +23,8 @@ interface TimelineEntry {
   author: {
     username: string;
   };
+  /** The card thumbnail: the geolocation's first media row, or null. */
+  media: Media | null;
   tags: { id: string; name: string; category: "conflict" | "free" }[];
 }
 
@@ -45,20 +48,14 @@ export default function TimelinePage() {
   }, [authLoading, user, router]);
 
   if (authLoading || loading) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading timeline...</span>
-      </PageCenter>
-    );
+    return <PageLoading label="Loading timeline..." />;
   }
 
   if (!user) return null;
 
   if (error) {
     return (
-      <PageCenter>
-        <span className="text-red-400">{error}</span>
-      </PageCenter>
+      <PageError message={error} />
     );
   }
 
@@ -70,11 +67,24 @@ export default function TimelinePage() {
         {entries.length > 0 ? (
           <div className="space-y-4">
             {entries.map((entry) => (
-              <GeolocationCard
+              <EntityCard
                 key={entry.id}
-                geo={entry}
                 variant="feed"
-                mediaSeed={`timeline-${entry.id}`}
+                detailHref={`/geolocations/${entry.id}`}
+                title={entry.title}
+                titleText={entry.title}
+                badge={
+                  entry.status ? <StatusBadge status={entry.status} /> : undefined
+                }
+                media={entry.media ?? undefined}
+                author={entry.author}
+                date={entry.event_date}
+                coords={
+                  typeof entry.lat === "number" && typeof entry.lng === "number"
+                    ? { lat: entry.lat, lng: entry.lng }
+                    : null
+                }
+                tags={entry.tags}
               />
             ))}
           </div>
@@ -89,7 +99,7 @@ export default function TimelinePage() {
             </div>
             <Link
               href="/map"
-              className={`inline-block px-4 py-2 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
+              className={buttonClasses("primary")}
             >
               Explore the map
             </Link>

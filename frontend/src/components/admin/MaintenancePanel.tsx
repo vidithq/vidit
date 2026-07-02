@@ -8,6 +8,8 @@ import {
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { Button } from "@/components/ui/Button";
 
 export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
@@ -44,21 +46,16 @@ export function MaintenancePanel() {
   return (
     <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
       <header className="px-4 py-3 border-b border-neutral-800">
-        <h2 className="text-sm font-medium text-neutral-200">Maintenance</h2>
+        <SectionEyebrow title="Maintenance" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           On-demand reapers. Click when you remember — there&apos;s no schedule.
         </p>
       </header>
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onReapAuth}
-            disabled={running}
-            className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
-          >
+          <Button variant="secondary" onClick={onReapAuth} disabled={running}>
             {reapAuth.loading ? "Reaping…" : "Reap expired auth tokens"}
-          </button>
+          </Button>
           {authResult && (
             <span className="text-xs text-neutral-400">
               Expired: {authResult.expired ?? 0} · Old consumed:{" "}
@@ -67,16 +64,11 @@ export function MaintenancePanel() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onReapOrphans}
-            disabled={running}
-            className="px-3 py-1.5 rounded-md text-sm border border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
-          >
+          <Button variant="secondary" onClick={onReapOrphans} disabled={running}>
             {reapOrphans.loading
               ? "Reaping…"
               : "Reap orphan proof images"}
-          </button>
+          </Button>
           {orphanResult && (
             <span className="text-xs text-neutral-400">
               Rows: {orphanResult.rows_deleted ?? 0} · S3:{" "}

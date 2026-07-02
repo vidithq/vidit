@@ -1,4 +1,5 @@
 import { safeHostname } from "@/lib/format";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
  * Discriminated union — ``maxWidthClass`` is required in link mode (without a
@@ -34,7 +35,7 @@ type SourceLabelProps = {
  * tester — render an italic "synthetic" label instead. One edit point for the
  * rendering, which had already drifted (``text-neutral-500`` vs ``-600``).
  */
-export default function SourceLabel(props: SourceLabelProps) {
+export function SourceLabel(props: SourceLabelProps) {
   const { isDemo, url, className } = props;
   if (isDemo) {
     return <span className={cx("italic text-neutral-500", className)}>synthetic</span>;
@@ -53,7 +54,7 @@ export default function SourceLabel(props: SourceLabelProps) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={cx("text-orange-400 hover:underline truncate", props.maxWidthClass, className)}
+      className={cx(`${TEXT_LINK} truncate`, props.maxWidthClass, className)}
     >
       {hostname}
     </a>

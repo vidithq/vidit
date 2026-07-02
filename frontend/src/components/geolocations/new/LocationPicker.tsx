@@ -2,7 +2,8 @@
 
 import type { TweetImportCoord } from "@/types";
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 
 interface LocationPickerProps {
   lat: string;
@@ -30,13 +31,8 @@ export function LocationPicker({
   invalid = false,
 }: LocationPickerProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-      <header>
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Location
-          <FieldHelp concept="section_location" />
-        </h2>
-      </header>
+    <Card as="section">
+      <SectionHeading title="Location" concept="section_location" />
 
       <CoordinateInputs
         lat={lat}
@@ -61,6 +57,6 @@ export function LocationPicker({
           ))}
         </div>
       )}
-    </section>
+    </Card>
   );
 }

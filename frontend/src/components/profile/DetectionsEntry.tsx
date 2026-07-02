@@ -5,8 +5,8 @@ import { ArrowRight, Bot } from "lucide-react";
  * Own-profile entry point into the detections list. Surfaces the count of
  * machine-`detected` geolocations awaiting the owner's submission and links to
  * `/profile/{username}/detections`. The parent renders it only when `count > 0`,
- * so a clean profile stays clean. Amber to match `StatusBadge`, the same
- * "machine, pending" signal.
+ * so a clean profile stays clean. Accent-tinted to match `StatusBadge`, the same
+ * "machine, pending" signal, and follows the user's chosen palette.
  */
 export function DetectionsEntry({
   username,
@@ -18,10 +18,10 @@ export function DetectionsEntry({
   return (
     <Link
       href={`/profile/${username}/detections`}
-      className="group flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 hover:bg-amber-500/15 transition-colors"
+      className="group flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 hover:bg-orange-500/15 transition-colors"
     >
       <div className="flex items-center gap-3">
-        <span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400">
+        <span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
           <Bot size={18} />
           {/* Same orange dot as the sidebar profile row, so the user ties the
               sidebar nudge to this block. */}
@@ -41,7 +41,7 @@ export function DetectionsEntry({
       </div>
       <ArrowRight
         size={16}
-        className="shrink-0 text-amber-400 transition-transform group-hover:translate-x-0.5"
+        className="shrink-0 text-orange-400 transition-transform group-hover:translate-x-0.5"
       />
     </Link>
   );

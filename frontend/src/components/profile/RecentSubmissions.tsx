@@ -1,8 +1,12 @@
 import Link from "next/link";
 
-import GeolocationCard from "@/components/geolocation/GeolocationCard";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { EntityCard } from "@/components/ui/EntityCard";
+import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
-import type { GeolocationStatus } from "@/types";
+import type { GeolocationStatus, Media } from "@/types";
 
 export interface RecentSubmission {
   id: string;
@@ -12,6 +16,8 @@ export interface RecentSubmission {
   status: GeolocationStatus;
   lat: number;
   lng: number;
+  /** The card thumbnail: the geolocation's first media row, or null. */
+  media: Media | null;
   tags: { id: string; name: string; category: "conflict" | "free" }[];
 }
 
@@ -33,11 +39,9 @@ export function RecentSubmissions({
   isOwn: boolean;
 }) {
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card>
       <div className="space-y-1">
-        <h2 className="text-sm font-medium text-neutral-300">
-          Recent submissions
-        </h2>
+        <SectionEyebrow title="Recent submissions" margin="none" />
         <p className="text-xs text-neutral-500">
           {profile.geolocations_count > 0
             ? `${profile.username}'s latest geolocations, newest first.`
@@ -48,12 +52,22 @@ export function RecentSubmissions({
       {submissions.length > 0 ? (
         <div className="space-y-2">
           {submissions.map((entry) => (
-            <GeolocationCard
+            <EntityCard
               key={entry.id}
-              geo={entry}
               variant="compact"
-              hideAuthor
-              mediaSeed={`sub-${entry.id}`}
+              author={{ username: profile.username }}
+              detailHref={`/geolocations/${entry.id}`}
+              title={entry.title}
+              titleText={entry.title}
+              badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
+              media={entry.media ?? undefined}
+              date={entry.event_date}
+              coords={
+                typeof entry.lat === "number" && typeof entry.lng === "number"
+                  ? { lat: entry.lat, lng: entry.lng }
+                  : null
+              }
+              tags={entry.tags}
             />
           ))}
         </div>
@@ -67,7 +81,7 @@ export function RecentSubmissions({
           </p>
           <Link
             href="/submit"
-            className="inline-block text-xs text-orange-400 hover:underline"
+            className={`inline-block text-xs ${TEXT_LINK}`}
           >
             Submit your first geolocation →
           </Link>
@@ -75,6 +89,6 @@ export function RecentSubmissions({
       ) : (
         <p className="text-xs text-neutral-500 italic">Nothing yet.</p>
       )}
-    </div>
+    </Card>
   );
 }

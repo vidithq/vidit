@@ -38,6 +38,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.follow import Follow
 from app.models.geolocation import Geolocation
+from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
@@ -313,6 +314,13 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
 
     db.add(Follow(follower_id=viewer.id, followed_id=author_a.id))
     db.add(Follow(follower_id=viewer.id, followed_id=author_b.id))
+    db.add(
+        Media(
+            geolocation_id=geo_a.id,
+            storage_url=f"http://localhost:8000/local-storage/uploads/{geo_a.id}/thumb.jpg",
+            media_type="image",
+        )
+    )
     db.commit()
 
     response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
@@ -328,6 +336,11 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     for item in body["items"]:
         assert isinstance(item["lat"], (int, float))
         assert isinstance(item["lng"], (int, float))
+    # The card thumbnail rides the list payload: first media row, else null.
+    by_title = {item["title"]: item for item in body["items"]}
+    assert by_title["A"]["media"]["storage_url"].endswith("thumb.jpg")
+    assert by_title["A"]["media"]["media_type"] == "image"
+    assert by_title["B"]["media"] is None
 
 
 def test_timeline_excludes_soft_deleted_geolocations(db, cleanup):

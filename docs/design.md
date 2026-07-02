@@ -42,22 +42,25 @@ The orange palette uses **tinted-on-dark** variants almost exclusively, and neve
 | `orange-400` | Text colour for every interactive element (inline links, button labels, tappable-card hover state, status pills). |
 | `orange-500` | The hue itself, which only appears at fractional opacity (`bg-orange-500/10`, `/15`, `/20`) on backgrounds and borders, and full strength on map points + 1.5 px state dots. |
 
-Tag chips are decorative-not-interactive and use a neutral paint (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe) (decorative tag chip).
+Tag chips are decorative-not-interactive: the `<Pill>` neutral tone (`bg-neutral-800 text-neutral-400`), a `<span>`; see the [Orange palette recipe](#orange-palette-recipe), bucket ④.
+
+**The accent hue is selectable.** Orange is the default; Settings → Display also offers blue, emerald, violet, and rose. The choice is browser-local (`localStorage`, key `vidit:palette`), applied as `data-palette` on `<html>`, which remaps the Tailwind `orange-*` scale to the chosen hue (see [`globals.css`](../frontend/src/app/globals.css)). Components keep using the `orange-*` utilities and the [`styles.ts`](../frontend/src/components/ui/styles.ts) constants unchanged: the recipe below holds for whichever hue is active. Map markers can't read CSS variables, so their hex colors live alongside the palette definitions in [`lib/palette.ts`](../frontend/src/lib/palette.ts) and are kept in step there.
 
 ### Map points
 
 | Role | Color | Usage |
 |------|-------|-------|
-| Point default | `#f97316` / `orange-500` | All points, single color |
-| Point selected | `#f97316` + white border | Active, clicked point |
+| Point default | accent `500` (default `#f97316`) | Submitted points; follows the selected accent palette |
+| Point detected | accent `300` (default `#fdba74`) | Machine-detected points; the same hue a shade lighter, so it follows the palette but stays distinct from submitted by lightness |
+| Point selected | accent `500` + white border | Active, clicked point |
 
 ### Semantic
 
 | Role | Color | Tailwind | Usage |
 |------|-------|----------|-------|
-| Danger | `#ef4444` | `red-500` | Errors, deletions |
-| Success | `#22c55e` | `green-500` | Confirmations |
-| Info | `#3b82f6` | `blue-500` | Hints, neutral links |
+| Danger | `#ef4444` | `red-500` | Errors, deletions (`FORM_ERROR_BANNER`) |
+| Success / info | accent `500` | `orange-500` | Confirmations + info notices (`FORM_SUCCESS_BANNER`). Orange, not green: a confirmation next to red destructive actions shouldn't read as celebratory. |
+| Warning | `#f59e0b` | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`): duplicate probe, curated-tags load failure, tweet-import notice. Colour only; layout at the call site. |
 
 ## Orange palette recipe
 
@@ -69,37 +72,33 @@ The rule that governs all of it:
 
 ### The five buckets
 
-1. **Inline orange text link**: plain clickable text in body copy or rows (bylines, source URLs, "Cancel", "Back to bounties"). `text-orange-400 hover:underline`; sometimes `hover:text-orange-300` when the surrounding row is also turning orange under group-hover.
+1. **Inline orange text link** (`TEXT_LINK`): plain clickable accent text in body copy or rows (bylines, source URLs, retry, empty-state CTAs). `text-orange-400 hover:underline`. For genuine inline links only; an action that happens to read like a link (Cancel, dismiss) is a `<Button variant="ghost">`, not this.
 2. **Tappable card / row** (`TAPPABLE_HOVER`): the whole card or row is one click target (GeolocationCard, BountyCard, search rows, profile external links). Neutral at rest; on hover the **border** turns orange and the inner title picks up `group-hover:text-orange-400` (put `group` on the row).
-3. **Primary CTA** (`PRIMARY_BUTTON`): "do this now" buttons (Submit, Post a bounty, Geolocate this, Follow, admin actions, the error-boundary "Try again"). Soft-fill outlined orange, visible at rest, brightens on hover. The constant covers colour **only**; shape (padding, width, `disabled:opacity-50`) stays at the call site.
-4. **Selected / active state** (`FILTER_CHIP_ACTIVE` / `FILTER_CHIP_INACTIVE`): a state indicator on an interactive element (active filter chip, active sidebar nav row, the bounties status filter). Reads as `active ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE`. Status pills add a thin border so the badge reads as a discrete shape, in three states: `STATUS_PILL_ACTIVE` (open, orange), `STATUS_PILL_FULFILLED` (end-state, neutral **white**, not green: fulfilment isn't a win), `STATUS_PILL_CLOSED` (author-withdrawn, the quietest, neutral grey).
-5. **Decorative tag chip** (`TAG_CHIP`): display-only metadata pills (`bg-neutral-800 text-neutral-400`), rendered as `<span>` not `<button>`. Neutral, so several tags on a card don't compete with the orange CTAs / status pills / links. If a tag is clickable, use bucket ④ instead.
+3. **Buttons** (`<Button>`): every action is the [`<Button>`](../frontend/src/components/ui/Button.tsx) primitive, shape **and** colour in one unit at a single size. Four variants on two axes (tone × emphasis): `primary` (accent, filled, the one main action), `secondary` (accent, outline, a secondary action), `ghost` (accent, text only, the quiet tier: cancel, dismiss, dense rows, icons), `danger` (red, outline, a destructive action). Every clickable is the accent colour; red is only destructive. `buttonClasses(variant)` paints a `<Link>` the same for CTAs that navigate; `icon` makes a square icon-only button. Full vocabulary under *Buttons* below.
+4. **Pills / chips / badges** (`<Pill>`): the whole badge family (status badges, decorative tags, interactive filter chips) is the [`<Pill>`](../frontend/src/components/ui/Pill.tsx) primitive, shape **and** colour in one unit at a single size, mirroring `<Button>`. Colour is one `tone`: `accent` (open / detected / selected), `neutral` (default / tag / closed / inactive), `danger` (revoked / error), `strong` (a completed end-state, neutral **white**, not green: completion isn't a win). A static `<span>` by default; pass `onClick` and it becomes an interactive chip (a `<button>` that brightens on hover), the caller driving the tone off its active state (`tone={active ? "accent" : "neutral"}`). Consumers: `StatusBadge`, `BountyStatusBadge`, the invite `StatusChip`, the decorative + selectable tag pills, and the map / bounties / search filters. Domain adapters (`StatusBadge`, `BountyStatusBadge`, `StatusChip`) stay as thin wrappers that map an enum to a tone + icon + label; a bare tag is just `<Pill tone="neutral">` inline, no wrapper.
+5. **Active nav / row surface** (`ACCENT_SURFACE` / `NEUTRAL_SURFACE`): the bare base paint (`bg` + text, no border) for a selected nav row or toggle that wants the accent fill without a pill's border. Reads `active ? ACCENT_SURFACE : NEUTRAL_SURFACE` (sidebar rows, the landing pager, the submit type toggle). The `<Pill>` tones compose these two paints and layer a border on top, so a pill and an active nav item can't drift apart.
 
 ### Other orange shapes
 
 These don't fit the five buckets:
 
-- **`BETA_PILL`**: the fixed closed-beta corner banner + the gate-page header badge. Same family as the status pill but less saturated (decorative, shouldn't compete with active-state pills). `pointer-events-none` is added at the call site.
+- **Closed-beta banner**: the fixed corner banner ([`ClosedBetaBanner`](../frontend/src/components/ClosedBetaBanner.tsx)) + the landing header badge are a real `<Pill tone="accent">` (the pulse dot and the nested report link are just children). The banner wraps its pill in a thin `fixed` container that owns placement + `pointer-events-none`; only the report link opts back into pointer events.
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
-- **Destructive actions**: the admin "Hard delete" stays `bg-red-500 text-white`; sibling soft-delete buttons use `PRIMARY_BUTTON`, so "less destructive = quieter."
-- **Navigation chrome** (back arrows, × close buttons): kept neutral grey (`text-neutral-400 hover:text-neutral-200`) so structural chrome doesn't compete with content links.
+- **Destructive actions**: `<Button variant="danger">` is red but quiet (outline, `secondary` in red), so a delete / revoke / reject trigger doesn't shout. The one loud filled red is `DANGER_CONFIRM`, applied only to the armed second click of a two-click confirm, so the strongest red marks the point of no return.
+- **Navigation chrome** (back arrow, × close, Cancel / dismiss): a `<Button variant="ghost">` (with `icon` for the bare arrow / ×). Orange like every clickable, but the quietest tier, so it doesn't compete with the primary action.
 
 ### Constants: single source of truth
 
-All of the above export from [`styles.ts`](../frontend/src/components/ui/styles.ts):
+The pill / chip / badge tones live on the [`<Pill>`](../frontend/src/components/ui/Pill.tsx) primitive (`PILL_TONE`, one entry per tone); the colour-only surface, link, and callout constants export from [`styles.ts`](../frontend/src/components/ui/styles.ts):
 
 | Export | What |
 |---|---|
-| `PRIMARY_BUTTON` | Soft-fill outlined CTA |
-| `FILTER_CHIP_ACTIVE` | Tinted selected state for toggles |
-| `FILTER_CHIP_INACTIVE` | Neutral partner of `FILTER_CHIP_ACTIVE` |
+| `ACCENT_SURFACE` | Base accent paint (bg + text): active nav rows; the `<Pill>` accent tone composes it + a border |
+| `NEUTRAL_SURFACE` | Base neutral paint: inactive nav rows; the `<Pill>` neutral tone composes it + a border |
 | `TAPPABLE_HOVER` | Orange-border-on-hover for tappable cards/rows |
-| `STATUS_PILL_ACTIVE` | Status pill: open / in-progress (orange) |
-| `STATUS_PILL_FULFILLED` | Status pill: completed end-state (neutral white) |
-| `STATUS_PILL_CLOSED` | Status pill: withdrawn / archived (neutral grey) |
-| `BETA_PILL` | Decorative closed-beta / system pill |
-| `TAG_CHIP` | Decorative non-clickable tag chip (neutral) |
+| `TEXT_LINK` | Inline accent text link |
+| `WARNING_CALLOUT` | Amber non-blocking caution surface |
 
 If you're writing a class string longer than ~3 Tailwind tokens for an orange element, a constant probably already fits.
 
@@ -109,12 +108,12 @@ If you're writing a class string longer than ~3 Tailwind tokens for an orange el
 |---|---|
 | Plain orange text, underlined on hover | Inline link, click it |
 | Card border turns orange on hover | Whole card is clickable |
-| Outlined orange button | Primary action |
+| Orange button | An action (filled = primary, outline = secondary, text = ghost) |
 | Tinted orange background + orange text | Currently selected / active state |
 | Neutral grey chip | Decorative tag, not interactive |
 | Bright `bg-orange-500` flat fill | Map point or 1.5 px state dot, never a button |
-| Bright red filled | Destructive: proceed with caution |
-| Neutral grey × or ← | Navigation chrome: close / back |
+| Red outline | A destructive action (delete, revoke, reject) |
+| Bright red filled | The armed confirm of a two-click destructive action |
 
 ## Map
 
@@ -164,6 +163,16 @@ If you're writing a class string longer than ~3 Tailwind tokens for an orange el
 
 ## Components
 
+### Build on shared primitives
+
+Every element below is a reusable primitive. Compose from them; do not hand-roll a one-off. If no primitive fits a new need, the missing piece is added to [`components/ui/`](../frontend/src/components/ui) (or as a new `FORM_*` / `styles.ts` constant) and consumed from there, never inlined in a page or feature component. Growing the vocabulary with a new shared component is a maintainer decision (see [`AGENTS.md`](../AGENTS.md) → *Conventions*); reusing or extending an existing one is the default.
+
+**Token or component?** A piece is a *component* when it owns shape or behaviour (`<Input>`, `<Pill>`, `<Button>`, `<Card>`); it stays a raw *class constant* when it is a single-element paint or treatment composed into someone else's markup (`FORM_LABEL`, `ACCENT_SURFACE`, `TAPPABLE_HOVER`, the banners). A constant that starts growing variants or per-call-site conditionals has crossed the line: promote it to a component.
+
+Primitives join their classes with [`cn`](../frontend/src/lib/cn.ts) (tailwind-merge): on a conflicting Tailwind utility the caller's `className` wins predictably instead of being decided by stylesheet order. Keep `className` for orthogonal extras (margins, tracking, casing); `<Button>` and `<Pill>` stay one size by design.
+
+**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control; [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section. The media slot on cards is one piece: [`<MediaThumb>`](../frontend/src/components/ui/MediaThumb.tsx) renders the real media (image thumbnail or video first-frame) or a marked no-media box; there are no generated stand-ins.
+
 ### Links and clickable surfaces
 
 Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for the five buckets and constants. Carve-outs: navigation chrome stays neutral grey, destructive actions go red. External links open in a new tab (`target="_blank" rel="noopener noreferrer"`) with the same orange styling.
@@ -181,8 +190,7 @@ Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for 
 - Labels: `text-[10px] uppercase tracking-wider text-neutral-500`
 - Inputs: `bg-neutral-800 border-neutral-700 text-neutral-300`
 - Focus: `border-orange-500`
-- Active filter tags/buttons: `FILTER_CHIP_ACTIVE` (tinted orange; see the [Orange palette recipe](#orange-palette-recipe))
-- Inactive filter tags/buttons: `FILTER_CHIP_INACTIVE`
+- Filter tags/buttons: `<Pill>` as an interactive chip, accent when active, neutral when inactive (see the [Orange palette recipe](#orange-palette-recipe), bucket ④)
 - Point counter at the top of the panel
 - "Clear all" button shows up only if filters are active
 
@@ -190,7 +198,7 @@ Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for 
 
 - Title: `text-lg font-medium text-neutral-100`
 - Metadata: `text-xs text-neutral-400`
-- Tags: compact badges via the shared `TAG_CHIP` constant (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe) (decorative tag chip)
+- Tags: compact badges via `<Pill tone="neutral">` (`bg-neutral-800 text-neutral-400`); see the [Orange palette recipe](#orange-palette-recipe), bucket ④
 - Source link: `text-orange-400 hover:underline`
 - Proof: `text-sm text-neutral-300 leading-relaxed`
 - Separator border: `border-neutral-800`
@@ -212,10 +220,16 @@ The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/Aut
 
 ### Buttons
 
-- **Primary CTA:** `PRIMARY_BUTTON` constant, soft-fill outlined orange. See the [Orange palette recipe](#orange-palette-recipe).
-- **Secondary:** `bg-neutral-800 border border-neutral-700 text-neutral-300`, secondary actions.
-- **Ghost:** `text-neutral-500 hover:text-neutral-300`, tertiary actions (close, clear).
-- Compact size: `px-3 py-1.5 text-sm rounded-md`.
+One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape **and** colour in a single unit at one uniform size (no size scale, by design). Four variants on two axes, tone (accent or danger) and emphasis (filled, outline, text):
+
+- `primary`: accent, filled. The one main action of a view (submit, post, confirm, follow).
+- `secondary`: accent, outline. A secondary action (edit profile, search, pagination, a toggle's active state).
+- `ghost`: accent, text only. The quiet tier: cancel, dismiss, dense row actions, and (with `icon`) icon-only buttons like share and the × close.
+- `danger`: red, outline. A destructive action (delete, revoke, reject), quiet on purpose, `secondary` in red.
+
+Every clickable is the accent colour, red is only destructive, and there is no grey button (grey lives in the `<Pill>` neutral tone and `disabled`). The one loud filled red is `DANGER_CONFIRM`, a class applied via `className` to the armed second click of a two-click confirm only, so the strongest red shows up once, at the point of no return.
+
+`fullWidth` stretches it (auth submits); `icon` makes a square icon-only button; orthogonal extras go through `className`. A `<Link>` that should look like a button (a CTA that navigates) takes `buttonClasses(variant)`, so it stays an anchor.
 
 ### Forms
 
@@ -223,7 +237,7 @@ The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/Aut
 
 **Title leads** (it's the detail page's heading), then the sections mirror the detail page's reading order. Geolocation mode runs Title → **Source media** ([`SourceMediaField`](../frontend/src/components/geolocations/SourceMediaField.tsx)) → **Location** ([`LocationPicker`](../frontend/src/components/geolocations/new/LocationPicker.tsx)) → Details ([`DetailsFields`](../frontend/src/components/geolocations/new/DetailsFields.tsx): event date, source post time, source URL) → Tags ([`TagPicker`](../frontend/src/components/ui/TagPicker.tsx)) → Proof ([`ProofEditorPanel`](../frontend/src/components/geolocations/new/ProofEditorPanel.tsx)). **Source media is its own block**: a `SourceMediaField` wrapping the shared [`MediaManager`](../frontend/src/components/geolocations/MediaManager.tsx) (staged thumbnails + add / remove, itself built on the generic [`FileManager`](../frontend/src/components/ui/FileManager.tsx) primitive: drop zone, drag-drop, staged-item + remove chrome, with the caller supplying only how one item renders) reused by the submit and detection-submit forms so the control can't drift, while **Location** ([`LocationPicker`](../frontend/src/components/geolocations/new/LocationPicker.tsx)) holds just the coordinates, the point the footage pins. **Bounty mode** (a bounty is an unfinished geolocation) keeps Source media, drops Location and Proof, and keeps the dates as **optional**, leaving Title → Source media → Details (event date, source post time, source URL) → Tags. Under the toggle a geolocation gets an **import strip** (geolocation-only: a bounty has no coordinates / proof to pre-fill): **Pre-fill from an X post** reveals an inline [`TweetImportBanner`](../frontend/src/components/geolocation/TweetImportBanner.tsx) above the form (title, source, date, media, even coordinates from one post), and **Import your X archive** swaps the bulk on-ramp ([`ImportArchivePanel`](../frontend/src/components/geolocations/ImportArchivePanel.tsx), the same `FileManager` with the archive rendered as a file card) in over the form with the draft preserved behind it, carrying the export guide and bridging to the Detections queue when it lands fresh work. On the geolocation detail page the coordinates render as a Details-style row **fused to the bottom of the Location map** (shared border, no gap); the map side-panel, which renders no Location map, carries the **same section headings as the page** (Source media / Location / Details / Proof, each with its `?`, just denser) with the coordinate row under **Location** (so the side-panel reads like the full page rather than a stripped-down variant). On the detail pages the curated tags render as their own labelled rows (**Conflict** and **Capture source**) with free tags under **Tags**, so they read as structured facts rather than identical chips lost in one row.
 
-Forms are **required by default**: only the exceptions carry an `optional` marker (the event time and free tags on a geolocation; on a bounty the event date, event time, and all tag groups), and no field carries a `required` marker, so the form doesn't read as "only tags are mandatory". Which fields are still missing surfaces on submit (the notice below), not as an up-front note. Section chrome is `bg-neutral-900 rounded-lg border border-neutral-700 p-5` with an `h2` (`text-sm font-medium text-neutral-200`) carrying the section `?`; sections have no always-on subtitle. Labels (`FORM_LABEL`), inputs (`FORM_INPUT`, with a dimmed `placeholder:text-neutral-600`), bounty-inherited locked inputs (`FORM_INPUT_LOCKED`), and the error banner (`FORM_ERROR_BANNER`) come from [`form-styles.ts`](../frontend/src/components/ui/form-styles.ts). When a create / edit action is blocked for missing required fields, a shared [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists **every** unmet field at once (not the first miss) directly above the action; it's the same component across geolocation submit, bounty submit, and detection submit (each computes its own required set; the detection-submit floor is a superset of the create-submit's, bounty's a subset). The forms set `noValidate` so this notice, not the browser's one-bubble-at-a-time native validation, owns required-field feedback, and it replays a short entrance each attempt so a repeat click reads as a fresh response. Alongside the list, **each missing field or section is outlined red in place** (`FORM_INVALID_FIELD`) so the reader sees *where* the gaps are, not just that they exist; the misses carry a `key` (from `missing*Fields`) that the shared field bricks highlight off, wired once in `useIncompleteForm`. One content rule rides here: a geolocation's **proof must contain an image** (`proofHasImage`), not just text; it's a source ↔ satellite cross-reference, so an image is the evidence (surfaced as "Proof image"). The detection-submit form carries a single action, **Submit**: a `detected` row is immutable machine output, so submit is the only write to it, applying the whole form and freezing the row as `submitted` in one step (a confirm step precedes it, since the freeze is irreversible).
+Forms are **required by default**: only the exceptions carry an `optional` marker (the event time and free tags on a geolocation; on a bounty the event date, event time, and all tag groups), and no field carries a `required` marker, so the form doesn't read as "only tags are mandatory". Which fields are still missing surfaces on submit (the notice below), not as an up-front note. Section chrome is `bg-neutral-900 rounded-lg border border-neutral-700 p-5` with an `h2` (`text-sm font-medium text-neutral-200`) carrying the section `?`; sections have no always-on subtitle. Labels (`FORM_LABEL`) and the one error banner (`FORM_ERROR_BANNER`) come from [`form-styles.ts`](../frontend/src/components/ui/form-styles.ts); the fields themselves are the [`<Input>`](../frontend/src/components/ui/Input.tsx) component (one field, `variant` = default / compact / locked, with a dimmed `placeholder:text-neutral-600` and the locked variant for bounty-inherited fields). When a create / edit action is blocked for missing required fields, a shared [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists **every** unmet field at once (not the first miss) directly above the action; it's the same component across geolocation submit, bounty submit, and detection submit (each computes its own required set; the detection-submit floor is a superset of the create-submit's, bounty's a subset). The forms set `noValidate` so this notice, not the browser's one-bubble-at-a-time native validation, owns required-field feedback, and it replays a short entrance each attempt so a repeat click reads as a fresh response. Alongside the list, **each missing field or section is outlined red in place** (`FORM_INVALID_FIELD`) so the reader sees *where* the gaps are, not just that they exist; the misses carry a `key` (from `missing*Fields`) that the shared field bricks highlight off, wired once in `useIncompleteForm`. One content rule rides here: a geolocation's **proof must contain an image** (`proofHasImage`), not just text; it's a source ↔ satellite cross-reference, so an image is the evidence (surfaced as "Proof image"). The detection-submit form carries a single action, **Submit**: a `detected` row is immutable machine output, so submit is the only write to it, applying the whole form and freezing the row as `submitted` in one step (a confirm step precedes it, since the freeze is irreversible).
 
 ### Field help (`?`)
 

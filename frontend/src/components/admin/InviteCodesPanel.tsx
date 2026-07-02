@@ -12,27 +12,30 @@ import {
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
-  FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Pill, type PillTone } from "@/components/ui/Pill";
 
-const STATUS_STYLES: Record<InviteCodeStatus, string> = {
-  active: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  exhausted: "bg-neutral-800 text-neutral-400 border-neutral-700",
-  revoked: "bg-red-500/10 text-red-300 border-red-500/30",
-  expired: "bg-neutral-800 text-neutral-500 border-neutral-700",
+// Invite lifecycle mapped onto the shared pill tones: active is the accent
+// draw, revoked the red end-state, exhausted / expired the quiet neutral.
+const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
+  active: "accent",
+  exhausted: "neutral",
+  revoked: "danger",
+  expired: "neutral",
 };
 
 function StatusChip({ status }: { status: InviteCodeStatus }) {
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] uppercase tracking-wider border ${STATUS_STYLES[status]}`}
-    >
+    <Pill tone={STATUS_TONE[status]} className="uppercase tracking-wider">
       {status}
-    </span>
+    </Pill>
   );
 }
 
@@ -66,17 +69,16 @@ function InviteCodeRow({
   return (
     <tr className="border-b border-neutral-800 last:border-0">
       <td className="py-2 pr-3">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={onCopy}
           title={copied ? "Copied" : `Copy ${invite.code}`}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
         >
           <Copy size={12} className="text-neutral-500" />
           <span className="font-mono">
             {copied ? "Copied" : `${invite.code.slice(0, 6)}…`}
           </span>
-        </button>
+        </Button>
       </td>
       <td className="py-2 pr-3">
         <StatusChip status={invite.status} />
@@ -98,8 +100,8 @@ function InviteCodeRow({
       </td>
       <td className="py-2 text-right">
         {canRevoke && (
-          <button
-            type="button"
+          <Button
+            variant="danger"
             disabled={revoking}
             onClick={async () => {
               setRevoking(true);
@@ -109,11 +111,11 @@ function InviteCodeRow({
                 setRevoking(false);
               }
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 whitespace-nowrap"
+            className="whitespace-nowrap"
           >
             <Trash2 size={12} />
             Revoke
-          </button>
+          </Button>
         )}
       </td>
     </tr>
@@ -170,9 +172,9 @@ export function InviteCodesPanel() {
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-5">
+    <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">Invite codes</h2>
+        <SectionEyebrow title="Invite codes" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Every code is single-use — one code, one analyst — so the audit
           trail names exactly who joined with what. Mint, share via a
@@ -188,7 +190,8 @@ export function InviteCodesPanel() {
           <label className={FORM_LABEL} htmlFor="expires">
             Expires in (days)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="expires"
             type="number"
             min={1}
@@ -199,20 +202,16 @@ export function InviteCodesPanel() {
               const v = e.target.value;
               setExpiresInDays(v === "" ? "" : Number(v));
             }}
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
-        <button
-          type="submit"
-          disabled={creating}
-          className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-        >
+        <Button type="submit" disabled={creating}>
           {creating ? "Minting…" : "Mint code"}
-        </button>
+        </Button>
       </form>
 
       {error && (
-        <div className={FORM_ERROR_BANNER_BOXED}>
+        <div className={FORM_ERROR_BANNER}>
           {error}
         </div>
       )}
@@ -250,6 +249,6 @@ export function InviteCodesPanel() {
           </tbody>
         </table>
       </div>
-    </section>
+    </Card>
   );
 }

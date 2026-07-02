@@ -1,15 +1,17 @@
 "use client";
 
-import { User as UserIcon, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import type { PublicProfile } from "@/lib/users";
 import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Avatar } from "@/components/ui/Avatar";
+import { Button } from "@/components/ui/Button";
 import {
-  FORM_INPUT_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import type { ProfileEditState } from "./useProfileEdit";
 
 interface ProfileHeaderProps {
@@ -34,18 +36,12 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           title) so own and others' profiles share the same chrome. */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-16 h-16 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
-            {displayedAvatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={displayedAvatar}
-                alt={`${profile.username}'s avatar`}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <UserIcon size={28} className="text-neutral-500" />
-            )}
-          </div>
+          <Avatar
+            src={displayedAvatar}
+            username={profile.username}
+            size="w-16 h-16"
+            fallback="icon"
+          />
           <div className="min-w-0">
             {/* h2 under PageShell's generic "Profile" h1 so the username is
                 exposed to screen readers and the document outline. */}
@@ -68,32 +64,29 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           {isOwn ? (
             edit.editing ? (
               <div className="inline-flex gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
                   onClick={edit.cancelEditing}
                   disabled={edit.saving}
-                  className="px-3 py-1.5 rounded-md text-xs text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 disabled:opacity-50"
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={edit.saveEdits}
                   disabled={edit.saving || edit.bioOver}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${PRIMARY_BUTTON}`}
                 >
                   {edit.saving ? "Saving…" : "Save"}
-                </button>
+                </Button>
               </div>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={edit.startEditing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors"
               >
                 <Pencil size={12} />
                 Edit profile
-              </button>
+              </Button>
             )
           ) : (
             <FollowButton
@@ -111,20 +104,21 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           <label className={FORM_LABEL} htmlFor="avatar-url">
             Avatar URL
           </label>
-          <input
+          <Input
+            variant="compact"
             id="avatar-url"
             type="url"
             inputMode="url"
             placeholder="https://example.com/me.jpg"
             value={edit.draftAvatarUrl}
             onChange={(e) => edit.setDraftAvatarUrl(e.target.value)}
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
       )}
 
       {edit.saveError && (
-        <div className="px-3 py-2 rounded-md text-xs text-red-300 bg-red-500/10 border border-red-500/30">
+        <div className={FORM_ERROR_BANNER}>
           {edit.saveError}
         </div>
       )}

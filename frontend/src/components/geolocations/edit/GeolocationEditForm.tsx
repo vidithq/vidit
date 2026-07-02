@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { X } from "lucide-react";
 
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
@@ -13,8 +14,9 @@ import { PageShell } from "@/components/ui/PageShell";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import FieldHelp from "@/components/ui/FieldHelp";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { FieldHelp } from "@/components/ui/FieldHelp";
+import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
@@ -22,9 +24,11 @@ import { useMutation } from "@/hooks/useMutation";
 import { apiFetch } from "@/lib/api";
 import {
   missingGeolocationFields,
+  rejectGeolocation,
   submitGeolocation,
   type GeolocationFieldsState,
 } from "@/lib/geolocations";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { GeolocationDetail, Tag } from "@/types";
 
@@ -117,8 +121,19 @@ export function GeolocationEditForm({
     },
   });
 
-  const busy = submitMutation.loading;
-  const actionError = submitMutation.error;
+  // Reject (soft-delete) the detection — the queue's old inline delete moved
+  // here so a detection card is just a click, like every other card.
+  const rejectMutation = useMutation(() => rejectGeolocation(geo.id), {
+    fallback: "Couldn't reject this detection.",
+    onSuccess: () => {
+      refreshDetectionCount();
+      router.push(redirectTo);
+    },
+  });
+  const confirmReject = useConfirmAction(() => rejectMutation.run());
+
+  const busy = submitMutation.loading || rejectMutation.loading;
+  const actionError = submitMutation.error ?? rejectMutation.error;
 
   // Submit floor is computed on the post-edit state: kept existing media plus
   // staged new files, and the selected curated tags.
@@ -235,18 +250,10 @@ export function GeolocationEditForm({
         />
 
         {curatedTagsError && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <span>
-              Couldn&apos;t load the Conflict and Capture source options.
-            </span>
-            <button
-              type="button"
-              onClick={reloadCuratedTags}
-              className="shrink-0 font-medium text-orange-400 hover:underline"
-            >
-              Retry
-            </button>
-          </div>
+          <CuratedTagsError
+            onRetry={reloadCuratedTags}
+            message="Couldn't load the Conflict and Capture source options."
+          />
         )}
         <TagPicker
           tags={tags}
@@ -283,42 +290,69 @@ export function GeolocationEditForm({
               <span className="text-xs text-amber-400/90">
                 Once submitted it can&apos;t be edited.
               </span>
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={handleSubmit}
                 disabled={busy}
-                className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
                 {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => setConfirmingSubmit(false)}
                 disabled={busy}
-                className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
               >
                 Cancel
-              </button>
+              </Button>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5">
-              <button
+              <Button
                 type="submit"
+                variant="primary"
                 disabled={busy}
-                className={`px-4 py-2 rounded-md text-sm disabled:opacity-50 ${PRIMARY_BUTTON}`}
               >
                 Submit
-              </button>
+              </Button>
               <FieldHelp concept="action_submit" />
             </span>
           )}
 
-          <Link
-            href={redirectTo}
-            className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-          >
+          <Link href={redirectTo} className={buttonClasses("ghost")}>
             Cancel
           </Link>
+
+          {/* Reject (soft-delete) lives here now, not on the queue card. */}
+          {confirmReject.armed ? (
+            <span className="ml-auto inline-flex items-center gap-1.5">
+              <Button
+                variant="danger"
+                onClick={confirmReject.trigger}
+                disabled={busy}
+                className={DANGER_CONFIRM}
+              >
+                {rejectMutation.loading ? "Rejecting…" : "Confirm reject"}
+              </Button>
+              <Button
+                variant="ghost"
+                icon
+                onClick={confirmReject.cancel}
+                disabled={busy}
+                aria-label="Cancel reject"
+              >
+                <X size={13} />
+              </Button>
+            </span>
+          ) : (
+            <Button
+              variant="danger"
+              onClick={confirmReject.trigger}
+              disabled={busy}
+              className="ml-auto"
+            >
+              Reject detection
+            </Button>
+          )}
         </div>
       </form>
     </PageShell>

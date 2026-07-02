@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
-import { FILTER_CHIP_ACTIVE } from "@/components/ui/styles";
+import { ACCENT_SURFACE } from "@/components/ui/styles";
 import {
   Globe,
   Plus,
@@ -173,7 +173,7 @@ export default function Sidebar() {
         title={!labelsVisible ? item.label : undefined}
         className={`${ROW_CLASS} relative overflow-hidden ${
           active
-            ? FILTER_CHIP_ACTIVE
+            ? ACCENT_SURFACE
             : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
         }`}
       >
@@ -211,7 +211,7 @@ export default function Sidebar() {
           title="Home"
           className={`${ROW_CLASS} ${
             homeActive
-              ? FILTER_CHIP_ACTIVE
+              ? ACCENT_SURFACE
               : "text-neutral-100 hover:bg-neutral-800"
           }`}
         >
@@ -270,7 +270,7 @@ export default function Sidebar() {
             title={!labelsVisible ? "Admin" : undefined}
             className={`${ROW_CLASS} overflow-hidden ${
               pathname === "/admin"
-                ? FILTER_CHIP_ACTIVE
+                ? ACCENT_SURFACE
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >
@@ -292,7 +292,7 @@ export default function Sidebar() {
             }
             className={`${ROW_CLASS} overflow-hidden ${
               profileActive
-                ? FILTER_CHIP_ACTIVE
+                ? ACCENT_SURFACE
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >
@@ -341,7 +341,7 @@ export default function Sidebar() {
             title={!labelsVisible ? "Settings" : undefined}
             className={`${ROW_CLASS} overflow-hidden ${
               pathname === "/settings"
-                ? FILTER_CHIP_ACTIVE
+                ? ACCENT_SURFACE
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >

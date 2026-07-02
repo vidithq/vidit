@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
-import { FORM_ERROR_BANNER, FORM_INPUT } from "@/components/ui/form-styles";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -127,23 +129,22 @@ export function TweetImportBanner({
         />
       )}
       <div className="flex gap-2">
-        <input
+        <Input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="https://x.com/handle/status/…"
-          className={FORM_INPUT}
           disabled={busy || imported}
         />
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={() => (imported ? onClear() : void runImport())}
           disabled={busy || (!imported && !url)}
-          className={`px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap ${PRIMARY_BUTTON}`}
+          className="whitespace-nowrap"
         >
           {imported ? "Imported!" : busy ? "Importing…" : "Import"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -168,7 +169,7 @@ function AuthorshipWarning({
   const linkedHandle = normaliseHandle(linkedX);
   return (
     <div
-      className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 flex items-start gap-2 text-xs text-amber-200"
+      className={`rounded-md p-3 flex items-start gap-2 text-xs ${WARNING_CALLOUT}`}
       aria-live="polite"
     >
       <AlertTriangle size={14} className="shrink-0 mt-0.5" />
