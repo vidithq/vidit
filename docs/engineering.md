@@ -112,9 +112,8 @@ vidit/
 │   │   │   ├── admin_event.py      # Admin-action audit log
 │   │   │   ├── auth_event.py       # /auth/* audit log
 │   │   │   ├── auth_token.py       # Single-use password-reset tokens
-│   │   │   ├── bounty.py           # Bounty + BountyClaim (multi-claimer signal)
 │   │   │   ├── follow.py           # Analyst → analyst follow edges
-│   │   │   ├── geolocation.py
+│   │   │   ├── geolocation.py      # Geolocation event + GeolocationClaim (the merged bounty + geolocation lifecycle)
 │   │   │   ├── invite_code.py
 │   │   │   ├── media.py
 │   │   │   ├── pending_registration.py  # Pre-creation registration staging
