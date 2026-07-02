@@ -1,4 +1,5 @@
 import { safeHostname } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
@@ -38,13 +39,13 @@ type SourceLabelProps = {
 export function SourceLabel(props: SourceLabelProps) {
   const { isDemo, url, className } = props;
   if (isDemo) {
-    return <span className={cx("italic text-neutral-500", className)}>synthetic</span>;
+    return <span className={cn("italic text-neutral-500", className)}>synthetic</span>;
   }
   const hostname = safeHostname(url);
   // The DB column is non-nullable, so this only fires on corrupt data —
   // surface a readable label rather than an empty anchor / span.
   if (!hostname) {
-    return <span className={cx("italic text-neutral-500", className)}>no source</span>;
+    return <span className={cn("italic text-neutral-500", className)}>no source</span>;
   }
   if (props.variant === "inline") {
     return <span className={className}>{hostname}</span>;
@@ -54,17 +55,9 @@ export function SourceLabel(props: SourceLabelProps) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={cx(`${TEXT_LINK} truncate`, props.maxWidthClass, className)}
+      className={cn(`${TEXT_LINK} truncate`, props.maxWidthClass, className)}
     >
       {hostname}
     </a>
   );
-}
-
-/**
- * Filter falsy class tokens before joining — avoids the double-space artefact
- * ``.trim()`` can't fix when a middle slot is empty.
- */
-function cx(...tokens: (string | undefined | null | false)[]): string {
-  return tokens.filter(Boolean).join(" ");
 }

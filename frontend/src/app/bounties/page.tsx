@@ -116,7 +116,6 @@ export default function BountiesPage() {
                   variant="compact"
                   detailHref={`/bounties/${b.id}`}
                   title={b.title}
-                  titleText={b.title}
                   badge={<BountyStatusBadge status={b.status} />}
                   media={b.media[0]}
                   author={b.author}

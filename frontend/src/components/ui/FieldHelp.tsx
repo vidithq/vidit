@@ -27,11 +27,9 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
 export function FieldHelp({
   concept,
   size = 13,
-  className = "",
 }: {
   concept: Concept;
   size?: number;
-  className?: string;
 }) {
   const { text, label } = FIELD_HELP[concept];
   const [pinned, setPinned] = useState(false);
@@ -134,7 +132,7 @@ export function FieldHelp({
         setPinned(false);
         scheduleClose();
       }}
-      className={`inline-flex items-center align-middle ${className}`}
+      className="inline-flex items-center align-middle"
     >
       <button
         ref={buttonRef}

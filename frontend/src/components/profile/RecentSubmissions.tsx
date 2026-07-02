@@ -58,7 +58,6 @@ export function RecentSubmissions({
               author={{ username: profile.username }}
               detailHref={`/geolocations/${entry.id}`}
               title={entry.title}
-              titleText={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
               date={entry.event_date}

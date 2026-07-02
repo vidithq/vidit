@@ -4,11 +4,11 @@
 // chips, and badges are the <Pill> primitive (./Pill); both bundle shape +
 // colour as variants, so no *_BUTTON or *_PILL colour constants live here.
 
-// Base surface paints, the single source for the accent orange and neutral
-// grey. The <Pill> tones compose these (./Pill layers a border per tone); the
+// Base accent surface paint, the single source for the accent orange fill.
+// The <Pill> accent tone composes it (./Pill layers a border on top); the
 // active nav / row treatments (Sidebar, landing, submit) reuse the same fill
 // without a pill border, so a pill and an active nav item can't drift apart.
-export const NEUTRAL_SURFACE = "bg-neutral-800 text-neutral-400";
+// The neutral grey counterpart lives inside <Pill> (its only consumer).
 export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 
 // Tappable card / row — orange border on hover. Only the hover is the

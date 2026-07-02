@@ -26,8 +26,9 @@ interface EntityCardProps {
   detailHref: string;
   /** Plain text, or a highlighted node in search results. */
   title: ReactNode;
-  /** Accessible name for the stretched link (the title as a plain string). */
-  titleText: string;
+  /** Accessible name for the stretched link. Defaults to `title` when that is
+   *  a plain string; pass it only when `title` is a node (search highlights). */
+  titleText?: string;
   /** A rendered status pill: `<StatusBadge>` or `<BountyStatusBadge>`. */
   badge?: ReactNode;
   media?: Media;
@@ -98,7 +99,7 @@ export function EntityCard({
   const stretched = (
     <Link
       href={detailHref}
-      aria-label={titleText}
+      aria-label={titleText ?? (typeof title === "string" ? title : undefined)}
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );

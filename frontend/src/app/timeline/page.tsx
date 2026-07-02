@@ -72,7 +72,6 @@ export default function TimelinePage() {
                 variant="feed"
                 detailHref={`/geolocations/${entry.id}`}
                 title={entry.title}
-                titleText={entry.title}
                 badge={
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }

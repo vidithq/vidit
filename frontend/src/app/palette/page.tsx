@@ -30,7 +30,6 @@ import {
   TEXT_LINK,
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
-  NEUTRAL_SURFACE,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
@@ -165,15 +164,10 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Tokens" />
 
-          <Item name="ACCENT_SURFACE / NEUTRAL_SURFACE" usage="The two base surface paints (bg + text), the single source shared by the <Pill> tones (which layer a border on top) and the active nav / row treatments (Sidebar, landing, submit) that want the same fill without a pill border.">
-            <Variant label="ACCENT_SURFACE (active nav)">
+          <Item name="ACCENT_SURFACE" usage="The base accent surface paint (bg + text), the single source shared by the <Pill> accent tone (which layers a border on top) and the active nav / row treatments (Sidebar, landing, submit) that want the same fill without a pill border.">
+            <Variant label="active nav">
               <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${ACCENT_SURFACE}`}>
                 Active
-              </span>
-            </Variant>
-            <Variant label="NEUTRAL_SURFACE (inactive)">
-              <span className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${NEUTRAL_SURFACE}`}>
-                Inactive
               </span>
             </Variant>
           </Item>
@@ -331,7 +325,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="Curated + free tag selection (composes NewTagInput + Pill chips); submit / edit">
+          <Item name="<TagPicker>" usage="Curated + free tag selection (Pill chips + inline free-tag creation); submit / edit">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
@@ -453,7 +447,7 @@ export default function PalettePage() {
 
           <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
             <p className="text-xs text-neutral-500">
-              Full-screen (centered via <code className="text-neutral-400">PageCenter</code>): a quiet{" "}
+              Full-screen centered states: a quiet{" "}
               <span className="text-neutral-400">Loading…</span>, or an error message
               with an optional Back to map link. Not rendered here (takes the full height).
             </p>
@@ -472,7 +466,6 @@ export default function PalettePage() {
                 variant="feed"
                 detailHref="/geolocations/demo"
                 title={MOCK_CARD_GEO.title}
-                titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="detected" />}
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
@@ -488,7 +481,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/geolocations/demo"
                 title={MOCK_CARD_GEO.title}
-                titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="submitted" />}
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
@@ -504,7 +496,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/bounties/demo"
                 title="Footage wanted near Bakhmut"
-                titleText="Footage wanted near Bakhmut"
                 badge={<BountyStatusBadge status="open" />}
                 author={{ username: "analyst" }}
                 date="2026-05-01"
@@ -521,7 +512,6 @@ export default function PalettePage() {
                 variant="compact"
                 detailHref="/geolocations/demo/edit"
                 title={MOCK_DETAIL.title}
-                titleText={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.author.username }}
                 date={MOCK_DETAIL.event_date}

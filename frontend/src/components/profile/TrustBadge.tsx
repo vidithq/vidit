@@ -9,7 +9,6 @@ interface TrustBadgeProps {
    *  mark — readers can see why the analyst was vetted. */
   trustReason?: string | null;
   size?: number;
-  className?: string;
 }
 
 /**
@@ -25,7 +24,6 @@ export default function TrustBadge({
   isTrusted,
   trustReason,
   size = 14,
-  className = "",
 }: TrustBadgeProps) {
   const [pinned, setPinned] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
@@ -55,7 +53,7 @@ export default function TrustBadge({
   return (
     <span
       ref={wrapperRef}
-      className={`relative inline-flex items-center align-middle group ${className}`}
+      className="relative inline-flex items-center align-middle group"
     >
       <button
         type="button"

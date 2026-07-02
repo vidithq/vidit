@@ -8,13 +8,11 @@ import { Button } from "@/components/ui/Button";
 interface FollowButtonProps {
   username: string;
   initialFollowing: boolean;
-  compact?: boolean;
 }
 
 export default function FollowButton({
   username,
   initialFollowing,
-  compact = false,
 }: FollowButtonProps) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
@@ -52,9 +50,9 @@ export default function FollowButton({
         disabled={loading}
       >
         {loading ? (
-          <Loader2 size={compact ? 12 : 14} className="animate-spin" />
+          <Loader2 size={14} className="animate-spin" />
         ) : (
-          <Icon size={compact ? 12 : 14} />
+          <Icon size={14} />
         )}
         {following ? "Following" : "Follow"}
       </Button>
