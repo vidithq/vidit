@@ -20,7 +20,7 @@ import { ProofSection } from "@/components/ui/ProofSection";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
-import TrustBadge from "@/components/profile/TrustBadge";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -129,22 +129,7 @@ export default function BountyDetailPage() {
     <PageShell
       back
       title={bounty.title}
-      subtitle={
-        <span className="inline-flex items-center gap-1.5">
-          by{" "}
-          <Link
-            href={`/profile/${bounty.author.username}`}
-            className={`${TEXT_LINK}`}
-          >
-            {bounty.author.username}
-          </Link>
-          <TrustBadge
-            isTrusted={bounty.author.is_trusted}
-            trustReason={bounty.author.trust_reason}
-            size={14}
-          />
-        </span>
-      }
+      subtitle={<AuthorByline author={bounty.author} />}
     >
         <div>
           <SectionEyebrow title="Media" concept="source_media" />

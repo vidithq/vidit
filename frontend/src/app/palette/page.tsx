@@ -18,6 +18,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
@@ -350,6 +351,19 @@ export default function PalettePage() {
             </Variant>
             <Variant label='fallback="initial"'>
               <Avatar username="Marius" size="size-10" />
+            </Variant>
+          </Item>
+
+          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author.">
+            <Variant label="default (subtitle)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.author} />
+              </span>
+            </Variant>
+            <Variant label='size="xs" (panel header)'>
+              <span className="text-xs text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.author} size="xs" />
+              </span>
             </Variant>
           </Item>
 

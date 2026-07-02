@@ -9,7 +9,7 @@ import { sourceIsSynthetic } from "@/lib/geolocations";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/geolocation/StatusBadge";
-import TrustBadge from "@/components/profile/TrustBadge";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -163,19 +163,7 @@ function DetailRows({ geo, compact }: { geo: GeolocationDetail; compact: boolean
       )}
       {!compact && (
         <DetailRow label="Author" compact={compact}>
-          <span className="text-sm inline-flex items-center gap-1.5">
-            <Link
-              href={`/profile/${geo.author.username}`}
-              className={`${TEXT_LINK}`}
-            >
-              {geo.author.username}
-            </Link>
-            <TrustBadge
-              isTrusted={geo.author.is_trusted}
-              trustReason={geo.author.trust_reason}
-              size={14}
-            />
-          </span>
+          <AuthorByline author={geo.author} prefix={false} className="text-sm" />
         </DetailRow>
       )}
     </>
