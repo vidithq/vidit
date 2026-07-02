@@ -171,7 +171,13 @@ Every element below is a reusable primitive. Compose from them; do not hand-roll
 
 Primitives join their classes with [`cn`](../frontend/src/lib/cn.ts) (tailwind-merge): on a conflicting Tailwind utility the caller's `className` wins predictably instead of being decided by stylesheet order. Keep `className` for orthogonal extras (margins, tracking, casing); `<Button>` and `<Pill>` stay one size by design.
 
-**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control; [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section. The media slot on cards is one piece: [`<MediaThumb>`](../frontend/src/components/ui/MediaThumb.tsx) renders the real media (image thumbnail or video first-frame) or a marked no-media box; there are no generated stand-ins.
+**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control (`LABEL_TEXT` is the same text without `block`, for hosts that can't take it: a table head row, a group-heading div); [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section.
+
+**Two media pieces, two surfaces.** [`<MediaThumb>`](../frontend/src/components/ui/MediaThumb.tsx) is the one media slot on cards: the real media (image thumbnail or video first-frame) or a marked no-media box; there are no generated stand-ins. [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx) is the detail-surface block (geolocation detail, map panel, bounty detail): 2-up `hero` grid on the page, stacked `thumbnail` tiles in the panel, videos postered via `#t=0.1` + `preload="metadata"`.
+
+**Controls beyond the button.** [`<Switch>`](../frontend/src/components/ui/Switch.tsx) is the one boolean toggle (settings rows at `md`, map filter rows at `sm`; `as="span"` when a whole-row parent owns the click). [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) is the exclusive-choice bar (submit type, admin delete mode; `tone="danger"` paints a destructive option's active state red). `<Input icon>` overlays a leading icon in the field (the search box).
+
+**Small assemblies.** [`<AuthorByline>`](../frontend/src/components/ui/AuthorByline.tsx) is "by @user + TrustBadge" (detail subtitles, panel header, Author row). [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the orange notification dot (sidebar badges, beta pills, detections entry). [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar: `boxed` (empty list pages), `plain` (headline + hint + CTA inside a container), `invite` (the dashed first-run hero); each site picks exactly one variant. The anchored-popover machinery (pin on click, hover, outside-click/Escape dismiss, portal + viewport clamp) is [`usePinnedPopover`](../frontend/src/hooks/usePinnedPopover.ts), shared by `FieldHelp` and `TrustBadge`; a new popover consumes it rather than re-rolling pin logic.
 
 ### Links and clickable surfaces
 
@@ -245,8 +251,17 @@ Forms are **required by default**: only the exceptions carry an `optional` marke
 
 ### Status dots and badges
 
-- Sidebar nav items carry an optional `notify` flag: an orange dot at the icon corner for "new content awaits" (static today).
-- For inline placeholders next to author handles or in panel headers, prefer a dedicated atom like [`profile/TrustBadge.tsx`](../frontend/src/components/profile/TrustBadge.tsx).
+- The orange "new content awaits" dot is the [`<Dot>`](../frontend/src/components/ui/Dot.tsx) atom: sidebar nav badges (via the `notify` flag), the landing / closed-beta pills, the detections entry. Position, ring, and a larger size come via `className`.
+- For inline marks next to author handles or in panel headers, prefer a dedicated atom like [`profile/TrustBadge.tsx`](../frontend/src/components/profile/TrustBadge.tsx).
+
+### Sanctioned one-offs
+
+Decided once, so review doesn't re-litigate them:
+
+- **Search's `UserResult`** re-declares `EntityCard`'s card shell. Folding it in would leak avatar / no-thumbnail conditionals into `EntityCard` for one consumer; the duplicate is deliberate (commented at the call site).
+- **`ProofSection`** composes `<Card className="p-4">`: one density step tighter than the `p-5` form cards, because proof is a reading surface, not a form.
+- **The admin dev-tool register** is [`admin/DevToolPanel.tsx`](../frontend/src/components/admin/DevToolPanel.tsx) (translucent shell, bordered header), deliberately lighter than the `<Card as="section">` the real admin actions use, so seed/wipe tooling reads as a separate register. Admin-local on purpose: admin-only surfaces don't earn `ui/` primitives. Same register: [`admin/ActionReceipt.tsx`](../frontend/src/components/admin/ActionReceipt.tsx), the post-delete summary box whose hard/soft badge is a `<Pill>` (danger / neutral; soft delete does not earn an amber pill tone, amber stays a callout colour).
+- **`WARNING_CALLOUT` radius** is `rounded-md` at every call site, matching the form banners; the token stays colour-only.
 
 ## What we avoid
 

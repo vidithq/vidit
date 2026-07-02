@@ -105,7 +105,7 @@ export function DuplicateProbe({
 function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
   return (
     <section
-      className={`rounded-lg p-4 space-y-3 ${WARNING_CALLOUT}`}
+      className={`rounded-md p-4 space-y-3 ${WARNING_CALLOUT}`}
       aria-live="polite"
     >
       <header className="flex items-start gap-2 text-amber-200">

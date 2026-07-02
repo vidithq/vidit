@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Bot } from "lucide-react";
 
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { Dot } from "@/components/ui/Dot";
 
 /**
  * Own-profile entry point into the detections list. Surfaces the count of
@@ -27,10 +28,7 @@ export function DetectionsEntry({
           <Bot size={18} />
           {/* Same orange dot as the sidebar profile row, so the user ties the
               sidebar nudge to this block. */}
-          <span
-            aria-hidden="true"
-            className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-orange-500 ring-2 ring-neutral-950"
-          />
+          <Dot className="absolute -top-0.5 -right-0.5 size-2.5 ring-2 ring-neutral-950" />
         </span>
         <div>
           <p className="text-sm font-medium text-neutral-100">

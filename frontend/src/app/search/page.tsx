@@ -311,6 +311,9 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
 }
 
 function UserResult({ hit }: { hit: SearchUserHit }) {
+  // Sanctioned duplicate of EntityCard's shell (see design.md): a user hit has
+  // no media slot / meta rows, and folding it into EntityCard would leak
+  // avatar + no-thumb conditionals into the card for one consumer.
   return (
     <Link
       href={`/profile/${hit.username}`}

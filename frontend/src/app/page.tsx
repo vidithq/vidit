@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
+import { Dot } from "@/components/ui/Dot";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -133,7 +134,7 @@ export default function LandingPage() {
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
           <Pill tone="accent" className="gap-2 tracking-tight">
-            <span className="size-1.5 rounded-full bg-orange-500" />
+            <Dot />
             <span>Closed beta · invite-only</span>
           </Pill>
           <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">

@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { Dot } from "@/components/ui/Dot";
 import {
   Globe,
   Plus,
@@ -180,10 +181,7 @@ export default function Sidebar() {
         <span className="relative shrink-0">
           <Icon size={18} strokeWidth={active ? 2.2 : 1.8} />
           {item.notify && (
-            <span
-              aria-hidden="true"
-              className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-orange-500 ring-2 ring-neutral-900"
-            />
+            <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
           )}
         </span>
         {labelsVisible && (
@@ -300,10 +298,7 @@ export default function Sidebar() {
               <User size={11} strokeWidth={1.8} />
               {/* Pending-submission nudge, same dot the nav items use. */}
               {detectionCount > 0 && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-orange-500 ring-2 ring-neutral-900"
-                />
+                <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
               )}
             </span>
             {labelsVisible && (

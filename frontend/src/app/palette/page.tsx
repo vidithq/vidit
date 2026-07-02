@@ -28,6 +28,7 @@ import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Dot } from "@/components/ui/Dot";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
@@ -214,8 +215,8 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice">
-            <div className={`rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
+          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice, admin armed confirms. Colour only; callers add rounded-md + their own padding.">
+            <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
             </div>
           </Item>
@@ -419,6 +420,18 @@ export default function PalettePage() {
           <Item name="<SourceLabel>" usage="Source display (shortened host, or synthetic in demo)">
             <SourceLabel isDemo={false} url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
+          </Item>
+
+          <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges, landing + beta pills, detections entry. Position / ring / size via className.">
+            <Variant label="bare">
+              <Dot />
+            </Variant>
+            <Variant label="on an icon corner">
+              <span className="relative inline-flex size-7 items-center justify-center rounded-md bg-neutral-800 border border-neutral-700">
+                <MapPin size={14} className="text-neutral-400" />
+                <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
+              </span>
+            </Variant>
           </Item>
 
           <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), else a marked no-media box. No generated stand-ins.">

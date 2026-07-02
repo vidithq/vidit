@@ -11,7 +11,7 @@ export function CuratedTagsError({
   message?: string;
 }) {
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
+    <div className={`flex items-center justify-between gap-3 rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
       <span>{message}</span>
       <Button variant="ghost" onClick={onRetry} className="shrink-0">
         Retry
