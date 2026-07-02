@@ -568,17 +568,6 @@ async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
     return await _upload_with_optional_strip(file, key)
 
 
-async def upload_bounty_file(file: UploadFile, bounty_id: UUID) -> UploadResult:
-    """Bounty media — like ``upload_file`` but under a distinct S3 prefix.
-    Promoting a bounty to a geolocation rewrites row pointers, not keys, so
-    a fulfilled bounty's media stays at ``bounty_uploads/<bounty>/...``
-    after the flip.
-    """
-    ext = _safe_storage_extension(file.content_type)
-    key = f"bounty_uploads/{bounty_id}/{uuid4()}{ext}"
-    return await _upload_with_optional_strip(file, key)
-
-
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
     """S3 key for a machine detection's media — a distinct ``detected/`` prefix
     keeps it separable from human ``uploads/``. The extension derives from the

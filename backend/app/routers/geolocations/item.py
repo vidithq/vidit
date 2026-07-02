@@ -1,4 +1,4 @@
-"""Single-geolocation ops by id — detail, delete, and the ``detected`` review flow (edit / validate / reject)."""
+"""Single-event ops by id — detail, delete, the submit transition, and detection reject."""
 
 import uuid
 
@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
-from app.models.bounty import Bounty
 from app.models.geolocation import (
     SOURCE_URL_MAX_LENGTH,
     TITLE_MAX_LENGTH,
@@ -46,13 +45,13 @@ from app.services.storage import (
 router = APIRouter()
 
 
-def _resolve_owned_geolocation(db: Session, geolocation_id: uuid.UUID, user: User) -> Geolocation:
-    """Fetch a live geolocation the caller authored, or raise.
+def _resolve_live_geolocation(db: Session, geolocation_id: uuid.UUID) -> Geolocation:
+    """Fetch a live event by id, or 404.
 
-    The author-mutating idiom shared by the review-flow endpoints: a
-    soft-deleted row reads as 404 (an admin-removed row isn't author-actionable
-    either — same surface as a genuine 404, no enumeration oracle), a live row
-    the caller didn't author is 403.
+    A soft-deleted row reads as 404 (an admin-removed row isn't actionable —
+    same surface as a genuine 404, no enumeration oracle). Permission is the
+    caller's concern: the submit transition owns per-status authorship (a
+    ``requested`` event is answerable by anyone).
     """
     geo = (
         db.query(Geolocation)
@@ -61,6 +60,16 @@ def _resolve_owned_geolocation(db: Session, geolocation_id: uuid.UUID, user: Use
     )
     if geo is None:
         raise HTTPException(status_code=404, detail="Geolocation not found")
+    return geo
+
+
+def _resolve_owned_geolocation(db: Session, geolocation_id: uuid.UUID, user: User) -> Geolocation:
+    """Fetch a live geolocation the caller authored, or raise.
+
+    The author-mutating idiom shared by the owner-only endpoints (reject): a
+    soft-deleted row reads as 404, a live row the caller didn't author is 403.
+    """
+    geo = _resolve_live_geolocation(db, geolocation_id)
     permissions.ensure_author(geo, user)
     return geo
 
@@ -69,17 +78,15 @@ def _serialize_geolocation(db: Session, geo: Geolocation) -> GeolocationRead:
     """Build the read model for a just-mutated row.
 
     Re-projects ``lat`` / ``lng`` out of the PostGIS point with the same
-    ``ST_Y`` / ``ST_X`` cast ``GET /{id}`` uses, so a review-flow mutation
-    returns a response identical in shape to a fresh read.
+    ``ST_Y`` / ``ST_X`` cast ``GET /{id}`` uses, so a mutation returns a response
+    identical in shape to a fresh read.
     """
     lat, lng = (
         db.query(ST_Y(Geolocation.location), ST_X(Geolocation.location))
         .filter(Geolocation.id == geo.id)
         .one()
     )
-    return build_geolocation_read(
-        geo, lat=lat, lng=lng, originated_from_bounty=geo.originated_from_bounty
-    )
+    return build_geolocation_read(geo, lat=lat, lng=lng)
 
 
 @router.get("/{geolocation_id}", response_model=GeolocationRead)
@@ -93,9 +100,9 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         )
         .options(
             joinedload(Geolocation.author),
+            joinedload(Geolocation.requested_by),
             joinedload(Geolocation.media),
             joinedload(Geolocation.tags),
-            joinedload(Geolocation.originated_from_bounty).joinedload(Bounty.author),
         )
         .filter(Geolocation.id == geolocation_id, Geolocation.deleted_at.is_(None))
         .first()
@@ -104,9 +111,7 @@ def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = D
         raise HTTPException(status_code=404, detail="Geolocation not found")
 
     geo, lat, lng = row
-    return build_geolocation_read(
-        geo, lat=lat, lng=lng, originated_from_bounty=geo.originated_from_bounty
-    )
+    return build_geolocation_read(geo, lat=lat, lng=lng)
 
 
 @router.delete("/{geolocation_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -148,11 +153,12 @@ def delete_geolocation(
     points_cache.invalidate()
 
 
-# ── Owner flow over machine ``detected`` rows ───────────────────────
-# Submit writes the owner's edits and finalizes it (detected → submitted);
-# reject soft-deletes it. Both are owner-only and state-gated to ``detected``:
-# a ``detected`` row is otherwise immutable machine output, and a ``submitted``
-# row is frozen (409). See ``api.md``.
+# ── Lifecycle transitions to ``geolocated`` and detection reject ─────
+# Submit writes the caller's edits and moves a ``requested`` or ``detected``
+# event to ``geolocated``; reject soft-deletes a ``detected`` draft. A
+# ``detected`` draft is owner-only; a ``requested`` event is answerable by
+# anyone (the fulfiller becomes the owner). A ``geolocated`` row is frozen
+# (409). See ``api.md``.
 
 
 @router.post("/{geolocation_id}/submit", response_model=GeolocationRead)
@@ -161,7 +167,7 @@ async def submit_geolocation(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring create: the form posts the whole state and the service
-    # writes it and flips to ``submitted`` atomically. ``max_length`` ceilings are
+    # writes it and flips to ``geolocated`` atomically. ``max_length`` ceilings are
     # the shared model constants (same as create) so over-length input is rejected
     # before the files hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
@@ -179,16 +185,18 @@ async def submit_geolocation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Submit a ``detected`` geolocation (owner flow): ``detected → submitted``.
+    """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
 
-    A ``detected`` row is immutable machine output; this is the only write to it.
-    The owner posts the whole form (title, coordinate, source URL, dates, proof,
-    tags, and the source media: ``files`` added, ``remove_media_ids`` dropped),
-    and on success the row is written and frozen as ``submitted``. Only
-    ``detected_from_url`` (provenance) and ``status`` carry no field. Blocked until
-    the evidence floor is met (at least one media and the ``conflict`` +
-    ``capture_source`` tags, 400 otherwise). Off ``detected`` → 409. Soft-deleted
-    rows read as 404.
+    The one generalized fulfil / submit transition. The caller posts the whole
+    form (title, coordinate, source URL, dates, proof, tags, and the source
+    media: ``files`` added, ``remove_media_ids`` dropped), and on success the row
+    is written and frozen as ``geolocated``. Only ``detected_from_url``
+    (provenance) and ``status`` carry no field. A ``detected`` draft is owner-only
+    (403 otherwise); a ``requested`` event is answerable by anyone, and the
+    fulfiller becomes its owner (``requested_by`` keeps the original poster).
+    Blocked until the evidence floor is met (at least one media and the
+    ``conflict`` + ``capture_source`` tags, 400 otherwise). Off ``requested`` /
+    ``detected`` → 409. Soft-deleted rows read as 404.
     """
     files = files or []
     parsed_event_date = parse_iso_date(event_date, field="event_date")
@@ -198,11 +206,14 @@ async def submit_geolocation(
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
-    geo = _resolve_owned_geolocation(db, geolocation_id, current_user)
+    # Not owner-gated at the router: the service enforces per-status authorship
+    # (owner-only for ``detected``, open for ``requested``).
+    geo = _resolve_live_geolocation(db, geolocation_id)
     try:
-        submitted = await geolocations_service.submit_detected(
+        submitted = await geolocations_service.submit(
             db,
             geo=geo,
+            current_user=current_user,
             title=title,
             lat=lat,
             lng=lng,
@@ -234,7 +245,7 @@ def reject_geolocation(
 
     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
     distinct from the hard ``DELETE`` that removes a row for good. Off
-    ``detected`` → 409 (a ``submitted`` row goes through ``DELETE``).
+    ``detected`` → 409 (a ``geolocated`` row goes through ``DELETE``).
     Soft-deleted → 404.
     """
     geo = _resolve_owned_geolocation(db, geolocation_id, current_user)

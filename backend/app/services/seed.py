@@ -37,16 +37,14 @@ from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.bounty import (
+from app.models.geolocation import (
     STATUS_CLOSED,
-    STATUS_FULFILLED,
-    STATUS_OPEN,
-    Bounty,
-    BountyClaim,
-    BountyStatus,
-    bounty_tags,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Geolocation,
+    GeolocationClaim,
+    GeolocationStatus,
 )
-from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.tag import Tag, geolocation_tags
 from app.models.user import User
@@ -790,30 +788,30 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
     return ids
 
 
-# ── Bounty seeder ────────────────────────────────────────────────────────
+# ── Requested-view (bounty) seeder ─────────────────────────────────────────
 
-# Generic title for every demo bounty — same rationale as DEMO_TITLE;
+# Generic title for every demo request — same rationale as DEMO_TITLE;
 # specific copy would imply factual claims about non-existent events.
-# Phrased as an unplaced bounty ("I saw this, can't place it").
+# Phrased as an unplaced request ("I saw this, can't place it").
 DEMO_BOUNTY_TITLE = "Demo bounty — unplaced footage"
 DEMO_BOUNTY_SOURCE_URL = "https://vidit.app/demo-data"
 
-# Probability a demo bounty gets ≥1 synthetic claim — gives the "N
+# Probability a demo request gets ≥1 synthetic claim — gives the "N
 # working" badge something to render so the multi-claimer UI surfaces.
 DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
 
-# Status mix. Open dominates so the default "open queue" view feels
-# populated; the others are sprinkled in for the status-filter chips and
-# the trace banner (bounty ``Fulfilled by`` + geo "originally posted as a
-# bounty"). Weights sum to 1.0; sampled per-bounty.
-DEMO_BOUNTY_STATUS_WEIGHTS = (
-    (STATUS_OPEN, 0.70),
-    (STATUS_FULFILLED, 0.15),
+# Status mix over the merged lifecycle. ``requested`` dominates so the default
+# "open queue" view feels populated; ``geolocated`` is the fulfilled case (a
+# located event with the original poster preserved on ``requested_by_id``), and
+# ``closed`` is a withdrawn request. Weights sum to 1.0; sampled per-row.
+DEMO_BOUNTY_STATUS_WEIGHTS: tuple[tuple[GeolocationStatus, float], ...] = (
+    (STATUS_REQUESTED, 0.70),
+    (STATUS_GEOLOCATED, 0.15),
     (STATUS_CLOSED, 0.15),
 )
 
 
-def _pick_demo_bounty_status() -> BountyStatus:
+def _pick_demo_bounty_status() -> GeolocationStatus:
     """Weighted draw from ``DEMO_BOUNTY_STATUS_WEIGHTS``.
 
     Explicit loop rather than ``random.choices`` so the weights stay
@@ -825,27 +823,26 @@ def _pick_demo_bounty_status() -> BountyStatus:
         cumulative += weight
         if roll < cumulative:
             return status
-    return STATUS_OPEN  # rounding fallback
+    return STATUS_REQUESTED  # rounding fallback
 
 
 def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
-    """Generate ``count`` demo bounties with a representative status mix.
+    """Generate ``count`` demo requested-view events with a representative mix.
 
-    Reuses the demo-author pool and the ``demo-pool/`` prefix — bounties
-    need media but not coordinates, so the same template imagery is reused.
-    Each gets a random subset of one template's ``media/`` files; for
-    *fulfilled* bounties the media lives on the paired geolocation
-    (mirroring real fulfilment's in-place UPDATE), for *open* / *closed* it
-    stays on the bounty.
+    Reuses the demo-author pool and the ``demo-pool/`` prefix. Each event gets a
+    random subset of one template's ``media/`` files. Since the bounty +
+    geolocation merge these are all rows on the one ``geolocations`` table:
 
-    Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter
-    chips + trace-banner UIs have data. Fulfilled bounties get a paired
-    demo geo (``is_demo=True``, ``originated_from_bounty_id`` set) to
-    exercise the "Fulfilled by" row + the geo's "originally posted as a
-    bounty" banner. Open bounties may get 1–3 synthetic claims (see
-    ``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+    * ``requested`` — an open call: no location, ``requested_by_id`` = author,
+      may get 1–3 synthetic claims (see ``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+    * ``geolocated`` — the fulfilled case: a located row whose ``author_id`` is a
+      *different* demo analyst (the fulfiller) while ``requested_by_id`` keeps the
+      original poster, so "requested by @x, geolocated by @y" reads naturally.
+    * ``closed`` — a withdrawn request: no location, ``closed_at`` stamped.
 
-    Idempotent on demo authors / tags; commits at the end.
+    Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter chips +
+    the requested_by banner UIs have data. Idempotent on demo authors / tags;
+    commits at the end.
     """
     if count < 1:
         raise ValueError("count must be at least 1")
@@ -871,103 +868,91 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     # list_keys + per-key hash, no S3 writes).
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
-    pending_tag_links: list[dict[str, uuid.UUID]] = []
     pending_geo_tag_links: list[dict[str, uuid.UUID]] = []
     pending_claim_rows: list[dict[str, Any]] = []
-    counts = {STATUS_OPEN: 0, STATUS_FULFILLED: 0, STATUS_CLOSED: 0}
+    counts: dict[GeolocationStatus, int] = {
+        STATUS_REQUESTED: 0,
+        STATUS_GEOLOCATED: 0,
+        STATUS_CLOSED: 0,
+    }
     claimed_count = 0
 
     for _ in range(count):
         author_id = random.choice(author_ids)
         template_id = random.choice(template_ids)
         template = templates[template_id]
-        # Region drives tag selection; a fulfilled bounty's paired geo also
-        # pulls its point from this region's bbox.
+        # Region drives tag selection; a fulfilled event also pulls its point
+        # from this region's bbox.
         region = _pick_region()
 
         status = _pick_demo_bounty_status()
         counts[status] += 1
-        # closed_at stamped for any terminal-state bounty so the detail page
-        # can show "Fulfilled/Closed YYYY-MM-DD".
-        closed_at = datetime.now(UTC) if status != STATUS_OPEN else None
 
-        bounty_id = uuid.uuid4()
-        bounty = Bounty(
-            id=bounty_id,
-            author_id=author_id,
-            title=DEMO_BOUNTY_TITLE,
-            source_url=DEMO_BOUNTY_SOURCE_URL,
-            status=status,
-            closed_at=closed_at,
-            source_posted_at=_random_source_posted_at(_random_event_date()),
-            is_demo=True,
-        )
-        db.add(bounty)
+        geo_id = uuid.uuid4()
+        event_date = _random_event_date()
+        if status == STATUS_GEOLOCATED:
+            # Fulfilled: a located row. A *different* demo analyst is the owner
+            # (the fulfiller) while the poster stays on ``requested_by_id`` so
+            # "requested by @x, geolocated by @y" reads naturally.
+            other_authors = [aid for aid in author_ids if aid != author_id]
+            fulfiller_id = random.choice(other_authors) if other_authors else author_id
+            lat, lon = _pick_point_for(region)
+            geo = Geolocation(
+                id=geo_id,
+                author_id=fulfiller_id,
+                requested_by_id=author_id,
+                title=DEMO_TITLE,
+                location=from_shape(Point(lon, lat), srid=4326),
+                source_url=DEMO_BOUNTY_SOURCE_URL,
+                event_date=event_date,
+                source_posted_at=_random_source_posted_at(event_date),
+                status=STATUS_GEOLOCATED,
+                is_demo=True,
+            )
+        else:
+            # Requested or closed — no location; the poster owns the row and is
+            # also the requester. ``closed_at`` stamped for the withdrawn case.
+            geo = Geolocation(
+                id=geo_id,
+                author_id=author_id,
+                requested_by_id=author_id,
+                title=DEMO_BOUNTY_TITLE,
+                source_url=DEMO_BOUNTY_SOURCE_URL,
+                event_date=event_date,
+                source_posted_at=_random_source_posted_at(event_date),
+                status=status,
+                closed_at=datetime.now(UTC) if status == STATUS_CLOSED else None,
+                is_demo=True,
+            )
+        db.add(geo)
 
         media_subset = random.sample(
             template["media"],
             k=random.randint(1, min(3, len(template["media"]))),
         )
-
-        if status == STATUS_FULFILLED:
-            # Media transferred to a paired geo. ``is_demo=True`` so the wipe
-            # path sweeps it too. A *different* demo analyst authors the geo
-            # so "fulfilled by @other" reads naturally.
-            other_authors = [aid for aid in author_ids if aid != author_id]
-            fulfiller_id = random.choice(other_authors) if other_authors else author_id
-            lat, lon = _pick_point_for(region)
-            geo_id = uuid.uuid4()
-            event_date = _random_event_date()
-            geo = Geolocation(
-                id=geo_id,
-                author_id=fulfiller_id,
-                title=DEMO_TITLE,
-                location=from_shape(Point(lon, lat), srid=4326),
-                source_url="https://vidit.app/demo-data",
-                event_date=event_date,
-                source_posted_at=_random_source_posted_at(event_date),
-                is_demo=True,
-                originated_from_bounty_id=bounty_id,
+        for key in media_subset:
+            db.add(
+                Media(
+                    geolocation_id=geo_id,
+                    storage_url=storage.public_url(key),
+                    media_type=_media_type_from_key(key),
+                    sha256=pool_sha256_by_key.get(key),
+                )
             )
-            db.add(geo)
-            for key in media_subset:
-                db.add(
-                    Media(
-                        geolocation_id=geo_id,
-                        storage_url=storage.public_url(key),
-                        media_type=_media_type_from_key(key),
-                        sha256=pool_sha256_by_key.get(key),
-                    )
-                )
-            # Tag the paired geo so it filters alongside the rest of the set.
-            for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
-                pending_geo_tag_links.append({"geolocation_id": geo_id, "tag_id": tid})
-        else:
-            # Open or closed — media stays on the bounty.
-            for key in media_subset:
-                db.add(
-                    Media(
-                        bounty_id=bounty_id,
-                        storage_url=storage.public_url(key),
-                        media_type=_media_type_from_key(key),
-                        sha256=pool_sha256_by_key.get(key),
-                    )
-                )
 
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
-            pending_tag_links.append({"bounty_id": bounty_id, "tag_id": tid})
+            pending_geo_tag_links.append({"geolocation_id": geo_id, "tag_id": tid})
 
-        # Claims only make sense on the open queue — fulfilled / closed
-        # bounties don't accept new claims, and stale backfilled claims
-        # would mislead the UI.
-        if status == STATUS_OPEN and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
+        # Claims only make sense on the open queue — closed / geolocated events
+        # don't accept new claims, and stale backfilled claims would mislead the UI.
+        if status == STATUS_REQUESTED and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
             other_authors = [aid for aid in author_ids if aid != author_id]
             if other_authors:
                 claim_count = random.randint(1, min(3, len(other_authors)))
                 for claimer_id in random.sample(other_authors, k=claim_count):
                     pending_claim_rows.append(
                         {
-                            "bounty_id": bounty_id,
+                            "geolocation_id": geo_id,
                             "user_id": claimer_id,
                             "created_at": datetime.now(UTC),
                         }
@@ -975,15 +960,13 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                 claimed_count += 1
 
     db.flush()
-    if pending_tag_links:
-        db.execute(insert(bounty_tags), pending_tag_links)
     if pending_geo_tag_links:
         db.execute(insert(geolocation_tags), pending_geo_tag_links)
     if pending_claim_rows:
         # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
         # ``Table`` and ``insert()`` accepts it — same as the
-        # ``insert(geolocation_tags)`` calls above.
-        db.execute(insert(BountyClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
+        # ``insert(geolocation_tags)`` call above.
+        db.execute(insert(GeolocationClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
     db.commit()
 
     return {
@@ -991,21 +974,30 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         "templates": len(template_ids),
         "authors": len(authors),
         "with_claims": claimed_count,
-        "open": counts[STATUS_OPEN],
-        "fulfilled": counts[STATUS_FULFILLED],
+        "open": counts[STATUS_REQUESTED],
+        "fulfilled": counts[STATUS_GEOLOCATED],
         "closed": counts[STATUS_CLOSED],
     }
 
 
 def wipe_demo_bounties(db: Session) -> dict[str, int]:
-    """Delete every ``is_demo=True`` bounty.
+    """Delete every ``is_demo=True`` requested-view event.
 
-    Bulk Core DELETE for the same reasons as ``wipe_demo`` (speed +
+    Scoped to the requested view (``requested`` / ``closed``) so the "Demo
+    bounties" panel stays independent of the "Demo data" panel: a fulfilled demo
+    event is now ``geolocated`` (a located row) and is swept by ``wipe_demo``
+    instead. Bulk Core DELETE for the same reasons as ``wipe_demo`` (speed +
     avoiding ORM cascade fighting the DB ``ON DELETE CASCADE``). The
-    ``demo-pool/`` S3 objects stay (keys shared with the geo seeder). Demo
-    users + geos are untouched — those are behind ``wipe_demo``.
+    ``demo-pool/`` S3 objects stay (keys shared with the geo seeder).
     """
-    deleted = db.query(Bounty).filter(Bounty.is_demo.is_(True)).delete(synchronize_session=False)
+    deleted = (
+        db.query(Geolocation)
+        .filter(
+            Geolocation.is_demo.is_(True),
+            Geolocation.status.in_((STATUS_REQUESTED, STATUS_CLOSED)),
+        )
+        .delete(synchronize_session=False)
+    )
     db.commit()
     return {"deleted_bounties": deleted or 0}
 

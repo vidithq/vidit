@@ -1,4 +1,4 @@
-"""Full-text search across geolocations, bounties, and users.
+"""Full-text search across events (located + requested) and users.
 
 Postgres FTS: ``plainto_tsquery`` parses user input (forgiving of spaces /
 punctuation, no operator surface to escape), the GIN indexes from migration
@@ -7,9 +7,12 @@ fragment with sentinel delimiters the frontend renders as ``<mark>`` —
 XSS-safe by construction, no HTML across the wire. Soft-deleted rows are
 filtered at query time.
 
-The TSVECTOR expressions here must match the migration's ``CREATE INDEX``
-expressions byte-for-byte or Postgres falls back to a sequential scan; both
-live as module constants so the query and the migration can't drift.
+Since the bounty + geolocation merge there is a single FTS query path over the
+one ``geolocations`` table (:func:`_search_events`); the located and requested
+views differ only by a status/location filter and the fields each surfaces. The
+TSVECTOR expressions here must match the migration's ``CREATE INDEX`` expressions
+byte-for-byte or Postgres falls back to a sequential scan; both live as module
+constants so the query and the migration can't drift.
 """
 
 from __future__ import annotations
@@ -19,8 +22,7 @@ import uuid
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.bounty import Bounty, BountyClaim
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATUS_REQUESTED, Geolocation, GeolocationClaim
 from app.models.user import User
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -61,18 +63,22 @@ def _strip_sentinels(col: str) -> str:
 # ``source_url`` is excluded — see the migration docstring for why URL
 # substring matches don't survive the simple parser's tokenization.
 _GEO_TSVECTOR = "to_tsvector('simple', coalesce(title, ''))"
-_BOUNTY_TSVECTOR = _GEO_TSVECTOR  # same expression on a different table
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
 
 
-def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N geolocations matching ``query`` + the pre-LIMIT total.
+def _search_events(
+    db: Session, *, query: str, limit: int, extra_where: str
+) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
+    """Run the FTS over ``geolocations`` and return ``(ids, highlights, total)``.
 
-    Returns ``(hits, total)``: ``hits`` are dicts ready for the router's
-    Pydantic schema; ``total`` is the pre-``LIMIT`` match count via
-    ``COUNT(*) OVER ()`` on the same WHERE'd set, so the UI renders "3 of
-    142", not "3 of 3". Soft-deleted rows excluded; ranking is ``ts_rank``
-    desc then ``created_at`` desc (stable tie-break).
+    The single FTS query path for both event views: the located view and the
+    requested view pass different ``extra_where`` fragments (``location IS NOT
+    NULL`` vs ``status = 'requested'``) into the same ``title`` TSVECTOR +
+    ts_headline query. ``ids`` are ranked (``ts_rank`` desc, ``created_at`` desc
+    tie-break), ``highlights`` maps each id to its ``ts_headline`` title, and
+    ``total`` is the pre-``LIMIT`` match count via ``COUNT(*) OVER ()`` so the UI
+    renders "3 of 142", not "3 of 3". Soft-deleted rows are excluded. The caller
+    hydrates the rows it needs off the ranked id list.
     """
     sql = text(
         f"""
@@ -86,21 +92,34 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
                COUNT(*) OVER () AS total_count
         FROM geolocations
         WHERE deleted_at IS NULL
+          AND {extra_where}
           AND {_GEO_TSVECTOR} @@ plainto_tsquery('simple', :q)
         ORDER BY rank DESC, created_at DESC
         LIMIT :lim
         """
     )
-    rows = db.execute(
-        sql,
-        {"q": query, "lim": limit, "opts": _HEADLINE_OPTS_FULL},
-    ).all()
+    rows = db.execute(sql, {"q": query, "lim": limit, "opts": _HEADLINE_OPTS_FULL}).all()
     if not rows:
-        return [], 0
-
+        return [], {}, 0
     total = int(rows[0].total_count)
     ids = [r.id for r in rows]
     highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in rows}
+    return ids, highlight_by_id, total
+
+
+def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+    """Top-N located events matching ``query`` + the pre-LIMIT total.
+
+    The located view: ``location IS NOT NULL`` (a ``requested`` row has no
+    coordinates and belongs to the requested view). Returns ``(hits, total)``:
+    ``hits`` are dicts ready for the router's Pydantic schema; ``total`` is the
+    pre-``LIMIT`` match count.
+    """
+    ids, highlight_by_id, total = _search_events(
+        db, query=query, limit=limit, extra_where="location IS NOT NULL"
+    )
+    if not ids:
+        return [], 0
 
     # Hydrate the full geo objects + relationships in one round-trip, keyed
     # off the ranked id list. Re-sort in Python because ``IN (...)`` doesn't
@@ -144,80 +163,58 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
 
 
 def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N bounties matching ``query`` + the pre-LIMIT total.
+    """Top-N requested events (bounties) matching ``query`` + the pre-LIMIT total.
 
-    Same rank-then-hydrate, soft-delete filter, and ``COUNT(*) OVER ()`` as
-    geolocations. Carries ``claimer_count`` so the result card renders the
-    same "N working" badge as the index.
+    The requested view: ``status = 'requested'``. Same FTS path as the located
+    view via :func:`_search_events`; carries ``claimer_count`` so the result card
+    renders the same "N working" badge as the index.
     """
-    sql = text(
-        f"""
-        SELECT id,
-               ts_rank({_BOUNTY_TSVECTOR}, plainto_tsquery('simple', :q)) AS rank,
-               ts_headline(
-                   'simple', {_strip_sentinels("title")},
-                   plainto_tsquery('simple', :q),
-                   :opts
-               ) AS title_highlight,
-               COUNT(*) OVER () AS total_count
-        FROM bounties
-        WHERE deleted_at IS NULL
-          AND {_BOUNTY_TSVECTOR} @@ plainto_tsquery('simple', :q)
-        ORDER BY rank DESC, created_at DESC
-        LIMIT :lim
-        """
+    ids, highlight_by_id, total = _search_events(
+        db, query=query, limit=limit, extra_where=f"status = '{STATUS_REQUESTED}'"
     )
-    rows = db.execute(
-        sql,
-        {"q": query, "lim": limit, "opts": _HEADLINE_OPTS_FULL},
-    ).all()
-    if not rows:
+    if not ids:
         return [], 0
 
-    total = int(rows[0].total_count)
-    ids = [r.id for r in rows]
-    highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in rows}
-
-    bounties = (
-        db.query(Bounty)
+    geos = (
+        db.query(Geolocation)
         .options(
-            joinedload(Bounty.author),
-            joinedload(Bounty.media),
-            joinedload(Bounty.tags),
+            joinedload(Geolocation.author),
+            joinedload(Geolocation.media),
+            joinedload(Geolocation.tags),
         )
-        .filter(Bounty.id.in_(ids))
+        .filter(Geolocation.id.in_(ids))
         .all()
     )
-    bounty_by_id = {b.id: b for b in bounties}
+    geo_by_id = {g.id: g for g in geos}
 
     # One grouped count for the result set — same shape as the
     # ``BountyList`` aggregate so the card renders the same badge.
     counts: dict[uuid.UUID, int] = {
-        bid: int(c)
-        for bid, c in db.query(BountyClaim.bounty_id, func.count("*"))
-        .filter(BountyClaim.bounty_id.in_(ids))
-        .group_by(BountyClaim.bounty_id)
+        gid: int(c)
+        for gid, c in db.query(GeolocationClaim.geolocation_id, func.count("*"))
+        .filter(GeolocationClaim.geolocation_id.in_(ids))
+        .group_by(GeolocationClaim.geolocation_id)
         .all()
     }
 
     out: list[dict] = []
     for hit_id in ids:
-        b = bounty_by_id.get(hit_id)
-        if b is None:
+        geo = geo_by_id.get(hit_id)
+        if geo is None:
             continue
         out.append(
             {
-                "id": b.id,
-                "title": b.title,
+                "id": geo.id,
+                "title": geo.title,
                 "title_highlight": highlight_by_id[hit_id],
-                "source_url": b.source_url,
-                "status": b.status,
-                "created_at": b.created_at,
-                "is_demo": b.is_demo,
-                "author": b.author,
-                "media": b.media,
-                "tags": b.tags,
-                "claimer_count": counts.get(b.id, 0),
+                "source_url": geo.source_url,
+                "status": geo.status,
+                "created_at": geo.created_at,
+                "is_demo": geo.is_demo,
+                "author": geo.author,
+                "media": geo.media,
+                "tags": geo.tags,
+                "claimer_count": counts.get(geo.id, 0),
             }
         )
     return out, total

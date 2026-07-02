@@ -1,13 +1,14 @@
 """Shared evidence-intake orchestration for media-backed submissions.
 
-Geolocations and bounties are both evidence-backed submissions: each
-validates an upload batch, streams every file to S3 with key tracking,
-attaches one ``Media`` row per file, and must leave no orphaned S3 object
-behind if the transaction rolls back. That tail — validate → upload with
-key tracking → commit-or-sweep — lives here once; the two services own
-only their type-specific rules (coordinates + bounty fulfilment for
-geolocations, the open-bounty contract for bounties) and call in for the
-shared part.
+The located view (``services/geolocations``) and the requested view
+(``services/bounties``) are both evidence-backed submissions over the one
+``geolocations`` table: each validates an upload batch, streams every file to
+S3 with key tracking, attaches one ``Media`` row per file, and must leave no
+orphaned S3 object behind if the transaction rolls back. That tail — validate →
+upload with key tracking → commit-or-sweep — lives here once; the two services
+own only their type-specific rules (coordinates + the submit transition for the
+located view, the open-request contract for the requested one) and call in for
+the shared part.
 
 Errors are typed :class:`EvidenceIntakeError` subclasses with stable
 ``.code`` strings. Each router maps the code to an HTTP status via the
@@ -21,7 +22,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Literal
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -94,7 +94,6 @@ async def attach_media_and_commit(
     db: Session,
     *,
     owner_id: uuid.UUID,
-    fk_field: Literal["geolocation_id", "bounty_id"],
     files: list[UploadFile],
     upload: Callable[[UploadFile, uuid.UUID], Awaitable[UploadResult]],
     uploaded_ip: str | None,
@@ -104,10 +103,10 @@ async def attach_media_and_commit(
 ) -> None:
     """Validate, upload, attach a ``Media`` row per file, then commit.
 
-    ``fk_field`` is the ``Media`` foreign key set to ``owner_id``
-    (``"geolocation_id"`` or ``"bounty_id"``); ``upload`` is the storage
-    uploader the caller binds (``upload_file`` / ``upload_bounty_file``).
-    The owning row must already be flushed so ``owner_id`` is populated.
+    Every ``Media`` row points at the owning ``geolocations`` row via
+    ``geolocation_id = owner_id`` (media has a single owner since the merge);
+    ``upload`` is the storage uploader the caller binds. The owning row must
+    already be flushed so ``owner_id`` is populated.
 
     Every file is validated up front so a bad file #3 can't strand files
     #1-#2 in S3. The upload loop tracks each landed S3 key (original +
@@ -143,6 +142,7 @@ async def attach_media_and_commit(
             except EvidenceProcessingError as exc:
                 raise EvidenceProcessingFailedError(str(exc)) from exc
             media = Media(
+                geolocation_id=owner_id,
                 storage_url=result.url,
                 media_type=media_type,
                 sha256=result.sha256,
@@ -150,7 +150,6 @@ async def attach_media_and_commit(
                 uploaded_user_agent=uploaded_user_agent,
                 original_filename=safe_original_filename(file.filename),
             )
-            setattr(media, fk_field, owner_id)
             db.add(media)
             key = get_storage().key_from_url(result.url)
             if key is not None:
