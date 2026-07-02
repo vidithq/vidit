@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import FieldHelp from "./FieldHelp";
+import { FieldHelp } from "./FieldHelp";
 import { OptionalHint } from "./OptionalHint";
 import type { Concept } from "@/lib/fieldHelp";
 

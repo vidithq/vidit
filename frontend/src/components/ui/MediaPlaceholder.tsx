@@ -21,7 +21,7 @@ function hueFromSeed(seed: string): number {
   return h % 360;
 }
 
-export default function MediaPlaceholder({
+export function MediaPlaceholder({
   seed,
   className = "",
 }: MediaPlaceholderProps) {

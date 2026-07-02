@@ -20,6 +20,6 @@ const LABEL: Record<BountyStatus, string> = {
  * with the geolocation `StatusBadge` (named distinctly since it renders a
  * `BountyStatus`). Shared by the bounty list and detail pages.
  */
-export default function BountyStatusBadge({ status }: { status: BountyStatus }) {
+export function BountyStatusBadge({ status }: { status: BountyStatus }) {
   return <Pill tone={TONE[status]}>{LABEL[status]}</Pill>;
 }

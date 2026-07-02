@@ -2,7 +2,7 @@
 
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";

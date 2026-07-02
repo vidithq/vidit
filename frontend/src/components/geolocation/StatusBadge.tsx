@@ -17,7 +17,7 @@ import { Pill } from "@/components/ui/Pill";
  *
  * Shown on cards, the detail page, search results, and the Detections queue.
  */
-export default function StatusBadge({
+export function StatusBadge({
   status,
   className = "",
 }: {

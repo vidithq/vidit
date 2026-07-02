@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import type { MapPoint, Tag } from "@/types";
 import { Pill } from "@/components/ui/Pill";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";

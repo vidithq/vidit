@@ -7,7 +7,7 @@ import { MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { EntityCard } from "@/components/ui/EntityCard";
-import StatusBadge from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
 import type { GeolocationStatus } from "@/types";

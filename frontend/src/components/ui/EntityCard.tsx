@@ -8,8 +8,8 @@ import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
-import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
-import SourceLabel from "@/components/ui/SourceLabel";
+import { MediaPlaceholder } from "@/components/ui/MediaPlaceholder";
+import { SourceLabel } from "@/components/ui/SourceLabel";
 
 // One card for every catalogue entity (submitted / detected geolocation,
 // bounty), in either layout. The two surfaces had drifted into three separate

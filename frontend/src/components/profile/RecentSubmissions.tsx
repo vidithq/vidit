@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import StatusBadge from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";

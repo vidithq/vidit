@@ -7,7 +7,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { bountyListPath } from "@/lib/bounties";
 import type { BountyListItem, BountyStatus } from "@/types";
 import { EntityCard } from "@/components/ui/EntityCard";
-import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";

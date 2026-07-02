@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import FieldHelp from "./FieldHelp";
+import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Label/value definition rows shared by the geolocation detail body (page +

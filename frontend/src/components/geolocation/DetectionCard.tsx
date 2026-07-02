@@ -1,4 +1,4 @@
-import StatusBadge from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { sourceIsSynthetic } from "@/lib/geolocations";
 import type { GeolocationDetail } from "@/types";

@@ -21,12 +21,12 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MediaThumb } from "@/components/ui/MediaThumb";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import MediaPlaceholder from "@/components/ui/MediaPlaceholder";
+import { MediaPlaceholder } from "@/components/ui/MediaPlaceholder";
 import { OptionalHint } from "@/components/ui/OptionalHint";
-import FieldHelp from "@/components/ui/FieldHelp";
-import SourceLabel from "@/components/ui/SourceLabel";
-import StatusBadge from "@/components/geolocation/StatusBadge";
-import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import { FieldHelp } from "@/components/ui/FieldHelp";
+import { SourceLabel } from "@/components/ui/SourceLabel";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import {
   TEXT_LINK,
   TAPPABLE_HOVER,

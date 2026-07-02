@@ -1,5 +1,5 @@
 import type { ElementType } from "react";
-import FieldHelp from "./FieldHelp";
+import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Uppercase "eyebrow" section heading used on the detail surfaces (geolocation

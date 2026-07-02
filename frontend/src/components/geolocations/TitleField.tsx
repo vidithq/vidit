@@ -2,7 +2,7 @@
 
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 
 interface TitleFieldProps {
   value: string;

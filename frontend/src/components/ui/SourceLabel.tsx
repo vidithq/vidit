@@ -35,7 +35,7 @@ type SourceLabelProps = {
  * tester — render an italic "synthetic" label instead. One edit point for the
  * rendering, which had already drifted (``text-neutral-500`` vs ``-600``).
  */
-export default function SourceLabel(props: SourceLabelProps) {
+export function SourceLabel(props: SourceLabelProps) {
   const { isDemo, url, className } = props;
   if (isDemo) {
     return <span className={cx("italic text-neutral-500", className)}>synthetic</span>;

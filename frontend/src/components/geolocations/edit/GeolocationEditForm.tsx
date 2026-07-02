@@ -14,7 +14,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";

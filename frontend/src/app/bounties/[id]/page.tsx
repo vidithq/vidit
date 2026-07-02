@@ -14,14 +14,14 @@ import {
   unclaimBounty,
 } from "@/lib/bounties";
 import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
-import SourceLabel from "@/components/ui/SourceLabel";
+import { SourceLabel } from "@/components/ui/SourceLabel";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import TrustBadge from "@/components/profile/TrustBadge";
-import BountyStatusBadge from "@/components/bounty/BountyStatusBadge";
+import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";

@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Tag } from "@/types";
 import { NewTagInput } from "@/components/ui/NewTagInput";
 import { Pill } from "@/components/ui/Pill";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
