@@ -363,15 +363,8 @@ export default function PalettePage() {
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
-          <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), a generated stand-in when given a seed (deterministic shade, self-hosted so no third-party fetch leaks the analyst's IP), or a no-media box.">
-            <Variant label="no media">
-              <MediaThumb />
-            </Variant>
-            {["alpha", "donetsk", "x-4242"].map((seed) => (
-              <Variant key={seed} label={`seed="${seed}"`}>
-                <MediaThumb seed={seed} />
-              </Variant>
-            ))}
+          <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), else a marked no-media box. No generated stand-ins.">
+            <MediaThumb />
           </Item>
 
           <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
@@ -481,7 +474,6 @@ export default function PalettePage() {
                 title={MOCK_CARD_GEO.title}
                 titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="detected" />}
-                mediaSeed="pal-feed"
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
@@ -498,7 +490,6 @@ export default function PalettePage() {
                 title={MOCK_CARD_GEO.title}
                 titleText={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="submitted" />}
-                mediaSeed="pal-compact"
                 author={MOCK_CARD_GEO.author}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
@@ -515,7 +506,6 @@ export default function PalettePage() {
                 title="Footage wanted near Bakhmut"
                 titleText="Footage wanted near Bakhmut"
                 badge={<BountyStatusBadge status="open" />}
-                mediaSeed="pal-bounty"
                 author={{ username: "analyst" }}
                 date="2026-05-01"
                 source={{ url: "https://t.me/channel/4242", isDemo: false }}

@@ -19,9 +19,8 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   stays independently clickable. No nested <a>.
 // - It renders the slots that carry data; an entity without `coords` (a bounty)
 //   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
-// - The thumbnail is one `<MediaThumb media seed>`: the real media when
-//   `media` is present, a generated stand-in shade off `mediaSeed` otherwise
-//   (the geolocation list cards have no real media payload).
+// - The thumbnail is one `<MediaThumb media>`: the real media when `media` is
+//   present, its marked "no media" box otherwise.
 
 interface EntityCardProps {
   detailHref: string;
@@ -32,7 +31,6 @@ interface EntityCardProps {
   /** A rendered status pill: `<StatusBadge>` or `<BountyStatusBadge>`. */
   badge?: ReactNode;
   media?: Media;
-  mediaSeed?: string;
   /** Always shown: every card carries its author for a uniform byline. */
   author: { username: string };
   date?: string;
@@ -89,7 +87,6 @@ export function EntityCard({
   titleText,
   badge,
   media,
-  mediaSeed,
   author,
   date,
   coords,
@@ -106,9 +103,8 @@ export function EntityCard({
     />
   );
   // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
-  // real media, the seeded stand-in, or its own "no media" box (a detection
-  // with no source media yet).
-  const thumb = <MediaThumb media={media} seed={mediaSeed} />;
+  // real media or its own "no media" box.
+  const thumb = <MediaThumb media={media} />;
 
   if (variant === "feed") {
     return (
@@ -131,13 +127,7 @@ export function EntityCard({
         </div>
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
-          {(media || mediaSeed) && (
-            <MediaThumb
-              media={media}
-              seed={mediaSeed}
-              className="w-full border border-neutral-800"
-            />
-          )}
+          <MediaThumb media={media} className="w-full border border-neutral-800" />
         </div>
         {tags && tags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap text-[11px]">

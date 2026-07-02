@@ -306,7 +306,6 @@ function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
-      mediaSeed={hit.id}
       author={hit.author}
       date={hit.event_date}
       coords={{ lat: hit.lat, lng: hit.lng }}

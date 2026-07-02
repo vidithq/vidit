@@ -171,7 +171,7 @@ Every element below is a reusable primitive. Compose from them; do not hand-roll
 
 Primitives join their classes with [`cn`](../frontend/src/lib/cn.ts) (tailwind-merge): on a conflicting Tailwind utility the caller's `className` wins predictably instead of being decided by stylesheet order. Keep `className` for orthogonal extras (margins, tracking, casing); `<Button>` and `<Pill>` stay one size by design.
 
-**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control; [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section. The media slot on cards is one piece: [`<MediaThumb>`](../frontend/src/components/ui/MediaThumb.tsx) renders the real media (image thumbnail or video first-frame), a deterministic generated stand-in when given a `seed`, or a no-media box.
+**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control; [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section. The media slot on cards is one piece: [`<MediaThumb>`](../frontend/src/components/ui/MediaThumb.tsx) renders the real media (image thumbnail or video first-frame) or a marked no-media box; there are no generated stand-ins.
 
 ### Links and clickable surfaces
 

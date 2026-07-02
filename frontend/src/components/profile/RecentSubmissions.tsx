@@ -58,7 +58,6 @@ export function RecentSubmissions({
               title={entry.title}
               titleText={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
-              mediaSeed={`sub-${entry.id}`}
               date={entry.event_date}
               coords={
                 typeof entry.lat === "number" && typeof entry.lng === "number"

@@ -74,7 +74,6 @@ export default function TimelinePage() {
                 badge={
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }
-                mediaSeed={`timeline-${entry.id}`}
                 author={entry.author}
                 date={entry.event_date}
                 coords={
