@@ -10,8 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.bounty import STATUS_OPEN, Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATUS_REQUESTED, Geolocation
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
@@ -78,10 +77,15 @@ def regular_user(db):
     yield user
     # Tests may have hard-deleted the row; bulk delete-by-id rather than
     # db.delete(instance), which would refresh a vanished row → ObjectDeletedError.
-    # Drop bounties first so the users.id FK doesn't block the user delete
-    # (soft-delete tests leave the row in place; Media/bounty_claims cascade).
+    # Drop the user's events first so the users.id FK doesn't block the user
+    # delete (soft-delete tests leave the row in place; media/claims cascade).
+    # Since the merge, requests and geolocations are one table, so a single
+    # author_id / requested_by_id sweep covers both.
     db.expire_all()
-    db.query(Bounty).filter(Bounty.author_id == user_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Geolocation).filter(Geolocation.requested_by_id == user_id).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -626,6 +630,104 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     assert event.target["user_id"] == str(user_id)
 
 
+def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_user, db):
+    """Regression: a user who opened a request that a DIFFERENT user fulfilled is
+    still referenced by ``requested_by_id`` on that (now someone else's) event.
+    The FK is ``ON DELETE SET NULL``, so GDPR hard-erasure of the requester
+    succeeds and nulls the attribution rather than 500ing on the constraint.
+    """
+    fulfiller = User(
+        username=f"fulf-{uuid.uuid4().hex[:8]}",
+        email=f"fulf-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(fulfiller)
+    db.flush()
+    event = Geolocation(
+        author_id=fulfiller.id,  # ownership transferred to the fulfiller at submit
+        requested_by_id=regular_user.id,  # the requester we will hard-delete
+        title=f"Fulfilled {uuid.uuid4().hex[:8]}",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(event)
+    db.commit()
+    event_id = event.id
+    fulfiller_id = fulfiller.id
+    requester_id = regular_user.id
+
+    response = client.delete(
+        f"/api/v1/admin/users/{requester_id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.query(User).filter(User.id == requester_id).first() is None
+    surviving = db.query(Geolocation).filter(Geolocation.id == event_id).one()
+    assert surviving.author_id == fulfiller_id
+    assert surviving.requested_by_id is None
+
+    # Detach stale instances (the fulfiller-authored event references the
+    # externally-deleted requester) so the shared fixture teardown does not try to
+    # refresh a vanished row; then bulk delete by id.
+    db.expunge_all()
+    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user, db):
+    """Regression: soft-deleting a user who opened a request that someone else
+    fulfilled must not leak the banned account in the ``requested_by`` slot of the
+    still-live event. The author's own soft-delete cascade-hides their events; the
+    requester's does not, so the read path nulls a soft-deleted requester.
+    """
+    fulfiller = User(
+        username=f"fulf-{uuid.uuid4().hex[:8]}",
+        email=f"fulf-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(fulfiller)
+    db.flush()
+    event = Geolocation(
+        author_id=fulfiller.id,
+        requested_by_id=regular_user.id,
+        title=f"Fulfilled {uuid.uuid4().hex[:8]}",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(event)
+    db.commit()
+    event_id = event.id
+    fulfiller_id = fulfiller.id
+
+    before = client.get(f"/api/v1/geolocations/{event_id}")
+    assert before.status_code == 200
+    assert before.json()["requested_by"]["username"] == regular_user.username
+
+    client.delete(
+        f"/api/v1/admin/users/{regular_user.id}",
+        headers=login_as(client, admin_user),
+    )
+
+    after = client.get(f"/api/v1/geolocations/{event_id}")
+    assert after.status_code == 200
+    assert after.json()["requested_by"] is None
+
+    # Detach stale instances (the fulfiller-authored event references the
+    # externally-deleted requester) so the shared fixture teardown does not try to
+    # refresh a vanished row; then bulk delete by id.
+    db.expunge_all()
+    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
+    db.commit()
+
+
 def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     """Hard-deleting a user nulls their FK on `invite_codes` rather than
     cascading the rows away — the codes are part of the platform audit
@@ -816,21 +918,24 @@ def test_create_unguarded_invite_code_route_is_gone(regular_user):
 
 
 def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
-    """Cheap inline bounty fixture — parity with the geolocation fixture
-    pattern in this file. Returns the bounty id; the caller relies on
-    cascade-on-delete-from-user to clean up the row + its media."""
-    bounty = Bounty(
+    """Cheap inline requested-event (bounty) fixture — parity with the
+    geolocation fixture pattern in this file. A bounty is a ``requested``
+    ``Geolocation`` (no location) since the merge. Returns the row id; the
+    caller relies on cascade-on-delete-from-user to clean up the row + its
+    media."""
+    bounty = Geolocation(
         author_id=author_id,
+        requested_by_id=author_id,
         title=f"Bounty {uuid.uuid4().hex[:8]}",
         source_url="https://example.com/post",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_OPEN,
+        status=STATUS_REQUESTED,
     )
     db.add(bounty)
     db.flush()
     db.add(
         Media(
-            bounty_id=bounty.id,
+            geolocation_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -839,11 +944,12 @@ def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
     return bounty.id
 
 
-def test_soft_delete_user_cascades_to_bounties(admin_user, regular_user, db):
-    """Banning a user must hide their bounties from public reads in the
-    same way it hides their geolocations — leaving open bounties on the
-    queue for a banned author breaks the audit story (someone fulfils it,
-    the trace points back to a user no one can see)."""
+def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user, db):
+    """Banning a user must hide their requested events (bounties) from public
+    reads the same way it hides their geolocations — leaving open requests on the
+    queue for a banned author breaks the audit story (someone fulfils it, the
+    trace points back to a user no one can see). Since the merge both are one
+    table, so the single ``cascaded_geolocations`` count covers them."""
     bounty_id = _seed_bounty(db, author_id=regular_user.id)
 
     response = client.delete(
@@ -853,20 +959,23 @@ def test_soft_delete_user_cascades_to_bounties(admin_user, regular_user, db):
     assert response.status_code == 200
     body = response.json()
     assert body["mode"] == "soft"
-    assert body["cascaded_bounties"] == 1
+    # One requested event flipped; the response no longer carries a separate
+    # bounty tally (one event cascade covers requested + located rows).
+    assert body["cascaded_geolocations"] >= 1
+    assert "cascaded_bounties" not in body
 
     db.expire_all()
-    cascaded = db.query(Bounty).filter(Bounty.id == bounty_id).one()
+    cascaded = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
     assert cascaded.deleted_at is not None
-    # Public list excludes the soft-deleted bounty.
+    # Public list excludes the soft-deleted request.
     listing = client.get("/api/v1/bounties").json()
     assert all(row["id"] != str(bounty_id) for row in listing)
 
 
-def test_soft_delete_user_bounty_count_is_idempotent(admin_user, regular_user, db):
-    """Re-soft-deleting an already-soft-deleted user returns 0 cascades
-    (geos and bounties both) — the audit log captures only what *this*
-    call actually flipped."""
+def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, db):
+    """Re-soft-deleting an already-soft-deleted user returns 0 cascades — the
+    audit log captures only what *this* call actually flipped. The requested
+    event counts in the same ``cascaded_geolocations`` tally as any located row."""
     _seed_bounty(db, author_id=regular_user.id)
 
     first = client.delete(
@@ -878,16 +987,16 @@ def test_soft_delete_user_bounty_count_is_idempotent(admin_user, regular_user, d
         headers=login_as(client, admin_user),
     )
     assert first.status_code == second.status_code == 200
-    assert first.json()["cascaded_bounties"] == 1
-    assert second.json()["cascaded_bounties"] == 0
+    assert first.json()["cascaded_geolocations"] >= 1
+    assert second.json()["cascaded_geolocations"] == 0
 
 
-def test_hard_delete_user_drops_bounties(admin_user, regular_user, db):
-    """GDPR erasure must take the bounties with the user. Media rows
-    cascade via the bounty FK; the S3 sweep happens after commit and is
+def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
+    """GDPR erasure must take the requested events (bounties) with the user.
+    Media rows cascade via the event FK; the S3 sweep happens after commit and is
     counted in ``media_count``."""
     bounty_id = _seed_bounty(db, author_id=regular_user.id)
-    media_id = db.query(Media.id).filter(Media.bounty_id == bounty_id).scalar()
+    media_id = db.query(Media.id).filter(Media.geolocation_id == bounty_id).scalar()
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
@@ -896,19 +1005,21 @@ def test_hard_delete_user_drops_bounties(admin_user, regular_user, db):
     assert response.status_code == 200
     body = response.json()
     assert body["mode"] == "hard"
-    assert body["cascaded_bounties"] == 1
-    # media_count is the union of geo media + bounty media; the seeded
-    # bounty contributes at least one.
+    # The requested event is counted in the single geolocation cascade.
+    assert body["cascaded_geolocations"] >= 1
+    assert "cascaded_bounties" not in body
+    # media_count includes the seeded request's media.
     assert body["media_count"] >= 1
 
     db.expire_all()
-    assert db.query(Bounty).filter(Bounty.id == bounty_id).first() is None
+    assert db.query(Geolocation).filter(Geolocation.id == bounty_id).first() is None
     assert db.query(Media).filter(Media.id == media_id).first() is None
 
 
-def test_soft_delete_user_writes_bounty_count_in_admin_event(admin_user, regular_user, db):
-    """The audit row carries both cascade counts so a future audit can
-    answer "how many bounties did this ban take down?" without re-querying."""
+def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regular_user, db):
+    """The audit row carries the cascade count so a future audit can answer "how
+    many events did this ban take down?" without re-querying. Since the merge the
+    requested events fold into ``cascaded_geolocations``."""
     _seed_bounty(db, author_id=regular_user.id)
 
     client.delete(
@@ -925,4 +1036,5 @@ def test_soft_delete_user_writes_bounty_count_in_admin_event(admin_user, regular
         .first()
     )
     assert event is not None
-    assert event.target["cascaded_bounties"] == 1
+    assert event.target["cascaded_geolocations"] >= 1
+    assert "cascaded_bounties" not in event.target

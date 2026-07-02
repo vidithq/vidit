@@ -4,6 +4,11 @@ Scope: the search surface — three FTS-backed result groups (geolocations,
 bounties, users), the highlight-marker contract, the ``type`` filter,
 soft-delete invariants, auth, and the empty-query short-circuit.
 
+Since the bounty + geolocation merge the "bounties" group is a view over the
+one ``geolocations`` table: a bounty is a ``requested`` row (no location). The
+located view (``geolocations`` group) filters ``location IS NOT NULL``; the
+requested view filters ``status = 'requested'``, so the two never overlap.
+
 We seed fresh rows per test with unique-suffix titles / usernames so
 matches are bounded to this test's data — the dev DB carries the demo
 seed, and an FTS query like "Donetsk" would otherwise pull in
@@ -23,8 +28,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.bounty import STATUS_OPEN, Bounty
-from app.models.geolocation import Geolocation
+from app.models.geolocation import STATUS_REQUESTED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -220,18 +224,20 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
 
 def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
     token = _unique_token()
-    bounty = Bounty(
+    # A bounty is a ``requested`` event: no location (the requested-view search
+    # filter is ``status = 'requested'``).
+    bounty = Geolocation(
         author_id=caller.id,
         title=f"Bounty {token} — please geolocate",
         source_url="https://example.com/bounty-a",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_OPEN,
+        status=STATUS_REQUESTED,
     )
     db.add(bounty)
     db.flush()
     db.add(
         Media(
-            bounty_id=bounty.id,
+            geolocation_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -251,21 +257,21 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
         # Mirrors the BountyList aggregate so the search card can reuse
         # the same "N working" treatment.
         assert hit["claimer_count"] == 0
-        assert hit["status"] == STATUS_OPEN
+        assert hit["status"] == STATUS_REQUESTED
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:
-        db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
 def test_search_excludes_soft_deleted_bounties(db, caller):
     token = _unique_token()
-    bounty = Bounty(
+    bounty = Geolocation(
         author_id=caller.id,
         title=f"Hidden bounty {token}",
         source_url="https://example.com/bounty-b",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_OPEN,
+        status=STATUS_REQUESTED,
         deleted_at=datetime.now(UTC),
     )
     db.add(bounty)
@@ -278,7 +284,7 @@ def test_search_excludes_soft_deleted_bounties(db, caller):
         )
         assert response.json()["bounties"] == []
     finally:
-        db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -386,12 +392,12 @@ def test_search_type_all_returns_three_groups(db, caller):
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
-    bounty = Bounty(
+    bounty = Geolocation(
         author_id=caller.id,
         title=f"Bounty {token} unique-token row",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_OPEN,
+        status=STATUS_REQUESTED,
     )
     user = User(
         username=token,
@@ -402,7 +408,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     db.flush()
     db.add(
         Media(
-            bounty_id=bounty.id,
+            geolocation_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -426,7 +432,7 @@ def test_search_type_all_returns_three_groups(db, caller):
         assert body["type"] == "all"
     finally:
         db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-        db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
         db.commit()
 
@@ -444,18 +450,18 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
     )
-    bounty = Bounty(
+    bounty = Geolocation(
         author_id=caller.id,
         title=f"Bounty also {token}",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_OPEN,
+        status=STATUS_REQUESTED,
     )
     db.add_all([geo, bounty])
     db.flush()
     db.add(
         Media(
-            bounty_id=bounty.id,
+            geolocation_id=bounty.id,
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -475,7 +481,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         assert body["users"] == []
     finally:
         db.query(Geolocation).filter(Geolocation.id == geo_id).delete(synchronize_session=False)
-        db.query(Bounty).filter(Bounty.id == bounty_id).delete(synchronize_session=False)
+        db.query(Geolocation).filter(Geolocation.id == bounty_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -486,12 +492,12 @@ def test_search_limit_caps_per_group(db, caller):
     token = _unique_token()
     bounties = []
     for i in range(4):
-        b = Bounty(
+        b = Geolocation(
             author_id=caller.id,
             title=f"Bounty {token} number {i}",
             source_url="https://example.com",
             source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-            status=STATUS_OPEN,
+            status=STATUS_REQUESTED,
         )
         db.add(b)
         bounties.append(b)
@@ -499,7 +505,7 @@ def test_search_limit_caps_per_group(db, caller):
     for b in bounties:
         db.add(
             Media(
-                bounty_id=b.id,
+                geolocation_id=b.id,
                 storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{b.id}/x.jpg"),
                 media_type="image",
             )
@@ -520,7 +526,7 @@ def test_search_limit_caps_per_group(db, caller):
         assert body["total"]["bounties"] == 4
     finally:
         for bid in bounty_ids:
-            db.query(Bounty).filter(Bounty.id == bid).delete(synchronize_session=False)
+            db.query(Geolocation).filter(Geolocation.id == bid).delete(synchronize_session=False)
         db.commit()
 
 

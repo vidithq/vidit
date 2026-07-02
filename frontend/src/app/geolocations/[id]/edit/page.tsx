@@ -55,7 +55,7 @@ export default function EditGeolocationPage() {
     return (
       <PageShell back title="Edit detection">
         <p className="text-sm text-neutral-400">
-          This geolocation is submitted and frozen, it can no longer be edited.{" "}
+          This geolocation is geolocated and frozen, it can no longer be edited.{" "}
           <Link
             href={`/geolocations/${geo.id}`}
             className={TEXT_LINK}

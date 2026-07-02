@@ -9,7 +9,7 @@ in ``conftest.py``; ``client`` / ``_make_geo`` in ``_helpers.py``.
 
 from __future__ import annotations
 
-from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED
+from app.models.geolocation import STATUS_DETECTED, STATUS_GEOLOCATED
 from tests.conftest import login_as
 from tests.geolocations._helpers import _make_geo, client
 
@@ -41,11 +41,11 @@ def test_detections_empty_for_user_without_detections(author):
 
 
 def test_detections_returns_only_callers_live_detected(db, author, second_user):
-    """Only the caller's live ``detected`` rows: not a submitted row, not a
+    """Only the caller's live ``detected`` rows: not a geolocated row, not a
     soft-deleted one, and not another analyst's detection; the endpoint scopes
     to ``current_user`` regardless of any URL username."""
     mine = _detected(db, author)
-    _make_geo(db, author=author, status=STATUS_SUBMITTED)  # submitted, excluded
+    _make_geo(db, author=author, status=STATUS_GEOLOCATED)  # geolocated, excluded
     _detected(db, author, deleted=True)  # soft-deleted — excluded
     _detected(db, second_user)  # another analyst — excluded
 

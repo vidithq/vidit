@@ -2,7 +2,7 @@
 
 Submit is the only write to a detection: the form posts the whole state, new
 media ride in ``files``, existing media are dropped via ``remove_media_ids``, all
-applied in one atomic request that also flips the row to ``submitted``. So these
+applied in one atomic request that also flips the row to ``geolocated``. So these
 media mechanics are exercised through submit (with the tag floor met). Shared
 fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` in ``_helpers.py``.
 """
@@ -63,7 +63,7 @@ def test_submit_rolls_back_flip_when_media_upload_fails(
     db, author, conflict_tag, capture_source_tag
 ):
     # A file that clears the count floor but fails validation (disallowed MIME)
-    # raises after the row was flipped to submitted in-memory. The whole
+    # raises after the row was flipped to geolocated in-memory. The whole
     # transaction rolls back, so the row stays detected and gains no media.
     geo = _detected(db, author)
     response = _submit(
@@ -87,7 +87,7 @@ def test_submit_adds_media(db, author, conflict_tag, capture_source_tag):
     body = response.json()
     assert len(body["media"]) == 1
     assert body["media"][0]["media_type"] == "image"
-    assert body["status"] == "submitted"
+    assert body["status"] == "geolocated"
     db.expire_all()
     assert db.query(Media).filter(Media.geolocation_id == geo.id).count() == 1
 

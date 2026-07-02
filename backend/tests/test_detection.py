@@ -18,7 +18,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.database import SessionLocal
-from app.models.geolocation import STATUS_DETECTED, STATUS_SUBMITTED, Geolocation
+from app.models.geolocation import STATUS_DETECTED, STATUS_GEOLOCATED, Geolocation
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -150,8 +150,8 @@ async def test_idempotency_recreates_soft_deleted_pair(db, owner):
     assert len(live) == 1
 
 
-async def test_submitted_pair_is_skipped(db, owner):
-    # A submitted row already at this (detected_from_url, coordinate)
+async def test_geolocated_pair_is_skipped(db, owner):
+    # A geolocated row already at this (detected_from_url, coordinate)
     # blocks a machine re-detection.
     existing = Geolocation(
         author_id=owner.id,
@@ -160,7 +160,7 @@ async def test_submitted_pair_is_skipped(db, owner):
         source_url="https://example.com/footage",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
-        status=STATUS_SUBMITTED,
+        status=STATUS_GEOLOCATED,
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)

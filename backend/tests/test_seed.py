@@ -17,12 +17,22 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.bounty import Bounty, BountyClaim
-from app.models.geolocation import Geolocation
+from app.models.geolocation import (
+    STATUS_CLOSED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Geolocation,
+    GeolocationClaim,
+)
 from app.models.user import User
 from app.services import seed as seed_service
 from app.services.auth import hash_password
 from tests.conftest import login_as
+
+# Requested-view statuses: a "bounty" is a ``requested`` event (an open call) or
+# a ``closed`` one (withdrawn). A fulfilled request is now a ``geolocated`` row,
+# no longer a bounty.
+_REQUESTED_VIEW = (STATUS_REQUESTED, STATUS_CLOSED)
 
 client = TestClient(app)
 
@@ -421,77 +431,85 @@ def test_wipe_demo_endpoint_for_admin(admin_user, demo_pool, db):
 # ── Bounty seeder ────────────────────────────────────────────────────────
 
 
-def test_seed_demo_bounties_creates_bounties_with_media(db, demo_pool):
+def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
     result = seed_service.seed_demo_bounties(db, count=4)
     assert result["created"] == 4
     assert result["templates"] == 2
     assert result["authors"] == 5
     # Per-status breakdown sums to the requested count (sanity-check the
-    # weighted sampler — see ``DEMO_BOUNTY_STATUS_WEIGHTS``).
+    # weighted sampler — see ``DEMO_BOUNTY_STATUS_WEIGHTS``). ``open`` /
+    # ``fulfilled`` / ``closed`` map to requested / geolocated / closed.
     assert result["open"] + result["fulfilled"] + result["closed"] == 4
 
-    bounties = db.query(Bounty).filter(Bounty.is_demo.is_(True)).all()
-    assert len(bounties) == 4
-    for b in bounties:
-        # The seeder spreads bounties across the lifecycle; any of the
-        # three statuses is valid output.
-        assert b.status in {"open", "fulfilled", "closed"}
-        # Open and closed bounties keep their media; fulfilled bounties
-        # transfer it to the paired geolocation (mirroring real
-        # fulfilment), so the bounty ends up with zero media rows.
-        if b.status in {"open", "closed"}:
-            assert len(b.media) >= 1
+    # Every seeded row is a demo event; the seeder spreads them across the merged
+    # lifecycle (requested / geolocated / closed all on the one table).
+    events = db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).all()
+    assert len(events) == 4
+    for e in events:
+        assert e.status in {STATUS_REQUESTED, STATUS_GEOLOCATED, STATUS_CLOSED}
+        # Media hangs off the row directly now (no transfer on fulfilment), so
+        # every seeded event keeps at least one media regardless of status.
+        assert len(e.media) >= 1
+        # location follows status: requested/closed have none, a fulfilled
+        # (geolocated) row has one.
+        if e.status == STATUS_GEOLOCATED:
+            assert e.location is not None
         else:
-            assert len(b.media) == 0
-        # The always-on `demo` free tag for filter-chip scoping is
-        # attached to every bounty regardless of status.
-        tag_names = {t.name for t in b.tags}
+            assert e.location is None
+        # The always-on `demo` free tag for filter-chip scoping is attached to
+        # every event regardless of status.
+        tag_names = {t.name for t in e.tags}
         assert "demo" in tag_names
 
-    # Every fulfilled bounty carries a paired demo geolocation with the
-    # ``originated_from_bounty_id`` trace pointing back — that's the
-    # entire reason we seed fulfilled rows (status filter + trace banner
-    # coverage). At-least-one assertion would be lenient; the exact
-    # match is fine because the seeder mints them deterministically.
-    paired_geos = (
-        db.query(Geolocation)
-        .filter(
-            Geolocation.is_demo.is_(True),
-            Geolocation.originated_from_bounty_id.in_([b.id for b in bounties]),
-        )
-        .count()
-    )
-    assert paired_geos == result["fulfilled"]
+    # Every fulfilled event is a ``geolocated`` row that preserves the original
+    # poster on ``requested_by_id`` (a *different* demo analyst is the owner) —
+    # that's the entire reason we seed fulfilled rows (status filter + the
+    # "requested by @x, geolocated by @y" banner). Exact match since the seeder
+    # mints them deterministically.
+    fulfilled = [e for e in events if e.status == STATUS_GEOLOCATED]
+    assert len(fulfilled) == result["fulfilled"]
+    for e in fulfilled:
+        assert e.requested_by_id is not None
+        assert e.requested_by_id != e.author_id
 
 
 def test_seed_demo_bounties_attaches_some_claims(db, demo_pool):
     """The seeder optionally attaches claims so the multi-claimer UI has
     something to render. With a large enough count the probability of
-    at least one bounty getting a claim is overwhelming."""
+    at least one requested event getting a claim is overwhelming."""
     seed_service.seed_demo_bounties(db, count=20)
-    claim_count = db.query(BountyClaim).count()
+    claim_count = db.query(GeolocationClaim).count()
     assert claim_count > 0
 
 
-def test_wipe_demo_bounties_only_drops_demo_rows(db, demo_pool, admin_user):
-    """The bounty wipe must NOT touch demo users or demo geolocations —
-    they're behind the separate panel and an admin may want to keep
-    one population while wiping the other. The bounty seeder also
-    mints paired demo geos for fulfilled bounties (status-filter
-    coverage); those survive the bounty wipe with their
-    ``originated_from_bounty_id`` flipped to NULL via the FK's ON
-    DELETE SET NULL.
+def test_wipe_demo_bounties_only_drops_requested_view_rows(db, demo_pool, admin_user):
+    """The bounty wipe must NOT touch demo users or located demo events — they're
+    behind the separate panel and an admin may want to keep one population while
+    wiping the other. Since the merge a fulfilled bounty is a ``geolocated`` row
+    (in the located view), so it survives the bounty wipe; only the requested /
+    closed rows are dropped. ``deleted_bounties`` counts just those.
     """
     seed_service.seed_demo(db, count=3)  # creates demo authors + 3 demo geos
     bounty_result = seed_service.seed_demo_bounties(db, count=4)
-    expected_demo_geos = 3 + bounty_result["fulfilled"]
+    # seed_demo's 3 located geos + the fulfilled (geolocated) bounties survive the
+    # requested-view wipe; the requested + closed rows are removed.
+    requested_view_count = bounty_result["open"] + bounty_result["closed"]
+    expected_surviving_geos = 3 + bounty_result["fulfilled"]
 
     result = seed_service.wipe_demo_bounties(db)
-    assert result["deleted_bounties"] == 4
+    assert result["deleted_bounties"] == requested_view_count
     db.expire_all()
-    # Bounties gone, demo authors + demo geos intact.
-    assert db.query(Bounty).filter(Bounty.is_demo.is_(True)).count() == 0
-    assert db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).count() == expected_demo_geos
+    # No requested-view demo rows left; located demo events + demo authors intact.
+    assert (
+        db.query(Geolocation)
+        .filter(Geolocation.is_demo.is_(True), Geolocation.status.in_(_REQUESTED_VIEW))
+        .count()
+        == 0
+    )
+    assert (
+        db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).count()
+        == expected_surviving_geos
+    )
     assert db.query(User).filter(User.is_demo.is_(True)).count() == 5
 
 
@@ -552,10 +570,14 @@ def test_seed_demo_bounties_endpoint_422_when_pool_empty(admin_user, monkeypatch
 
 
 def test_wipe_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
-    seed_service.seed_demo_bounties(db, count=2)
+    # The wipe drops only requested-view rows (requested + closed); a fulfilled
+    # bounty is now a ``geolocated`` located row that survives, so assert against
+    # the requested-view slice of the seed rather than the raw count.
+    seed_result = seed_service.seed_demo_bounties(db, count=2)
+    requested_view_count = seed_result["open"] + seed_result["closed"]
     response = client.delete(
         "/api/v1/admin/seed-demo-bounties",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
-    assert response.json()["deleted_bounties"] == 2
+    assert response.json()["deleted_bounties"] == requested_view_count

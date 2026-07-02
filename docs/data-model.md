@@ -78,51 +78,34 @@ erDiagram
 
     geolocations {
         UUID id PK
-        UUID author_id FK
+        UUID author_id FK "edit-rights owner"
+        UUID requested_by_id FK "nullable, who opened the request"
         VARCHAR title
-        GEOMETRY location
+        GEOMETRY location "nullable, tied to status by CHECK"
         TEXT source_url
         TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
-        DATE event_date
+        DATE event_date "nullable"
         TIME event_time "nullable, optional UTC hour"
         TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
         TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
-        VARCHAR status "submitted | detected"
-        TIMESTAMPTZ deleted_at "nullable, soft-delete"
-        BOOLEAN is_demo "synthetic demo row"
-        UUID originated_from_bounty_id FK "nullable, trace to bounty"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ updated_at
-    }
-
-    bounties {
-        UUID id PK
-        UUID author_id FK
-        VARCHAR title
-        TEXT source_url
-        JSONB proof "nullable, Tiptap, image-free"
-        DATE event_date "nullable, when the event happened"
-        TIME event_time "nullable, optional UTC hour"
-        TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
-        VARCHAR status "open|fulfilled|closed"
-        TIMESTAMPTZ closed_at "nullable"
+        VARCHAR status "requested | detected | geolocated | closed"
+        TIMESTAMPTZ closed_at "nullable, set on closed"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo row"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    bounty_claims {
-        UUID bounty_id FK
+    geolocation_claims {
+        UUID geolocation_id FK
         UUID user_id FK
         TIMESTAMPTZ created_at
     }
 
     media {
         UUID id PK
-        UUID geolocation_id FK "nullable, XOR with bounty_id"
-        UUID bounty_id FK "nullable, XOR with geolocation_id"
+        UUID geolocation_id FK
         TEXT storage_url
         VARCHAR media_type
         VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
@@ -155,11 +138,6 @@ erDiagram
         UUID tag_id FK
     }
 
-    bounty_tags {
-        UUID bounty_id FK
-        UUID tag_id FK
-    }
-
     follows {
         UUID follower_id FK
         UUID followed_id FK
@@ -173,18 +151,14 @@ erDiagram
     users ||--o{ admin_events : "actor_id"
     users ||--o{ auth_events : "user_id"
     users ||--o{ geolocations : "author_id"
-    users ||--o{ bounties : "author_id"
-    bounties ||--o{ geolocations : "originated_from_bounty_id"
+    users ||--o{ geolocations : "requested_by_id"
     geolocations ||--o{ media : "geolocation_id"
-    bounties ||--o{ media : "bounty_id"
     geolocations ||--o{ proof_images : "geolocation_id"
     users ||--o{ proof_images : "user_id"
     geolocations ||--o{ geolocation_tags : "geolocation_id"
     tags ||--o{ geolocation_tags : "tag_id"
-    bounties ||--o{ bounty_tags : "bounty_id"
-    tags ||--o{ bounty_tags : "tag_id"
-    bounties ||--o{ bounty_claims : "bounty_id"
-    users ||--o{ bounty_claims : "user_id"
+    geolocations ||--o{ geolocation_claims : "geolocation_id"
+    users ||--o{ geolocation_claims : "user_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -336,25 +310,31 @@ Indexes:
 
 ### `geolocations`
 
+One row is one event across the whole lifecycle. `status` is the lifecycle; `location` is an independent nullable axis tied to it by a CHECK. A bounty is a `requested` event on this table (no coordinates yet); fulfilling it is a single `UPDATE status='geolocated', location=…` on the same row.
+
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `author_id` | `UUID` | FK → `users.id`, NOT NULL |
+| `author_id` | `UUID` | FK → `users.id`, NOT NULL. Edit-rights owner. For a `requested` event this is the poster; it transfers to the fulfiller at the `geolocated` transition, so permissions stay a single-owner check across the lifecycle. |
+| `requested_by_id` | `UUID` | FK → `users.id`, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation (no request preceded it). |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `location` | `GEOMETRY(Point, 4326)` | NOT NULL |
+| `location` | `GEOMETRY(Point, 4326)` | nullable, tied to `status` by `ck_geolocations_location_status`: forbidden for `requested` (no coordinates yet), required for `geolocated` (a vouched geolocation has a place), free for `detected` / `closed`. |
 | `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
-| `event_date` | `DATE` | NOT NULL, when the depicted event happened. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
+| `event_date` | `DATE` | nullable, when the depicted event happened. Often unknown for a `requested` event; the submit transition requires it at `geolocated`. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown (often: an event date is inferred from context or undated footage). |
 | `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the original source posted the media (a Telegram / X post): a real post instant, so a full UTC timestamp, not a bare date, a post always has a time. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
 | `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The authorship / precedence signal ("who geolocated it first") for the claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'submitted'`. `submitted` = human submits + bounty fulfilments (a person submitted it, immutable); `detected` = machine-produced, rendered marked on every surface and itself immutable machine output until its owner submits it, which writes their edits and flips it to `submitted` in one step. Plain string, no DB enum (shares the name with `bounties.status`); the default keeps every non-machine insert correct with no code change. Owner transitions over a `detected` row (`submit`, the single write that applies the edits and freezes it as `submitted`, and `reject` which soft-deletes for re-import) live in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle: `requested` (an open call to geolocate, no location yet) → `detected` (machine draft, may or may not carry a location, rendered marked on every surface and itself immutable until submit) → `geolocated` (a person vouched for it and froze it, always has a location) → `closed` (a `requested` event the author withdrew, or a `detected` row the owner rejected). Plain string, no DB enum. The default keeps a direct human submit correct without setting it; the requested / detected paths pass `status` explicitly. Owner transitions (`submit`, which writes the edits and moves `requested` / `detected` → `geolocated` in one step, and `reject`, which soft-deletes a `detected` draft for re-import) live in [`api.md`](api.md). |
+| `closed_at` | `TIMESTAMPTZ` | nullable, set when the event reaches the terminal `closed` (a withdrawn request or a rejected detection). |
 | `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
-| `originated_from_bounty_id` | `UUID` | FK → `bounties.id` ON DELETE SET NULL, nullable, provenance trace populated when a geolocation is promoted from a bounty. `SET NULL` so a hard-deleted bounty doesn't take its descendant geolocation with it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+**Check constraint:**
+- `ck_geolocations_location_status`: `(status <> 'requested' OR location IS NULL) AND (status <> 'geolocated' OR location IS NOT NULL)`. A `requested` event carries no location; a `geolocated` one always does; `detected` / `closed` are free either way.
 
 **Temporal fields: four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
 
@@ -366,7 +346,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
-| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date NOT NULL; time optional (the hour is often unknown) |
+| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date nullable (required at the `geolocated` transition); time optional (the hour is often unknown) |
 | `source_posted_at` | when the source posted the media | analyst, or detection (tweet timestamp) | NOT NULL, a post always has a time |
 | `detected_post_at` | when the analyst posted the geolocation on X | detection only (the imported tweet's time) | NULL for human submits |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
@@ -380,77 +360,32 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `(author_id, created_at DESC)`, composite for profile listing
 - `ix_geolocations_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
 - `ix_geolocations_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
-- `ix_geolocations_originated_from_bounty_id` on `(originated_from_bounty_id)`, bounty detail reads "what geolocation came from me?" via this column
-- `uq_geolocations_originated_from_bounty_id` on `(originated_from_bounty_id) WHERE originated_from_bounty_id IS NOT NULL`, **unique** partial; at most one geolocation per fulfilled bounty. Backs the `SELECT ... FOR UPDATE` taken by `POST /geolocations bounty_id=…`: even if a future code path forgets the row lock, the second insert fails on constraint violation. The `WHERE` clause keeps standalone geolocations out of the uniqueness check.
-- `ix_geolocations_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search`. `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
+- `ix_geolocations_status_created_at` on `(status, created_at)`, the requested-view (ex-bounty) list, the map, and the detection queue all filter on `status` newest-first
+- `ix_geolocations_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
+- `ix_geolocations_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 
-> `location` is a PostGIS point in WGS84 (SRID 4326 = standard GPS coordinates).
+> `location` is a PostGIS point in WGS84 (SRID 4326 = standard GPS coordinates), nullable per the CHECK above.
 > GeoAlchemy2 exposes `.lat` / `.lng` via `WKBElement`, or `ST_X` / `ST_Y` in raw SQL.
 
 ---
 
-### `bounties`
+### `geolocation_claims`
 
-An **unfinished geolocation**: media + a source URL someone couldn't place. Lifecycle: `open` → `fulfilled` (a geolocation was promoted from this bounty via `POST /geolocations bounty_id=…`) or `closed` (author withdrew). "I'm working on this" is a parallel multi-claimer signal in [`bounty_claims`](#bounty_claims), not a state.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `author_id` | `UUID` | FK → `users.id`, NOT NULL |
-| `title` | `VARCHAR(255)` | NOT NULL |
-| `source_url` | `TEXT` | NOT NULL, required because a bounty is evidence in search of a location |
-| `proof` | `JSONB` | nullable, the in-progress proof (Tiptap / ProseMirror JSON), mirroring `geolocations.proof`. Sanitised server-side on insert and image-free (inline images dropped, a bounty proof image has no `proof_images` row to anchor it) |
-| `event_date` | `DATE` | nullable, when the depicted event happened, carried into the geolocation on fulfilment. Optional: a bounty is an unfinished geolocation, so it may be unknown |
-| `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC) |
-| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the source posted the media (a UTC instant). Required: the bounty's `source_url` is, so its post time is too |
-| `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, one of `open`, `fulfilled`, `closed`. Plain string (no DB enum) so adding a state doesn't require a migration |
-| `closed_at` | `TIMESTAMPTZ` | nullable, set when status transitions to `fulfilled` or `closed` |
-| `deleted_at` | `TIMESTAMPTZ` | nullable, soft-delete; filtered from every public read (admin path acts on the raw model) |
-| `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff seeded by the admin "Demo bounties" panel. The wipe button drops every flagged row in one bulk DELETE. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-**Indexes:**
-- `ix_bounties_status_created_at` on `(status, created_at)`, "open bounties, newest first" is the dominant index query
-- `ix_bounties_author_id` on `(author_id)`, profile + admin lookups
-- `ix_bounties_deleted_at` on `(deleted_at)`, cheap soft-delete filter on every public read
-- `ix_bounties_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
-- `ix_bounties_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, parallel index to the geolocations one, backs the same `GET /search` endpoint
-
-The pointer from a fulfilled bounty to the resulting geolocation lives on `geolocations.originated_from_bounty_id` (not on this table), geolocation-side because read paths render the trace. `DELETE /bounties/{id}` refuses with **409** when a geolocation already points to the row, so the descendant isn't orphaned silently.
-
----
-
-### `bounty_tags`
-
-Many-to-many junction between `bounties` and `tags`. Mirrors `geolocation_tags`.
+Multi-analyst "I'm working on this" signal on a `requested` event (folded in from the old `bounty_claims` table at the merge). Several analysts can hold a claim on the same event simultaneously, the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `bounty_id` | `UUID` | FK → `bounties.id` ON DELETE CASCADE |
-| `tag_id` | `UUID` | FK → `tags.id` ON DELETE CASCADE |
-
-Composite PK: `(bounty_id, tag_id)`
-
----
-
-### `bounty_claims`
-
-Multi-analyst "I'm working on this" signal. Multiple analysts can hold a claim on the same bounty simultaneously, the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `bounty_id` | `UUID` | FK → `bounties.id` ON DELETE CASCADE |
+| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-Composite PK: `(bounty_id, user_id)`
+Composite PK: `(geolocation_id, user_id)`
 
 **Indexes:**
-- `ix_bounty_claims_bounty_id_created_at` on `(bounty_id, created_at)`, "who's working on bounty X right now?" detail-page query, newest-first ordering
-- `ix_bounty_claims_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
+- `ix_geolocation_claims_geolocation_id_created_at` on `(geolocation_id, created_at)`, "who's working on request X right now?" detail-page query, newest-first ordering
+- `ix_geolocation_claims_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
 
-Claims don't gate the lifecycle: a bounty can be fulfilled by an analyst who never claimed, and claims aren't cleared when the bounty terminates. Hard-delete on the bounty cascades-drops the rows.
+Claims don't gate the lifecycle: a request can be fulfilled by an analyst who never claimed, and claims aren't cleared when the event terminates. Hard-delete on the event cascades-drops the rows.
 
 ---
 
@@ -477,13 +412,12 @@ Indexes:
 
 ### `media`
 
-Shared by `geolocations` and `bounties`. Exactly one of `geolocation_id` / `bounty_id` is non-NULL, the XOR is enforced both at the model layer and by a DB `CHECK` constraint (`ck_media_exactly_one_owner`). The polymorphism keeps the slice-2 bounty-fulfilment flow cheap: instead of re-uploading S3 objects, promoting a bounty rewrites the row pointers in place.
+One `geolocation_id` owner. A bounty is a `requested` geolocation, so all evidence hangs off the one table; fulfilling a request no longer moves media between tables (the row already points at the event that gains a location).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE, nullable, XOR with `bounty_id` |
-| `bounty_id` | `UUID` | FK → `bounties.id` ON DELETE CASCADE, nullable, XOR with `geolocation_id` |
+| `geolocation_id` | `UUID` | FK → `geolocations.id` ON DELETE CASCADE, NOT NULL |
 | `storage_url` | `TEXT` | NOT NULL, S3 / CloudFront URL |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
 | `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too, `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so demo content matches real upload integrity. **The hash is computed on the bytes that land on S3, for images that means after the EXIF strip, so an auditor downloading the public URL can independently verify the hash matches.** |
@@ -492,17 +426,12 @@ Shared by `geolocations` and `bounties`. Exactly one of `geolocation_id` / `boun
 | `original_filename` | `TEXT` | nullable, client-supplied filename (e.g. `IMG_1234.jpg`). Surfaced on the public read API because investigators sometimes need to trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-**Check constraint:**
-- `ck_media_exactly_one_owner`: `(geolocation_id IS NOT NULL AND bounty_id IS NULL) OR (geolocation_id IS NULL AND bounty_id IS NOT NULL)`
-
 **Indexes:**
 - `(sha256) WHERE sha256 IS NOT NULL`, partial index for "find every row with this content hash" audit / dedup queries; only the populated cohort, so demo rows don't bloat it.
 
-At least one media item is required per geolocation and per bounty (enforced at the application layer, both `POST /geolocations` and `POST /bounties` reject empty file lists). Multiple media items per parent are allowed.
+At least one media item is required per bounty (`POST /bounties` rejects an empty file list) and per `geolocated` event; a `requested` event carries the poster's evidence from the start. Multiple media items per event are allowed.
 
 The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded *inside* the proof body, added via the rich-text editor's `+ Image` button, live in `proof_images` instead.
-
-S3 key prefixes: `uploads/<geolocation_id>/...` for geolocation media, `bounty_uploads/<bounty_id>/...` for bounty media. When slice 2 promotes a bounty, we rewrite the DB pointers but leave the S3 keys where they are.
 
 ---
 

@@ -16,11 +16,13 @@ import type { GeolocationStatus, Media } from "@/types";
 interface TimelineEntry {
   id: string;
   title: string;
-  event_date: string;
+  /** Nullable: a coordless / undated event can surface here. See
+   *  ``GeolocationList``. */
+  event_date: string | null;
   is_demo: boolean;
   status: GeolocationStatus;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   author: {
     username: string;
   };
@@ -78,7 +80,7 @@ export default function TimelinePage() {
                 }
                 media={entry.media ?? undefined}
                 author={entry.author}
-                date={entry.event_date}
+                date={entry.event_date ?? undefined}
                 coords={
                   typeof entry.lat === "number" && typeof entry.lng === "number"
                     ? { lat: entry.lat, lng: entry.lng }

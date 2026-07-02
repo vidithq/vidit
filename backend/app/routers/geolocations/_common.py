@@ -11,7 +11,6 @@ imports the other:
 
 from typing import NoReturn
 
-from app.models.bounty import Bounty
 from app.models.geolocation import Geolocation
 from app.routers._errors import raise_typed_error
 from app.schemas.geolocation import GeolocationRead
@@ -22,8 +21,6 @@ _GEOLOCATION_ERROR_STATUS: dict[str, int] = {
     "invalid_coordinates": 400,
     "invalid_proof": 400,
     "tag_requirements_not_met": 400,
-    "bounty_not_found": 404,
-    "bounty_not_open": 409,
     "invalid_state": 409,
 }
 
@@ -36,16 +33,17 @@ def _raise_geolocation_error(exc: EvidenceIntakeError) -> NoReturn:
 def build_geolocation_read(
     geo: Geolocation,
     *,
-    lat: float,
-    lng: float,
-    originated_from_bounty: Bounty | None,
+    lat: float | None,
+    lng: float | None,
 ) -> GeolocationRead:
-    """Assemble the ``GeolocationRead`` response for one geolocation.
+    """Assemble the ``GeolocationRead`` response for one event.
 
     ``lat`` / ``lng`` are passed in (re-projected from the PostGIS point by the
     caller, or already in hand from a create) rather than re-queried here, so the
-    three response sites — create, detail, and the review-flow mutations — build
-    an identical shape from one place.
+    response sites — create, detail, and the review-flow mutations — build an
+    identical shape from one place. They are ``None`` for a ``requested`` event
+    (no coordinates yet). ``requested_by`` reads off the model relationship
+    (``None`` for a directly-submitted geolocation); callers eager-load it.
     """
     return GeolocationRead(
         id=geo.id,
@@ -64,10 +62,15 @@ def build_geolocation_read(
         detected_from_url=geo.detected_from_url,
         detected_post_at=geo.detected_post_at,
         author=geo.author,
+        # Null a soft-deleted requester so a banned account never surfaces in the
+        # requested_by slot of a still-live event authored by someone else (the
+        # author's own soft-delete cascade-hides their events; the requester's does
+        # not, so it is guarded here).
+        requested_by=(
+            geo.requested_by
+            if geo.requested_by is not None and geo.requested_by.deleted_at is None
+            else None
+        ),
         media=geo.media,
         tags=geo.tags,
-        # Pydantic ``from_attributes`` coerces the ``Bounty`` row into the nested
-        # schema at runtime; mypy doesn't follow it, so it sees ``Bounty | None``
-        # where the schema declares ``_OriginatedFromBountyNested | None``.
-        originated_from_bounty=originated_from_bounty,  # type: ignore[arg-type]
     )

@@ -10,9 +10,10 @@ interface ShareButtonsProps {
   id: string;
   title: string;
   author: string;
-  eventDate: string;
-  lat: number;
-  lng: number;
+  /** Nullable: a coordless event (a ``requested`` row) has no date/coords line. */
+  eventDate: string | null;
+  lat: number | null;
+  lng: number | null;
   /** A `detected` row is a machine draft its owner can still edit, so a shared
    *  link's content may change — surfaced as a caveat next to the share row. */
   status: GeolocationStatus;
@@ -82,8 +83,10 @@ export default function ShareButtons({
   const tweetText = () =>
     [
       title,
-      `by ${author} · ${formatDate(eventDate)}`,
-      `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+      `by ${author}${eventDate ? ` · ${formatDate(eventDate)}` : ""}`,
+      ...(lat != null && lng != null
+        ? [`${lat.toFixed(6)}, ${lng.toFixed(6)}`]
+        : []),
     ].join("\n");
 
   const onCopy = async () => {

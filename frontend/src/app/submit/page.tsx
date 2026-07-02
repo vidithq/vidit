@@ -9,7 +9,12 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
 import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
-import { missingGeolocationFields } from "@/lib/geolocations";
+// Aliased: a local `submitGeolocation` validation handler below would otherwise
+// shadow this API call.
+import {
+  missingGeolocationFields,
+  submitGeolocation as submitGeolocationApi,
+} from "@/lib/geolocations";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
@@ -156,7 +161,7 @@ function SubmitForm() {
     if (!bountyIdParam) return;
     getBounty(bountyIdParam)
       .then((b) => {
-        if (b.status !== "open") {
+        if (b.status !== "requested") {
           setBountyError(
             `This bounty is ${b.status}, so it can't be fulfilled. Open the bounty page instead.`
           );
@@ -210,9 +215,27 @@ function SubmitForm() {
   );
 
   const geolocationMutation = useMutation(
-    () => {
+    (): Promise<{ id: string }> => {
       const latNum = parseFloat(lat);
       const lngNum = parseFloat(lng);
+      // Fulfilling a request is a lifecycle move on that same event: submit
+      // (``requested`` → ``geolocated``) transfers ownership to the fulfiller.
+      // Its media is already on the row, so no files are staged / removed here.
+      if (bounty) {
+        return submitGeolocationApi(bounty.id, {
+          title,
+          lat: latNum,
+          lng: lngNum,
+          source_url: sourceUrl,
+          event_date: eventDate,
+          event_time: eventTime || undefined,
+          source_posted_at: sourcePostedAt,
+          proof,
+          tag_ids: selectedTagIds,
+          remove_media_ids: [],
+          files: [],
+        });
+      }
       const formData = new FormData();
       formData.append("title", title);
       formData.append("lat", latNum.toString());
@@ -226,9 +249,6 @@ function SubmitForm() {
       formData.append("proof", JSON.stringify(proof));
       if (selectedTagIds.length > 0) {
         formData.append("tag_ids", JSON.stringify(selectedTagIds));
-      }
-      if (bounty) {
-        formData.append("bounty_id", bounty.id);
       }
       for (const file of files) {
         formData.append("files", file);
@@ -360,8 +380,8 @@ function SubmitForm() {
       . Title, tags, dates, and the proof so far are pre-filled from the bounty;
       refine them. Source and media stay locked (that&apos;s the bounty&apos;s
       evidence). Add the coordinates and finish the proof (cross-referenced
-      satellite imagery). When you submit, the bounty is archived as fulfilled
-      and the resulting geolocation traces back to it.
+      satellite imagery). When you submit, this request becomes a geolocation and
+      keeps a note of who requested it.
     </>
   ) : (
     "Add a geolocation, or post a bounty for footage you couldn't place yet."
@@ -571,7 +591,7 @@ function SubmitForm() {
                 : proofImageUploading
                   ? "Image uploading…"
                   : lockedFromBounty
-                    ? "Submit geolocation (archive bounty)"
+                    ? "Submit geolocation (fulfil request)"
                     : "Submit geolocation"}
           </Button>
           <Link

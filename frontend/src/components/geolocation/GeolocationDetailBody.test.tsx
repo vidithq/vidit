@@ -15,7 +15,7 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     is_demo: false,
-    status: "submitted",
+    status: "geolocated",
     detected_from_url: null,
     detected_post_at: null,
     author: {
@@ -38,15 +38,11 @@ function geoFixture(overrides: Partial<GeolocationDetail> = {}): GeolocationDeta
     created_at: "2026-06-02T10:00:00Z",
     updated_at: "2026-06-02T10:00:00Z",
     media: [{ id: "m1", storage_url: "/local-storage/evidence.jpg", media_type: "image" }],
-    originated_from_bounty: {
-      id: "b1",
-      title: "Where is this footage from?",
-      author: {
-        id: "u2",
-        username: "poster",
-        is_trusted: false,
-        trust_reason: null,
-      },
+    requested_by: {
+      id: "u2",
+      username: "poster",
+      is_trusted: false,
+      trust_reason: null,
     },
     ...overrides,
   };
@@ -111,7 +107,7 @@ describe("GeolocationDetailBody", () => {
     expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
-  it("page variant: hero media, bounty-trace + author rows, section headings", () => {
+  it("page variant: hero media, requested-by + author rows, section headings", () => {
     const geo = geoFixture();
     render(<GeolocationDetailBody geo={geo} variant="page" />);
     const img = screen.getByRole("img");
@@ -120,11 +116,9 @@ describe("GeolocationDetailBody", () => {
     );
     expect(screen.getByText("Source media")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByText("Bounty")).toBeInTheDocument();
-    const bountyLink = screen.getByRole("link", {
-      name: "Where is this footage from?",
-    });
-    expect(bountyLink).toHaveAttribute("href", "/bounties/b1");
+    expect(screen.getByText("Requested by")).toBeInTheDocument();
+    const requesterLink = screen.getByRole("link", { name: "@poster" });
+    expect(requesterLink).toHaveAttribute("href", "/profile/poster");
     expect(screen.getByText("Author")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute(
       "href",
@@ -132,11 +126,11 @@ describe("GeolocationDetailBody", () => {
     );
   });
 
-  it("submitted geo shows the Submitted status, not detected markers", () => {
+  it("geolocated geo shows the Geolocated status, not detected markers", () => {
     render(<GeolocationDetailBody geo={geoFixture()} variant="page" />);
-    // Status is always shown now; a submitted (non-detected) row reads "Submitted".
+    // Status is always shown now; a geolocated (non-detected) row reads "Geolocated".
     expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Submitted")).toBeInTheDocument();
+    expect(screen.getByText("Geolocated")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
     expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
   });
@@ -169,14 +163,14 @@ describe("GeolocationDetailBody", () => {
     ).toBeInTheDocument();
   });
 
-  it("page variant without a bounty trace omits the row", () => {
+  it("page variant without a requested-by trace omits the row", () => {
     render(
       <GeolocationDetailBody
-        geo={geoFixture({ originated_from_bounty: null })}
+        geo={geoFixture({ requested_by: null })}
         variant="page"
       />
     );
-    expect(screen.queryByText("Bounty")).not.toBeInTheDocument();
+    expect(screen.queryByText("Requested by")).not.toBeInTheDocument();
     expect(screen.getByText("Author")).toBeInTheDocument();
   });
 

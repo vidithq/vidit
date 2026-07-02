@@ -83,7 +83,6 @@ docker compose exec db psql -U vision -d vidit_restore_drill -c "
     SELECT 'users' AS t, COUNT(*) FROM users
     UNION ALL SELECT 'geolocations', COUNT(*) FROM geolocations
     UNION ALL SELECT 'media', COUNT(*) FROM media
-    UNION ALL SELECT 'bounties', COUNT(*) FROM bounties
     UNION ALL SELECT 'follows', COUNT(*) FROM follows
     UNION ALL SELECT 'tags', COUNT(*) FROM tags
     UNION ALL SELECT 'invite_codes', COUNT(*) FROM invite_codes

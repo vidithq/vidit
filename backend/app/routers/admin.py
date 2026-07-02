@@ -153,12 +153,11 @@ def delete_user_admin(
                 mode="hard",
                 deleted_at=None,
                 cascaded_geolocations=result["geolocation_count"],
-                cascaded_bounties=result["bounty_count"],
                 media_count=result["media_count"],
                 proof_image_count=result["proof_image_count"],
             )
 
-        user, cascaded_geolocations, cascaded_bounties = admin_service.soft_delete_user(
+        user, cascaded_geolocations = admin_service.soft_delete_user(
             db, actor_id=current_user.id, user_id=user_id
         )
     except admin_service.AdminError as exc:
@@ -170,7 +169,6 @@ def delete_user_admin(
         mode="soft",
         deleted_at=user.deleted_at,
         cascaded_geolocations=cascaded_geolocations,
-        cascaded_bounties=cascaded_bounties,
     )
 
 

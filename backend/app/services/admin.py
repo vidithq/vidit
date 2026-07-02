@@ -7,7 +7,6 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
-from app.models.bounty import Bounty
 from app.models.geolocation import Geolocation
 from app.models.invite_code import InviteCode
 from app.models.media import Media
@@ -307,23 +306,23 @@ def soft_delete_user(
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> tuple[User, int, int]:
+) -> tuple[User, int]:
     """Mark a user as removed-from-public-view + cascade to their submissions.
 
-    Returns ``(user, cascaded_geolocations, cascaded_bounties)`` — the
-    count of *live* (``deleted_at IS NULL``) rows of each type flipped in
-    this call. Idempotent on an already-deleted user (same timestamp, no
-    fresh audit row, both counts zero).
+    Returns ``(user, cascaded_geolocations)`` — the count of *live*
+    (``deleted_at IS NULL``) events flipped in this call. Idempotent on an
+    already-deleted user (same timestamp, no fresh audit row, count zero).
 
-    Bounties cascade alongside geolocations: a banned author shouldn't
-    leave open bounties on the index, and historical bounties shouldn't
-    surface the banned account in their author slot.
+    Since the bounty + geolocation merge, requests and geolocations are one
+    table, so a single cascade covers both: a banned author shouldn't leave open
+    requests on the index, and historical events shouldn't surface the banned
+    account in their author slot.
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
     if user.deleted_at is not None:
-        return user, 0, 0
+        return user, 0
 
     now = datetime.now(UTC)
     user.deleted_at = now
@@ -333,9 +332,9 @@ def soft_delete_user(
     # from reviving old sessions.
     bump_token_version(user)
 
-    # Cascade to every live geolocation. ``WHERE deleted_at IS NULL`` leaves
-    # earlier soft-delete timestamps untouched, so the count reflects only
-    # what *this* call flipped.
+    # Cascade to every live event (located + requested). ``WHERE deleted_at IS
+    # NULL`` leaves earlier soft-delete timestamps untouched, so the count
+    # reflects only what *this* call flipped.
     cascaded_geolocations = (
         db.query(Geolocation)
         .filter(
@@ -343,17 +342,6 @@ def soft_delete_user(
             Geolocation.deleted_at.is_(None),
         )
         .update({Geolocation.deleted_at: now}, synchronize_session=False)
-    )
-
-    # Same shape for bounties. Doesn't touch ``status`` / ``closed_at`` —
-    # the lifecycle is decoupled from the visibility flag.
-    cascaded_bounties = (
-        db.query(Bounty)
-        .filter(
-            Bounty.author_id == user.id,
-            Bounty.deleted_at.is_(None),
-        )
-        .update({Bounty.deleted_at: now}, synchronize_session=False)
     )
 
     log_admin_event(
@@ -364,12 +352,11 @@ def soft_delete_user(
             "user_id": str(user.id),
             "username": user.username,
             "cascaded_geolocations": cascaded_geolocations,
-            "cascaded_bounties": cascaded_bounties,
         },
     )
     db.commit()
     db.refresh(user)
-    return user, cascaded_geolocations, cascaded_bounties
+    return user, cascaded_geolocations
 
 
 def hard_delete_user(
@@ -378,20 +365,17 @@ def hard_delete_user(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """GDPR-grade erasure: drop the user, every geolocation and bounty
-    they authored, and every S3 object referenced by the cascade.
+    """GDPR-grade erasure: drop the user, every event they authored, and every
+    S3 object referenced by the cascade.
 
     Order matters:
 
     1. Capture S3 keys upfront — proof images they own (linked + orphan)
-       plus media URLs across their geolocations and bounties. The cascade
+       plus media URLs across their events (located + requested). The cascade
        about to fire would drop those rows before we could read them.
-    2. Manually delete each geolocation and bounty: ``author_id`` carries
-       no ``ON DELETE CASCADE`` (would mean retroactive constraint changes).
-       Each ``db.delete`` cascades to that row's media + proof_images /
-       claims + tags. Geos that *fulfilled* the user's bounties (possibly
-       authored by others) keep their rows; ``ON DELETE SET NULL`` on
-       ``originated_from_bounty_id`` drops just the trace pointer.
+    2. Manually delete each event: ``author_id`` carries no ``ON DELETE
+       CASCADE`` (would mean retroactive constraint changes). Each ``db.delete``
+       cascades to that row's media + proof_images / claims + tags.
     3. Delete the user. ``auth_tokens`` and still-orphan proof_images
        cascade-drop; ``admin_events.actor_id`` and
        ``invite_codes.created_by`` / ``.used_by`` flip to NULL via
@@ -431,26 +415,18 @@ def hard_delete_user(
     for geo in geolocations:
         geo_media_keys.extend(_resolve_keys(list(geo.media)))
 
-    bounties = db.query(Bounty).filter(Bounty.author_id == user.id).all()
-    bounty_media_keys: list[str] = []
-    for bounty in bounties:
-        bounty_media_keys.extend(_resolve_keys(list(bounty.media)))
-
     target = {
         "user_id": str(user.id),
         "username": user.username,
         "geolocation_count": len(geolocations),
-        "bounty_count": len(bounties),
-        "media_count": len(geo_media_keys) + len(bounty_media_keys),
+        "media_count": len(geo_media_keys),
         "proof_image_count": len(proof_image_keys),
     }
 
-    # 2. Drop geolocations + bounties manually so their media / proof_images
-    # / claims / tags cascades fire before we delete the user row.
+    # 2. Drop events manually so their media / proof_images / claims / tags
+    # cascades fire before we delete the user row.
     for geo in geolocations:
         db.delete(geo)
-    for bounty in bounties:
-        db.delete(bounty)
 
     # 3. Drop the user row. auth_tokens + lingering orphan proof_images
     # cascade-drop on user.id; admin_events / invite_codes FKs become NULL.
@@ -461,7 +437,7 @@ def hard_delete_user(
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
-        proof_image_keys + geo_media_keys + bounty_media_keys,
+        proof_image_keys + geo_media_keys,
         context=f"user {user_id} hard-delete",
     )
 

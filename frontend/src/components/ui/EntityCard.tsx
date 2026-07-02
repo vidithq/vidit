@@ -11,8 +11,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
-// One card for every catalogue entity (submitted / detected geolocation,
-// bounty), in either layout. The two surfaces had drifted into three separate
+// One card for every catalogue entity (geolocated / detected geolocation,
+// requested event), in either layout. The two surfaces had drifted into three separate
 // components with three click models; this is the single, data-driven card.
 //
 // - Click model is uniform: the whole card navigates to `detailHref` via a
@@ -71,7 +71,7 @@ type TitleProps =
 
 interface EntityCardBaseProps {
   detailHref: string;
-  /** A rendered status pill: `<StatusBadge>` or `<BountyStatusBadge>`. */
+  /** A rendered status pill: `<StatusBadge>` (any lifecycle state). */
   badge?: ReactNode;
   media?: Media;
   /** Always shown: every card carries its author for a uniform byline. */

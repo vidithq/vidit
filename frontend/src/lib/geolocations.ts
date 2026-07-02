@@ -59,12 +59,13 @@ export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string 
 }
 
 /**
- * Submit a `detected` geolocation: `POST /geolocations/{id}/submit`, multipart,
- * mirroring create. The form posts the whole state; the server writes it and
- * flips the row to `submitted` (frozen) atomically. New media ride in `files`;
- * existing media are dropped via `remove_media_ids`. Only `detected_from_url`
- * (the provenance anchor) and `status` carry no field. A `detected` row is
- * immutable machine output until this submit, the only write to it.
+ * The generalized fulfil / submit transition: `POST /geolocations/{id}/submit`,
+ * multipart, mirroring create. Moves a `requested` (bounty fulfilment) or
+ * `detected` event to `geolocated` (frozen); on a `requested` event the backend
+ * transfers ownership to the submitter. The form posts the whole state; the
+ * server writes it atomically. New media ride in `files`; existing media are
+ * dropped via `remove_media_ids`. Only `detected_from_url` (the provenance
+ * anchor) and `status` carry no field.
  */
 export interface GeolocationEditInput {
   title: string;

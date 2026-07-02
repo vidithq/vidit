@@ -39,7 +39,7 @@ import type { GeolocationDetail, Tag } from "@/types";
  * images, tags, and source media, with new files staged and existing ones marked
  * for removal). Only `detected_from_url` (provenance) is immutable. A `detected`
  * row is immutable machine output; **Submit** is the only write, applying the
- * whole form and flipping the row to `submitted` in one atomic multipart request
+ * whole form and flipping the row to `geolocated` in one atomic multipart request
  * (with a confirm, since submitting freezes it). State is seeded from props (the
  * form mounts only after the row loaded), so the Tiptap editor gets its
  * `initialContent` on first paint.
@@ -55,10 +55,12 @@ export function GeolocationEditForm({
   const { refresh: refreshDetectionCount } = useDetectionsCount();
 
   const [title, setTitle] = useState(geo.title);
-  const [lat, setLat] = useState(String(geo.lat));
-  const [lng, setLng] = useState(String(geo.lng));
+  // Coordinates + event date are optional on a ``detected`` draft, so seed the
+  // string inputs from empty (not ``String(null)``) when the row lacks them.
+  const [lat, setLat] = useState(geo.lat != null ? String(geo.lat) : "");
+  const [lng, setLng] = useState(geo.lng != null ? String(geo.lng) : "");
   const [sourceUrl, setSourceUrl] = useState(geo.source_url);
-  const [eventDate, setEventDate] = useState(geo.event_date);
+  const [eventDate, setEventDate] = useState(geo.event_date ?? "");
   const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
   const [sourcePostedAt, setSourcePostedAt] = useState(
     toDatetimeLocalUTC(geo.source_posted_at)
@@ -111,7 +113,7 @@ export function GeolocationEditForm({
   });
 
   // Submit is the only write to a detection: it applies the whole form and flips
-  // the row to `submitted` in one atomic request (the server enforces the floor
+  // the row to `geolocated` in one atomic request (the server enforces the floor
   // too). A `detected` row is otherwise immutable machine output.
   const submitMutation = useMutation(() => submitGeolocation(geo.id, buildInput()), {
     fallback: "Couldn't submit.",

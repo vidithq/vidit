@@ -19,13 +19,12 @@ from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from app.dependencies import get_current_user, get_db
-from app.models.bounty import (
+from app.models.geolocation import (
     STATUS_CLOSED,
-    STATUS_OPEN,
-    Bounty,
-    BountyClaim,
+    STATUS_REQUESTED,
+    Geolocation,
+    GeolocationClaim,
 )
-from app.models.geolocation import Geolocation
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
@@ -47,8 +46,14 @@ from app.services.storage import get_storage, sweep_keys
 
 router = APIRouter()
 
+# The requested view over the unified event model: a bounty is a ``requested``
+# event, and stays visible as ``closed`` once the author withdraws it. Reads and
+# lifecycle ops scope to these two states so a located ``geolocated`` /
+# ``detected`` event (served by ``/geolocations``) never surfaces here.
+_REQUESTED_VIEW_STATUSES = (STATUS_REQUESTED, STATUS_CLOSED)
+
 # Bounty creation raises typed errors (shared file/media codes from
-# evidence_intake + the bounty-specific ones in services/bounties); map
+# evidence_intake + the requested-view ones in services/bounties); map
 # each to an HTTP status and surface the same ``{code, message}`` envelope
 # as the geolocation + registration flows.
 _BOUNTY_ERROR_STATUS: dict[str, int] = {
@@ -80,28 +85,33 @@ def _apply_filters(
 ) -> SAQuery:
     """Filter set shared by list + detail-adjacent queries.
 
-    Always excludes soft-deleted rows so public reads never see them;
-    admin paths query the model directly to act on them.
+    Scopes to the requested view (``requested`` / ``closed``) and always excludes
+    soft-deleted rows so public reads never see them; admin paths query the model
+    directly to act on them. ``status_filter`` narrows within the view (e.g.
+    ``?status=closed``).
     """
-    query = query.filter(Bounty.deleted_at.is_(None))
+    query = query.filter(
+        Geolocation.deleted_at.is_(None),
+        Geolocation.status.in_(_REQUESTED_VIEW_STATUSES),
+    )
 
     if status_filter:
-        query = query.filter(Bounty.status == status_filter)
+        query = query.filter(Geolocation.status == status_filter)
 
     if tag:
-        query = query.join(Bounty.tags).filter(Tag.name == tag)
+        query = query.join(Geolocation.tags).filter(Tag.name == tag)
 
     if author:
-        query = query.join(Bounty.author).filter(User.username.ilike(f"%{author}%"))
+        query = query.join(Geolocation.author).filter(User.username.ilike(f"%{author}%"))
 
     return query
 
 
-def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
-    """Attach claimer aggregates to each bounty without N+1.
+def _serialize_list(db: Session, bounties: list[Geolocation]) -> list[BountyList]:
+    """Attach claimer aggregates to each requested event without N+1.
 
     Detail can afford `joinedload(claims)` on its one row; the list runs
-    two grouped queries — one for the per-bounty count, one for the sample.
+    two grouped queries — one for the per-row count, one for the sample.
     """
     if not bounties:
         return []
@@ -109,25 +119,25 @@ def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
     bounty_ids = [b.id for b in bounties]
     counts: dict[uuid.UUID, int] = {
         bid: int(count)
-        for bid, count in db.query(BountyClaim.bounty_id, func.count("*"))
-        .filter(BountyClaim.bounty_id.in_(bounty_ids))
-        .group_by(BountyClaim.bounty_id)
+        for bid, count in db.query(GeolocationClaim.geolocation_id, func.count("*"))
+        .filter(GeolocationClaim.geolocation_id.in_(bounty_ids))
+        .group_by(GeolocationClaim.geolocation_id)
         .all()
     }
 
-    # Newest claimer per bounty up to LIST_CLAIMER_SAMPLE_SIZE. Single
+    # Newest claimer per row up to LIST_CLAIMER_SAMPLE_SIZE. Single
     # query — a Postgres window function would be tidier, but joined
     # order_by + Python-side cap is simpler and the working set is small.
     sample: dict[uuid.UUID, list[User]] = {}
     claims = (
-        db.query(BountyClaim)
-        .options(joinedload(BountyClaim.user))
-        .filter(BountyClaim.bounty_id.in_(bounty_ids))
-        .order_by(BountyClaim.bounty_id, BountyClaim.created_at.desc())
+        db.query(GeolocationClaim)
+        .options(joinedload(GeolocationClaim.user))
+        .filter(GeolocationClaim.geolocation_id.in_(bounty_ids))
+        .order_by(GeolocationClaim.geolocation_id, GeolocationClaim.created_at.desc())
         .all()
     )
     for claim in claims:
-        bucket = sample.setdefault(claim.bounty_id, [])
+        bucket = sample.setdefault(claim.geolocation_id, [])
         if len(bucket) < LIST_CLAIMER_SAMPLE_SIZE:
             bucket.append(claim.user)
 
@@ -144,15 +154,14 @@ def _serialize_list(db: Session, bounties: list[Bounty]) -> list[BountyList]:
             tags=b.tags,
             claimer_count=counts.get(b.id, 0),
             # Pydantic ``from_attributes`` coerces each SQLAlchemy ``User``
-            # into ``AuthorRef`` at runtime; mypy doesn't follow it. Same
-            # idiom as ``originated_from_bounty`` in the geolocation router.
+            # into ``AuthorRef`` at runtime; mypy doesn't follow it.
             claimer_sample=sample.get(b.id, []),  # type: ignore[arg-type]
         )
         for b in bounties
     ]
 
 
-def _serialize_detail(bounty: Bounty) -> BountyRead:
+def _serialize_detail(bounty: Geolocation) -> BountyRead:
     return BountyRead(
         id=bounty.id,
         title=bounty.title,
@@ -170,19 +179,17 @@ def _serialize_detail(bounty: Bounty) -> BountyRead:
         media=bounty.media,
         tags=bounty.tags,
         claimers=[c.user for c in bounty.claims],
-        fulfilled_by=bounty.fulfilled_by,
     )
 
 
-# Eager-loads the detail serializer reads: author, media, tags, the fulfilling
-# geolocation's author, and every claimer. Shared by the detail GET, the
-# post-create reload, and close — all return the full ``BountyRead``.
+# Eager-loads the detail serializer reads: author, media, tags, and every
+# claimer. Shared by the detail GET, the post-create reload, and close — all
+# return the full ``BountyRead``.
 _DETAIL_LOADS = (
-    joinedload(Bounty.author),
-    joinedload(Bounty.media),
-    joinedload(Bounty.tags),
-    joinedload(Bounty.fulfilled_by),
-    joinedload(Bounty.claims).joinedload(BountyClaim.user),
+    joinedload(Geolocation.author),
+    joinedload(Geolocation.media),
+    joinedload(Geolocation.tags),
+    joinedload(Geolocation.claims).joinedload(GeolocationClaim.user),
 )
 
 
@@ -191,20 +198,21 @@ def _load_live_bounty(
     bounty_id: uuid.UUID,
     *,
     options: tuple[Any, ...] = (),
-    for_update: bool = False,
-) -> Bounty:
-    """Load a non-deleted bounty by id, or 404.
+) -> Geolocation:
+    """Load a non-deleted requested-view event by id, or 404.
 
-    ``options`` carries eager-loads (pass ``_DETAIL_LOADS`` for a full read);
-    ``for_update`` takes a row lock (``SELECT ... FOR UPDATE``) to serialise
-    against a concurrent fulfilment. The ``deleted_at IS NULL`` filter keeps
-    soft-deleted rows out of every caller.
+    ``options`` carries eager-loads (pass ``_DETAIL_LOADS`` for a full read). The
+    ``deleted_at IS NULL`` filter keeps soft-deleted rows out of every caller; the
+    status filter keeps a located event (served by ``/geolocations``) from being
+    read or mutated through the requested-view router.
     """
-    query = db.query(Bounty).filter(Bounty.id == bounty_id, Bounty.deleted_at.is_(None))
+    query = db.query(Geolocation).filter(
+        Geolocation.id == bounty_id,
+        Geolocation.deleted_at.is_(None),
+        Geolocation.status.in_(_REQUESTED_VIEW_STATUSES),
+    )
     if options:
         query = query.options(*options)
-    if for_update:
-        query = query.with_for_update(of=Bounty)
     bounty = query.first()
     if bounty is None:
         raise HTTPException(status_code=404, detail="Bounty not found")
@@ -227,20 +235,22 @@ def list_bounties(
     if limit < 1 or limit > 200:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
 
-    id_query = _apply_filters(db.query(Bounty.id), status_filter=status, tag=tag, author=author)
-    ids = [row[0] for row in id_query.order_by(Bounty.created_at.desc()).limit(limit).all()]
+    id_query = _apply_filters(
+        db.query(Geolocation.id), status_filter=status, tag=tag, author=author
+    )
+    ids = [row[0] for row in id_query.order_by(Geolocation.created_at.desc()).limit(limit).all()]
     if not ids:
         return []
 
     rows = (
-        db.query(Bounty)
+        db.query(Geolocation)
         .options(
-            subqueryload(Bounty.author),
-            subqueryload(Bounty.media),
-            subqueryload(Bounty.tags),
+            subqueryload(Geolocation.author),
+            subqueryload(Geolocation.media),
+            subqueryload(Geolocation.tags),
         )
-        .filter(Bounty.id.in_(ids))
-        .order_by(Bounty.created_at.desc())
+        .filter(Geolocation.id.in_(ids))
+        .order_by(Geolocation.created_at.desc())
         .all()
     )
     return _serialize_list(db, rows)
@@ -264,7 +274,7 @@ async def create_bounty(
     title: str = Form(..., min_length=1, max_length=255),
     source_url: str = Form(..., max_length=2000),
     proof: str | None = Form(None),
-    # Event date optional (often unknown for a bounty); the source is a post, so
+    # Event date optional (often unknown for a request); the source is a post, so
     # its timestamp is required. Same loose ``str`` shapes, parsed below.
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
@@ -274,9 +284,9 @@ async def create_bounty(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Post a bounty. At least one media file is required — the platform
-    treats bounties as "unfinished geolocations", so the evidence the
-    poster has must be on the row from the start.
+    """Post a bounty (a ``requested`` event). At least one media file is
+    required — the platform treats bounties as "unfinished geolocations", so
+    the evidence the poster has must be on the row from the start.
 
     Parses the multipart form into clean Python types; business rules + IO
     live in ``services/bounties.create_with_evidence``.
@@ -291,7 +301,7 @@ async def create_bounty(
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
-    # A time-of-day needs its day; event_date is optional on a bounty.
+    # A time-of-day needs its day; event_date is optional on a request.
     if parsed_event_time is not None and parsed_event_date is None:
         raise HTTPException(status_code=422, detail="event_time requires event_date")
 
@@ -316,7 +326,7 @@ async def create_bounty(
     # Reload with the relationships the detail serializer reads. Not via
     # _load_live_bounty: the row was just created, so it can't be soft-deleted —
     # .one() asserts that invariant instead of the helper's fetch-or-404.
-    bounty = db.query(Bounty).options(*_DETAIL_LOADS).filter(Bounty.id == bounty.id).one()
+    bounty = db.query(Geolocation).options(*_DETAIL_LOADS).filter(Geolocation.id == bounty.id).one()
     return _serialize_detail(bounty)
 
 
@@ -328,35 +338,18 @@ def delete_bounty(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Hard-delete by the author. Cascades drop ``bounty_tags``,
-    ``bounty_claims`` and ``media`` rows; the S3 objects are swept after
-    the commit lands. Admin soft-delete lives behind the admin router
-    and stamps ``deleted_at`` instead.
+    """Hard-delete by the author. Cascades drop ``geolocation_tags``,
+    ``geolocation_claims`` and ``media`` rows; the S3 objects are swept after
+    the commit lands. Admin soft-delete lives behind the admin router and
+    stamps ``deleted_at`` instead.
     """
-    # SELECT ... FOR UPDATE to serialise against a concurrent
-    # ``POST /geolocations bounty_id=…`` fulfilling this bounty. Without
-    # the lock both transactions read status=open at once and we'd end up
-    # with a lost or fulfilled-but-deleted bounty depending on commit order;
-    # with it, the loser observes the new state and 409s.
-    bounty = _load_live_bounty(db, bounty_id, for_update=True)
+    bounty = _load_live_bounty(db, bounty_id)
     permissions.ensure_author(bounty, current_user)
-
-    # Deliberately no ``deleted_at.is_(None)`` filter: a soft-deleted
-    # geolocation still carries the audit trail to its source bounty, and
-    # deleting the bounty would strand that link (FK flips to NULL via SET
-    # NULL). Hard-delete the geolocation first to get the bounty gone.
-    fulfilled = (
-        db.query(Geolocation.id).filter(Geolocation.originated_from_bounty_id == bounty.id).first()
-    )
-    if fulfilled is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot delete a bounty that has been fulfilled by a geolocation",
-        )
 
     storage = get_storage()
     media_urls = [
-        row[0] for row in db.query(Media.storage_url).filter(Media.bounty_id == bounty.id).all()
+        row[0]
+        for row in db.query(Media.storage_url).filter(Media.geolocation_id == bounty.id).all()
     ]
     media_keys = [k for k in (storage.key_from_url(u) for u in media_urls) if k is not None]
 
@@ -375,36 +368,36 @@ def claim_bounty(
     db: Session = Depends(get_db),
 ):
     """Signal "I'm working on this". Idempotent — re-claiming is a 204
-    no-op, not a 409. Only open bounties accept new claims; once a
-    bounty is fulfilled or closed, claiming is rejected with 409.
+    no-op, not a 409. Only open requests accept new claims; once a request
+    is closed, claiming is rejected with 409.
     """
     bounty = _load_live_bounty(db, bounty_id)
-    if bounty.status != STATUS_OPEN:
+    if bounty.status != STATUS_REQUESTED:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot claim a bounty with status {bounty.status}",
         )
 
     existing = (
-        db.query(BountyClaim)
+        db.query(GeolocationClaim)
         .filter(
-            BountyClaim.bounty_id == bounty.id,
-            BountyClaim.user_id == current_user.id,
+            GeolocationClaim.geolocation_id == bounty.id,
+            GeolocationClaim.user_id == current_user.id,
         )
         .first()
     )
     if existing is not None:
         return
 
-    # The SELECT above is the friendly-path read; the ``BountyClaim``
-    # composite-PK ``(bounty_id, user_id)`` is the actual race backstop.
+    # The SELECT above is the friendly-path read; the ``GeolocationClaim``
+    # composite-PK ``(geolocation_id, user_id)`` is the actual race backstop.
     # A double-click or two tabs both pass the SELECT, only one wins the
     # INSERT — without this SAVEPOINT the loser sees a 500 from the
     # unhandled ``IntegrityError`` instead of the idempotent 204. Mirrors
     # ``services/social.follow_user``.
     try:
         with db.begin_nested():
-            db.add(BountyClaim(bounty_id=bounty.id, user_id=current_user.id))
+            db.add(GeolocationClaim(geolocation_id=bounty.id, user_id=current_user.id))
     except IntegrityError:
         # Loser of the race — the row exists, which IS the post-condition.
         pass
@@ -425,9 +418,9 @@ def unclaim_bounty(
     """
     bounty = _load_live_bounty(db, bounty_id)
 
-    db.query(BountyClaim).filter(
-        BountyClaim.bounty_id == bounty.id,
-        BountyClaim.user_id == current_user.id,
+    db.query(GeolocationClaim).filter(
+        GeolocationClaim.geolocation_id == bounty.id,
+        GeolocationClaim.user_id == current_user.id,
     ).delete(synchronize_session=False)
     db.commit()
 
@@ -440,16 +433,15 @@ def close_bounty(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Author withdraws the bounty without anyone geolocating it.
+    """Author withdraws the request without anyone geolocating it.
 
-    Only the author can close. Fulfilled bounties can't be re-closed
-    (terminal state). Closed bounties are still readable — they live
-    on as an audit row showing the queue tried but didn't produce a
-    geolocation.
+    Only the author can close. Already-closed requests can't be re-closed
+    (terminal state). Closed requests are still readable — they live on as an
+    audit row showing the queue tried but didn't produce a geolocation.
     """
     bounty = _load_live_bounty(db, bounty_id, options=_DETAIL_LOADS)
     permissions.ensure_author(bounty, current_user)
-    if bounty.status != STATUS_OPEN:
+    if bounty.status != STATUS_REQUESTED:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot close a bounty with status {bounty.status}",

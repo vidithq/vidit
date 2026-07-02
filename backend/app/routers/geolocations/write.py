@@ -1,7 +1,6 @@
 """Write endpoints — create a geolocation, and upload an inline proof image."""
 
 import logging
-import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import (
@@ -14,11 +13,10 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db
-from app.models.bounty import Bounty
 from app.models.geolocation import SOURCE_URL_MAX_LENGTH, TITLE_MAX_LENGTH
 from app.models.proof_image import ProofImage
 from app.models.user import User
@@ -186,7 +184,6 @@ async def create_geolocation(
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
-    bounty_id: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -204,13 +201,6 @@ async def create_geolocation(
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
-    parsed_bounty_id: uuid.UUID | None = None
-    if bounty_id:
-        try:
-            parsed_bounty_id = uuid.UUID(bounty_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="bounty_id must be a UUID") from exc
-
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
 
@@ -227,7 +217,6 @@ async def create_geolocation(
             source_posted_at=parsed_source_posted_at,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
-            bounty_id=parsed_bounty_id,
             files=files,
             uploaded_ip=extract_client_ip(request),
             uploaded_user_agent=extract_user_agent(request),
@@ -235,18 +224,6 @@ async def create_geolocation(
     except EvidenceIntakeError as exc:
         _raise_geolocation_error(exc)
 
-    # If promoted from a bounty, reload the relationship so the response
-    # carries the trace without a separate client fetch. Read-only response
-    # assembly — stays in the router.
-    originated_from_bounty = None
-    if geo.originated_from_bounty_id is not None:
-        originated_from_bounty = (
-            db.query(Bounty)
-            .options(joinedload(Bounty.author))
-            .filter(Bounty.id == geo.originated_from_bounty_id)
-            .first()
-        )
-
-    return build_geolocation_read(
-        geo, lat=lat, lng=lng, originated_from_bounty=originated_from_bounty
-    )
+    # A direct create is born ``geolocated`` with no preceding request, so
+    # ``requested_by`` is null — ``build_geolocation_read`` reads it off the row.
+    return build_geolocation_read(geo, lat=lat, lng=lng)

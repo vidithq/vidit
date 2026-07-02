@@ -31,4 +31,3 @@ class Tag(Base):
     category: Mapped[TagCategory] = mapped_column(String(20), nullable=False)
 
     geolocations = relationship("Geolocation", secondary=geolocation_tags, back_populates="tags")
-    bounties = relationship("Bounty", secondary="bounty_tags", back_populates="tags")

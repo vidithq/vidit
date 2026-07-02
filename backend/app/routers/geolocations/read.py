@@ -141,8 +141,12 @@ def _apply_filters(
     can't poison either curated filter; ``tag`` matches any category so a
     caller can filter by a name without knowing its bucket (back-compat
     with the pre-multi-select API).
+
+    Located view only: ``location IS NOT NULL`` so a ``requested`` event (no
+    coordinates yet, served by ``/bounties``) never reaches the map / list,
+    which return coordinates for every row.
     """
-    query = query.filter(Geolocation.deleted_at.is_(None))
+    query = query.filter(Geolocation.deleted_at.is_(None), Geolocation.location.isnot(None))
 
     if conflict:
         # ``.tags.any(...)`` lowers to EXISTS so a second tag filter
@@ -270,7 +274,7 @@ def list_points(
     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
     scrubbers and filters the windows client-side (no refetch per drag).
     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-    submitted row, a flag, not the state string, to keep the payload small.
+    geolocated row, a flag, not the state string, to keep the payload small.
     Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
@@ -431,14 +435,11 @@ def list_detections(
 
     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
     "Detections" queue behind ``/profile/{username}/detections`` where a
-    ``detected`` row becomes ``submitted`` over time. Returns full
+    ``detected`` row becomes ``geolocated`` over time. Returns full
     ``GeolocationRead`` (media + tags) so the queue shows the evidence and the
     frontend computes submit-readiness (>=1 media + a ``conflict`` + a
-    ``capture_source`` tag) with no per-row round-trip. A ``detected`` row never
-    originates from a bounty (fulfilments are born ``submitted``), so
-    ``originated_from_bounty`` is always null here, passed as such to skip the
-    join. Ordered by ``created_at`` desc: the latest import is the first thing to
-    triage.
+    ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
+    desc: the latest import is the first thing to triage.
     """
     # Clamp rather than 422 — a too-large page/per_page is harmless and the
     # per-user list clamps the same way. The lower-bound guard matters: page < 1
@@ -463,9 +464,11 @@ def list_detections(
         )
         # ``selectinload`` for the many-to-many / one-to-many sets — a
         # ``joinedload`` would row-multiply against ``LIMIT`` and truncate the
-        # page; ``joinedload`` is safe only for the many-to-one author.
+        # page; ``joinedload`` is safe only for the many-to-one author /
+        # requested_by (always NULL on a detection, loaded to skip a lazy hit).
         .options(
             joinedload(Geolocation.author),
+            joinedload(Geolocation.requested_by),
             selectinload(Geolocation.tags),
             selectinload(Geolocation.media),
         )
@@ -476,9 +479,6 @@ def list_detections(
         .all()
     )
 
-    items = [
-        build_geolocation_read(geo, lat=lat, lng=lng, originated_from_bounty=None)
-        for geo, lat, lng in rows
-    ]
+    items = [build_geolocation_read(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
 
     return PaginatedGeolocationDetails(items=items, total=total, page=page, per_page=per_page)

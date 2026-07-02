@@ -85,8 +85,10 @@ class AdminUserDeleteResponse(BaseModel):
     username: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
+    # A bounty is a ``requested`` event since the merge, so a single event
+    # cascade covers both located and requested rows — one count, no separate
+    # bounty tally.
     cascaded_geolocations: int = 0
-    cascaded_bounties: int = 0
     media_count: int = 0
     proof_image_count: int = 0
 

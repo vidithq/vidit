@@ -5,6 +5,12 @@ Hits carry ``*_highlight`` fields with sentinel-delimited match fragments (see
 turns into ``<mark>`` tags. No raw HTML crosses the wire — XSS-safe by
 construction. Field sets mirror the list shapes (``GeolocationList``,
 ``BountyList``) plus the highlights, so the result card reuses the same components.
+
+The geolocation + bounty groups are two views over the one ``geolocations``
+table (the located rows vs the ``requested`` ones), so both run through a single
+FTS query path in ``services.search``; the two hit shapes differ only in the
+fields each view surfaces (coordinates for the located view, claimer counts for
+the requested one).
 """
 
 from __future__ import annotations
@@ -14,7 +20,6 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models.bounty import BountyStatus
 from app.models.geolocation import GeolocationStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
@@ -29,7 +34,7 @@ class SearchGeolocationHit(BaseModel):
     title_highlight: str
     lat: float
     lng: float
-    event_date: date
+    event_date: date | None = None
     is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
     status: GeolocationStatus
@@ -44,7 +49,8 @@ class SearchBountyHit(BaseModel):
     title: str
     title_highlight: str
     source_url: str
-    status: BountyStatus
+    # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
+    status: GeolocationStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef

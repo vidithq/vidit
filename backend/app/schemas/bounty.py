@@ -4,31 +4,34 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.bounty import BountyStatus
+from app.models.geolocation import GeolocationStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
-class _FulfilledByNested(BaseModel):
-    id: uuid.UUID
-    title: str
-
-    model_config = {"from_attributes": True}
-
-
 class BountyRead(BaseModel):
+    """The requested-events view over the unified ``Geolocation`` model.
+
+    A bounty is a ``Geolocation`` with ``status='requested'`` (an open call to
+    geolocate) that may later become ``closed`` when the author withdraws it.
+    Since the merge, fulfilment is a lifecycle move on this same row rather than
+    a copy into a new geolocation, so there is no ``fulfilled_by`` trace.
+    """
+
     id: uuid.UUID
     title: str
     source_url: str
     proof: dict[str, Any] | None
-    # When the event happened (date + optional hour), nullable: a bounty is an
-    # unfinished geolocation. ``source_posted_at`` is the source's post instant
-    # (UTC), required: the bounty's ``source_url`` is, so its post time is too.
+    # When the event happened (date + optional hour), nullable: a requested
+    # event is an unfinished geolocation. ``source_posted_at`` is the source's
+    # post instant (UTC), required: the request's ``source_url`` is, so its post
+    # time is too.
     event_date: date | None = None
     event_time: time | None = None
     source_posted_at: datetime
-    status: BountyStatus
+    # A requested-view row is ``requested`` or (once withdrawn) ``closed``.
+    status: GeolocationStatus
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None
@@ -41,7 +44,6 @@ class BountyRead(BaseModel):
     media: list[MediaRead]
     tags: list[TagRead]
     claimers: list[AuthorRef]
-    fulfilled_by: _FulfilledByNested | None
 
     model_config = {"from_attributes": True}
 
@@ -50,7 +52,7 @@ class BountyList(BaseModel):
     id: uuid.UUID
     title: str
     source_url: str
-    status: BountyStatus
+    status: GeolocationStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef

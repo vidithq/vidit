@@ -25,28 +25,17 @@ class ArchiveImportResult(BaseModel):
     failed: int
 
 
-class _OriginatedFromBountyNested(BaseModel):
-    """Compact bounty trace surfaced on the geolocation detail.
-
-    Enough to render "originally posted as a bounty by @x" with a click-through;
-    the full bounty row is one extra fetch when the reader wants it.
-    """
-
-    id: uuid.UUID
-    title: str
-    author: AuthorRef
-
-    model_config = {"from_attributes": True}
-
-
 class GeolocationRead(BaseModel):
     id: uuid.UUID
     title: str
-    lat: float
-    lng: float
+    # Optional: a ``requested`` event has no coordinates yet (``location`` is
+    # NULL), and this same read serves the requested view. Present for every
+    # ``geolocated`` row, and for a located ``detected`` one.
+    lat: float | None = None
+    lng: float | None = None
     source_url: str
     proof: dict[str, Any] | None
-    event_date: date
+    event_date: date | None = None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
     event_time: time | None = None
     # When the original source posted the media: a real post instant (UTC),
@@ -56,8 +45,8 @@ class GeolocationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_demo: bool
-    # ``submitted`` (human submits + bounty fulfilments) vs ``detected``
-    # (machine-produced, rendered marked). See ``models.geolocation.STATUS_*``.
+    # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
+    # ``closed``. See ``models.geolocation.STATUS_*``.
     status: GeolocationStatus
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
@@ -66,9 +55,11 @@ class GeolocationRead(BaseModel):
     # NULL for human submits. The "who geolocated first" precedence signal.
     detected_post_at: datetime | None = None
     author: AuthorRef
+    # Who opened the request, preserved across fulfilment. NULL for a
+    # directly-submitted geolocation (no request preceded it).
+    requested_by: AuthorRef | None = None
     media: list[MediaRead]
     tags: list[TagRead]
-    originated_from_bounty: _OriginatedFromBountyNested | None = None
 
     model_config = {"from_attributes": True}
 
@@ -76,9 +67,10 @@ class GeolocationRead(BaseModel):
 class GeolocationList(BaseModel):
     id: uuid.UUID
     title: str
-    lat: float
-    lng: float
-    event_date: date
+    # Optional for the same reason as ``GeolocationRead.lat`` / ``lng``.
+    lat: float | None = None
+    lng: float | None = None
+    event_date: date | None = None
     is_demo: bool
     # See ``GeolocationRead.status``; a list card marks ``detected`` too.
     status: GeolocationStatus
@@ -126,9 +118,12 @@ class PossibleDuplicateRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    # A duplicate candidate is always a located row (the proximity predicate
+    # skips NULL-location rows), so coordinates are always present; the event
+    # date is nullable, as it is often unknown for a machine detection.
     lat: float
     lng: float
-    event_date: date
+    event_date: date | None = None
     source_url: str
     # Geodesic distance in metres from the caller-supplied (lat, lng). Float
     # (not int) so the frontend renders "120 m" vs "0.4 km" without rounding
