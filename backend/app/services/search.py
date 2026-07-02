@@ -169,6 +169,9 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     view via :func:`_search_events`; carries ``claimer_count`` so the result card
     renders the same "N working" badge as the index.
     """
+    # ``extra_where`` is interpolated raw into the query (see ``_search_events``);
+    # ``STATUS_REQUESTED`` is a module Literal constant, never user input, so this
+    # fragment is safe. Never thread caller input through ``extra_where``.
     ids, highlight_by_id, total = _search_events(
         db, query=query, limit=limit, extra_where=f"status = '{STATUS_REQUESTED}'"
     )

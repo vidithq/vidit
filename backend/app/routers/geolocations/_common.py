@@ -62,7 +62,15 @@ def build_geolocation_read(
         detected_from_url=geo.detected_from_url,
         detected_post_at=geo.detected_post_at,
         author=geo.author,
-        requested_by=geo.requested_by,
+        # Null a soft-deleted requester so a banned account never surfaces in the
+        # requested_by slot of a still-live event authored by someone else (the
+        # author's own soft-delete cascade-hides their events; the requester's does
+        # not, so it is guarded here).
+        requested_by=(
+            geo.requested_by
+            if geo.requested_by is not None and geo.requested_by.deleted_at is None
+            else None
+        ),
         media=geo.media,
         tags=geo.tags,
     )

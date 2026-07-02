@@ -630,6 +630,104 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     assert event.target["user_id"] == str(user_id)
 
 
+def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_user, db):
+    """Regression: a user who opened a request that a DIFFERENT user fulfilled is
+    still referenced by ``requested_by_id`` on that (now someone else's) event.
+    The FK is ``ON DELETE SET NULL``, so GDPR hard-erasure of the requester
+    succeeds and nulls the attribution rather than 500ing on the constraint.
+    """
+    fulfiller = User(
+        username=f"fulf-{uuid.uuid4().hex[:8]}",
+        email=f"fulf-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(fulfiller)
+    db.flush()
+    event = Geolocation(
+        author_id=fulfiller.id,  # ownership transferred to the fulfiller at submit
+        requested_by_id=regular_user.id,  # the requester we will hard-delete
+        title=f"Fulfilled {uuid.uuid4().hex[:8]}",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(event)
+    db.commit()
+    event_id = event.id
+    fulfiller_id = fulfiller.id
+    requester_id = regular_user.id
+
+    response = client.delete(
+        f"/api/v1/admin/users/{requester_id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.query(User).filter(User.id == requester_id).first() is None
+    surviving = db.query(Geolocation).filter(Geolocation.id == event_id).one()
+    assert surviving.author_id == fulfiller_id
+    assert surviving.requested_by_id is None
+
+    # Detach stale instances (the fulfiller-authored event references the
+    # externally-deleted requester) so the shared fixture teardown does not try to
+    # refresh a vanished row; then bulk delete by id.
+    db.expunge_all()
+    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user, db):
+    """Regression: soft-deleting a user who opened a request that someone else
+    fulfilled must not leak the banned account in the ``requested_by`` slot of the
+    still-live event. The author's own soft-delete cascade-hides their events; the
+    requester's does not, so the read path nulls a soft-deleted requester.
+    """
+    fulfiller = User(
+        username=f"fulf-{uuid.uuid4().hex[:8]}",
+        email=f"fulf-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(fulfiller)
+    db.flush()
+    event = Geolocation(
+        author_id=fulfiller.id,
+        requested_by_id=regular_user.id,
+        title=f"Fulfilled {uuid.uuid4().hex[:8]}",
+        location=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(event)
+    db.commit()
+    event_id = event.id
+    fulfiller_id = fulfiller.id
+
+    before = client.get(f"/api/v1/geolocations/{event_id}")
+    assert before.status_code == 200
+    assert before.json()["requested_by"]["username"] == regular_user.username
+
+    client.delete(
+        f"/api/v1/admin/users/{regular_user.id}",
+        headers=login_as(client, admin_user),
+    )
+
+    after = client.get(f"/api/v1/geolocations/{event_id}")
+    assert after.status_code == 200
+    assert after.json()["requested_by"] is None
+
+    # Detach stale instances (the fulfiller-authored event references the
+    # externally-deleted requester) so the shared fixture teardown does not try to
+    # refresh a vanished row; then bulk delete by id.
+    db.expunge_all()
+    db.query(Geolocation).filter(Geolocation.id == event_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == fulfiller_id).delete(synchronize_session=False)
+    db.commit()
+
+
 def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     """Hard-deleting a user nulls their FK on `invite_codes` rather than
     cascading the rows away — the codes are part of the platform audit

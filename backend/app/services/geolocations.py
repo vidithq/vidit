@@ -298,6 +298,10 @@ async def submit(
     # (they become the owner below). ``ensure_author`` raises 403 on mismatch.
     if geo.status == STATUS_DETECTED:
         ensure_author(geo, current_user)
+    # A requested event's ``source_url`` is the requester's evidence anchor; a
+    # fulfiller (anyone may answer an open request) must not rewrite it. Only the
+    # owner's own detected submit may change it. Captured before ``status`` flips.
+    keep_requester_source_url = geo.status == STATUS_REQUESTED
 
     validate_coordinates(lat, lng)
 
@@ -330,7 +334,8 @@ async def submit(
     with db.no_autoflush:
         geo.title = title
         geo.location = from_shape(Point(lng, lat), srid=4326)
-        geo.source_url = source_url
+        if not keep_requester_source_url:
+            geo.source_url = source_url
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at

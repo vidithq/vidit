@@ -43,6 +43,7 @@ def upgrade() -> None:
         "users",
         ["requested_by_id"],
         ["id"],
+        ondelete="SET NULL",
     )
     op.add_column(
         "geolocations", sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True)
@@ -273,6 +274,11 @@ def downgrade() -> None:
         existing_type=sa.String(length=20),
         server_default=sa.text("'submitted'"),
     )
+    # A coord-less ``detected`` row (the CHECK permits it) has no pre-merge form
+    # (pre-merge every geolocation carried a location), so it cannot be un-merged;
+    # drop any before restoring NOT NULL. None exist today (detection always sets a
+    # coordinate), so this is a safety net, not a lossy step in practice.
+    op.execute("DELETE FROM geolocations WHERE location IS NULL")
     op.execute("ALTER TABLE geolocations ALTER COLUMN location SET NOT NULL")
     op.alter_column("geolocations", "event_date", existing_type=sa.Date(), nullable=False)
     op.drop_column("geolocations", "closed_at")

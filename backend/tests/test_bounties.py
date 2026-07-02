@@ -976,6 +976,31 @@ def test_submit_fulfils_requested_and_transfers_ownership(
     assert row.location is not None
 
 
+def test_submit_keeps_requesters_source_url(
+    db, author, second_user, conflict_tag, capture_source_tag
+):
+    """A fulfiller cannot rewrite the requester's evidence anchor: submit() ignores
+    the form ``source_url`` on a requested fulfilment and keeps the request's.
+    """
+    bounty = _make_bounty(db, author=author, source_url="https://requester.example/evidence")
+    bounty_id = bounty.id
+
+    response = _submit_fulfilment(
+        client,
+        bounty_id,
+        second_user,
+        conflict_tag,
+        capture_source_tag,
+        source_url="https://tamper.example/other",
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["source_url"] == "https://requester.example/evidence"
+
+    db.expire_all()
+    row = db.query(Geolocation).filter(Geolocation.id == bounty_id).one()
+    assert row.source_url == "https://requester.example/evidence"
+
+
 def test_submit_fulfilled_event_leaves_requested_view(
     db, author, second_user, conflict_tag, capture_source_tag
 ):

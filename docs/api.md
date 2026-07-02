@@ -716,7 +716,7 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `title` | string | 1-255 chars |
 | `lat` | float | Latitude (-90 to 90) |
 | `lng` | float | Longitude (-180 to 180) |
-| `source_url` | string | ≤2000 chars, the footage origin (correct the machine's guess) |
+| `source_url` | string | ≤2000 chars, the footage origin. A `detected` submit corrects the machine's guess; a `requested` fulfilment ignores this field and keeps the request's `source_url` (a fulfiller must not rewrite the requester's evidence anchor) |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required: a post always has a time |

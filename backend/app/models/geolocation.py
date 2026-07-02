@@ -109,7 +109,12 @@ class Geolocation(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Who opened the request, preserved across fulfilment so the merge doesn't
     # erase who posted the bounty. NULL for a directly-submitted geolocation.
-    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # ``ondelete=SET NULL``: a fulfilled event (author transferred to the fulfiller)
+    # legitimately outlives its requester, and hard-deleting a user (GDPR erasure)
+    # nulls their attribution here rather than failing on the FK.
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
     # Nullable: a ``requested`` event has no coordinates yet and a ``detected``
     # one may lack them (a media-only machine draft). Presence is tied to
