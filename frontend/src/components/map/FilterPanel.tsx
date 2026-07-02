@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import type { MapPoint, Tag } from "@/types";
 import { Pill } from "@/components/ui/Pill";
+import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -120,7 +121,8 @@ function FilterSection({
   );
 }
 
-/** A compact on/off row for a boolean filter. */
+/** A compact on/off row for a boolean filter. The whole row is the switch
+ *  (role + click live here), so the `<Switch>` renders as its visual span. */
 function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
   return (
     <button
@@ -132,13 +134,7 @@ function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
       <span className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors">
         {label}
       </span>
-      <span
-        className={`relative w-7 h-4 rounded-full transition-colors ${on ? "bg-orange-500" : "bg-neutral-700"}`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-neutral-400 transition-all ${on ? "left-3.5" : "left-0.5"}`}
-        />
-      </span>
+      <Switch as="span" size="sm" on={on} />
     </button>
   );
 }

@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { notFound } from "next/navigation";
-import { AtSign, Mail, MessageCircle, MapPin, Users, UserPlus, Calendar } from "lucide-react";
+import {
+  AtSign,
+  Calendar,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Search as SearchIcon,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 import type { GeolocationDetail, GeolocationStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
@@ -35,6 +44,8 @@ import {
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
 import {
   FORM_LABEL,
@@ -150,6 +161,9 @@ export default function PalettePage() {
   if (process.env.NODE_ENV !== "development") notFound();
 
   const [pillSel, setPillSel] = useState("Open");
+  const [segSel, setSegSel] = useState<"geolocation" | "bounty">("geolocation");
+  const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
+  const [swOn, setSwOn] = useState(true);
   const [tpTags, setTpTags] = useState<Tag[]>([
     { id: "f1", name: "donetsk", category: "free" },
   ]);
@@ -261,6 +275,38 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit type (geolocation / bounty), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
+            <div className="space-y-3">
+              <SegmentedControl
+                aria-label="Demo type"
+                options={[
+                  { value: "geolocation", label: "Geolocation" },
+                  { value: "bounty", label: "Bounty" },
+                ]}
+                value={segSel}
+                onChange={setSegSel}
+              />
+              <SegmentedControl
+                aria-label="Demo delete mode"
+                options={[
+                  { value: "soft", label: "Soft delete" },
+                  { value: "hard", label: "Hard delete", tone: "danger" },
+                ]}
+                value={segMode}
+                onChange={setSegMode}
+              />
+            </div>
+          </Item>
+
+          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles).">
+            <Variant label='size="md"'>
+              <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch" />
+            </Variant>
+            <Variant label='size="sm"'>
+              <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch small" />
+            </Variant>
+          </Item>
+
           <Item name="<StatusBadge>" usage="A <Pill> consumer: maps the geoloc status to a tone + icon + label. Cards, detail, detections queue.">
             <StatusBadge status="detected" />
             <StatusBadge status="submitted" />
@@ -278,10 +324,13 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon (the search box). Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
+              </Variant>
+              <Variant label="icon (search box)">
+                <Input icon={<SearchIcon size={14} />} type="search" placeholder="Search…" />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
                 <Input variant="compact" placeholder="Compact" />

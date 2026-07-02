@@ -19,7 +19,8 @@ import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/geolocation/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
@@ -371,29 +372,21 @@ function SubmitForm() {
       {/* Primary choice: your placed work (Geolocation) vs a request to others
           (Bounty). Hidden in fulfilment, which is always a geolocation. */}
       {showToggle && (
-        <div className="inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5">
-          {(["geolocation", "bounty"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setSubmitType(t);
-                setArchiveMode(false);
-                // Bounty mode has no image upload, so a flag left true by an
-                // in-flight geolocation upload would wedge the submit button.
-                if (t === "bounty") setProofImageUploading(false);
-              }}
-              aria-pressed={submitType === t}
-              className={`px-3 py-1 text-sm rounded transition-colors ${
-                submitType === t
-                  ? ACCENT_SURFACE
-                  : "text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              {t === "geolocation" ? "Geolocation" : "Bounty"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="Submission type"
+          options={[
+            { value: "geolocation", label: "Geolocation" },
+            { value: "bounty", label: "Bounty" },
+          ]}
+          value={submitType}
+          onChange={(t) => {
+            setSubmitType(t);
+            setArchiveMode(false);
+            // Bounty mode has no image upload, so a flag left true by an
+            // in-flight geolocation upload would wedge the submit button.
+            if (t === "bounty") setProofImageUploading(false);
+          }}
+        />
       )}
 
       {/* Under Geolocation (not fulfilment): two scales of "bring your existing

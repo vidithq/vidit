@@ -134,20 +134,15 @@ function SearchPageBody() {
       title="Search"
       subtitle="One discovery surface across the platform: type to search geolocations, bounties and analysts at once. Matched fragments are highlighted in each result."
     >
-        <div className="relative">
-          <SearchIcon
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
-          />
-          <Input
-            type="search"
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            placeholder="Try a location, an analyst handle, or a keyword from a title…"
-            autoFocus
-            className="pl-9 bg-neutral-900 placeholder:text-neutral-500"
-          />
-        </div>
+        <Input
+          type="search"
+          icon={<SearchIcon size={14} />}
+          value={queryInput}
+          onChange={(e) => setQueryInput(e.target.value)}
+          placeholder="Try a location, an analyst handle, or a keyword from a title…"
+          autoFocus
+          className="bg-neutral-900 placeholder:text-neutral-500"
+        />
 
         <div className="flex flex-wrap items-center gap-1.5">
           {TYPE_FILTERS.map((opt) => (

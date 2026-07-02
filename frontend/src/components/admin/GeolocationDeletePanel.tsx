@@ -19,6 +19,7 @@ import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 export function GeolocationDeletePanel() {
   const [id, setId] = useState("");
@@ -87,34 +88,22 @@ export function GeolocationDeletePanel() {
           />
         </div>
 
-        <fieldset className="flex gap-2">
-          <legend className={FORM_LABEL}>Mode</legend>
-          {(["soft", "hard"] as const).map((m) => (
-            <label
-              key={m}
-              className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-xs cursor-pointer border ${
-                mode === m
-                  ? m === "hard"
-                    ? "bg-red-500/10 border-red-500/40 text-red-300"
-                    : "bg-orange-500/15 border-orange-500/30 text-orange-300"
-                  : "bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              <input
-                type="radio"
-                name="delete-mode"
-                value={m}
-                checked={mode === m}
-                onChange={() => {
-                  setMode(m);
-                  confirm.cancel();
-                }}
-                className="sr-only"
-              />
-              {m === "soft" ? "Soft delete (default)" : "Hard delete (GDPR)"}
-            </label>
-          ))}
-        </fieldset>
+        <div>
+          <span className={FORM_LABEL}>Mode</span>
+          <SegmentedControl
+            aria-label="Delete mode"
+            fullWidth
+            options={[
+              { value: "soft", label: "Soft delete (default)" },
+              { value: "hard", label: "Hard delete (GDPR)", tone: "danger" },
+            ]}
+            value={mode}
+            onChange={(m) => {
+              setMode(m);
+              confirm.cancel();
+            }}
+          />
+        </div>
 
         {error && (
           <div className={FORM_ERROR_BANNER}>
