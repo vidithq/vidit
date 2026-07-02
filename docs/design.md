@@ -167,6 +167,12 @@ If you're writing a class string longer than ~3 Tailwind tokens for an orange el
 
 Every element below is a reusable primitive. Compose from them; do not hand-roll a one-off. If no primitive fits a new need, the missing piece is added to [`components/ui/`](../frontend/src/components/ui) (or as a new `FORM_*` / `styles.ts` constant) and consumed from there, never inlined in a page or feature component. Growing the vocabulary with a new shared component is a maintainer decision (see [`AGENTS.md`](../AGENTS.md) → *Conventions*); reusing or extending an existing one is the default.
 
+**Token or component?** A piece is a *component* when it owns shape or behaviour (`<Input>`, `<Pill>`, `<Button>`, `<Card>`); it stays a raw *class constant* when it is a single-element paint or treatment composed into someone else's markup (`FORM_LABEL`, `ACCENT_SURFACE`, `TAPPABLE_HOVER`, the banners). A constant that starts growing variants or per-call-site conditionals has crossed the line: promote it to a component.
+
+Primitives join their classes with [`cn`](../frontend/src/lib/cn.ts) (tailwind-merge): on a conflicting Tailwind utility the caller's `className` wins predictably instead of being decided by stylesheet order. Keep `className` for orthogonal extras (margins, tracking, casing); `<Button>` and `<Pill>` stay one size by design.
+
+**Three label-ish pieces, three jobs.** `FORM_LABEL` is the uppercase label above a single control; [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) heads a form section (title + `?` + optional marker); [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx) is the uppercase eyebrow heading a page / panel / card section. Likewise for media stand-ins: `<MediaThumb>` renders the real media (image thumbnail or video first-frame); `<MediaPlaceholder>` generates a deterministic stand-in when there is none.
+
 ### Links and clickable surfaces
 
 Orange = clickable; see the [Orange palette recipe](#orange-palette-recipe) for the five buckets and constants. Carve-outs: navigation chrome stays neutral grey, destructive actions go red. External links open in a new tab (`target="_blank" rel="noopener noreferrer"`) with the same orange styling.

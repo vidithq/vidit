@@ -239,7 +239,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | neutral | danger | strong, mirroring the <Button> tones. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. Folds the old STATUS_PILL_* / FILTER_CHIP_* / TAG_CHIP / BETA_PILL constants.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | neutral | danger | strong, mirroring the <Button> tones. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -364,7 +364,7 @@ export default function PalettePage() {
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
-          <Item name="<MediaThumb>" usage="Thumbnail on bounty cards (list & search)">
+          <Item name="<MediaThumb>" usage="The real media on bounty cards (image thumbnail / video first-frame); its sibling <MediaPlaceholder> below is the generated stand-in when there is none">
             <MediaThumb />
           </Item>
 
@@ -552,7 +552,7 @@ export default function PalettePage() {
           <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
               <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
-              <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a <code>position: fixed</code> banner, already visible bottom-right</li>
+              <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: fixed nav rail, auth/route-driven, always on screen</li>
               <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page</li>
             </ul>
