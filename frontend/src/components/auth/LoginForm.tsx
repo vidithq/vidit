@@ -70,10 +70,7 @@ export default function LoginForm({ onSuccess }: Props) {
 
         <div>
           <div className="flex items-baseline justify-between mb-1">
-            <label
-              htmlFor="password"
-              className="block text-[10px] uppercase tracking-wider text-neutral-500"
-            >
+            <label htmlFor="password" className={FORM_LABEL_COMPACT}>
               Password
             </label>
             <Link
