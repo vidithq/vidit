@@ -14,7 +14,7 @@
     "palette:check": "node scripts/check-palette-coverage.mjs"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.53.1",
+    "@sentry/nextjs": "^10.63.0",
     "@tiptap/extension-image": "^3.27.1",
     "@tiptap/pm": "^3.27.1",
     "@tiptap/react": "^3.27.1",
