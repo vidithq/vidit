@@ -1,15 +1,11 @@
 "use client";
 
-import { Lock } from "lucide-react";
-
-import {
-  FORM_INPUT,
-  FORM_INPUT_LOCKED,
-  FORM_INVALID_FIELD,
-  FORM_LABEL,
-} from "@/components/ui/form-styles";
-import FieldHelp from "@/components/ui/FieldHelp";
+import { FORM_LABEL } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { LockedHint } from "./LockedHint";
 
 interface DetailsFieldsProps {
@@ -64,13 +60,8 @@ export function DetailsFields({
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
-      <header>
-        <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-          Details
-          <FieldHelp concept="section_details" />
-        </h2>
-      </header>
+    <Card as="section">
+      <SectionHeading title="Details" concept="section_details" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
@@ -78,25 +69,26 @@ export function DetailsFields({
             Event date <FieldHelp concept="event_date" />{" "}
             {!eventDateRequired && <OptionalHint />}
           </label>
-          <input
+          <Input
             id="event_date"
             type="date"
             required={eventDateRequired}
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            className={`${FORM_INPUT}${eventDate ? " has-value" : ""}${eventDateInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
+            invalid={eventDateInvalid}
+            className={eventDate ? "has-value" : ""}
           />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="event_time" className={FORM_LABEL}>
             Event time <FieldHelp concept="event_time" /> <OptionalHint />
           </label>
-          <input
+          <Input
             id="event_time"
             type="time"
             value={eventTime}
             onChange={(e) => setEventTime(e.target.value)}
-            className={`${FORM_INPUT}${eventTime ? " has-value" : ""}`}
+            className={eventTime ? "has-value" : ""}
           />
         </div>
       </div>
@@ -105,13 +97,14 @@ export function DetailsFields({
         <label htmlFor="source_posted_at" className={FORM_LABEL}>
           Source posted (UTC) <FieldHelp concept="source_posted_at" />
         </label>
-        <input
+        <Input
           id="source_posted_at"
           type="datetime-local"
           required
           value={sourcePostedAt}
           onChange={(e) => setSourcePostedAt(e.target.value)}
-          className={`${FORM_INPUT}${sourcePostedAt ? " has-value" : ""}${sourcePostedAtInvalid ? ` ${FORM_INVALID_FIELD}` : ""}`}
+          invalid={sourcePostedAtInvalid}
+          className={sourcePostedAt ? "has-value" : ""}
         />
       </div>
 
@@ -120,7 +113,8 @@ export function DetailsFields({
           Source URL <FieldHelp concept="source_url" />{" "}
           {sourceUrlLocked && <LockedHint />}
         </label>
-        <input
+        <Input
+          variant={sourceUrlLocked ? "locked" : "default"}
           id="source_url"
           type="url"
           required
@@ -128,9 +122,7 @@ export function DetailsFields({
           value={sourceUrl}
           onChange={(e) => setSourceUrl?.(e.target.value)}
           placeholder="https://t.me/channel/12345"
-          className={`${sourceUrlLocked ? FORM_INPUT_LOCKED : FORM_INPUT}${
-            sourceUrlInvalid ? ` ${FORM_INVALID_FIELD}` : ""
-          }`}
+          invalid={sourceUrlInvalid}
         />
       </div>
 
@@ -138,20 +130,17 @@ export function DetailsFields({
         <div className="space-y-1.5">
           <label htmlFor="detected_from_url" className={FORM_LABEL}>
             Detected from <FieldHelp concept="detected_from" />
-            <span className="inline-flex items-center gap-1 ml-1.5 normal-case tracking-normal text-[10px] text-neutral-500">
-              <Lock size={10} />
-              provenance, can&apos;t change
-            </span>
+            <LockedHint>provenance, can&apos;t change</LockedHint>
           </label>
-          <input
+          <Input
+            variant="locked"
             id="detected_from_url"
             type="url"
             readOnly
             value={detectedFromUrl}
-            className={FORM_INPUT_LOCKED}
           />
         </div>
       )}
-    </section>
+    </Card>
   );
 }

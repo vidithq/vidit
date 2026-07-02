@@ -233,6 +233,10 @@ jobs:
         run: npm run knip
         working-directory: frontend
 
+      - name: Palette coverage
+        run: npm run palette:check
+        working-directory: frontend
+
   # Lightweight, opinionated guardrail: every PR to `main` must touch
   # at least one file under `docs/` AND at least one file under
   # `planning/`. The intent is friction, not granular pairing rules:

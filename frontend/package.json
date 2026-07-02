@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:api": "openapi-typescript openapi.json -o src/lib/api-types.ts",
-    "knip": "knip"
+    "knip": "knip",
+    "palette:check": "node scripts/check-palette-coverage.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.53.1",
@@ -24,7 +25,8 @@
     "next": "^16.2.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-map-gl": "^8.1.0"
+    "react-map-gl": "^8.1.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

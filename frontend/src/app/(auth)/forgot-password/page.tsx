@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { SingleEmailFlow } from "@/components/auth/SingleEmailFlow";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
  * The backend responds 204 whether or not the email matches an account
@@ -18,7 +19,7 @@ export default function ForgotPasswordPage() {
       footer={
         <>
           Remembered it?{" "}
-          <Link href="/login" className="text-orange-400 hover:underline">
+          <Link href="/login" className={TEXT_LINK}>
             Back to sign in
           </Link>
         </>
@@ -42,7 +43,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="button"
                 onClick={reset}
-                className="text-orange-400 hover:underline"
+                className={TEXT_LINK}
               >
                 try a different address
               </button>

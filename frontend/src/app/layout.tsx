@@ -29,7 +29,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // `suppressHydrationWarning`: the inline script below sets `data-palette` on
+    // <html> before hydration, which the server markup doesn't carry, so React
+    // would flag the attribute mismatch. Scoped to this one element.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Apply the saved accent palette before first paint so themed UI
+            doesn't flash the default hue on load. Sets only an attribute, so an
+            unexpected stored value is inert (no matching override = default). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var p=localStorage.getItem('vidit:palette');if(p)document.documentElement.dataset.palette=p;}catch(e){}})();",
+          }}
+        />
+      </head>
       <body
         className={`${montserrat.variable} font-sans bg-[#0a0a0a] text-neutral-100 min-h-screen`}
       >

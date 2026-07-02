@@ -84,10 +84,15 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
             ST_Y(Geolocation.location).label("lat"),
             ST_X(Geolocation.location).label("lng"),
         )
-        # ``selectinload`` for tags — a many-to-many ``joinedload`` would
-        # row-multiply against ``LIMIT`` and silently truncate the page.
+        # ``selectinload`` for tags + media: a many-to-many / one-to-many
+        # ``joinedload`` would row-multiply against ``LIMIT`` and silently
+        # truncate the page.
         # ``joinedload`` is safe for the author (many-to-one, no inflation).
-        .options(joinedload(Geolocation.author), selectinload(Geolocation.tags))
+        .options(
+            joinedload(Geolocation.author),
+            selectinload(Geolocation.tags),
+            selectinload(Geolocation.media),
+        )
         .filter(where_clause)
         .order_by(Geolocation.event_date.desc(), Geolocation.created_at.desc())
         .offset((page - 1) * per_page)

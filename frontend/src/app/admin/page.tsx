@@ -11,7 +11,7 @@ import { GeolocationDeletePanel } from "@/components/admin/GeolocationDeletePane
 import { InviteCodesPanel } from "@/components/admin/InviteCodesPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { TrustPanel } from "@/components/admin/TrustPanel";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -29,11 +29,7 @@ export default function AdminPage() {
   }, [probing, user, router]);
 
   if (probing || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading…</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   if (!isAdmin) {

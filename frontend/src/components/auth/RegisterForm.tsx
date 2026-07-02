@@ -5,14 +5,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import {
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 
 
@@ -76,7 +77,7 @@ export default function RegisterForm({
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="text-orange-400 hover:underline">
+          <Link href="/login" className={TEXT_LINK}>
             Sign in
           </Link>
         </>
@@ -84,7 +85,7 @@ export default function RegisterForm({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}
@@ -93,16 +94,14 @@ export default function RegisterForm({
           <label htmlFor="invite_code" className={FORM_LABEL_COMPACT}>
             Invite code
           </label>
-          <input
+          <Input
             id="invite_code"
             type="text"
             required
             readOnly={inviteCodeLocked}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
-            className={`${FORM_INPUT}${
-              inviteCodeLocked ? " opacity-70 cursor-not-allowed" : ""
-            }`}
+            className={inviteCodeLocked ? "opacity-70 cursor-not-allowed" : ""}
             placeholder="Paste your invite code"
           />
           {inviteCodeLocked && (
@@ -116,13 +115,12 @@ export default function RegisterForm({
           <label htmlFor="username" className={FORM_LABEL_COMPACT}>
             Username
           </label>
-          <input
+          <Input
             id="username"
             type="text"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -130,13 +128,12 @@ export default function RegisterForm({
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
-          <input
+          <Input
             id="email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -144,24 +141,24 @@ export default function RegisterForm({
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>
             Password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          fullWidth
           type="submit"
           disabled={submitting}
-          className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
         >
           {submitting ? "Sending confirmation..." : "Continue"}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

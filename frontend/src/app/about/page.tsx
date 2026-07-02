@@ -12,7 +12,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
-import { TAPPABLE_HOVER } from "@/components/ui/styles";
+import { Card } from "@/components/ui/Card";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { LinkRow } from "@/components/ui/LinkRow";
 
 // Same openGraph + twitter shape as the landing so a shared link reads as
 // Vidit, not a bare title. The shared `opengraph-image.tsx` /
@@ -71,7 +73,7 @@ const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
           href="https://archive.today"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-orange-400 hover:text-orange-300"
+          className={TEXT_LINK}
         >
           archive.today
         </a>{" "}
@@ -137,7 +139,7 @@ interface SectionProps {
 
 function Section({ icon: Icon, title, description, children }: SectionProps) {
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section">
       <div className="space-y-1">
         <div className="flex items-center gap-2.5">
           <span className="size-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400 shrink-0">
@@ -150,7 +152,7 @@ function Section({ icon: Icon, title, description, children }: SectionProps) {
         )}
       </div>
       <div className="space-y-3">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -259,7 +261,7 @@ export default function AboutPage() {
             submissions, email{" "}
             <a
               href="mailto:hello@vidit.app"
-              className="text-orange-400 hover:text-orange-300"
+              className={TEXT_LINK}
             >
               hello@vidit.app
             </a>{" "}
@@ -290,25 +292,15 @@ export default function AboutPage() {
           description="Reach the team, file a bug, or hang out with the community."
         >
           <div className="space-y-2">
-            {CONTACT.map(({ icon: Icon, label, value, href, external }) => (
-              <a
+            {CONTACT.map(({ icon, label, value, href, external }) => (
+              <LinkRow
                 key={label}
+                icon={icon}
+                label={label}
+                value={value}
                 href={href}
-                {...(external
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-                className={`group flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md ${TAPPABLE_HOVER}`}
-              >
-                <Icon size={14} className="text-neutral-500 shrink-0 group-hover:text-orange-400/70 transition-colors" />
-                <div className="flex-1 min-w-0">
-                  <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                    {label}
-                  </span>
-                  <p className="text-sm truncate text-orange-400 group-hover:text-orange-300 transition-colors">
-                    {value}
-                  </p>
-                </div>
-              </a>
+                external={external}
+              />
             ))}
           </div>
         </Section>
@@ -316,7 +308,7 @@ export default function AboutPage() {
         <p className="text-xs text-neutral-500 text-center">
           The best way to learn about the project is still to use it. Start on
           the{" "}
-          <Link href="/map" className="text-orange-400 hover:underline">
+          <Link href="/map" className={TEXT_LINK}>
             map
           </Link>
           , or read the source on{" "}
@@ -324,7 +316,7 @@ export default function AboutPage() {
             href="https://github.com/vidithq/vidit"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-orange-400 hover:underline"
+            className={TEXT_LINK}
           >
             GitHub
           </a>

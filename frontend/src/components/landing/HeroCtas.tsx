@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 
 // Hero CTA island that swaps on auth state (signed-in sees "Open the map").
 // While auth resolves on a hard load of `/`, `user` is null and the signed-out
@@ -15,10 +15,7 @@ export default function HeroCtas() {
   if (user) {
     return (
       <div className="mt-8 flex items-center justify-center">
-        <Link
-          href="/map"
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
-        >
+        <Link href="/map" className={buttonClasses("primary")}>
           Open the map
           <ArrowRight size={15} />
         </Link>
@@ -28,10 +25,7 @@ export default function HeroCtas() {
 
   return (
     <div className="mt-8 flex flex-col items-center gap-3">
-      <Link
-        href="/register"
-        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
-      >
+      <Link href="/register" className={buttonClasses("primary")}>
         Have an invite code?
         <ArrowRight size={15} />
       </Link>

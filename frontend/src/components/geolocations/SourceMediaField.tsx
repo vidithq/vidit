@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 
 import { MediaManager } from "@/components/geolocations/MediaManager";
 import { LockedHint } from "@/components/geolocations/new/LockedHint";
-import FieldHelp from "@/components/ui/FieldHelp";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import type { Media } from "@/types";
 
 interface SourceMediaFieldProps {
@@ -35,17 +36,17 @@ export function SourceMediaField({
   ...media
 }: SourceMediaFieldProps) {
   return (
-    <section
-      className={`bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3${
-        invalid ? ` ${FORM_INVALID_FIELD}` : ""
-      }`}
+    <Card
+      as="section"
+      className={invalid ? FORM_INVALID_FIELD : ""}
     >
-      <h2 className="text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5">
-        Source media <FieldHelp concept="source_media" />
-        {media.locked && <LockedHint />}
-      </h2>
+      <SectionHeading
+        title="Source media"
+        concept="source_media"
+        trailing={media.locked ? <LockedHint /> : undefined}
+      />
       <MediaManager {...media} />
       {children}
-    </section>
+    </Card>
   );
 }

@@ -24,7 +24,7 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
  * Neutral, not orange: it's meta help, not a content action — orange stays
  * reserved for primary affordances.
  */
-export default function FieldHelp({
+export function FieldHelp({
   concept,
   size = 13,
   className = "",

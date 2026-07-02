@@ -7,6 +7,7 @@ import { AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { PossibleDuplicate } from "@/types";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 
 // Debounce signal-field edits so we don't probe per keystroke.
 // 500ms is the standard "user paused typing" threshold.
@@ -104,7 +105,7 @@ export function DuplicateProbe({
 function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
   return (
     <section
-      className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-3"
+      className={`rounded-lg p-4 space-y-3 ${WARNING_CALLOUT}`}
       aria-live="polite"
     >
       <header className="flex items-start gap-2 text-amber-200">

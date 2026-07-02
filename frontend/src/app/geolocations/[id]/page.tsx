@@ -8,8 +8,10 @@ import { useApiResource } from "@/hooks/useApiResource";
 import TrustBadge from "@/components/profile/TrustBadge";
 import ShareButtons from "@/components/geolocation/ShareButtons";
 import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
-import FieldHelp from "@/components/ui/FieldHelp";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { DetailRow } from "@/components/ui/DetailRow";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -21,16 +23,9 @@ export default function GeolocationPage() {
 
   if (error)
     return (
-      <PageCenter>
-        <span className="text-red-400">{error}</span>
-      </PageCenter>
+      <PageError message={error} />
     );
-  if (!geo)
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+  if (!geo) return <PageLoading />;
 
   return (
     <PageShell
@@ -41,7 +36,7 @@ export default function GeolocationPage() {
           by{" "}
           <Link
             href={`/profile/${geo.author.username}`}
-            className="text-orange-400 hover:underline transition-colors"
+            className={`${TEXT_LINK} transition-colors`}
           >
             {geo.author.username}
           </Link>
@@ -66,10 +61,7 @@ export default function GeolocationPage() {
     >
         <GeolocationDetailBody geo={geo} variant="page">
           <div>
-            <h2 className="text-xs text-neutral-500 uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
-              Location
-              <FieldHelp concept="section_location" />
-            </h2>
+            <SectionEyebrow title="Location" concept="section_location" />
             {/* Map + coordinates are one module: the coords read as a Details-
                 style row fused to the bottom of the map (shared border, no gap),
                 mirroring the submit form's Location section. `overflow-hidden`
@@ -88,15 +80,15 @@ export default function GeolocationPage() {
                   zoom={12}
                 />
               </div>
-              <div className="flex justify-between px-4 py-3 border-t border-neutral-800 bg-neutral-900 rounded-b-lg">
-                <span className="text-sm text-neutral-500 inline-flex items-center gap-1">
-                  Coordinates{" "}
-                  <FieldHelp concept="coordinates" />
-                </span>
+              <DetailRow
+                label="Coordinates"
+                concept="coordinates"
+                className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
+              >
                 <span className="text-sm text-neutral-200 font-mono">
                   {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
                 </span>
-              </div>
+              </DetailRow>
             </div>
           </div>
         </GeolocationDetailBody>

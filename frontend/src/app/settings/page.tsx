@@ -5,15 +5,20 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { Button } from "@/components/ui/Button";
 import {
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
+  FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
+import { usePalette } from "@/hooks/usePalette";
+import { PALETTES, setPalette } from "@/lib/palette";
 
 
 
@@ -25,6 +30,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState(false);
   const helpHidden = useHelpHidden();
+  const palette = usePalette();
 
   const changePassword = useMutation(
     () =>
@@ -49,11 +55,7 @@ export default function SettingsPage() {
   const submitting = changePassword.loading;
 
   if (loading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,8 +75,8 @@ export default function SettingsPage() {
   return (
     <PageShell title="Settings">
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
-          <h2 className="text-sm font-medium text-neutral-300">Account</h2>
+        <Card>
+          <SectionEyebrow title="Account" margin="none" />
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className={FORM_LABEL}>Username</span>
@@ -85,11 +87,11 @@ export default function SettingsPage() {
               <p className="text-neutral-100 mt-0.5">{user.email}</p>
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-3">
+        <Card>
           <div className="space-y-1">
-            <h2 className="text-sm font-medium text-neutral-300">Display</h2>
+            <SectionEyebrow title="Display" margin="none" />
             <p className="text-xs text-neutral-500">
               Preferences stored in this browser.
             </p>
@@ -120,11 +122,40 @@ export default function SettingsPage() {
               />
             </button>
           </div>
-        </div>
 
-        <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 border-t border-neutral-800 pt-4">
+            <div>
+              <p className="text-sm text-neutral-200">Accent color</p>
+              <p className="text-xs text-neutral-500">
+                The highlight color for buttons, links, selected states, and map
+                points.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {PALETTES.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={palette === p.id}
+                  aria-label={p.label}
+                  title={p.label}
+                  onClick={() => setPalette(p.id)}
+                  style={{ backgroundColor: p.swatch }}
+                  className={`h-6 w-6 rounded-full transition-transform hover:scale-110 ${
+                    palette === p.id
+                      ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"
+                      : "ring-1 ring-neutral-700"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card>
           <div className="space-y-1">
-            <h2 className="text-sm font-medium text-neutral-300">Change password</h2>
+            <SectionEyebrow title="Change password" margin="none" />
             <p className="text-xs text-neutral-500">
               Update the password used to sign in to Vidit.
             </p>
@@ -132,15 +163,12 @@ export default function SettingsPage() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {error && (
-              <div className={FORM_ERROR_BANNER_COMPACT}>
+              <div className={FORM_ERROR_BANNER}>
                 {error}
               </div>
             )}
             {success && (
-              // Orange, not emerald (see design.md's palette): "success"
-              // green next to red destructive actions reads wrong, and the
-              // app stays in the orange family.
-              <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
+              <div className={FORM_SUCCESS_BANNER}>
                 Password updated.
               </div>
             )}
@@ -149,14 +177,14 @@ export default function SettingsPage() {
               <label htmlFor="current-password" className={FORM_LABEL}>
                 Current password
               </label>
-              <input
+              <Input
                 id="current-password"
                 type="password"
                 required
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 
@@ -164,7 +192,7 @@ export default function SettingsPage() {
               <label htmlFor="new-password" className={FORM_LABEL}>
                 New password
               </label>
-              <input
+              <Input
                 id="new-password"
                 type="password"
                 required
@@ -172,7 +200,7 @@ export default function SettingsPage() {
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 
@@ -180,7 +208,7 @@ export default function SettingsPage() {
               <label htmlFor="confirm-password" className={FORM_LABEL}>
                 Confirm new password
               </label>
-              <input
+              <Input
                 id="confirm-password"
                 type="password"
                 required
@@ -188,19 +216,15 @@ export default function SettingsPage() {
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`mt-1 ${FORM_INPUT}`}
+                className="mt-1"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-            >
+            <Button type="submit" variant="primary" disabled={submitting}>
               {submitting ? "Updating..." : "Update password"}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
     </PageShell>
   );
 }

@@ -122,6 +122,7 @@ check-dup:
 
 hygiene: check-dup
 	cd frontend && npm run knip
+	cd frontend && npm run palette:check
 
 clean:
 	docker-compose down -v

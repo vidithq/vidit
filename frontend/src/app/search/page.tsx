@@ -3,39 +3,26 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  Calendar,
-  MapPin,
-  Search as SearchIcon,
-  User as UserIcon,
-  Users,
-} from "lucide-react";
+import { Search as SearchIcon } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import StatusBadge from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { BountyStatusBadge } from "@/components/bounty/BountyStatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
-import { formatDate } from "@/lib/format";
-import { displayUrlsFor } from "@/lib/mediaUrls";
-import SourceLabel from "@/components/ui/SourceLabel";
+import { Avatar } from "@/components/ui/Avatar";
+import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  SearchBountyHit,
   SearchGeolocationHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
 } from "@/types";
-import { PageCenter, PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-import {
-  FILTER_CHIP_ACTIVE,
-  FILTER_CHIP_INACTIVE,
-  STATUS_PILL_ACTIVE,
-  STATUS_PILL_CLOSED,
-  STATUS_PILL_FULFILLED,
-  TAG_CHIP,
-  TAPPABLE_HOVER,
-} from "@/components/ui/styles";
+import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { Pill } from "@/components/ui/Pill";
 
 const TYPE_FILTERS: { value: SearchType; label: string }[] = [
   { value: "all", label: "All" },
@@ -52,13 +39,7 @@ export default function SearchPage() {
   // `useSearchParams` opts out of static prerender, so the body lives
   // under a Suspense boundary (Next 14 requirement).
   return (
-    <Suspense
-      fallback={
-        <PageCenter>
-          <span className="text-neutral-500">Loading...</span>
-        </PageCenter>
-      }
-    >
+    <Suspense fallback={<PageLoading />}>
       <SearchPageBody />
     </Suspense>
   );
@@ -141,11 +122,7 @@ function SearchPageBody() {
   }, []);
 
   if (authLoading || !user) {
-    return (
-      <PageCenter>
-        <span className="text-neutral-500">Loading...</span>
-      </PageCenter>
-    );
+    return <PageLoading />;
   }
 
   const showGroup = (group: SearchType): boolean =>
@@ -173,16 +150,13 @@ function SearchPageBody() {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {TYPE_FILTERS.map((opt) => (
-            <button
+            <Pill
               key={opt.value}
-              type="button"
+              tone={typeFilter === opt.value ? "accent" : "neutral"}
               onClick={() => onChipClick(opt.value)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                typeFilter === opt.value ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-              }`}
             >
               {opt.label}
-            </button>
+            </Pill>
           ))}
         </div>
 
@@ -210,13 +184,13 @@ function SearchPageBody() {
         )}
 
         {!activeQuery.trim() && (
-          <div className="text-sm text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-md p-6 text-center">
+          <EmptyState>
             Start typing to search across geolocations, bounties and analysts.
-          </div>
+          </EmptyState>
         )}
 
         {activeQuery.trim() && results && totalHits === 0 && !loading && (
-          <div className="text-sm text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-md p-6 text-center">
+          <EmptyState>
             No matches for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span>.
             {typeFilter !== "all" && (
               <>
@@ -224,14 +198,14 @@ function SearchPageBody() {
                 <button
                   type="button"
                   onClick={() => onChipClick("all")}
-                  className="text-orange-400 hover:underline"
+                  className={TEXT_LINK}
                 >
                   Try searching all types
                 </button>
                 .
               </>
             )}
-          </div>
+          </EmptyState>
         )}
 
         {results && (
@@ -250,7 +224,18 @@ function SearchPageBody() {
             {showGroup("bounty") && results.bounties.length > 0 && (
               <ResultGroup title="Bounties" count={results.total.bounties}>
                 {results.bounties.map((b) => (
-                  <BountyResult key={b.id} hit={b} />
+                  <EntityCard
+                    key={b.id}
+                    variant="compact"
+                    detailHref={`/bounties/${b.id}`}
+                    title={<Highlighted value={b.title_highlight} />}
+                    titleText={b.title}
+                    badge={<BountyStatusBadge status={b.status} />}
+                    media={b.media[0]}
+                    author={b.author}
+                    source={{ url: b.source_url, isDemo: b.is_demo }}
+                    working={b.claimer_count}
+                  />
                 ))}
               </ResultGroup>
             )}
@@ -315,112 +300,17 @@ function ResultGroup({
 function GeolocationResult({ hit }: { hit: SearchGeolocationHit }) {
   // Tags render as one uniform chip regardless of category.
   return (
-    <Link
-      href={`/geolocations/${hit.id}`}
-      className={`block p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <div className="space-y-1.5">
-        <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-          <Highlighted value={hit.title_highlight} />
-        </h3>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <StatusBadge status={hit.status} />
-          <span className="inline-flex items-center gap-1">
-            <UserIcon size={11} />@{hit.author.username}
-            <TrustBadge
-              isTrusted={hit.author.is_trusted}
-              trustReason={hit.author.trust_reason}
-              size={11}
-            />
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Calendar size={11} />
-            {formatDate(hit.event_date)}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <MapPin size={11} />
-            {hit.lat.toFixed(3)}, {hit.lng.toFixed(3)}
-          </span>
-        </div>
-        {hit.tags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            {hit.tags.map((t) => (
-              <span
-                key={t.id}
-                className={`px-1.5 py-0.5 rounded-full ${TAG_CHIP}`}
-              >
-                {t.name}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
-
-function BountyResult({ hit }: { hit: SearchBountyHit }) {
-  const hero = hit.media[0];
-  return (
-    <Link
-      href={`/bounties/${hit.id}`}
-      className={`flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <div className="relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0">
-        {hero ? (
-          hero.media_type === "image" ? (
-            // `w-28 aspect-video` ≈ 112 CSS px; thumbnail variant fits
-            // the dense results, re-fetched on every render.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayUrlsFor(hero).thumbnail}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <video src={hero.storage_url} className="w-full h-full object-cover" muted />
-          )
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
-            no media
-          </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-            <Highlighted value={hit.title_highlight} />
-          </h3>
-          <span
-            className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold ${
-              hit.status === "open"
-                ? STATUS_PILL_ACTIVE
-                : hit.status === "fulfilled"
-                  ? STATUS_PILL_FULFILLED
-                  : STATUS_PILL_CLOSED
-            }`}
-          >
-            {hit.status}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-          <span className="inline-flex items-center gap-1">
-            <UserIcon size={11} />@{hit.author.username}
-          </span>
-          <SourceLabel
-            isDemo={hit.is_demo}
-            url={hit.source_url}
-            variant="inline"
-          />
-          {hit.claimer_count > 0 && (
-            <span className="inline-flex items-center gap-1 text-neutral-400">
-              <Users size={11} />
-              {hit.claimer_count} working
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
+    <EntityCard
+      variant="compact"
+      detailHref={`/geolocations/${hit.id}`}
+      title={<Highlighted value={hit.title_highlight} />}
+      titleText={hit.title}
+      badge={<StatusBadge status={hit.status} />}
+      author={hit.author}
+      date={hit.event_date}
+      coords={{ lat: hit.lat, lng: hit.lng }}
+      tags={hit.tags}
+    />
   );
 }
 
@@ -430,18 +320,7 @@ function UserResult({ hit }: { hit: SearchUserHit }) {
       href={`/profile/${hit.username}`}
       className={`flex items-start gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
     >
-      {hit.avatar_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={hit.avatar_url}
-          alt=""
-          className="size-10 rounded-full object-cover border border-neutral-700 shrink-0"
-        />
-      ) : (
-        <div className="size-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-300 font-medium shrink-0">
-          {hit.username[0]?.toUpperCase() ?? "?"}
-        </div>
-      )}
+      <Avatar src={hit.avatar_url} username={hit.username} size="size-10" />
       <div className="flex-1 min-w-0 space-y-1">
         <h3 className="text-sm font-medium text-neutral-100 inline-flex items-center gap-1.5">
           @<Highlighted value={hit.username_highlight} />

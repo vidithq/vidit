@@ -1,7 +1,9 @@
 "use client";
 
 import type { PublicProfile } from "@/lib/users";
-import { FORM_INPUT_COMPACT } from "@/components/ui/form-styles";
+import { Textarea } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
 /** Bio card: textarea + remaining-characters counter in edit mode,
@@ -15,9 +17,9 @@ export function BioCard({
 }) {
   if (edit.editing) {
     return (
-      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-2">
+      <Card>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
+          <SectionEyebrow title="Bio" margin="none" />
           <span
             className={`text-[11px] ${
               edit.bioOver ? "text-red-400" : "text-neutral-500"
@@ -26,24 +28,24 @@ export function BioCard({
             {edit.bioRemaining} / {BIO_MAX_LEN}
           </span>
         </div>
-        <textarea
+        <Textarea
           value={edit.draftBio}
           onChange={(e) => edit.setDraftBio(e.target.value)}
           placeholder="A short blurb about you, your focus area, what to expect from your submissions."
-          className={`${FORM_INPUT_COMPACT} min-h-[96px] resize-y`}
+          className="min-h-[96px] resize-y"
         />
-      </div>
+      </Card>
     );
   }
 
   if (!profile.bio) return null;
 
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-2">
-      <h2 className="text-sm font-medium text-neutral-300">Bio</h2>
+    <Card>
+      <SectionEyebrow title="Bio" margin="none" />
       <p className="text-sm text-neutral-200 whitespace-pre-line">
         {profile.bio}
       </p>
-    </div>
+    </Card>
   );
 }

@@ -6,12 +6,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER_COMPACT,
-  FORM_INPUT,
+  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
+  FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 
 interface Props {
@@ -43,12 +45,12 @@ export default function LoginForm({ onSuccess }: Props) {
     <AuthCard title="Sign in to Vidit" subtitle="OSINT/GEOINT geolocation platform">
       <form onSubmit={handleSubmit} className="space-y-4">
         {justReset && !error && (
-          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-200 px-3 py-2 rounded-sm text-xs">
-            Password reset — sign in with your new password.
+          <div className={FORM_SUCCESS_BANNER}>
+            Password reset, sign in with your new password.
           </div>
         )}
         {error && (
-          <div className={FORM_ERROR_BANNER_COMPACT}>
+          <div className={FORM_ERROR_BANNER}>
             {error}
           </div>
         )}
@@ -57,13 +59,12 @@ export default function LoginForm({ onSuccess }: Props) {
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>
-          <input
+          <Input
             id="email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
@@ -77,33 +78,33 @@ export default function LoginForm({ onSuccess }: Props) {
             </label>
             <Link
               href="/forgot-password"
-              className="text-[10px] text-orange-400 hover:underline"
+              className={`text-[10px] ${TEXT_LINK}`}
             >
               Forgot?
             </Link>
           </div>
-          <input
+          <Input
             id="password"
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={FORM_INPUT}
           />
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          fullWidth
           type="submit"
           disabled={submitting}
-          className={`w-full py-2 disabled:opacity-50 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
         >
           {submitting ? "Signing in..." : "Sign in"}
-        </button>
+        </Button>
       </form>
 
       <p className="text-center text-xs text-neutral-400">
         No account?{" "}
-        <Link href="/register" className="text-orange-400 hover:underline">
+        <Link href="/register" className={TEXT_LINK}>
           Register with an invite code
         </Link>
       </p>
@@ -112,7 +113,7 @@ export default function LoginForm({ onSuccess }: Props) {
         Didn&apos;t receive your confirmation email?{" "}
         <Link
           href="/resend-confirmation"
-          className="text-orange-400 hover:underline"
+          className={TEXT_LINK}
         >
           Resend it
         </Link>

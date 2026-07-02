@@ -13,7 +13,7 @@ import { useEffect } from "react";
 
 import * as Sentry from "@sentry/nextjs";
 
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { Button } from "@/components/ui/Button";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -54,13 +54,12 @@ export default function Error({ error, reset }: ErrorProps) {
           </div>
         )}
         <div className="flex items-center justify-center gap-3 pt-2">
-          <button
+          <Button
             type="button"
             onClick={reset}
-            className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${PRIMARY_BUTTON}`}
           >
             Try again
-          </button>
+          </Button>
           <a
             href="/map"
             className="inline-flex items-center px-3 py-1.5 rounded-md border border-neutral-700 text-neutral-300 text-sm hover:bg-neutral-800 transition-colors"

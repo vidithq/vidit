@@ -10,13 +10,16 @@ import {
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { PRIMARY_BUTTON } from "@/components/ui/styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
-  FORM_ERROR_BANNER_BOXED,
-  FORM_INPUT_COMPACT,
+  FORM_ERROR_BANNER,
   FORM_LABEL,
 } from "@/components/ui/form-styles";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 
 function TrustUserRow({
   user,
@@ -30,7 +33,6 @@ function TrustUserRow({
   const [reason, setReason] = useState(user.trust_reason ?? "");
   const [showReasonForm, setShowReasonForm] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"soft" | "hard" | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
   const grantMutation = useMutation(
     () =>
@@ -69,7 +71,7 @@ function TrustUserRow({
       onSuccess: (response) => {
         onDeleted(user.id, response);
         setDeleteMode(null);
-        setConfirming(false);
+        confirmDelete.cancel();
       },
     }
   );
@@ -106,9 +108,11 @@ function TrustUserRow({
     void deleteMutation.run(deleteMode === "hard");
   };
 
+  const confirmDelete = useConfirmAction(() => submitDelete());
+
   const cancelDelete = () => {
     setDeleteMode(null);
-    setConfirming(false);
+    confirmDelete.cancel();
     grantMutation.reset();
     revokeMutation.reset();
     deleteMutation.reset();
@@ -138,45 +142,45 @@ function TrustUserRow({
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
           {trusted ? (
-            <button
-              type="button"
+            <Button
+              variant="danger"
               disabled={granting}
               onClick={submitRevoke}
-              className="px-2 py-1 rounded-md text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 whitespace-nowrap"
+              className="whitespace-nowrap"
             >
               Revoke trust
-            </button>
+            </Button>
           ) : showReasonForm ? null : (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => setShowReasonForm(true)}
-              className="px-2 py-1 rounded-md text-xs text-orange-400 hover:bg-orange-500/10 whitespace-nowrap"
+              className="whitespace-nowrap"
             >
               Grant trust
-            </button>
+            </Button>
           )}
           {deleteMode === null && !showReasonForm && (
             <div className="inline-flex gap-1">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setDeleteMode("soft");
-                  setConfirming(false);
+                  confirmDelete.cancel();
                 }}
-                className="px-2 py-1 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 whitespace-nowrap"
+                className="whitespace-nowrap"
               >
                 Soft delete
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger"
                 onClick={() => {
                   setDeleteMode("hard");
-                  setConfirming(false);
+                  confirmDelete.cancel();
                 }}
-                className="px-2 py-1 rounded-md text-xs text-red-400 hover:bg-red-500/10 whitespace-nowrap"
+                className="whitespace-nowrap"
               >
                 Hard delete
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -187,25 +191,20 @@ function TrustUserRow({
           <label className={FORM_LABEL} htmlFor={`reason-${user.id}`}>
             Reason (public — surfaces in the badge tooltip)
           </label>
-          <input
+          <Input
+            variant="compact"
             id={`reason-${user.id}`}
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. Established OSINT track record on X"
-            className={FORM_INPUT_COMPACT}
           />
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={submitGrant}
-              disabled={granting}
-              className={`px-3 py-1.5 disabled:opacity-50 rounded-md text-xs font-medium ${PRIMARY_BUTTON}`}
-            >
+            <Button variant="primary" onClick={submitGrant} disabled={granting}>
               {granting ? "Granting…" : "Confirm grant"}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={() => {
                 setShowReasonForm(false);
                 setReason(user.trust_reason ?? "");
@@ -213,10 +212,9 @@ function TrustUserRow({
                 revokeMutation.reset();
                 deleteMutation.reset();
               }}
-              className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -234,47 +232,33 @@ function TrustUserRow({
               <strong>Hard delete is irreversible.</strong> Drops @
               {user.username}, every geolocation they authored, their
               media, and S3 objects.{" "}
-              {!confirming && "Click “Confirm” to proceed."}
+              {!confirmDelete.armed && "Click “Confirm” to proceed."}
             </p>
           ) : (
             <p>
               Soft-deleting will hide @{user.username} from public reads and
               cascade-hide every geolocation they authored.{" "}
-              {!confirming && "Click “Confirm” to proceed."}
+              {!confirmDelete.armed && "Click “Confirm” to proceed."}
             </p>
           )}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirming) {
-                  setConfirming(true);
-                  return;
-                }
-                submitDelete();
-              }}
+            <Button
+              variant="danger"
+              onClick={confirmDelete.trigger}
               disabled={deleting}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 ${
-                deleteMode === "hard"
-                  ? "bg-red-500 hover:bg-red-400 text-white transition-colors"
-                  : PRIMARY_BUTTON
-              }`}
+              className={confirmDelete.armed ? DANGER_CONFIRM : ""}
             >
               {deleting
                 ? "Deleting…"
-                : confirming
+                : confirmDelete.armed
                   ? "Confirm"
                   : deleteMode === "hard"
                     ? "Hard delete"
                     : "Soft delete"}
-            </button>
-            <button
-              type="button"
-              onClick={cancelDelete}
-              className="px-3 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200"
-            >
+            </Button>
+            <Button variant="ghost" onClick={cancelDelete}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -319,9 +303,9 @@ export function TrustPanel() {
   };
 
   return (
-    <section className="bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4">
+    <Card as="section">
       <header>
-        <h2 className="text-sm font-medium text-neutral-100">Manage analysts</h2>
+        <SectionEyebrow title="Manage analysts" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Find an analyst by username or email, then act on the row. Three
           actions per analyst: <span className="text-orange-400">grant or
@@ -342,27 +326,28 @@ export function TrustPanel() {
           <label className={FORM_LABEL} htmlFor="user-search">
             Find an analyst (username or email)
           </label>
-          <input
+          <Input
+            variant="compact"
             id="user-search"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="username or email"
-            className={`mt-1 ${FORM_INPUT_COMPACT}`}
+            className="mt-1"
           />
         </div>
-        <button
+        <Button
           type="submit"
+          variant="secondary"
           disabled={searching || !query.trim()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 disabled:opacity-50 rounded-md text-xs text-neutral-200"
         >
           <Search size={12} />
           {searching ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </form>
 
       {error && (
-        <div className={FORM_ERROR_BANNER_BOXED}>
+        <div className={FORM_ERROR_BANNER}>
           {error}
         </div>
       )}
@@ -413,6 +398,6 @@ export function TrustPanel() {
           </div>
         </div>
       )}
-    </section>
+    </Card>
   );
 }
