@@ -29,7 +29,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Dot } from "@/components/ui/Dot";
-import { MediaThumb } from "@/components/ui/MediaThumb";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
@@ -434,11 +433,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<MediaThumb>" usage="The one media slot on cards: the real media when there is one (image thumbnail / muted video first-frame), else a marked no-media box. No generated stand-ins.">
-            <MediaThumb />
-          </Item>
-
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + bounty detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + bounty detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here). The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>

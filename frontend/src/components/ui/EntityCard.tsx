@@ -3,9 +3,10 @@ import Link from "next/link";
 import { MapPin, Users } from "lucide-react";
 
 import type { Media } from "@/types";
+import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
+import { displayUrlsFor } from "@/lib/mediaUrls";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
-import { MediaThumb } from "@/components/ui/MediaThumb";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -19,8 +20,46 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   stays independently clickable. No nested <a>.
 // - It renders the slots that carry data; an entity without `coords` (a bounty)
 //   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
-// - The thumbnail is one `<MediaThumb media>`: the real media when `media` is
-//   present, its marked "no media" box otherwise.
+// - The thumbnail is the private `MediaThumb` below: the real media when
+//   `media` is present, its marked "no media" box otherwise.
+
+// The one fixed-ratio media slot on cards: the real media when there is one
+// (image thumbnail, or muted video first-frame via a `#t=0.1` media fragment +
+// `preload="metadata"` so it paints as a poster), else a marked "no media"
+// box. No generated stand-ins: a card without media says so. Private: the
+// card is its only consumer (the detail surfaces use MediaGallery).
+function MediaThumb({ media, className }: { media?: Media; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0",
+        className,
+      )}
+    >
+      {media ? (
+        media.media_type === "image" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={displayUrlsFor(media).thumbnail}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <video
+            src={`${media.storage_url}#t=0.1`}
+            className="w-full h-full object-cover"
+            preload="metadata"
+            muted
+          />
+        )
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
+          no media
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface EntityCardProps {
   detailHref: string;
