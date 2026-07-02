@@ -15,8 +15,9 @@ export const LABEL_TEXT = "text-[11px] uppercase tracking-wider text-neutral-500
 // input drops below; no `mb-` — the surrounding stack owns vertical rhythm.
 export const FORM_LABEL = `block ${LABEL_TEXT}`;
 
-// Compact label — one size step down for the denser auth-card fields. No
-// baked-in margin: like FORM_LABEL, the surrounding stack owns vertical rhythm.
+// Compact label: one size step down for the denser auth-card fields. No
+// baked-in margin (like FORM_LABEL, the surrounding stack owns vertical
+// rhythm), so its wrappers carry `space-y-1`.
 export const FORM_LABEL_COMPACT =
   "block text-[10px] uppercase tracking-wider text-neutral-500";
 
@@ -35,7 +36,7 @@ export const FORM_ERROR_BANNER =
 // Positive confirmation banner. Orange, not green (see design.md's palette: a
 // "success" green next to red destructive actions reads wrong, so the app stays
 // in the orange family). Covers success + info notices (password updated, reset
-// confirmation). Same shape as FORM_ERROR_BANNER — it replaces it in the same
+// confirmation). Same shape as FORM_ERROR_BANNER, which it replaces in the same
 // slot of the same forms, so the box must not shrink when the action succeeds.
 export const FORM_SUCCESS_BANNER =
   "bg-orange-500/15 border border-orange-500/30 text-orange-200 px-4 py-3 rounded-md text-sm";

@@ -61,13 +61,16 @@ function MediaThumb({ media, className }: { media?: Media; className?: string })
   );
 }
 
-interface EntityCardProps {
+// The stretched link needs a plain-string accessible name. When `title` is a
+// string it doubles as that name and `titleText` is optional; when `title` is a
+// node (search highlights) `titleText` is required, so the link can never end
+// up unnamed.
+type TitleProps =
+  | { title: string; titleText?: string }
+  | { title: ReactNode; titleText: string };
+
+interface EntityCardBaseProps {
   detailHref: string;
-  /** Plain text, or a highlighted node in search results. */
-  title: ReactNode;
-  /** Accessible name for the stretched link. Defaults to `title` when that is
-   *  a plain string; pass it only when `title` is a node (search highlights). */
-  titleText?: string;
   /** A rendered status pill: `<StatusBadge>` or `<BountyStatusBadge>`. */
   badge?: ReactNode;
   media?: Media;
@@ -80,6 +83,8 @@ interface EntityCardProps {
   tags?: { id: string; name: string }[];
   variant?: "feed" | "compact";
 }
+
+type EntityCardProps = EntityCardBaseProps & TitleProps;
 
 function formatCoord(lat: number, lng: number): string {
   const latDir = lat >= 0 ? "N" : "S";

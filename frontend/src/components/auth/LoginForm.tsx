@@ -55,7 +55,7 @@ export default function LoginForm({ onSuccess }: Props) {
           </div>
         )}
 
-        <div>
+        <div className="space-y-1">
           <label htmlFor="email" className={FORM_LABEL_COMPACT}>
             Email
           </label>

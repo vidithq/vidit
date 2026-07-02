@@ -20,10 +20,10 @@ interface TrustBadgeProps {
  * (touch devices don't hover); hover/focus surface it passively, outside-click
  * and Escape close it (the `usePinnedPopover` machinery, shared with `FieldHelp`,
  * whose portal + viewport clamp keep the popover readable inside `overflow`
- * ancestors like the map side panel). No "View profile" link inside — every
+ * ancestors like the map side panel). No "View profile" link inside: every
  * callsite already renders the badge next to a handle that links to the
- * profile. Renders nothing when not trusted: the badge's absence is the "not
- * vetted" signal.
+ * profile. Renders nothing when not trusted, so the badge's absence is the
+ * "not vetted" signal.
  */
 export default function TrustBadge({
   isTrusted,

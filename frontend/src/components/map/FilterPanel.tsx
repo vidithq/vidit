@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 import type { MapPoint, Tag } from "@/types";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
+import { Dot } from "@/components/ui/Dot";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -276,7 +277,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-neutral-500">{pointCount.toLocaleString()}</span>
-          {loading && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />}
+          {loading && <Dot className="animate-pulse" />}
           {filtersOpen ? (
             <ChevronUp size={14} className="text-neutral-500" />
           ) : (

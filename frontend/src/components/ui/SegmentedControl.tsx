@@ -9,6 +9,11 @@ import { ACCENT_SURFACE } from "./styles";
  * panel (soft vs hard) each hand-rolled this shape; the track + option paints
  * live here once.
  *
+ * A group of `aria-pressed` toggle buttons, not an ARIA radiogroup: a
+ * radiogroup advertises arrow-key navigation and a single tab stop, which this
+ * one-tab-per-option bar doesn't implement, so pressed-toggle semantics
+ * describe it honestly and stay operable with plain Tab.
+ *
  * `tone: "danger"` on an option paints its active state red instead of the
  * accent, for a destructive mode (hard delete).
  */
@@ -34,7 +39,7 @@ export function SegmentedControl<T extends string>({
 }) {
   return (
     <div
-      role="radiogroup"
+      role="group"
       aria-label={ariaLabel}
       className={cn(
         "inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5",
@@ -47,9 +52,11 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(opt.value)}
+            aria-pressed={active}
+            // Re-clicking the active option is a no-op: don't re-fire onChange
+            // (a caller's handler may have side effects, e.g. disarming a
+            // two-click confirm).
+            onClick={() => !active && onChange(opt.value)}
             className={cn(
               "px-3 py-1 text-sm rounded transition-colors",
               fullWidth && "flex-1",

@@ -47,7 +47,7 @@ export function MaintenancePanel() {
     <DevToolPanel
       title="Maintenance"
       description={
-        <>On-demand reapers. Click when you remember — there&apos;s no schedule.</>
+        <>On-demand reapers. Click when you remember; there&apos;s no schedule.</>
       }
     >
         <div className="flex items-center gap-3">

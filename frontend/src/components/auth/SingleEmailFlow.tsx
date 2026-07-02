@@ -73,7 +73,7 @@ export function SingleEmailFlow({
         <div className={FORM_ERROR_BANNER}>{errorMessage}</div>
       )}
 
-      <div>
+      <div className="space-y-1">
         <label htmlFor="email" className={FORM_LABEL_COMPACT}>
           Email
         </label>
