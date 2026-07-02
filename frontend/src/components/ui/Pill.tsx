@@ -21,8 +21,10 @@ const BASE =
 
 // Each tone is a base surface paint (../ui/styles, the single source shared with
 // the active-nav treatments) plus the pill's own border. `danger` / `strong`
-// have no nav counterpart, so they carry their full paint here.
-export const PILL_TONE: Record<PillTone, string> = {
+// have no nav counterpart, so they carry their full paint here. Internal on
+// purpose: the tones are only reachable through `<Pill tone>`, so a pill look
+// can't be recomposed on bespoke markup.
+const PILL_TONE: Record<PillTone, string> = {
   accent: `${ACCENT_SURFACE} border border-orange-500/30`,
   neutral: `${NEUTRAL_SURFACE} border border-neutral-700`,
   danger: "bg-red-500/10 text-red-300 border border-red-500/30",

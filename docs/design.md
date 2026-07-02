@@ -82,7 +82,7 @@ The rule that governs all of it:
 
 These don't fit the five buckets:
 
-- **Closed-beta banner**: the fixed corner banner ([`ClosedBetaBanner`](../frontend/src/components/ClosedBetaBanner.tsx)) + the landing header badge reuse the `<Pill>` accent paint (`PILL_TONE.accent`) on their own bespoke shape (a pulse dot, a nested report link, fixed positioning), which is why they can't carry the `<Pill>` component itself. `pointer-events-none` is added at the call site.
+- **Closed-beta banner**: the fixed corner banner ([`ClosedBetaBanner`](../frontend/src/components/ClosedBetaBanner.tsx)) + the landing header badge are a real `<Pill tone="accent">` (the pulse dot and the nested report link are just children). The banner wraps its pill in a thin `fixed` container that owns placement + `pointer-events-none`; only the report link opts back into pointer events.
 - **Map points**: drawn on the WebGL canvas, not DOM. The bright full-strength `orange-500` fill is justified by the dot-on-dark-map context: 5-7 px markers, not buttons. See *Components → Map points*.
 - **Tiny state dots (1.5 px)**: the map filter loading dot, the sidebar notification dot, the beta indicator dot; all `size-1.5 rounded-full bg-orange-500`.
 - **Destructive actions**: `<Button variant="danger">` is red but quiet (outline, `secondary` in red), so a delete / revoke / reject trigger doesn't shout. The one loud filled red is `DANGER_CONFIRM`, applied only to the armed second click of a two-click confirm, so the strongest red marks the point of no return.
