@@ -197,20 +197,20 @@ Indexes:
 - `ix_users_demo` on `(id) WHERE is_demo = true`, partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
 - `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))`, backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight
 
-The credential-less assembled-profile model (nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row) shipped in `v0.3.1`; see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
+The credential-less assembled-profile model (nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row); see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
 
 ---
 
 ### `auth_tokens`
 
-Single-use, expiring tokens for password reset.
+Password-reset tokens (single-use).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL, `sha256(secret)`; the plaintext is only ever in the email link |
-| `purpose` | `TEXT` | NOT NULL, CHECK in `('password_reset', 'email_verification')`, only `password_reset` is minted today; `email_verification` is a legacy value retained as the DB-level cross-purpose-rejection anchor |
+| `purpose` | `TEXT` | NOT NULL, CHECK in `('password_reset', 'email_verification')`, only `password_reset` is minted today, `email_verification` is a legacy value kept for the CHECK |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL |
 | `consumed_at` | `TIMESTAMPTZ` | nullable; non-null = single-use already redeemed |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -319,7 +319,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `loc
 | `requested_by_id` | `UUID` | FK → `users.id`, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation (no request preceded it). |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `location` | `GEOMETRY(Point, 4326)` | nullable, tied to `status` by `ck_events_location_status`: forbidden for `requested` (no coordinates yet), required for `geolocated` (a vouched geolocation has a place), free for `detected` / `closed`. |
-| `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row, no footage origin is known from the text alone, so it points at the originating post (also surfaced as `detected_from_url`); immutable once set. |
+| `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row it points at the originating post; immutable once set. |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
 | `event_date` | `DATE` | nullable, when the depicted event happened. Often unknown for a `requested` event; the submit transition requires it at `geolocated`. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
@@ -372,7 +372,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 
 ### `event_claims`
 
-Multi-analyst "I'm working on this" signal on a `requested` event (folded in from the old `bounty_claims` table at the merge). Several analysts can hold a claim on the same event simultaneously, the claim is a public hint to coordinate, not a single-claimer reservation. Composite PK makes re-claiming idempotent at the DB level; the `POST /bounties/{id}/claim` endpoint exploits that and returns 204 either way.
+Multi-analyst "I'm working on this" signal on a `requested` event. Several analysts can hold a claim on the same event at once: a public hint to coordinate, not a single-claimer reservation. The composite PK makes re-claiming idempotent, and `POST /bounties/{id}/claim` returns 204 either way.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -402,7 +402,7 @@ Directed follow edges between analysts. Drives the per-user `GET /timeline` feed
 
 Composite PK: `(follower_id, followed_id)`, the pair is the natural identity (no surrogate id) and the PK alone gives uniqueness, so no separate UNIQUE constraint is shipped.
 
-Self-follow is rejected at **two** layers: the router returns `400 Cannot follow yourself` before the row is staged, and `CHECK (follower_id <> followed_id)` (constraint `ck_follows_no_self_follow`) refuses the INSERT even if a future code path skips the router check. The 400 gives the UI a clean error, the CHECK is the durable invariant.
+Self-follow is rejected at two layers: the router returns `400 Cannot follow yourself`, and `CHECK (follower_id <> followed_id)` (constraint `ck_follows_no_self_follow`) refuses the INSERT even if a code path skips the router. The 400 gives the UI a clean error; the CHECK is the durable invariant.
 
 Indexes:
 - `ix_follows_followed_id` on `(followed_id)`, the PK indexes the forward direction (who is X following?) on its leading column, but the reverse direction (who follows X?), the query that powers `followers_count` on every profile load, would otherwise full-scan.
@@ -413,7 +413,7 @@ Indexes:
 
 ### `media`
 
-One `event_id` owner. A bounty is a `requested` geolocation, so all evidence hangs off the one table; fulfilling a request no longer moves media between tables (the row already points at the event that gains a location).
+One `event_id` owner. A bounty is a `requested` geolocation, so all evidence is on one table; fulfilling a request no longer moves media between tables.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -424,15 +424,15 @@ One `event_id` owner. A bounty is a `requested` geolocation, so all evidence han
 | `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too, `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so demo content matches real upload integrity. **The hash is computed on the bytes that land on S3, for images that means after the EXIF strip, so an auditor downloading the public URL can independently verify the hash matches.** |
 | `uploaded_ip` | `INET` | nullable, submitter IP at upload time. Extracted via `services/audit.py::extract_client_ip` (right-most XFF, defended against client-spoofed prepends). NULL when the value isn't parseable as IPv4 / IPv6, on demo-seeder rows, and on rows that pre-date the column. **Admin-only, never surfaced on the public read API.** |
 | `uploaded_user_agent` | `TEXT` | nullable, submitter `User-Agent` string at upload time, capped at 1 KB. Same admin-only visibility as `uploaded_ip`. |
-| `original_filename` | `TEXT` | nullable, client-supplied filename (e.g. `IMG_1234.jpg`). Surfaced on the public read API because investigators sometimes need to trace evidence back to a source post by filename. |
+| `original_filename` | `TEXT` | nullable, client-supplied filename (e.g. `IMG_1234.jpg`). Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 **Indexes:**
 - `(sha256) WHERE sha256 IS NOT NULL`, partial index for "find every row with this content hash" audit / dedup queries; only the populated cohort, so demo rows don't bloat it.
 
-At least one media item is required per bounty (`POST /bounties` rejects an empty file list) and per `geolocated` event; a `requested` event carries the poster's evidence from the start. Multiple media items per event are allowed.
+At least one media item is required per bounty (`POST /bounties` rejects an empty file list) and per `geolocated` event; a `requested` event carries the poster's evidence from the start.
 
-The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded *inside* the proof body, added via the rich-text editor's `+ Image` button, live in `proof_images` instead.
+The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded inside the proof body live in `proof_images` instead.
 
 ---
 

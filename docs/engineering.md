@@ -57,7 +57,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), bridged via `FlatCompat` to `eslint-config-next`'s `next/core-web-vitals` preset). The `next lint` wrapper was deprecated in Next 15 and removed in Next 16; `npm run lint` invokes `eslint` directly. |
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. |
-| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`GeolocationStatus`, `BountyStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
+| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `BountyStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
 MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
 
@@ -134,7 +134,7 @@ vidit/
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
 │   │   │   ├── bounties.py
-│   │   │   ├── events/               # Per-concern sub-routers (read/duplicates/import_tweet/write/item)
+│   │   │   ├── events/             # Per-concern sub-routers (read/write/item/duplicates/import_tweet/import_archive)
 │   │   │   ├── search.py
 │   │   │   ├── social.py           # Follow / unfollow / timeline
 │   │   │   ├── tags.py
@@ -185,8 +185,9 @@ vidit/
 │   │   │   ├── admin/              # Admin console panels (SeedWipePanel, etc.)
 │   │   │   ├── auth/               # LoginForm, RegisterForm, etc.
 │   │   │   ├── editor/             # Tiptap components
-│   │   │   ├── geolocation/        # GeolocationCard, GeolocationDetailBody, etc. (cross-page)
-│   │   │   ├── geolocations/new/   # Submit-form sections (LocationPicker, etc.)
+│   │   │   ├── event/              # EventDetailBody, StatusBadge, DetectionCard, etc. (cross-page)
+│   │   │   ├── geolocations/       # Submit/edit form sections (LocationPicker, MediaManager, etc.)
+│   │   │   ├── landing/            # Public landing-page sections
 │   │   │   ├── map/                # MapLibre GL components + map overlays (FilterPanel, etc.)
 │   │   │   ├── profile/            # TrustBadge, ProfileHeader, useProfileEdit, etc.
 │   │   │   ├── ui/                 # PageShell, styles.ts, FieldHelp, etc.
@@ -320,14 +321,14 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters: required checks must always report, or a docs-only PR hangs on a path-skipped required check once branch protection is on) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app`. `backend-test` (`needs: backend-lint`: a ruff/mypy failure never starts the service container; a green run pays the lint duration before tests start): `alembic upgrade head` → `pytest` against a PostGIS service container. `frontend` (one job on purpose: the steps fail fast in sequence off a single `npm ci`; splitting checks from tests would pay a second install for nothing): `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails the PR when it doesn't touch *both* `docs/` (api / data-model / engineering / design / backups) AND `planning/` (`next.md` or `roadmap.md`), friction-first guardrail; if the change genuinely needs neither, override with a justification in the PR description. Dependabot PRs are exempt (gated on `pull_request.user.login != 'dependabot[bot]'`): routine version bumps don't carry doc impact; if one turns out to, the human handling the merge adds it via a follow-up commit. Consolidated from the previous `backend.yml` + `frontend.yml` + `docs-pairing.yml` trio. PR-branch force-pushes cancel the obsolete in-flight run; pushes to `main` always run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app`. `backend-test` (`needs: backend-lint`): `alembic upgrade head` → `pytest` against a PostGIS service container. `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
 
-Dependabot configuration lives at [`.github/dependabot.yml`](../.github/dependabot.yml): weekly Monday-morning version-update PRs across `pip` (backend), `npm` (frontend), and `github-actions` ecosystems, with grouping (`@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, `next + @next/* + eslint-config-next`, and a `minor-and-patch` catch-all) so a busy ecosystem doesn't open ten PRs in one morning. Major bumps stay individual on purpose; those are the ones worth reviewing one at a time. Security PRs are unaffected by the config: they ship as Dependabot's default, one PR per advisory, on the same flow as the [#21](https://github.com/vidithq/vidit/pull/21) / [#22](https://github.com/vidithq/vidit/pull/22) / [#23](https://github.com/vidithq/vidit/pull/23) batch.
+Dependabot ([`.github/dependabot.yml`](../.github/dependabot.yml)): weekly Monday version-update PRs across `pip`, `npm`, and `github-actions`, grouped (`@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, `next + @next/* + eslint-config-next`, a `minor-and-patch` catch-all) so a busy ecosystem doesn't open ten PRs at once; major bumps stay individual. Security PRs ship one-per-advisory regardless.
 
-DCO sign-off is enforced by the [Probot **DCO App**](https://github.com/apps/dco), not an in-repo workflow. The app is installed on the org and posts a status check named `DCO` on every PR: walks every commit, fails the first one missing a `Signed-off-by:` trailer, links remediation instructions. The same de-facto-standard installation Kubernetes / Helm / containerd / Linux-kernel mirror use; trades the "no third-party in CI" posture for zero maintenance + no Actions minutes per PR event. Implements [DCO 1.1](https://developercertificate.org): **not** a CLA, no relicensing, inbound = outbound = AGPL-3.0.
+DCO sign-off is enforced by the [Probot **DCO App**](https://github.com/apps/dco) (installed on the org, not an in-repo workflow): it posts a `DCO` status check on every PR, failing the first commit missing a `Signed-off-by:` trailer. Implements [DCO 1.1](https://developercertificate.org): not a CLA, no relicensing, inbound = outbound = AGPL-3.0.
 
 Hardening (forks make every workflow run attacker-reachable):
 

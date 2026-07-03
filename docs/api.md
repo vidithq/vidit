@@ -375,7 +375,7 @@ List geolocations for the map. Returns a lightweight format (no full proof).
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. Public (anonymous read). `event_date` and `added_date` (the `created_at` calendar day) are ISO `YYYY-MM-DD` strings; the map buckets them for its two timeline scrubbers and filters the date windows client-side. `detected` is `1` for a machine `detected` row (the map colours it distinctly), `0` for a `geolocated` row, a flag, not the status string, to keep the no-LIMIT catalog payload small. The scan carries located rows only, so `requested` events (no coordinates) never appear here.
+Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); the map buckets them for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one (a flag, not the status string). Located rows only, so `requested` events never appear here.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -400,11 +400,9 @@ params are still accepted but the map now filters dates client-side from the pay
 
 ### `GET /events/possible-duplicates` 🔒
 
-Soft-warning probe wired into the submit form. Returns geolocations that might describe the same event. **Never blocks submission**, rendered as a "did you mean…" prompt; the analyst decides.
+Soft-warning probe for the submit form: geolocations that might describe the same event. **Never blocks submission** (advisory only).
 
-Match rule: within ~500 m geodesic of the proposed `(lat, lng)` **AND**
-(same source-URL host *or* same `event_date`). Authenticated-only so the cheap proximity
-probe isn't exposed to anonymous scraping. Rate-limited to 60/min/IP.
+Match rule: within ~500 m geodesic of the proposed `(lat, lng)` **AND** (same source-URL host *or* same `event_date`). Auth-required; rate-limited to 60/min/IP.
 
 Inputs are tolerated gracefully:
 
@@ -500,7 +498,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 
 `detected` is the **machine path's** view of the same tweet, the `DetectedGeoloc`s the assemble pipeline would produce, surfaced for inspection with **zero DB writes** (no row, no media fetch). One entry per parsed coordinate; empty when none parse. It's distinct from the human pre-fill above (`parsed_coords` + `media`): `parsed_coords` is candidates for the analyst to pick, `detected` is what the machine would persist as a `detected` row if this tweet were tagged or backfilled.
 
-Every field is best-effort. `parsed_coords` runs four extractors over `tweet_text` first, then over `quoted_tweet.tweet_text` if the OP yielded nothing (decimal pairs; decimal degrees + hemisphere letter, `33.1°N 35.5°E`, `50.4501N, 30.5234E`, `N48.0123 E37.8024`, `°` optional; DMS with hemisphere letters; `@lat,lng,zoom` in Google Maps URLs) and caps at three candidates ordered by extractor. `suggested_title` is the first usable line of the OP's text with leading hashtags, URLs, a leading list marker, and any bare coordinates stripped, truncated to 120 chars on a word boundary; a coordinate-only line is skipped and the title is never a bare coordinate; empty when nothing usable remains. `media[].remote_url` is always either `pbs.twimg.com` or `video.twimg.com`, the response filters anything else.
+Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the OP then the quoted tweet, capped at 3 candidates. `suggested_title` is the OP's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
 
 `source_url` resolution priority:
 
@@ -510,7 +508,7 @@ Every field is best-effort. `parsed_coords` runs four extractors over `tweet_tex
 
 `original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
 
-`media[].origin` records where the media came from (`op` = analyst's own attachment, `quote` = quoted tweet) but does NOT drive the primary-vs-proof split. The frontend uses **media type** instead:
+`media[].origin` (`op` = own attachment, `quote` = quoted tweet) is informational; the frontend routes by media type:
 
 - `kind: "video"` → **primary** (lands in `files[]` on the submit form).
 - `kind: "image"` → **proof** (uploaded to `/events/proof-images` and embedded inline in the Tiptap doc).
@@ -551,11 +549,11 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 
 ### `POST /events/import-archive` 🔒
 
-Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The import runs **synchronously behind a size cap**; a larger archive waits for the durable-worker upgrade.
+Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). Runs synchronously behind a size cap.
 
-**Tweets-only intake guard.** The upload is a whole `.zip`, but only the copy-allowlisted entries are extracted: `tweets.js` and `tweets_media/`. Everything else (DMs, email, phone, account data, `deleted-*`) is ignored, never read, so a copy-allowlist fails safe where a delete-denylist would leak. Extraction is hardened against zip-slip (members are written by basename, so none escapes the temp dir) and zip-bombs (per-file and total uncompressed-size caps). The export's `data/` prefix is normalized away.
+**Tweets-only intake guard.** Only the allowlisted entries are extracted (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs.
 
-Pipeline: extract → `read_tweets` → stitch self-threads → detect coordinates → assemble as `detected` rows, idempotent on `(detected_from_url, coordinate)` so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
+Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
 
 **Request:** `multipart/form-data` with a single `file` (the `.zip`).
 
