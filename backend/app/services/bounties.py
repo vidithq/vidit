@@ -11,9 +11,9 @@ Same shape `routers/events/*` delegate to `services/events.py`; both
 consume the one helper rather than mirroring the orchestration.
 
 Errors are typed `EvidenceIntakeError` subclasses (shared file/media
-failure modes) plus `BountyError` for requested-view rules, both carrying
-stable `.code` strings translated to HTTP via the `{code, message}`
-envelope in `routers/bounties.py`.
+failure modes) plus `InvalidProofError` for a proof that fails sanitisation,
+both carrying stable `.code` strings translated to HTTP via the
+`{code, message}` envelope in `routers/bounties.py`.
 """
 
 from __future__ import annotations
@@ -36,17 +36,13 @@ from app.services.sanitize import EMPTY_TIPTAP_DOC, sanitize_tiptap_doc
 from app.services.storage import upload_file
 
 
-class BountyError(EvidenceIntakeError):
-    """Base for requested-view-specific friendly errors.
+class InvalidProofError(EvidenceIntakeError):
+    """A proof body that fails Tiptap sanitisation.
 
-    Subclass of :class:`EvidenceIntakeError` so the router catches one base
-    for both shared file/media failures and the requested-view rules.
+    Subclass of :class:`EvidenceIntakeError` so the router catches one base for
+    both shared file/media failures and this requested-view rule.
     """
 
-    code = "bounty_error"
-
-
-class InvalidProofError(BountyError):
     code = "invalid_proof"
 
 
