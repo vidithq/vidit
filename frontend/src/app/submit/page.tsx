@@ -12,6 +12,7 @@ import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
 // Aliased: a local `submitGeolocation` validation handler below would otherwise
 // shadow this API call.
 import {
+  createEvent,
   missingEventFields,
   submitEvent as submitEventApi,
 } from "@/lib/events";
@@ -236,26 +237,17 @@ function SubmitForm() {
           files: [],
         });
       }
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("lat", latNum.toString());
-      formData.append("lng", lngNum.toString());
-      formData.append("source_url", sourceUrl);
-      formData.append("event_date", eventDate);
-      if (eventTime) {
-        formData.append("event_time", eventTime);
-      }
-      formData.append("source_posted_at", sourcePostedAt);
-      formData.append("proof", JSON.stringify(proof));
-      if (selectedTagIds.length > 0) {
-        formData.append("tag_ids", JSON.stringify(selectedTagIds));
-      }
-      for (const file of files) {
-        formData.append("files", file);
-      }
-      return apiFetch<{ id: string }>("/events", {
-        method: "POST",
-        body: formData,
+      return createEvent({
+        title,
+        lat: latNum,
+        lng: lngNum,
+        source_url: sourceUrl,
+        event_date: eventDate,
+        event_time: eventTime || undefined,
+        source_posted_at: sourcePostedAt,
+        proof,
+        tag_ids: selectedTagIds,
+        files,
       });
     },
     {

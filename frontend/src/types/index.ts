@@ -1,11 +1,7 @@
 import type { components } from "@/lib/api-types";
 
-interface Author {
-  id: string;
-  username: string;
-  is_trusted: boolean;
-  trust_reason: string | null;
-}
+/** Public author summary on an event / bounty / search hit. */
+type Author = components["schemas"]["AuthorRef"];
 
 /**
  * Linktree-style profile links. Each value is free-form — handle
@@ -36,11 +32,7 @@ export type TagCategory = components["schemas"]["TagRead"]["category"];
 /** Result of an archive backfill (`POST /events/import-archive`). */
 export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
 
-export interface Tag {
-  id: string;
-  name: string;
-  category: TagCategory;
-}
+export type Tag = components["schemas"]["TagRead"];
 
 /** The unified 4-value event lifecycle: ``requested`` (an open call to
  *  geolocate, the requested/bounty view) → ``detected`` (machine output,
@@ -157,17 +149,9 @@ export interface PossibleDuplicate {
   author: Author;
 }
 
-export interface Media {
-  id: string;
-  storage_url: string;
-  media_type: MediaType;
-  /** Hex-encoded SHA-256 of the uploaded bytes. `null` on pre-column
-   *  rows and demo-pool references that don't go through an upload pass. */
-  sha256?: string | null;
-  /** Filename the analyst's browser sent at upload time. Surfaced so
-   *  an investigator can trace evidence back to a source post by name. */
-  original_filename?: string | null;
-}
+/** A stored media row (image or video) on an event. `sha256` /
+ *  `original_filename` are null on pre-column + demo-pool rows. */
+export type Media = components["schemas"]["MediaRead"];
 
 export interface EventDetail extends EventListItem {
   source_url: string;

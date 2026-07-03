@@ -87,11 +87,13 @@ export interface EventEditInput {
   files: File[];
 }
 
-export function submitEvent(
-  id: string,
-  input: EventEditInput
-): Promise<EventDetail> {
-  const fd = new FormData();
+/** Append the multipart fields shared by create + submit (fulfil): every field
+ *  except submit's `remove_media_ids`. One assembler so the create and fulfil
+ *  paths can't drift on the form contract. */
+function appendEventFormFields(
+  fd: FormData,
+  input: Omit<EventEditInput, "remove_media_ids">
+): void {
   fd.append("title", input.title);
   fd.append("lat", String(input.lat));
   fd.append("lng", String(input.lng));
@@ -101,13 +103,39 @@ export function submitEvent(
   fd.append("source_posted_at", input.source_posted_at);
   if (input.proof) fd.append("proof", JSON.stringify(input.proof));
   if (input.tag_ids.length > 0) fd.append("tag_ids", JSON.stringify(input.tag_ids));
-  if (input.remove_media_ids.length > 0) {
-    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
-  }
   for (const file of input.files) {
     fd.append("files", file);
   }
+}
+
+export function submitEvent(
+  id: string,
+  input: EventEditInput
+): Promise<EventDetail> {
+  const fd = new FormData();
+  appendEventFormFields(fd, input);
+  if (input.remove_media_ids.length > 0) {
+    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
+  }
   return apiFetch<EventDetail>(`/events/${id}/submit`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+/** Create fields: the shared form minus submit's media-removal (a new event has
+ *  no existing media to drop). */
+export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
+
+/**
+ * Create a geolocation: `POST /events` (multipart), returning the new id for the
+ * redirect. Shares the form assembly with `submitEvent`, so the create and
+ * fulfil paths carry an identical field contract.
+ */
+export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
+  const fd = new FormData();
+  appendEventFormFields(fd, input);
+  return apiFetch<{ id: string }>("/events", {
     method: "POST",
     body: fd,
   });
