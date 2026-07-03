@@ -18,8 +18,31 @@ import { Pill } from "@/components/ui/Pill";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
+/**
+ * The body's data shape. The event-only fields (location, detected-from,
+ * requested-by, and the nullable event date/time) are optional so a
+ * BountyDetail, which omits or leaves them optional, renders through the same
+ * body: the missing spots show empty or drop out, with no extra branching.
+ */
+export type EventDetailBodyData = Omit<
+  EventDetail,
+  | "lat"
+  | "lng"
+  | "detected_from_url"
+  | "detected_post_at"
+  | "requested_by"
+  | "event_date"
+  | "event_time"
+> &
+  Partial<
+    Pick<
+      EventDetail,
+      "lat" | "lng" | "detected_from_url" | "requested_by" | "event_date" | "event_time"
+    >
+  >;
+
 interface EventDetailBodyProps {
-  geo: EventDetail;
+  geo: EventDetailBodyData;
   /**
    * ``panel`` — map's 380px overlay: stacked ``thumbnail`` media, bare rows,
    * no bounty-trace/author rows (the author sits in the panel header).
@@ -30,6 +53,9 @@ interface EventDetailBodyProps {
   /** Rendered between the media block and the key-value rows — the
    *  full page slots its Location map here. */
   children?: ReactNode;
+  /** Extra DetailRows appended to the Details section, where the bounty view
+   *  slots its "Working on" and "Closed" rows. */
+  detailExtras?: ReactNode;
 }
 
 /**
@@ -41,19 +67,20 @@ export function EventDetailBody({
   geo,
   variant,
   children,
+  detailExtras,
 }: EventDetailBodyProps) {
   const compact = variant === "panel";
   return (
     <>
       <MediaBlock geo={geo} compact={compact} />
       {children}
-      <DetailRows geo={geo} compact={compact} />
+      <DetailRows geo={geo} compact={compact} detailExtras={detailExtras} />
       <ProofBlock geo={geo} compact={compact} />
     </>
   );
 }
 
-function MediaBlock({ geo, compact }: { geo: EventDetail; compact: boolean }) {
+function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
   if (compact) {
     return (
       <div className="space-y-2">
@@ -75,7 +102,15 @@ function MediaBlock({ geo, compact }: { geo: EventDetail; compact: boolean }) {
   );
 }
 
-function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
+function DetailRows({
+  geo,
+  compact,
+  detailExtras,
+}: {
+  geo: EventDetailBodyData;
+  compact: boolean;
+  detailExtras?: ReactNode;
+}) {
   // Curated tags (conflict, capture source) get their own labelled rows so
   // they read as structured facts, not free-form chips lost in one row.
   const conflictTags = geo.tags.filter((t) => t.category === "conflict");
@@ -83,7 +118,7 @@ function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
   const freeTags = geo.tags.filter((t) => t.category === "free");
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
-  const tagRow = (name: string, tags: EventDetail["tags"], concept?: Concept) =>
+  const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
     tags.length > 0 ? (
       <DetailRow label={name} concept={concept} compact={compact} align="start">
         <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
@@ -170,6 +205,7 @@ function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
           <AuthorByline author={geo.author} prefix={false} className="text-sm" />
         </DetailRow>
       )}
+      {detailExtras}
     </>
   );
 
@@ -219,7 +255,7 @@ function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
   );
 }
 
-function ProofBlock({ geo, compact }: { geo: EventDetail; compact: boolean }) {
+function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
   const body = geo.proof ? (
     <div className="text-sm text-neutral-300 leading-relaxed">
       {renderProof(geo.proof)}

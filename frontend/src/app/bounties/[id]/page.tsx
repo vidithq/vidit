@@ -13,21 +13,14 @@ import {
   deleteBounty,
   unclaimBounty,
 } from "@/lib/bounties";
-import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
-import { SourceLabel } from "@/components/ui/SourceLabel";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { ProofSection } from "@/components/ui/ProofSection";
-import { MediaGallery } from "@/components/ui/MediaGallery";
-import { renderProof } from "@/lib/proof";
-import type { Concept } from "@/lib/fieldHelp";
+import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { EventDetailBody } from "@/components/event/EventDetailBody";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { Pill } from "@/components/ui/Pill";
+import { DetailRow } from "@/components/ui/DetailRow";
 
 export default function BountyDetailPage() {
   const params = useParams();
@@ -85,24 +78,6 @@ export default function BountyDetailPage() {
   const isClaimedByMe = !!user && bounty.claimers.some((c) => c.id === user.id);
   const canGeolocate = bounty.status === "requested";
 
-  // Curated tags get their own labelled rows (like a geolocation's detail) so
-  // conflict / capture source read as structured facts, not free-form chips.
-  const conflictTags = bounty.tags.filter((t) => t.category === "conflict");
-  const captureTags = bounty.tags.filter((t) => t.category === "capture_source");
-  const freeTags = bounty.tags.filter((t) => t.category === "free");
-  const tagRow = (name: string, tags: BountyDetail["tags"], concept?: Concept) =>
-    tags.length > 0 ? (
-      <DetailRow label={name} concept={concept} align="start">
-        <div className="flex flex-wrap gap-1.5 justify-end">
-          {tags.map((tag) => (
-            <Pill key={tag.id} tone="neutral">
-              {tag.name}
-            </Pill>
-          ))}
-        </div>
-      </DetailRow>
-    ) : null;
-
   const handleToggleClaim = async () => {
     closeMutation.reset();
     deleteMutation.reset();
@@ -131,79 +106,39 @@ export default function BountyDetailPage() {
       title={bounty.title}
       subtitle={<AuthorByline author={bounty.author} />}
     >
-        <div>
-          <SectionEyebrow title="Media" concept="source_media" />
-          <MediaGallery media={bounty.media} alt={bounty.title} />
-        </div>
-
-        <div>
-          <SectionEyebrow title="Details" />
-          <DetailCard>
-            <DetailRow label="Status" concept="bounty_status" align="center">
-              <StatusBadge status={bounty.status} />
-            </DetailRow>
-            {/* The dates read as one block — event → source → posted. */}
-            {bounty.event_date && (
-              <DetailRow
-                label="Event date"
-                concept="event_date"
-                value={formatEventDate(bounty.event_date, bounty.event_time)}
-              />
-            )}
-            <DetailRow
-              label="Source posted"
-              concept="source_posted_at"
-              value={formatInstant(bounty.source_posted_at)}
-            />
-            <DetailRow
-              label="Added"
-              concept="added"
-              value={formatDate(bounty.created_at)}
-            />
-            <DetailRow label="Source" concept="source_url">
-              <SourceLabel
-                isDemo={bounty.is_demo}
-                url={bounty.source_url}
-                variant="link"
-                maxWidthClass="max-w-[300px]"
-                className="text-sm ml-4"
-              />
-            </DetailRow>
-            {tagRow("Conflict", conflictTags, "conflict")}
-            {tagRow("Capture source", captureTags, "capture_source")}
-            {tagRow("Tags", freeTags)}
-            {bounty.status === "requested" && (
-              <DetailRow label="Working on" align="start">
-                {bounty.claimers.length > 0 ? (
-                  <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
-                    {bounty.claimers.map((c) => (
-                      <Link
-                        key={c.id}
-                        href={`/profile/${c.username}`}
-                        className={`text-sm ${TEXT_LINK}`}
-                      >
-                        @{c.username}
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-sm text-neutral-600">—</span>
-                )}
-              </DetailRow>
-            )}
-            {bounty.closed_at && (
-              <DetailRow label="Closed" value={formatDate(bounty.closed_at)} />
-            )}
-          </DetailCard>
-        </div>
-
-        {bounty.proof && (
-          <ProofSection>
-            <div className="text-sm text-neutral-300 leading-relaxed">
-              {renderProof(bounty.proof)}
-            </div>
-          </ProofSection>
-        )}
+        {/* A bounty is an event with no coordinates, so the body renders with
+            an empty Location and the missing detected-from / requested-by rows
+            simply drop out. Its two bounty-only rows slot in via detailExtras. */}
+        <EventDetailBody
+          geo={bounty}
+          variant="page"
+          detailExtras={
+            <>
+              {bounty.status === "requested" && (
+                <DetailRow label="Working on" align="start">
+                  {bounty.claimers.length > 0 ? (
+                    <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
+                      {bounty.claimers.map((c) => (
+                        <Link
+                          key={c.id}
+                          href={`/profile/${c.username}`}
+                          className={`text-sm ${TEXT_LINK}`}
+                        >
+                          @{c.username}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-neutral-600">—</span>
+                  )}
+                </DetailRow>
+              )}
+              {bounty.closed_at && (
+                <DetailRow label="Closed" value={formatDate(bounty.closed_at)} />
+              )}
+            </>
+          }
+        />
 
         {/* Actions at the bottom, after the user has read the bounty.
             "I'm working on this" gets a neutral treatment so it doesn't
