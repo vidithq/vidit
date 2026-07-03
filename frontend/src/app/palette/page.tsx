@@ -13,13 +13,13 @@ import {
   Users,
 } from "lucide-react";
 
-import type { GeolocationDetail, GeolocationStatus, Tag } from "@/types";
+import type { EventDetail, EventStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
-import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
+import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
@@ -35,7 +35,7 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   TEXT_LINK,
   TAPPABLE_HOVER,
@@ -101,7 +101,7 @@ const MOCK_TAGS = [
 
 // A full geolocation, for the detail body + detection card. `is_demo` so the
 // source renders as "synthetic" rather than a link that 404s.
-const MOCK_DETAIL: GeolocationDetail = {
+const MOCK_DETAIL: EventDetail = {
   id: "demo",
   title: "Strike on a depot, Donetsk",
   lat: 48.0159,
@@ -138,7 +138,7 @@ const MOCK_CARD_GEO = {
   title: "Strike on a depot near Donetsk",
   event_date: "2026-05-09",
   is_demo: true,
-  status: "detected" as GeolocationStatus,
+  status: "detected" as EventStatus,
   lat: 48.0159,
   lng: 37.8024,
   author: { username: "analyst" },
@@ -564,7 +564,7 @@ export default function PalettePage() {
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="feed"
-                detailHref="/geolocations/demo"
+                detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="detected" />}
                 author={MOCK_CARD_GEO.author}
@@ -579,7 +579,7 @@ export default function PalettePage() {
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/geolocations/demo"
+                detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.author}
@@ -610,7 +610,7 @@ export default function PalettePage() {
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/geolocations/demo/edit"
+                detailHref="/events/demo/edit"
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.author.username }}
@@ -625,9 +625,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<GeolocationDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
+          <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
-              <GeolocationDetailBody geo={MOCK_DETAIL} variant="page" />
+              <EventDetailBody geo={MOCK_DETAIL} variant="page" />
             </div>
           </Item>
 

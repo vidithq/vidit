@@ -116,7 +116,7 @@ describe("DuplicateProbe", () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].path).toBe(
-      "/geolocations/possible-duplicates?lat=48&lng=37&source_url=https%3A%2F%2Ft.me%2Fchannel%2F1&event_date=2026-01-05"
+      "/events/possible-duplicates?lat=48&lng=37&source_url=https%3A%2F%2Ft.me%2Fchannel%2F1&event_date=2026-01-05"
     );
     await act(async () => {
       calls[0].resolve([hit("1", "Existing geo")]);

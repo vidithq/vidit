@@ -17,12 +17,12 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.geolocation import (
+from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Geolocation,
-    GeolocationClaim,
+    Event,
+    EventClaim,
 )
 from app.models.user import User
 from app.services import seed as seed_service
@@ -121,7 +121,7 @@ def test_seed_demo_creates_geos_and_authors(db, demo_pool):
     assert result["authors"] == 5
 
     db.expire_all()
-    demo_geos = db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).all()
+    demo_geos = db.query(Event).filter(Event.is_demo.is_(True)).all()
     assert len(demo_geos) == 5
     assert all(g.is_demo for g in demo_geos)
     assert all(g.media for g in demo_geos), "every demo geo should have at least one media row"
@@ -277,7 +277,7 @@ def test_seed_demo_picks_tags_from_known_pool(db, demo_pool):
         | set(seed_service.CONFLICT_TAG_BY_REGION.values())
         | set(seed_service.CAPTURE_SOURCE_TAGS)
     )
-    geos = db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).all()
+    geos = db.query(Event).filter(Event.is_demo.is_(True)).all()
     seen_names = {tag.name for g in geos for tag in g.tags}
     assert seen_names, "expected at least one tag across 50 seeded geos"
     assert seen_names.issubset(allowed_names), (
@@ -340,7 +340,7 @@ def test_seed_demo_handles_batch_boundaries(db, demo_pool, monkeypatch, count):
     assert result["created"] == count
 
     db.expire_all()
-    geos = db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).all()
+    geos = db.query(Event).filter(Event.is_demo.is_(True)).all()
     assert len(geos) == count
     # Every geo should have at least one tag — proves the M2M flush
     # didn't drop the last batch's links.
@@ -356,7 +356,7 @@ def test_wipe_demo_drops_demo_geos_and_users(db, demo_pool):
     assert result["deleted_users"] == 5
 
     db.expire_all()
-    assert db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).count() == 0
+    assert db.query(Event).filter(Event.is_demo.is_(True)).count() == 0
     assert db.query(User).filter(User.is_demo.is_(True)).count() == 0
 
 
@@ -443,7 +443,7 @@ def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
 
     # Every seeded row is a demo event; the seeder spreads them across the merged
     # lifecycle (requested / geolocated / closed all on the one table).
-    events = db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).all()
+    events = db.query(Event).filter(Event.is_demo.is_(True)).all()
     assert len(events) == 4
     for e in events:
         assert e.status in {STATUS_REQUESTED, STATUS_GEOLOCATED, STATUS_CLOSED}
@@ -478,7 +478,7 @@ def test_seed_demo_bounties_attaches_some_claims(db, demo_pool):
     something to render. With a large enough count the probability of
     at least one requested event getting a claim is overwhelming."""
     seed_service.seed_demo_bounties(db, count=20)
-    claim_count = db.query(GeolocationClaim).count()
+    claim_count = db.query(EventClaim).count()
     assert claim_count > 0
 
 
@@ -501,15 +501,10 @@ def test_wipe_demo_bounties_only_drops_requested_view_rows(db, demo_pool, admin_
     db.expire_all()
     # No requested-view demo rows left; located demo events + demo authors intact.
     assert (
-        db.query(Geolocation)
-        .filter(Geolocation.is_demo.is_(True), Geolocation.status.in_(_REQUESTED_VIEW))
-        .count()
+        db.query(Event).filter(Event.is_demo.is_(True), Event.status.in_(_REQUESTED_VIEW)).count()
         == 0
     )
-    assert (
-        db.query(Geolocation).filter(Geolocation.is_demo.is_(True)).count()
-        == expected_surviving_geos
-    )
+    assert db.query(Event).filter(Event.is_demo.is_(True)).count() == expected_surviving_geos
     assert db.query(User).filter(User.is_demo.is_(True)).count() == 5
 
 

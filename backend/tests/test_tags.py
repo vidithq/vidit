@@ -8,7 +8,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import Geolocation
+from app.models.event import Event
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
@@ -199,7 +199,7 @@ def test_list_tags_filters_orphans(authed_user, db):
     db.add_all([orphan, used])
     db.commit()
 
-    geo = Geolocation(
+    geo = Event(
         author_id=user.id,
         title="t",
         location=from_shape(Point(0, 0), srid=4326),
@@ -272,7 +272,7 @@ def test_list_tags_drops_tag_when_only_geo_is_soft_deleted(authed_user, db):
     db.add(tag)
     db.commit()
 
-    geo = Geolocation(
+    geo = Event(
         author_id=user.id,
         title="t",
         location=from_shape(Point(0, 0), srid=4326),

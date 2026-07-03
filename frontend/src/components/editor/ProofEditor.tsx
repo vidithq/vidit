@@ -68,7 +68,7 @@ export default function ProofEditor({
       const formData = new FormData();
       formData.append("file", file);
       const { url } = await apiFetch<{ url: string }>(
-        "/geolocations/proof-images",
+        "/events/proof-images",
         { method: "POST", body: formData }
       );
       editor.chain().focus().setImage({ src: url }).run();

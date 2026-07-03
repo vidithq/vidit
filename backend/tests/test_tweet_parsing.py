@@ -1,7 +1,7 @@
 """Unit tests for the tweet-parsing service.
 
 Scope: extractors + URL normalisation only. The route-level integration
-(auth, CSRF, 400/404/502 mapping) lives in ``tests/geolocations/test_import.py``
+(auth, CSRF, 400/404/502 mapping) lives in ``tests/events/test_import.py``
 so the cookie/CSRF fixtures stay in one place.
 """
 

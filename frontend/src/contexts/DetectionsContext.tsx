@@ -6,8 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import {
   detectionsPath,
-  type PaginatedGeolocationDetails,
-} from "@/lib/geolocations";
+  type PaginatedEventDetails,
+} from "@/lib/events";
 
 interface DetectionsValue {
   /** Count of the signed-in user's machine-`detected` geolocations awaiting
@@ -31,7 +31,7 @@ const DetectionsContext = createContext<DetectionsValue>({
  */
 export function DetectionsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const { data, refetch } = useApiResource<PaginatedGeolocationDetails>(
+  const { data, refetch } = useApiResource<PaginatedEventDetails>(
     user ? detectionsPath(1, 1) : null
   );
   return (

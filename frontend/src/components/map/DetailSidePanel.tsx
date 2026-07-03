@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-import type { GeolocationDetail } from "@/types";
+import type { EventDetail } from "@/types";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import ShareButtons from "@/components/geolocation/ShareButtons";
-import { GeolocationDetailBody } from "@/components/geolocation/GeolocationDetailBody";
+import ShareButtons from "@/components/event/ShareButtons";
+import { EventDetailBody } from "@/components/event/EventDetailBody";
 
 interface DetailSidePanelProps {
   /** Null while the selected geolocation is still loading. */
-  detail: GeolocationDetail | null;
+  detail: EventDetail | null;
   loading: boolean;
   onClose: () => void;
 }
@@ -53,7 +53,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             </div>
           </div>
 
-          <GeolocationDetailBody geo={detail} variant="panel" />
+          <EventDetailBody geo={detail} variant="panel" />
 
           {/* Same ShareButtons as the detail page so tweet/clipboard
               output stays in sync across both share surfaces. */}
@@ -68,7 +68,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
               status={detail.status}
             />
             <Link
-              href={`/geolocations/${detail.id}`}
+              href={`/events/${detail.id}`}
               className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
             >
               Full page

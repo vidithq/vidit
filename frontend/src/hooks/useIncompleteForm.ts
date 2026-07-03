@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { MissingField, MissingFieldKey } from "@/lib/geolocations";
+import type { MissingField, MissingFieldKey } from "@/lib/events";
 
 /**
  * The state behind `IncompleteFormNotice` + the in-form red outlines, shared by

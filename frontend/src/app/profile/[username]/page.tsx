@@ -38,7 +38,7 @@ export default function ProfilePage() {
   // rather than blocking the profile card.
   const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
     username && currentUser
-      ? `/users/${username}/geolocations?per_page=5`
+      ? `/users/${username}/events?per_page=5`
       : null
   );
   const submissions = submissionsData?.items ?? [];

@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import type { MissingField } from "./geolocations";
+import type { MissingField } from "./events";
 import type { BountyDetail, BountyListItem, BountyStatus } from "@/types";
 
 export interface BountyListParams {

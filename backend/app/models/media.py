@@ -17,7 +17,7 @@ MediaType = Literal["image", "video"]
 class Media(Base):
     """File attachment owned by one geolocation event.
 
-    Single ``geolocation_id`` owner since the bounty + geolocation merge: a
+    Single ``event_id`` owner since the bounty + geolocation merge: a
     bounty is now a ``requested`` geolocation, so all evidence hangs off the one
     table. Fulfilling a request no longer moves media between tables — the row
     already points at the event that gains a location.
@@ -26,8 +26,8 @@ class Media(Base):
     __tablename__ = "media"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    geolocation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("geolocations.id", ondelete="CASCADE"), nullable=False
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     storage_url: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(String(10), nullable=False)
@@ -49,7 +49,7 @@ class Media(Base):
         nullable=False,
     )
 
-    geolocation = relationship("Geolocation", back_populates="media")
+    geolocation = relationship("Event", back_populates="media")
 
     __table_args__ = (
         # Non-unique partial index on the populated cohort — "find every row with

@@ -1,4 +1,4 @@
-"""End-to-end tests for `/users/{username}` + `/users/{username}/geolocations`
+"""End-to-end tests for `/users/{username}` + `/users/{username}/events`
 plus `PATCH /users/me` (self-edit of bio / avatar / links).
 
 The public profile is the second surface (after geolocations) that
@@ -27,7 +27,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.geolocation import Geolocation
+from app.models.event import Event
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
@@ -66,7 +66,7 @@ def live_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -84,7 +84,7 @@ def soft_deleted_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -103,7 +103,7 @@ def trusted_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Geolocation).filter(Geolocation.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -115,8 +115,8 @@ def _make_geo(
     title: str | None = None,
     event_date: date | None = None,
     deleted: bool = False,
-) -> Geolocation:
-    geo = Geolocation(
+) -> Event:
+    geo = Event(
         author_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
         location=from_shape(Point(34.5, 48.5), srid=4326),
@@ -219,11 +219,11 @@ def test_profile_count_excludes_soft_deleted_geos(db, live_user):
     assert response.json()["geolocations_count"] == 2
 
 
-# ── GET /users/{username}/geolocations — feed ─────────────────────────────
+# ── GET /users/{username}/events — feed ─────────────────────────────
 
 
 def test_feed_returns_pagination_envelope(live_user):
-    response = client.get(f"/api/v1/users/{live_user.username}/geolocations")
+    response = client.get(f"/api/v1/users/{live_user.username}/events")
     assert response.status_code == 200
     body = response.json()
     assert body["items"] == []
@@ -239,7 +239,7 @@ def test_feed_excludes_soft_deleted_geos(db, live_user):
     live = _make_geo(db, author=live_user, title="live one")
     dead = _make_geo(db, author=live_user, title="removed", deleted=True)
 
-    response = client.get(f"/api/v1/users/{live_user.username}/geolocations")
+    response = client.get(f"/api/v1/users/{live_user.username}/events")
     assert response.status_code == 200
     body = response.json()
     ids = {row["id"] for row in body["items"]}
@@ -250,7 +250,7 @@ def test_feed_excludes_soft_deleted_geos(db, live_user):
 
 def test_feed_count_matches_profile_count(db, live_user):
     """Symmetry property: `geolocations_count` from `/users/{u}` must
-    equal `total` from `/users/{u}/geolocations`. Drift between them
+    equal `total` from `/users/{u}/events`. Drift between them
     is the visible symptom of someone fixing one filter and not the
     other."""
     _make_geo(db, author=live_user)
@@ -258,7 +258,7 @@ def test_feed_count_matches_profile_count(db, live_user):
     _make_geo(db, author=live_user, deleted=True)
 
     profile = client.get(f"/api/v1/users/{live_user.username}").json()
-    feed = client.get(f"/api/v1/users/{live_user.username}/geolocations").json()
+    feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
     assert profile["geolocations_count"] == feed["total"] == 2
 
 
@@ -270,7 +270,7 @@ def test_feed_orders_by_event_date_desc(db, live_user):
     _make_geo(db, author=live_user, event_date=date(2026, 12, 1), title="new")
     _make_geo(db, author=live_user, event_date=date(2026, 6, 1), title="mid")
 
-    response = client.get(f"/api/v1/users/{live_user.username}/geolocations")
+    response = client.get(f"/api/v1/users/{live_user.username}/events")
     items = response.json()["items"]
     titles_in_order = [row["title"] for row in items]
     assert titles_in_order.index("new") < titles_in_order.index("old")
@@ -280,18 +280,18 @@ def test_feed_caps_per_page_at_100(db, live_user):
     """Whatever the caller requests, the server caps at 100 — a
     backstop against accidental large reads (and the cheapest piece
     of anti-scraping discipline before the proper per-IP / per-user limits land)."""
-    response = client.get(f"/api/v1/users/{live_user.username}/geolocations?per_page=500")
+    response = client.get(f"/api/v1/users/{live_user.username}/events?per_page=500")
     assert response.status_code == 200
     assert response.json()["per_page"] == 100
 
 
 def test_feed_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}/geolocations")
+    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}/events")
     assert response.status_code == 404
 
 
 def test_feed_404_for_soft_deleted_user(soft_deleted_user):
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}/geolocations")
+    response = client.get(f"/api/v1/users/{soft_deleted_user.username}/events")
     assert response.status_code == 404
 
 

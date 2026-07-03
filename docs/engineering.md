@@ -113,7 +113,7 @@ vidit/
 │   │   │   ├── auth_event.py       # /auth/* audit log
 │   │   │   ├── auth_token.py       # Single-use password-reset tokens
 │   │   │   ├── follow.py           # Analyst → analyst follow edges
-│   │   │   ├── geolocation.py      # Geolocation event + GeolocationClaim (the merged bounty + geolocation lifecycle)
+│   │   │   ├── event.py            # Event + EventClaim (the merged bounty + geolocation lifecycle)
 │   │   │   ├── invite_code.py
 │   │   │   ├── media.py
 │   │   │   ├── pending_registration.py  # Pre-creation registration staging
@@ -124,7 +124,7 @@ vidit/
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
 │   │   │   ├── bounty.py
-│   │   │   ├── geolocation.py
+│   │   │   ├── event.py
 │   │   │   ├── media.py
 │   │   │   ├── recovery.py         # Password-reset request/confirm bodies
 │   │   │   ├── search.py
@@ -134,7 +134,7 @@ vidit/
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
 │   │   │   ├── bounties.py
-│   │   │   ├── geolocations/         # Per-concern sub-routers (read/duplicates/import_tweet/write/item)
+│   │   │   ├── events/               # Per-concern sub-routers (read/duplicates/import_tweet/write/item)
 │   │   │   ├── search.py
 │   │   │   ├── social.py           # Follow / unfollow / timeline
 │   │   │   ├── tags.py
@@ -149,7 +149,7 @@ vidit/
 │   │       ├── email.py            # Resend / console-echo email transport
 │   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
 │   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
-│   │       ├── geolocations.py     # create_with_evidence (geo side) + typed GeolocationError hierarchy
+│   │       ├── events.py           # create_with_evidence (geo side) + typed EventError hierarchy
 │   │       ├── maintenance.py      # Reapers: auth tokens, proof orphans, pending regs
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
@@ -159,7 +159,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/                      # pytest; geolocations/ is a sub-package (read/create/duplicates/import/owner_flow/detections)
+│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections)
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
@@ -254,10 +254,10 @@ HTTP request → router → service → model / DB
 ### Schema naming
 
 ```
-GeolocationCreate   → POST input
-GeolocationUpdate   → PATCH input
-GeolocationRead     → output (API response)
-GeolocationList     → simplified output (map, lists)
+EventCreate   → POST input
+EventUpdate   → PATCH input
+EventRead     → output (API response)
+EventList     → simplified output (map, lists)
 ```
 
 ### Shared validation constants
@@ -265,7 +265,7 @@ GeolocationList     → simplified output (map, lists)
 A few rules live in one backend home so the two sides can't drift:
 
 - **Upload MIME allowlist**: `services/storage.ALLOWED_IMAGE_TYPES` / `ALLOWED_VIDEO_TYPES` (the EXIF-strip set is *derived* from the image allowlist). Frontend mirror: `lib/mediaTypes.ts`.
-- **Coordinate bounds**: `services/geolocations.validate_coordinates` (the create + submit paths share it). Frontend mirror: `lib/coordinates.ts`.
+- **Coordinate bounds**: `services/events.validate_coordinates` (the create + submit paths share it). Frontend mirror: `lib/coordinates.ts`.
 - **Password length**: `schemas/auth.PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH`. Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH`.
 
 The frontend mirrors are hand-kept: change a backend value, change its mirror.

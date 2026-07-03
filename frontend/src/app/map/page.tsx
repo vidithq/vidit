@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import type { MapPoint, GeolocationDetail, Tag } from "@/types";
+import type { MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
@@ -38,7 +38,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const { data: tagsData } = useApiResource<Tag[]>("/tags");
   const tags = tagsData ?? [];
-  const [detail, setDetail] = useState<GeolocationDetail | null>(null);
+  const [detail, setDetail] = useState<EventDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // Which selectedId we've already fetched, so the re-hydration effect
@@ -53,7 +53,7 @@ export default function HomePage() {
 
     const params = new URLSearchParams();
     // Append each chip independently. The backend applies OR within a
-    // bucket and AND across buckets (`routers/geolocations.py::_apply_filters`).
+    // bucket and AND across buckets (`routers/events::_apply_filters`).
     selectedConflicts.forEach((c) => params.append("conflict", c));
     selectedCaptureSources.forEach((s) => params.append("capture_source", s));
     selectedTags.forEach((t) => params.append("tag", t));
@@ -67,7 +67,7 @@ export default function HomePage() {
     if (cleanAuthor) params.set("author", cleanAuthor);
 
     setLoading(true);
-    apiFetch<MapPoint[]>(`/geolocations/points?${params.toString()}`, {
+    apiFetch<MapPoint[]>(`/events/points?${params.toString()}`, {
       signal: controller.signal,
     })
       .then(setPoints)
@@ -92,7 +92,7 @@ export default function HomePage() {
       setSelectedId(id);
       setDetailLoading(true);
       hydratedIdRef.current = id;
-      apiFetch<GeolocationDetail>(`/geolocations/${id}`)
+      apiFetch<EventDetail>(`/events/${id}`)
         .then(setDetail)
         .catch(() => {})
         .finally(() => setDetailLoading(false));
@@ -112,7 +112,7 @@ export default function HomePage() {
     ) {
       hydratedIdRef.current = selectedId;
       setDetailLoading(true);
-      apiFetch<GeolocationDetail>(`/geolocations/${selectedId}`)
+      apiFetch<EventDetail>(`/events/${selectedId}`)
         .then(setDetail)
         .catch(() => {})
         .finally(() => setDetailLoading(false));

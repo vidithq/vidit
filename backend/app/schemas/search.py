@@ -3,7 +3,7 @@
 Hits carry ``*_highlight`` fields with sentinel-delimited match fragments (see
 ``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags. No raw HTML crosses the wire — XSS-safe by
-construction. Field sets mirror the list shapes (``GeolocationList``,
+construction. Field sets mirror the list shapes (``EventList``,
 ``BountyList``) plus the highlights, so the result card reuses the same components.
 
 The geolocation + bounty groups are two views over the one ``geolocations``
@@ -20,13 +20,13 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models.geolocation import GeolocationStatus
+from app.models.event import EventStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
-class SearchGeolocationHit(BaseModel):
+class SearchEventHit(BaseModel):
     id: uuid.UUID
     title: str
     # ts_headline output: title text with ``[[HL]]…[[/HL]]`` around matched
@@ -37,7 +37,7 @@ class SearchGeolocationHit(BaseModel):
     event_date: date | None = None
     is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
-    status: GeolocationStatus
+    status: EventStatus
     author: AuthorRef
     tags: list[TagRead]
 
@@ -50,7 +50,7 @@ class SearchBountyHit(BaseModel):
     title_highlight: str
     source_url: str
     # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
-    status: GeolocationStatus
+    status: EventStatus
     created_at: datetime
     is_demo: bool
     author: AuthorRef
@@ -84,7 +84,7 @@ class SearchResponse(BaseModel):
     """Grouped result set. Empty arrays for groups the caller didn't request via
     ``type=`` — keeps the JSON shape stable so the frontend skips conditional access."""
 
-    geolocations: list[SearchGeolocationHit]
+    geolocations: list[SearchEventHit]
     bounties: list[SearchBountyHit]
     users: list[SearchUserHit]
 

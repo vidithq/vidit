@@ -581,9 +581,9 @@ def test_hsts_header_on_csrf_rejection(client, existing_user):
     `X-CSRF-Token` header before the route handler runs. HSTS is the
     outermost middleware so the rejection response is still stamped.
     """
-    # /api/v1/geolocations is mutation-guarded by CSRF and not in the
+    # /api/v1/events is mutation-guarded by CSRF and not in the
     # CSRF exempt list. A POST with no token short-circuits in CSRF.
-    response = client.post("/api/v1/geolocations", json={})
+    response = client.post("/api/v1/events", json={})
     assert response.status_code in (401, 403), "CSRF or auth should reject"
     assert response.headers.get("strict-transport-security") == "max-age=15768000"
 

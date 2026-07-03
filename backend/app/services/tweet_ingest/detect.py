@@ -6,7 +6,7 @@ no parseable coordinate yields an empty list (a parseable coord ⇒ a geo tweet,
 so ``is_geoloc`` is just whether the list is non-empty, not a separate pass).
 
 The DTO is plain data, never an ORM row — the caller (the assemble step) turns
-each one into a ``Geolocation`` row, owns persistence, evidence, and the
+each one into a ``Event`` row, owns persistence, evidence, and the
 ``(detected_from_url, coordinate)`` idempotency.
 """
 

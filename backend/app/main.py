@@ -15,7 +15,7 @@ from app.routers import (
     admin,
     auth,
     bounties,
-    geolocations,
+    events,
     search,
     social,
     tags,
@@ -65,7 +65,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # PR #100 caught the previous shape (``max_video_size + 10 MB`` = 110 MB)
 # silently rejecting a 12-image submission. All three caps read from
 # ``settings`` so this module never imports a router (the old shape's
-# ``from app.routers.geolocations import …`` formed a fragile import edge).
+# ``from app.routers.events import …`` formed a fragile import edge).
 _MAX_REQUEST_BODY_BYTES = max(
     settings.max_video_size,
     settings.max_files_per_geolocation * settings.max_image_size,
@@ -130,10 +130,10 @@ async def add_hsts_header(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(bounties.router, prefix="/api/v1/bounties", tags=["bounties"])
-# geolocations ships several sub-routers (one per concern); mount each under the
-# shared prefix. Order is load-bearing — see ``routers/geolocations/__init__.py``.
-for _geo_router in geolocations.routers:
-    app.include_router(_geo_router, prefix="/api/v1/geolocations", tags=["geolocations"])
+# events ships several sub-routers (one per concern); mount each under the
+# shared prefix. Order is load-bearing — see ``routers/events/__init__.py``.
+for _event_router in events.routers:
+    app.include_router(_event_router, prefix="/api/v1/events", tags=["events"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])

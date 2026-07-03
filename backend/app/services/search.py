@@ -22,7 +22,7 @@ import uuid
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.geolocation import STATUS_REQUESTED, Geolocation, GeolocationClaim
+from app.models.event import STATUS_REQUESTED, Event, EventClaim
 from app.models.user import User
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -90,7 +90,7 @@ def _search_events(
                    :opts
                ) AS title_highlight,
                COUNT(*) OVER () AS total_count
-        FROM geolocations
+        FROM events
         WHERE deleted_at IS NULL
           AND {extra_where}
           AND {_GEO_TSVECTOR} @@ plainto_tsquery('simple', :q)
@@ -126,25 +126,25 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
     # preserve order — the cost of the two-step "rank then hydrate" pattern.
     geos = (
         db.query(
-            Geolocation,
-            func.ST_Y(Geolocation.location).label("lat"),
-            func.ST_X(Geolocation.location).label("lng"),
+            Event,
+            func.ST_Y(Event.location).label("lat"),
+            func.ST_X(Event.location).label("lng"),
         )
         .options(
-            joinedload(Geolocation.author),
-            joinedload(Geolocation.tags),
+            joinedload(Event.author),
+            joinedload(Event.tags),
         )
-        .filter(Geolocation.id.in_(ids))
+        .filter(Event.id.in_(ids))
         .all()
     )
-    geo_by_id = {g.Geolocation.id: g for g in geos}
+    geo_by_id = {g.Event.id: g for g in geos}
 
     out: list[dict] = []
     for hit_id in ids:
         row = geo_by_id.get(hit_id)
         if row is None:  # soft-deleted between SELECTs — drop silently
             continue
-        geo = row.Geolocation
+        geo = row.Event
         out.append(
             {
                 "id": geo.id,
@@ -179,13 +179,13 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
         return [], 0
 
     geos = (
-        db.query(Geolocation)
+        db.query(Event)
         .options(
-            joinedload(Geolocation.author),
-            joinedload(Geolocation.media),
-            joinedload(Geolocation.tags),
+            joinedload(Event.author),
+            joinedload(Event.media),
+            joinedload(Event.tags),
         )
-        .filter(Geolocation.id.in_(ids))
+        .filter(Event.id.in_(ids))
         .all()
     )
     geo_by_id = {g.id: g for g in geos}
@@ -194,9 +194,9 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     # ``BountyList`` aggregate so the card renders the same badge.
     counts: dict[uuid.UUID, int] = {
         gid: int(c)
-        for gid, c in db.query(GeolocationClaim.geolocation_id, func.count("*"))
-        .filter(GeolocationClaim.geolocation_id.in_(ids))
-        .group_by(GeolocationClaim.geolocation_id)
+        for gid, c in db.query(EventClaim.event_id, func.count("*"))
+        .filter(EventClaim.event_id.in_(ids))
+        .group_by(EventClaim.event_id)
         .all()
     }
 

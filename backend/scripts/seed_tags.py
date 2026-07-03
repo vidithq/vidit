@@ -20,7 +20,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.models.geolocation import Geolocation
+from app.models.event import Event
 from app.models.tag import Tag
 
 
@@ -37,10 +37,10 @@ def main() -> None:
             )
 
         geos = (
-            db.query(Geolocation)
-            .filter(Geolocation.deleted_at.is_(None))
-            .options(selectinload(Geolocation.tags))
-            .order_by(Geolocation.created_at)
+            db.query(Event)
+            .filter(Event.deleted_at.is_(None))
+            .options(selectinload(Event.tags))
+            .order_by(Event.created_at)
             .all()
         )
 

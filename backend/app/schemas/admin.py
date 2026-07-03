@@ -93,8 +93,8 @@ class AdminUserDeleteResponse(BaseModel):
     proof_image_count: int = 0
 
 
-class AdminGeolocationDeleteResponse(BaseModel):
-    """Response for `DELETE /admin/geolocations/{id}`.
+class AdminEventDeleteResponse(BaseModel):
+    """Response for `DELETE /admin/events/{id}`.
 
     Confirms what happened (which row, soft vs hard, what was swept) without a
     client re-query.

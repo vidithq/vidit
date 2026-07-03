@@ -5,7 +5,7 @@ import { createContext, useContext, useMemo, useState, ReactNode } from "react";
 /**
  * Persistent map-page state that survives navigation away and back.
  *
- * The home page lives at /; navigating to /profile/<x> or /geolocations/<x>
+ * The home page lives at /; navigating to /profile/<x> or /events/<x>
  * unmounts /page.tsx and would lose its useState. Lifting state into a
  * context provider in the root layout (Providers) keeps it, so returning
  * from a deep page restores the view, selected point, and filter set.
@@ -32,7 +32,7 @@ interface MapState {
 
   // Filters — every tag bucket is multi-select. Within a bucket the server
   // applies OR (any-of); across buckets AND (a geo must satisfy each bucket
-  // independently). See `routers/geolocations.py::_apply_filters`.
+  // independently). See `routers/events::_apply_filters`.
   selectedConflicts: string[];
   setSelectedConflicts: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedCaptureSources: string[];

@@ -21,7 +21,7 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { renderProof } from "@/lib/proof";
 import type { Concept } from "@/lib/fieldHelp";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { StatusBadge } from "@/components/geolocation/StatusBadge";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import type { BountyDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";

@@ -88,7 +88,7 @@ interface NavItem {
   // `notify` shows a dot at the icon corner (new content awaits; static today).
   notify?: boolean;
   // Custom active-state matcher so deep pages inherit their section's highlight
-  // (e.g. /geolocations/[id] keeps Map lit). Defaults to exact match on `href`.
+  // (e.g. /events/[id] keeps Map lit). Defaults to exact match on `href`.
   activeFor?: (pathname: string) => boolean;
 }
 
@@ -105,10 +105,10 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Globe,
     label: "Map",
     auth: true,
-    // Match exactly /geolocations/<id> (one segment) so a geolocation detail
-    // keeps the Map highlight; sub-routes like /geolocations/<id>/edit don't.
+    // Match exactly /events/<id> (one segment) so a geolocation detail
+    // keeps the Map highlight; sub-routes like /events/<id>/edit don't.
     // Submit lives at /submit now, so no carve-out is needed here.
-    activeFor: (p) => p === "/map" || /^\/geolocations\/[^/]+$/.test(p),
+    activeFor: (p) => p === "/map" || /^\/events\/[^/]+$/.test(p),
   },
   { href: "/submit", icon: Plus, label: "Submit", auth: true },
   {
