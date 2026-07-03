@@ -28,16 +28,18 @@ class ArchiveImportResult(BaseModel):
 class EventRead(BaseModel):
     id: uuid.UUID
     title: str
-    # Optional: a ``requested`` event has no coordinates yet (``location`` is
+    # Nullable: a ``requested`` event has no coordinates yet (``location`` is
     # NULL), and this same read serves the requested view. Present for every
-    # ``geolocated`` row, and for a located ``detected`` one.
-    lat: float | None = None
-    lng: float | None = None
+    # ``geolocated`` row, and for a located ``detected`` one. Required-nullable,
+    # not optional: ``build_geolocation_read`` (the sole constructor) always
+    # passes it, so the key is always serialised.
+    lat: float | None
+    lng: float | None
     source_url: str
     proof: dict[str, Any] | None
-    event_date: date | None = None
+    event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
-    event_time: time | None = None
+    event_time: time | None
     # When the original source posted the media: a real post instant (UTC),
     # always present. Distinct from ``event_date`` (when the event happened) and
     # ``created_at`` (submission).
@@ -50,14 +52,14 @@ class EventRead(BaseModel):
     status: EventStatus
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
-    detected_from_url: str | None = None
+    detected_from_url: str | None
     # When the analyst posted this geolocation on X (the imported tweet's time);
     # NULL for human submits. The "who geolocated first" precedence signal.
-    detected_post_at: datetime | None = None
+    detected_post_at: datetime | None
     author: AuthorRef
     # Who opened the request, preserved across fulfilment. NULL for a
     # directly-submitted geolocation (no request preceded it).
-    requested_by: AuthorRef | None = None
+    requested_by: AuthorRef | None
     media: list[MediaRead]
     tags: list[TagRead]
 
@@ -67,10 +69,12 @@ class EventRead(BaseModel):
 class EventList(BaseModel):
     id: uuid.UUID
     title: str
-    # Optional for the same reason as ``EventRead.lat`` / ``lng``.
-    lat: float | None = None
-    lng: float | None = None
-    event_date: date | None = None
+    # Nullable for the same reason as ``EventRead.lat`` / ``lng``. Required-nullable,
+    # not optional: all three constructors (list, timeline, profile) always pass
+    # lat / lng / event_date, so each key is always serialised.
+    lat: float | None
+    lng: float | None
+    event_date: date | None
     is_demo: bool
     # See ``EventRead.status``; a list card marks ``detected`` too.
     status: EventStatus
@@ -123,7 +127,9 @@ class PossibleDuplicateRead(BaseModel):
     # date is nullable, as it is often unknown for a machine detection.
     lat: float
     lng: float
-    event_date: date | None = None
+    # Nullable (often unknown for a machine detection) but always serialised:
+    # the sole constructor (``duplicates.list_possible_duplicates``) passes it.
+    event_date: date | None
     source_url: str
     # Geodesic distance in metres from the caller-supplied (lat, lng). Float
     # (not int) so the frontend renders "120 m" vs "0.4 km" without rounding

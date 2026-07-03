@@ -8,6 +8,7 @@ read surface (logged-in user required); public reads are a likely future.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.search import SearchResponse
+from app.schemas.search import SearchResponse, SearchTotals, SearchType
 from app.services import search as search_service
 
 logger = logging.getLogger(__name__)
@@ -59,11 +60,13 @@ def search(
         geolocations=grouped["geolocations"]["hits"],
         bounties=grouped["bounties"]["hits"],
         users=grouped["users"]["hits"],
-        total={
-            "geolocations": grouped["geolocations"]["total"],
-            "bounties": grouped["bounties"]["total"],
-            "users": grouped["users"]["total"],
-        },
+        total=SearchTotals(
+            geolocations=grouped["geolocations"]["total"],
+            bounties=grouped["bounties"]["total"],
+            users=grouped["users"]["total"],
+        ),
         query=q,
-        type=type,
+        # The ``type not in ALLOWED_TYPES`` guard above (422 otherwise) proves
+        # membership, so the narrowing cast to the Literal is sound.
+        type=cast(SearchType, type),
     )

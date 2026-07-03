@@ -1606,7 +1606,7 @@ export interface components {
         EventList: {
             author: components["schemas"]["AuthorRef"];
             /** Event Date */
-            event_date?: string | null;
+            event_date: string | null;
             /**
              * Id
              * Format: uuid
@@ -1615,9 +1615,9 @@ export interface components {
             /** Is Demo */
             is_demo: boolean;
             /** Lat */
-            lat?: number | null;
+            lat: number | null;
             /** Lng */
-            lng?: number | null;
+            lng: number | null;
             media: components["schemas"]["MediaRead"] | null;
             /**
              * Status
@@ -1638,13 +1638,13 @@ export interface components {
              */
             created_at: string;
             /** Detected From Url */
-            detected_from_url?: string | null;
+            detected_from_url: string | null;
             /** Detected Post At */
-            detected_post_at?: string | null;
+            detected_post_at: string | null;
             /** Event Date */
-            event_date?: string | null;
+            event_date: string | null;
             /** Event Time */
-            event_time?: string | null;
+            event_time: string | null;
             /**
              * Id
              * Format: uuid
@@ -1653,16 +1653,16 @@ export interface components {
             /** Is Demo */
             is_demo: boolean;
             /** Lat */
-            lat?: number | null;
+            lat: number | null;
             /** Lng */
-            lng?: number | null;
+            lng: number | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             /** Proof */
             proof: {
                 [key: string]: unknown;
             } | null;
-            requested_by?: components["schemas"]["AuthorRef"] | null;
+            requested_by: components["schemas"]["AuthorRef"] | null;
             /**
              * Source Posted At
              * Format: date-time
@@ -1796,7 +1796,7 @@ export interface components {
             /** Distance M */
             distance_m: number;
             /** Event Date */
-            event_date?: string | null;
+            event_date: string | null;
             /**
              * Id
              * Format: uuid
@@ -1903,7 +1903,7 @@ export interface components {
         SearchEventHit: {
             author: components["schemas"]["AuthorRef"];
             /** Event Date */
-            event_date?: string | null;
+            event_date: string | null;
             /**
              * Id
              * Format: uuid
@@ -1939,14 +1939,27 @@ export interface components {
             geolocations: components["schemas"]["SearchEventHit"][];
             /** Query */
             query: string;
-            /** Total */
-            total: {
-                [key: string]: number;
-            };
-            /** Type */
-            type: string;
+            total: components["schemas"]["SearchTotals"];
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "all" | "geolocation" | "bounty" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
+        };
+        /**
+         * SearchTotals
+         * @description Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
+         *     bounties, 1 analyst" without re-summing the (LIMIT-capped) hit lists.
+         */
+        SearchTotals: {
+            /** Bounties */
+            bounties: number;
+            /** Geolocations */
+            geolocations: number;
+            /** Users */
+            users: number;
         };
         /** SearchUserHit */
         SearchUserHit: {
