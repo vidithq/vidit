@@ -24,6 +24,7 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers._event_query import AUTHOR_FILTER_PATTERN, apply_author_filter
 from app.routers.events._common import build_geolocation_read
 from app.schemas.event import (
     EventList,
@@ -31,10 +32,6 @@ from app.schemas.event import (
 )
 
 router = APIRouter()
-# Reject LIKE-injection at the input boundary — the value flows into
-# `User.username.ilike(f"%{author}%")` in `_apply_filters`. Restricting to
-# characters real usernames carry kills `%` / `\` vectors before the SQL builder.
-_AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 # Accepted ``media`` filter values (the ``Media.media_type`` domain). Reject
 # anything else at the boundary so a typo returns 422 instead of silently
 # matching nothing — parameterized, so never an injection risk.
@@ -182,7 +179,7 @@ def _apply_filters(
         query = query.filter(Event.created_at < parsed_submitted_to + timedelta(days=1))
 
     if author:
-        query = query.join(Event.author).filter(User.username.ilike(f"%{author}%"))
+        query = apply_author_filter(query, author)
 
     if media:
         # ``.media.any(...)`` → EXISTS, so a geo with several attachments isn't
@@ -257,7 +254,7 @@ def list_points(
     event_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
-    author: str | None = Query(None, pattern=_AUTHOR_FILTER_PATTERN),
+    author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     # ``media`` accepts multiple values (``?media=image&media=video``); a geo
     # matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
@@ -363,7 +360,7 @@ def list_geolocations(
     event_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
-    author: str | None = Query(None, pattern=_AUTHOR_FILTER_PATTERN),
+    author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     limit: int = 200,
     db: Session = Depends(get_db),
 ):

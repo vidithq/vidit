@@ -30,6 +30,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
+from app.routers._event_query import AUTHOR_FILTER_PATTERN, apply_author_filter
 from app.routers._forms import (
     parse_iso_datetime,
     parse_json_id_list,
@@ -70,11 +71,6 @@ def _raise_bounty_error(exc: EvidenceIntakeError) -> NoReturn:
 # few avatars + a count. Tune if the avatar strip grows.
 LIST_CLAIMER_SAMPLE_SIZE = 3
 
-# Reject LIKE-injection at the input boundary — the value flows into
-# `User.username.ilike(f"%{author}%")` in `_apply_filters`. Restricting to
-# characters real usernames carry kills `%` / `\` vectors before the SQL builder.
-_AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
-
 
 def _apply_filters(
     query: SAQuery,
@@ -102,7 +98,7 @@ def _apply_filters(
         query = query.join(Event.tags).filter(Tag.name == tag)
 
     if author:
-        query = query.join(Event.author).filter(User.username.ilike(f"%{author}%"))
+        query = apply_author_filter(query, author)
 
     return query
 
@@ -225,7 +221,7 @@ def list_bounties(
     request: Request,
     status: str | None = None,
     tag: str | None = None,
-    author: str | None = Query(None, pattern=_AUTHOR_FILTER_PATTERN),
+    author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     limit: int = 50,
     db: Session = Depends(get_db),
 ):
