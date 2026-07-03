@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     # Per-submission file count cap: above a realistic OSINT submission (one
     # source video + a handful of frames), tight enough to refuse pathological
     # multi-thousand-file payloads that would pin the worker through the
-    # Pillow + derivative + S3 pipeline. Lives in config (not the geolocations
+    # Pillow + derivative + S3 pipeline. Lives in config (not the events
     # router) so the body-size middleware reads it at boot without a
     # ``main → routers`` import edge. Per-file caps are the two settings above.
-    max_files_per_geolocation: int = 12
+    max_files_per_event: int = 12
     # Per-user ceiling on inline-proof image uploads in any rolling 24h window.
     # Above a legitimate analyst workflow (a writeup with a dozen annotated
     # frames), caps a single account being weaponised to fill the bucket.

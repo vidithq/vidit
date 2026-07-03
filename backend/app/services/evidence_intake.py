@@ -41,9 +41,9 @@ from app.services.storage import (
 # realistic OSINT batch (one source video + a handful of frames), tight
 # enough to refuse a pathological multi-thousand-file payload that would pin
 # the worker through the Pillow + derivative + S3 pipeline. Backed by the
-# historically-named ``max_files_per_geolocation`` setting, which `main`'s
-# body-size middleware also reads at boot.
-MAX_FILES_PER_SUBMISSION = settings.max_files_per_geolocation
+# ``max_files_per_event`` setting, which `main`'s body-size middleware also
+# reads at boot.
+MAX_FILES_PER_SUBMISSION = settings.max_files_per_event
 
 
 class EvidenceIntakeError(Exception):
@@ -103,8 +103,8 @@ async def attach_media_and_commit(
 ) -> None:
     """Validate, upload, attach a ``Media`` row per file, then commit.
 
-    Every ``Media`` row points at the owning ``geolocations`` row via
-    ``geolocation_id = owner_id`` (media has a single owner since the merge);
+    Every ``Media`` row points at the owning ``events`` row via
+    ``event_id = owner_id`` (media has a single owner since the merge);
     ``upload`` is the storage uploader the caller binds. The owning row must
     already be flushed so ``owner_id`` is populated.
 

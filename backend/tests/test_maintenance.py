@@ -177,13 +177,13 @@ def test_reap_proof_orphans_skips_recent_and_linked(db, regular_user, monkeypatc
     old_orphan = ProofImage(
         s3_key=f"proof/{regular_user.id}/old-{uuid.uuid4().hex}.jpg",
         user_id=regular_user.id,
-        geolocation_id=None,
+        event_id=None,
         created_at=now - timedelta(hours=48),
     )
     recent_orphan = ProofImage(
         s3_key=f"proof/{regular_user.id}/new-{uuid.uuid4().hex}.jpg",
         user_id=regular_user.id,
-        geolocation_id=None,
+        event_id=None,
         created_at=now - timedelta(hours=2),
     )
     db.add_all([old_orphan, recent_orphan])

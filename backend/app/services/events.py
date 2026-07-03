@@ -216,9 +216,9 @@ async def create_with_evidence(
         db.query(ProofImage).filter(
             ProofImage.s3_key.in_(keys),
             ProofImage.user_id == current_user.id,
-            ProofImage.geolocation_id.is_(None),
+            ProofImage.event_id.is_(None),
         ).update(
-            {ProofImage.geolocation_id: geo.id},
+            {ProofImage.event_id: geo.id},
             synchronize_session=False,
         )
 

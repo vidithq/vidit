@@ -127,7 +127,7 @@ def delete_geolocation(
     # problem, not addressed here.
     proof_image_keys = [
         row[0]
-        for row in db.query(ProofImage.s3_key).filter(ProofImage.geolocation_id == geo.id).all()
+        for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
     ]
 
     db.delete(geo)

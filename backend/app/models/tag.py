@@ -30,4 +30,4 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     category: Mapped[TagCategory] = mapped_column(String(20), nullable=False)
 
-    geolocations = relationship("Event", secondary=event_tags, back_populates="tags")
+    events = relationship("Event", secondary=event_tags, back_populates="tags")

@@ -74,7 +74,7 @@ class EventClaim(Base):
         nullable=False,
     )
 
-    geolocation = relationship("Event", back_populates="claims")
+    event = relationship("Event", back_populates="claims")
     user = relationship("User")
 
     __table_args__ = (
@@ -175,13 +175,13 @@ class Event(Base):
     # dropped en masse by the wipe button. Real submissions never set this.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    author = relationship("User", foreign_keys=[author_id], back_populates="geolocations")
+    author = relationship("User", foreign_keys=[author_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])
-    media = relationship("Media", back_populates="geolocation", cascade="all, delete-orphan")
-    tags = relationship("Tag", secondary="event_tags", back_populates="geolocations")
+    media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary="event_tags", back_populates="events")
     claims = relationship(
         "EventClaim",
-        back_populates="geolocation",
+        back_populates="event",
         cascade="all, delete-orphan",
         order_by="EventClaim.created_at.desc()",
     )

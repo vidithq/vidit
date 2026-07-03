@@ -140,7 +140,7 @@ def sanitize_tiptap_doc(doc: Any, *, allow_images: bool = True) -> dict[str, Any
 
     ``allow_images=False`` drops every image node. Bounty proofs use this:
     the bounty create path never adopts inline images into ``proof_images``
-    rows (that table only has a ``geolocation_id``), so a kept image would
+    rows (that table only has an ``event_id``), so a kept image would
     orphan and get reaped — a broken image in the stored proof. Geolocations
     adopt their images, so they keep the default.
     """

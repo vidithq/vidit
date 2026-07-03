@@ -82,7 +82,7 @@ def reap_proof_image_orphans(db: Session) -> dict[str, int]:
     orphans = (
         db.query(ProofImage)
         .filter(
-            ProofImage.geolocation_id.is_(None),
+            ProofImage.event_id.is_(None),
             ProofImage.created_at < cutoff,
         )
         .all()
@@ -110,7 +110,7 @@ def reap_proof_image_orphans(db: Session) -> dict[str, int]:
     succeeded_ids = [row.id for row in orphans if row.s3_key not in failed_keys]
     rows_deleted = 0
     if succeeded_ids:
-        # Re-assert geolocation_id IS NULL inside the DELETE: guards the
+        # Re-assert event_id IS NULL inside the DELETE: guards the
         # narrow race where a user links one of these rows between the
         # SELECT above and this DELETE, which would otherwise silently drop
         # a now-linked row.
@@ -118,7 +118,7 @@ def reap_proof_image_orphans(db: Session) -> dict[str, int]:
             db.query(ProofImage)
             .filter(
                 ProofImage.id.in_(succeeded_ids),
-                ProofImage.geolocation_id.is_(None),
+                ProofImage.event_id.is_(None),
             )
             .delete(synchronize_session=False)
         )

@@ -63,7 +63,7 @@ async def upload_proof_image_endpoint(
 ):
     """Upload an inline image referenced from the proof Tiptap document.
 
-    Inserts a `proof_images` row with `geolocation_id=NULL` so the upload
+    Inserts a `proof_images` row with `event_id=NULL` so the upload
     is tracked before the form is submitted. It's linked to a geolocation
     when `POST /geolocations` runs and the URL survives sanitization; if
     the form is abandoned the row stays orphan and is reaped via the admin

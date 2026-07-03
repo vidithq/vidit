@@ -60,7 +60,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # file (bounded by the stream-reader, no worse than the per-file cap).
 #
 # Ceiling admits the largest legitimate request — one ``max_video_size`` video
-# (100 MB) OR a full ``max_files_per_geolocation`` batch at ``max_image_size``
+# (100 MB) OR a full ``max_files_per_event`` batch at ``max_image_size``
 # (12 × 10 MB = 120 MB) — plus 10 MB for multipart envelope and form fields.
 # PR #100 caught the previous shape (``max_video_size + 10 MB`` = 110 MB)
 # silently rejecting a 12-image submission. All three caps read from
@@ -68,7 +68,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # ``from app.routers.events import …`` formed a fragile import edge).
 _MAX_REQUEST_BODY_BYTES = max(
     settings.max_video_size,
-    settings.max_files_per_geolocation * settings.max_image_size,
+    settings.max_files_per_event * settings.max_image_size,
 ) + (10 * 1024 * 1024)
 
 

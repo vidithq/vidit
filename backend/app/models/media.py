@@ -49,7 +49,7 @@ class Media(Base):
         nullable=False,
     )
 
-    geolocation = relationship("Event", back_populates="media")
+    event = relationship("Event", back_populates="media")
 
     __table_args__ = (
         # Non-unique partial index on the populated cohort — "find every row with
