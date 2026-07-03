@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -24,6 +25,20 @@ from app.models.event import EventStatus
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
+
+# The ``type=`` query values, echoed back on the response. Mirrors
+# ``services.search.ALLOWED_TYPES`` (kept a plain set there for the runtime
+# membership check); this Literal is the typed contract the OpenAPI spec ships.
+SearchType = Literal["all", "geolocation", "bounty", "user"]
+
+
+class SearchTotals(BaseModel):
+    """Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
+    bounties, 1 analyst" without re-summing the (LIMIT-capped) hit lists."""
+
+    geolocations: int
+    bounties: int
+    users: int
 
 
 class SearchEventHit(BaseModel):
@@ -34,7 +49,9 @@ class SearchEventHit(BaseModel):
     title_highlight: str
     lat: float
     lng: float
-    event_date: date | None = None
+    # Nullable (a machine detection often has no known date) but always
+    # serialised: ``services.search.search_geolocations`` sets the key on every hit.
+    event_date: date | None
     is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
@@ -90,12 +107,12 @@ class SearchResponse(BaseModel):
 
     # Denormalised totals so the UI renders group counts ("12 geolocations, 4
     # bounties, 1 analyst") without re-summing the lists.
-    total: dict[str, int]
+    total: SearchTotals
 
     # Echoes the inputs so the frontend can confirm the response matches the
     # current query state (the browser may have several requests in flight as
     # the user types).
     query: str
-    type: str
+    type: SearchType
 
     model_config = {"from_attributes": True}

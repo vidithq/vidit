@@ -11,6 +11,7 @@ import { search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
+  SearchBountyHit,
   SearchEventHit,
   SearchResponse,
   SearchType,
@@ -219,18 +220,7 @@ function SearchPageBody() {
             {showGroup("bounty") && results.bounties.length > 0 && (
               <ResultGroup title="Bounties" count={results.total.bounties}>
                 {results.bounties.map((b) => (
-                  <EntityCard
-                    key={b.id}
-                    variant="compact"
-                    detailHref={`/bounties/${b.id}`}
-                    title={<Highlighted value={b.title_highlight} />}
-                    titleText={b.title}
-                    badge={<StatusBadge status={b.status} />}
-                    media={b.media[0]}
-                    author={b.author}
-                    source={{ url: b.source_url, isDemo: b.is_demo }}
-                    working={b.claimer_count}
-                  />
+                  <BountyResult key={b.id} hit={b} />
                 ))}
               </ResultGroup>
             )}
@@ -305,6 +295,22 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}
+    />
+  );
+}
+
+function BountyResult({ hit }: { hit: SearchBountyHit }) {
+  return (
+    <EntityCard
+      variant="compact"
+      detailHref={`/bounties/${hit.id}`}
+      title={<Highlighted value={hit.title_highlight} />}
+      titleText={hit.title}
+      badge={<StatusBadge status={hit.status} />}
+      media={hit.media[0]}
+      author={hit.author}
+      source={{ url: hit.source_url, isDemo: hit.is_demo }}
+      working={hit.claimer_count}
     />
   );
 }

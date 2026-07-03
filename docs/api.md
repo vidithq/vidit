@@ -1043,6 +1043,8 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 
 `bio_highlight` is `null` when only the username matched, the UI uses this to hide the snippet block instead of rendering an un-highlighted bio. Groups the caller didn't request via `type=` come back as empty arrays.
 
+`total` is a fixed-key object (`geolocations`, `bounties`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `geolocation`, `bounty`, `user`.
+
 **Errors:**
 | Code | Case |
 |------|------|

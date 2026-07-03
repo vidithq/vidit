@@ -42,20 +42,6 @@ export type Tag = components["schemas"]["TagRead"];
  *  request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
-interface EventListItem {
-  id: string;
-  title: string;
-  /** Optional: a ``requested`` event has no coordinates yet, and a ``detected``
-   *  draft may be locationless. Present for every ``geolocated`` row. */
-  lat: number | null;
-  lng: number | null;
-  event_date: string | null;
-  is_demo: boolean;
-  status: EventStatus;
-  author: Author;
-  tags: Tag[];
-}
-
 /** Compact point from /events/points:
  *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings,
@@ -137,98 +123,36 @@ export interface TweetImportResponse {
  * (GET /events/possible-duplicates). Soft-warning shape, just enough
  * to recognise the same event and decide whether to abandon the submission.
  */
-export interface PossibleDuplicate {
-  id: string;
-  title: string;
-  lat: number;
-  lng: number;
-  event_date: string | null;
-  source_url: string;
-  /** Geodesic distance in metres from the proposed coordinates. */
-  distance_m: number;
-  author: Author;
-}
+export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
 
 /** A stored media row (image or video) on an event. `sha256` /
  *  `original_filename` are null on pre-column + demo-pool rows. */
 export type Media = components["schemas"]["MediaRead"];
 
-export interface EventDetail extends EventListItem {
-  source_url: string;
-  /** Optional time-of-day for ``event_date`` (UTC, ``HH:MM:SS``); null when the
-   *  hour is unknown. */
-  event_time: string | null;
-  /** When the original source posted the media: a real post instant (UTC),
-   *  always present. ISO datetime. Distinct from ``event_date`` (when the event
-   *  happened) and ``created_at`` (submission). */
-  source_posted_at: string;
-  /** For a ``detected`` row, the post it was imported from — a provenance
-   *  link distinct from ``source_url`` (footage origin). Null for human
-   *  submits. */
-  detected_from_url: string | null;
-  /** When the analyst posted this geolocation on X (the imported tweet's time);
-   *  null for human submits. The "who geolocated first" precedence signal. */
-  detected_post_at: string | null;
-  proof: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-  media: Media[];
-  /** Who opened the request this event was fulfilled from, preserved across
-   *  fulfilment — lets the detail page render "originally requested by @x". Null
-   *  for a directly-submitted geolocation (no request preceded it). */
-  requested_by: Author | null;
-}
+/** Full geolocation detail (`GET /events/{id}`, `GET /events/detections`).
+ *  Adds the source URL, the proof body, the full media list, provenance
+ *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
+ *  trace on top of the compact ``EventList`` card fields. ``lat`` / ``lng`` /
+ *  ``event_date`` / ``event_time`` are nullable but always serialised. */
+export type EventDetail = components["schemas"]["EventRead"];
 
 /** The requested-view (bounty) shares the one unified lifecycle enum; a
  *  requested row is ``requested`` or (once withdrawn) ``closed``. */
 export type BountyStatus = EventStatus;
 
-export interface BountyListItem {
-  id: string;
-  title: string;
-  source_url: string;
-  status: BountyStatus;
-  created_at: string;
-  /** TRUE iff seeded by the admin "Demo bounties" panel. The UI swaps the
-   *  synthetic source_url for a "synthetic" label so beta testers don't
-   *  click out to a 404. Mirrors EventListItem.is_demo. */
-  is_demo: boolean;
-  author: Author;
-  media: Media[];
-  tags: Tag[];
-  /** Total number of analysts currently signaling "I'm working on this". */
-  claimer_count: number;
-  /** Newest claimers, capped server-side (typically 3) — avatar strip on the index. */
-  claimer_sample: Author[];
-}
+/** Compact bounty card (`GET /bounties`). The requested-view counterpart of the
+ *  ``EventList`` geolocation card: carries the denormalised ``claimer_count``
+ *  plus a capped ``claimer_sample`` (newest claimers) for the index avatar strip. */
+export type BountyListItem = components["schemas"]["BountyList"];
 
-export interface BountyDetail {
-  id: string;
-  title: string;
-  source_url: string;
-  /** The in-progress proof (Tiptap JSON), mirroring a geolocation's `proof`.
-   *  Optional and image-free. Null when the poster left it empty. */
-  proof: Record<string, unknown> | null;
-  /** When the event happened: date (ISO YYYY-MM-DD) + optional UTC time-of-day.
-   *  Nullable: a bounty is an unfinished geolocation. */
-  event_date: string | null;
-  event_time: string | null;
-  /** When the source posted the media: a real post instant (UTC), always
-   *  present (the bounty's source_url is required). ISO datetime. */
-  source_posted_at: string;
-  status: BountyStatus;
-  created_at: string;
-  updated_at: string;
-  closed_at: string | null;
-  is_demo: boolean;
-  author: Author;
-  media: Media[];
-  tags: Tag[];
-  /** Full list of analysts currently signaling on this bounty. */
-  claimers: Author[];
-}
+/** Full bounty detail (`GET /bounties/{id}`). The requested-view counterpart of
+ *  {@link EventDetail}: adds the proof body, the ``closed_at`` timestamp, and the
+ *  full ``claimers`` list. ``event_date`` / ``event_time`` are nullable (a bounty
+ *  is an unfinished geolocation). */
+export type BountyDetail = components["schemas"]["BountyRead"];
 
-export type SearchType = "all" | "geolocation" | "bounty" | "user";
+/** The ``type=`` filter values, echoed back on the response. */
+export type SearchType = components["schemas"]["SearchResponse"]["type"];
 
 /**
  * Each search hit's ``*_highlight`` field is the original text with STX /
@@ -238,56 +162,19 @@ export type SearchType = "all" | "geolocation" | "bounty" | "user";
  * the even/odd parity. The frontend renders the fragments as ``<mark>``
  * client-side; no raw HTML crosses the API boundary (XSS-safe).
  */
-export interface SearchEventHit {
-  id: string;
-  title: string;
-  title_highlight: string;
-  lat: number;
-  lng: number;
-  event_date: string | null;
-  is_demo: boolean;
-  status: EventStatus;
-  author: Author;
-  tags: Tag[];
-}
+export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-export interface SearchBountyHit {
-  id: string;
-  title: string;
-  title_highlight: string;
-  source_url: string;
-  status: BountyStatus;
-  created_at: string;
-  is_demo: boolean;
-  author: Author;
-  media: Media[];
-  tags: Tag[];
-  /** Mirrors ``BountyListItem.claimer_count`` so the card renders the
-   *  same "N working" badge. */
-  claimer_count: number;
-}
+/** A requested-view (bounty) search hit. Mirrors {@link BountyListItem} plus
+ *  the ``title_highlight`` fragment; carries ``claimer_count`` so the card
+ *  renders the same "N working" badge. */
+export type SearchBountyHit = components["schemas"]["SearchBountyHit"];
 
-export interface SearchUserHit {
-  id: string;
-  username: string;
-  username_highlight: string;
-  bio: string | null;
-  /** Populated only when the bio matched (backend nulls the unmarked case)
-   *  so the UI can hide the snippet block cleanly. */
-  bio_highlight: string | null;
-  is_trusted: boolean;
-  trust_reason: string | null;
-  avatar_url: string | null;
-}
+/** An analyst search hit. ``bio_highlight`` is populated only when the bio
+ *  matched (the backend nulls the unmarked case) so the UI can hide the
+ *  snippet block cleanly. */
+export type SearchUserHit = components["schemas"]["SearchUserHit"];
 
-export interface SearchResponse {
-  geolocations: SearchEventHit[];
-  bounties: SearchBountyHit[];
-  users: SearchUserHit[];
-  /** Denormalised counts so the group headers don't re-sum the lists. */
-  total: { geolocations: number; bounties: number; users: number };
-  /** Echoed input — comparing ``query`` to the current input lets the UI
-   *  discard out-of-order responses while the user types. */
-  query: string;
-  type: SearchType;
-}
+/** Grouped `GET /search` result set. ``total`` carries the per-group pre-LIMIT
+ *  match counts; ``query`` / ``type`` echo the inputs so the UI can discard
+ *  out-of-order responses while the user types. */
+export type SearchResponse = components["schemas"]["SearchResponse"];
