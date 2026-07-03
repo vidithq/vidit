@@ -126,8 +126,7 @@ def delete_geolocation(
     # strand referenced files. Media files are a known parallel orphan
     # problem, not addressed here.
     proof_image_keys = [
-        row[0]
-        for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
+        row[0] for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
     ]
 
     db.delete(geo)

@@ -266,8 +266,7 @@ def hard_delete_geolocation(
     # gets actual keys (its contract).
     storage = get_storage()
     proof_image_keys = [
-        row[0]
-        for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
+        row[0] for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
     ]
     media_keys: list[str] = []
     for m in geo.media:
