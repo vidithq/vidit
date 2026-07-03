@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo gen-api-types check-dup hygiene
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline mock-admin mock-demo-user promo gen-api-types check-dup vulture hygiene
 
 help:
 	@echo "Available commands:"
@@ -21,7 +21,7 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
-	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip) checks"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the closed-beta promo MP4 (see video/README.md)"
 
@@ -120,7 +120,11 @@ gen-api-types:
 check-dup:
 	npx --yes jscpd@4.2.5 backend/app frontend/src
 
-hygiene: check-dup
+# Backend dead-code gate (the analogue of the frontend's knip).
+vulture:
+	cd backend && uv run vulture
+
+hygiene: check-dup vulture
 	cd frontend && npm run knip
 	cd frontend && npm run palette:check
 
