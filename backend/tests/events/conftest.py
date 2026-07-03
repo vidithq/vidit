@@ -14,7 +14,7 @@ import pytest
 
 from app.cache import points_cache
 from app.database import SessionLocal
-from app.models.event import Event
+from app.models.event import Event, EventClaim
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
@@ -48,6 +48,23 @@ def db():
         session.close()
 
 
+def _delete_user_and_events(db, user_id) -> None:
+    """Tear a fixture user down together with everything that FKs to it.
+
+    Superset of the plain author cleanup so the bounty suite can share these
+    fixtures: bounty rows carry ``requested_by_id`` and their claimers land in
+    ``event_claims``, so we clear those too. For a user that never posted a
+    request or claimed anything (the pure geolocations suites) the extra
+    deletes are no-ops.
+    """
+    db.expire_all()
+    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
 @pytest.fixture
 def author(db):
     user = User(
@@ -59,10 +76,7 @@ def author(db):
     db.commit()
     user_id = user.id
     yield user
-    db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
+    _delete_user_and_events(db, user_id)
 
 
 @pytest.fixture
@@ -76,10 +90,7 @@ def second_user(db):
     db.commit()
     user_id = user.id
     yield user
-    db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
+    _delete_user_and_events(db, user_id)
 
 
 @pytest.fixture

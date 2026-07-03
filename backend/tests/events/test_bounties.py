@@ -37,10 +37,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
@@ -55,67 +52,17 @@ from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
+from tests.events._helpers import _make_geo, client
 
-client = TestClient(app)
+# ``db`` / ``author`` / ``second_user`` / ``free_tag`` / ``conflict_tag`` /
+# ``capture_source_tag``, the autouse cookie-and-cache reset, and the shared
+# ``client`` all come from the package ``conftest`` + ``_helpers``. The
+# author / second_user teardown there is a superset that also clears
+# ``event_claims`` and ``requested_by_id`` rows, which the bounty flows need.
+# ``third_user`` (a second claimer) is the one extra actor this suite adds.
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def author(db):
-    user = User(
-        username=f"bauth{uuid.uuid4().hex[:8]}",
-        email=f"bauth-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    # Manual cascade: events (requested + fulfilled) authored OR requested by the
-    # user → media + event_claims (DB FK CASCADE); their claims; then user.
-    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def second_user(db):
-    user = User(
-        username=f"both{uuid.uuid4().hex[:8]}",
-        email=f"both-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture
@@ -132,39 +79,6 @@ def third_user(db):
     db.expire_all()
     db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def free_tag(db):
-    tag = Tag(name=f"btag-{uuid.uuid4().hex[:8]}", category="free")
-    db.add(tag)
-    db.commit()
-    tag_id = tag.id
-    yield tag
-    db.execute(Tag.__table__.delete().where(Tag.id == tag_id))
-    db.commit()
-
-
-@pytest.fixture
-def conflict_tag(db):
-    tag = Tag(name=f"bconflict-{uuid.uuid4().hex[:8]}", category="conflict")
-    db.add(tag)
-    db.commit()
-    tag_id = tag.id
-    yield tag
-    db.execute(Tag.__table__.delete().where(Tag.id == tag_id))
-    db.commit()
-
-
-@pytest.fixture
-def capture_source_tag(db):
-    tag = Tag(name=f"bcapture-{uuid.uuid4().hex[:8]}", category="capture_source")
-    db.add(tag)
-    db.commit()
-    tag_id = tag.id
-    yield tag
-    db.execute(Tag.__table__.delete().where(Tag.id == tag_id))
     db.commit()
 
 
@@ -254,7 +168,7 @@ def test_list_excludes_located_events(db, author):
     by ``/geolocations`` and must never surface in the requested view — even
     though it shares the table."""
     requested = _make_bounty(db, author=author)
-    located = _make_geolocated(db, author=author)
+    located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
 
     ids = {row["id"] for row in client.get("/api/v1/bounties").json()}
     assert str(requested.id) in ids
@@ -359,7 +273,7 @@ def test_detail_404_for_soft_deleted(db, author):
 def test_detail_404_for_located_event(db, author):
     """A ``geolocated`` row isn't in the requested view; reading it through the
     bounty router 404s (it lives at ``/geolocations`` now)."""
-    located = _make_geolocated(db, author=author)
+    located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
     response = client.get(f"/api/v1/bounties/{located.id}")
     assert response.status_code == 404
 
@@ -748,7 +662,7 @@ def test_delete_no_longer_blocked_by_a_later_geolocation(db, author, second_user
     bounty_id = bounty.id
     # An independent located event by another analyst — no relationship to the
     # request now that the promotion apparatus is gone.
-    _make_geolocated(db, author=second_user)
+    _make_geo(db, author=second_user, status=STATUS_GEOLOCATED)
 
     response = client.delete(f"/api/v1/bounties/{bounty_id}", headers=login_as(client, author))
     assert response.status_code == 204
@@ -893,26 +807,6 @@ def test_close_rejected_on_terminal_state(db, author):
 # transitioned in place to ``geolocated`` by the submit endpoint. Any authed user
 # may answer an open request; ``author_id`` transfers to the fulfiller while
 # ``requested_by`` keeps the original poster.
-
-
-def _make_geolocated(db, *, author: User) -> Event:
-    """A directly-submitted ``geolocated`` event (has a location). Helper for the
-    "located events don't show in the requested view" assertions."""
-    from geoalchemy2.shape import from_shape
-    from shapely.geometry import Point
-
-    geo = Event(
-        author_id=author.id,
-        title=f"Located {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/located",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_GEOLOCATED,
-    )
-    db.add(geo)
-    db.commit()
-    db.refresh(geo)
-    return geo
 
 
 def _submit_fulfilment(client, bounty_id, fulfiller, *tags, **overrides):
