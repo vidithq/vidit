@@ -194,6 +194,13 @@ class Event(Base):
             "AND (status <> 'geolocated' OR location IS NOT NULL)",
             name="ck_events_location_status",
         ),
+        # Pin the ``status`` domain at the DB, not just the app-layer Literal: a
+        # bad write (a typo, or a new state the location CHECK ignores) is
+        # rejected by Postgres. Mirror of ``EventStatus``; keep the two in step.
+        CheckConstraint(
+            "status IN ('requested', 'detected', 'geolocated', 'closed')",
+            name="ck_events_status_valid",
+        ),
         # "Open requests / detections / geolocations, newest first" — the list,
         # map and requested-view (ex-bounty) reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
