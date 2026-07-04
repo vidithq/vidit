@@ -7,6 +7,7 @@ from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers.events._common import coords_or_none, source_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserUpdate
 from app.services import social
@@ -96,7 +97,7 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
-    count = db.query(Event).filter(Event.author_id == user.id, Event.deleted_at.is_(None)).count()
+    count = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
     following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
@@ -162,23 +163,23 @@ def get_user_geolocations(
     if per_page > 100:
         per_page = 100
 
-    total = db.query(Event).filter(Event.author_id == user.id, Event.deleted_at.is_(None)).count()
+    total = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
 
     rows = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
         )
         # ``selectinload`` for tags + media: a many-to-many / one-to-many
         # ``joinedload`` would row-multiply against ``LIMIT`` and silently
         # truncate the page.
         .options(
-            joinedload(Event.author),
+            joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.media),
         )
-        .filter(Event.author_id == user.id, Event.deleted_at.is_(None))
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
         .order_by(Event.event_date.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
@@ -189,13 +190,13 @@ def get_user_geolocations(
         EventList(
             id=geo.id,
             title=geo.title,
-            lat=lat,
-            lng=lng,
+            event_coords=coords_or_none(lat, lng),
             event_date=geo.event_date,
             is_demo=geo.is_demo,
             status=geo.status,
-            author=geo.author,
-            media=geo.media[0] if geo.media else None,
+            before_closed_status=geo.before_closed_status,
+            owner=geo.owner,
+            media=source_media(geo),
             tags=geo.tags,
         )
         for geo, lat, lng in rows

@@ -1,7 +1,12 @@
 import { Bot, MapPin, User, X } from "lucide-react";
 import type { ReactNode } from "react";
+import type { components } from "@/lib/api-types";
 import type { EventStatus } from "@/types";
 import { Pill, type PillTone } from "@/components/ui/Pill";
+
+/** The status a closed row held just before closing: `requested` = the author
+ *  withdrew a request, `detected` = the owner rejected a detection. */
+type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_status"];
 
 /**
  * The unified event lifecycle status as a coloured pill: one badge for all four
@@ -17,7 +22,9 @@ import { Pill, type PillTone } from "@/components/ui/Pill";
  *   by submitting a reviewed detection). The default located state. It does NOT
  *   claim independent verification, only that a person stands behind it; the
  *   neutral colour keeps the accent states the attention-drawing marks.
- * - `closed` (neutral, a cross): a withdrawn request, kept as an audit row.
+ * - `closed` (neutral, a cross): a terminal audit row. Its tooltip reflects
+ *   ``before_closed_status`` when supplied — a withdrawn request vs a rejected
+ *   detection — since the one badge covers both dismissal shapes.
  *
  * Shown on cards, the detail pages (geolocation + requested), search results,
  * and the Detections queue.
@@ -52,14 +59,31 @@ const STATUS: Record<EventStatus, StatusMeta> = {
     tone: "neutral",
     icon: <X size={11} />,
     label: "Closed",
-    title: "The author withdrew this request",
+    // Generic fallback; `closedTitle` refines it from `before_closed_status`.
+    title: "Closed, kept as an audit row",
   },
 };
 
-export function StatusBadge({ status }: { status: EventStatus }) {
+/** The closed tooltip, keyed off which state the row left. */
+function closedTitle(before: BeforeClosedStatus): string {
+  if (before === "requested") return "The author withdrew this request";
+  if (before === "detected") return "The owner rejected this detection";
+  return STATUS.closed.title;
+}
+
+export function StatusBadge({
+  status,
+  beforeClosedStatus = null,
+}: {
+  status: EventStatus;
+  /** For a `closed` row, the status it held before closing, so the tooltip
+   *  tells a withdrawn request from a rejected detection. Ignored otherwise. */
+  beforeClosedStatus?: BeforeClosedStatus;
+}) {
   const meta = STATUS[status];
+  const title = status === "closed" ? closedTitle(beforeClosedStatus) : meta.title;
   return (
-    <Pill tone={meta.tone} icon={meta.icon} title={meta.title}>
+    <Pill tone={meta.tone} icon={meta.icon} title={title}>
       {meta.label}
     </Pill>
   );

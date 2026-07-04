@@ -291,7 +291,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
-      author={hit.author}
+      author={hit.owner}
       date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}
@@ -308,7 +308,7 @@ function BountyResult({ hit }: { hit: SearchBountyHit }) {
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
-      author={hit.author}
+      author={hit.owner}
       source={{ url: hit.source_url, isDemo: hit.is_demo }}
       working={hit.claimer_count}
     />

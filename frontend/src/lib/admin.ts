@@ -70,8 +70,9 @@ export interface AdminEventDeleteResponse {
   title: string;
   mode: "soft" | "hard";
   deleted_at: string | null;
+  /** Every file swept, source and proof roles alike (`proof_images` folded
+   *  into `media`, so there's no separate proof-image tally). */
   media_count: number;
-  proof_image_count: number;
 }
 
 export function deleteEvent(
@@ -88,8 +89,9 @@ export interface AdminUserDeleteResponse {
   mode: "soft" | "hard";
   deleted_at: string | null;
   cascaded_geolocations: number;
+  /** Every file swept, source and proof roles alike (`proof_images` folded
+   *  into `media`, so there's no separate proof-image tally). */
   media_count: number;
-  proof_image_count: number;
 }
 
 export function deleteUser(
@@ -162,12 +164,12 @@ export function wipeDemoBounties(): Promise<WipeDemoBountiesResponse> {
 
 // ── Maintenance ───────────────────────────────────────────────────────
 
+/** One shape for both reapers; the UI renders only the keys present in the
+ *  response. Mirrors the backend `AdminMaintenanceResponse`. */
 export interface MaintenanceResponse {
   expired?: number;
   old_consumed?: number;
-  rows_deleted?: number;
-  s3_deleted?: number;
-  s3_failed?: number;
+  pending_registrations_deleted?: number;
 }
 
 export function reapAuthTokens(): Promise<MaintenanceResponse> {
@@ -176,9 +178,9 @@ export function reapAuthTokens(): Promise<MaintenanceResponse> {
   });
 }
 
-export function reapProofOrphans(): Promise<MaintenanceResponse> {
+export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>(
-    "/admin/maintenance/reap-proof-orphans",
+    "/admin/maintenance/reap-pending-registrations",
     { method: "POST" }
   );
 }

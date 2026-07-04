@@ -14,7 +14,7 @@ import pytest
 
 from app.cache import points_cache
 from app.database import SessionLocal
-from app.models.event import Event, EventClaim
+from app.models.event import Event, EventGeolocator, EventInvestigator
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
@@ -51,15 +51,20 @@ def db():
 def _delete_user_and_events(db, user_id) -> None:
     """Tear a fixture user down together with everything that FKs to it.
 
-    Superset of the plain author cleanup so the bounty suite can share these
-    fixtures: bounty rows carry ``requested_by_id`` and their claimers land in
-    ``event_claims``, so we clear those too. For a user that never posted a
-    request or claimed anything (the pure geolocations suites) the extra
-    deletes are no-ops.
+    Superset of the plain owner cleanup so the requested-view suite can share
+    these fixtures: request rows carry ``requested_by_id`` and their
+    contributor signals land in ``event_investigators`` / ``event_geolocators``,
+    so we clear those too. For a user that never posted a request or signalled
+    anything (the pure located suites) the extra deletes are no-ops.
     """
     db.expire_all()
-    db.query(EventClaim).filter(EventClaim.user_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(EventInvestigator).filter(EventInvestigator.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(EventGeolocator).filter(EventGeolocator.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()

@@ -10,7 +10,6 @@ from app.models.admin_event import AdminEvent
 from app.models.event import Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
-from app.models.proof_image import ProofImage
 from app.models.user import User
 from app.schemas.admin import AdminInviteCodeRead, InviteCodeStatus
 from app.services.auth import bump_token_version, generate_invite_code
@@ -253,21 +252,18 @@ def hard_delete_geolocation(
 
     The DB transaction commits *before* the S3 delete so a flaky storage
     backend can't strand DB rows pointing at a still-live key. Per-key S3
-    failures are logged and swallowed — orphaned objects get picked up by
-    the proof-image reaper. Reachable on already-soft-deleted rows
-    (escalation: soft now, hard later) and on live rows (admin override).
+    failures are logged and swallowed (the accepted residual orphan risk).
+    Reachable on already-soft-deleted rows (escalation: soft now, hard later)
+    and on live rows (admin override).
     """
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
 
-    # Capture S3 keys *before* the cascade fires. Media rows store the
-    # public URL; reverse-lookup via the storage layer so `delete_many`
-    # gets actual keys (its contract).
+    # Capture S3 keys *before* the cascade fires — every media row, source and
+    # proof roles alike. Media rows store the public URL; reverse-lookup via
+    # the storage layer so `delete_many` gets actual keys (its contract).
     storage = get_storage()
-    proof_image_keys = [
-        row[0] for row in db.query(ProofImage.s3_key).filter(ProofImage.event_id == geo.id).all()
-    ]
     media_keys: list[str] = []
     for m in geo.media:
         key = storage.key_from_url(m.storage_url)
@@ -286,14 +282,13 @@ def hard_delete_geolocation(
         "geolocation_id": str(geo.id),
         "title": geo.title,
         "media_count": len(geo.media),
-        "proof_image_count": len(proof_image_keys),
     }
     db.delete(geo)
     log_admin_event(db, actor_id=actor_id, action="geolocation_hard_deleted", target=target)
     db.commit()
 
     sweep_keys(
-        proof_image_keys + media_keys,
+        media_keys,
         context=f"geolocation {geolocation_id} hard-delete",
     )
 
@@ -337,7 +332,7 @@ def soft_delete_user(
     cascaded_geolocations = (
         db.query(Event)
         .filter(
-            Event.author_id == user.id,
+            Event.owner_id == user.id,
             Event.deleted_at.is_(None),
         )
         .update({Event.deleted_at: now}, synchronize_session=False)
@@ -364,36 +359,32 @@ def hard_delete_user(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """GDPR-grade erasure: drop the user, every event they authored, and every
+    """GDPR-grade erasure: drop the user, every event they own, and every
     S3 object referenced by the cascade.
 
     Order matters:
 
-    1. Capture S3 keys upfront — proof images they own (linked + orphan)
-       plus media URLs across their events (located + requested). The cascade
-       about to fire would drop those rows before we could read them.
-    2. Manually delete each event: ``author_id`` carries no ``ON DELETE
+    1. Capture S3 keys upfront — the media URLs (all roles: source footage +
+       proof images) across their events, located and requested alike. The
+       cascade about to fire would drop those rows before we could read them.
+    2. Manually delete each event: ``owner_id`` carries no ``ON DELETE
        CASCADE`` (would mean retroactive constraint changes). Each ``db.delete``
-       cascades to that row's media + proof_images / claims + tags.
-    3. Delete the user. ``auth_tokens`` and still-orphan proof_images
-       cascade-drop; ``admin_events.actor_id`` and
+       cascades to that row's media / contributor rows / tags. Because the
+       owner is always among an event's geolocators, no ``geolocated`` event
+       is left below one geolocator.
+    3. Delete the user. ``auth_tokens`` and their contributor rows on other
+       people's events cascade-drop; ``admin_events.actor_id`` and
        ``invite_codes.created_by`` / ``.used_by`` flip to NULL via
        migration f1a3b5c7d9e0 — invite-code rows are audit trail and
        should outlive the user.
-    4. Commit, *then* sweep S3. On S3 failure the DB is already consistent
-       and the proof-image reaper picks up orphans.
+    4. Commit, *then* sweep S3. On S3 failure the DB is already consistent;
+       a failed delete is a logged orphan (accepted residual risk).
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
 
     storage = get_storage()
-
-    # 1. Capture every S3 key this user is responsible for, incl. orphan
-    # proof images uploaded but never submitted.
-    proof_image_keys = [
-        row[0] for row in db.query(ProofImage.s3_key).filter(ProofImage.user_id == user.id).all()
-    ]
 
     def _resolve_keys(media_rows: list[Media]) -> list[str]:
         keys: list[str] = []
@@ -409,7 +400,8 @@ def hard_delete_user(
                 )
         return keys
 
-    geolocations = db.query(Event).filter(Event.author_id == user.id).all()
+    # 1. Capture every S3 key this user's events reference (media all roles).
+    geolocations = db.query(Event).filter(Event.owner_id == user.id).all()
     geo_media_keys: list[str] = []
     for geo in geolocations:
         geo_media_keys.extend(_resolve_keys(list(geo.media)))
@@ -419,16 +411,15 @@ def hard_delete_user(
         "username": user.username,
         "geolocation_count": len(geolocations),
         "media_count": len(geo_media_keys),
-        "proof_image_count": len(proof_image_keys),
     }
 
-    # 2. Drop events manually so their media / proof_images / claims / tags
-    # cascades fire before we delete the user row.
+    # 2. Drop events manually so their media / contributor / tag cascades
+    # fire before we delete the user row.
     for geo in geolocations:
         db.delete(geo)
 
-    # 3. Drop the user row. auth_tokens + lingering orphan proof_images
-    # cascade-drop on user.id; admin_events / invite_codes FKs become NULL.
+    # 3. Drop the user row. auth_tokens + contributor rows cascade-drop on
+    # user.id; admin_events / invite_codes FKs become NULL.
     db.delete(user)
 
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)
@@ -436,7 +427,7 @@ def hard_delete_user(
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
-        proof_image_keys + geo_media_keys,
+        geo_media_keys,
         context=f"user {user_id} hard-delete",
     )
 

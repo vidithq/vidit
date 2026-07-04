@@ -52,7 +52,7 @@ def owner(db):
     yield user
     db.expire_all()
     # media rows cascade off the geolocation FK (ondelete=CASCADE).
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -98,7 +98,7 @@ async def test_assemble_persists_detected_row(db, owner):
     assert len(outcome.created) == 1
     assert outcome.skipped == 0 and outcome.recreated == 0
 
-    geo = db.query(Event).filter(Event.author_id == owner.id).one()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
     assert geo.detected_from_url == "https://x.com/own/status/1"
     assert geo.source_url == "https://x.com/own/status/1"
@@ -119,7 +119,7 @@ async def test_media_less_detection_persists(db, owner):
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert len(outcome.created) == 1
-    geo = db.query(Event).filter(Event.author_id == owner.id).one()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
@@ -129,12 +129,12 @@ async def test_idempotency_skips_existing_pair(db, owner):
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert outcome.created == [] and outcome.skipped == 1
-    assert db.query(Event).filter(Event.author_id == owner.id).count() == 1
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
 async def test_idempotency_recreates_soft_deleted_pair(db, owner):
     await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
-    geo = db.query(Event).filter(Event.author_id == owner.id).one()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.deleted_at = datetime.now(UTC)
     db.commit()
 
@@ -142,21 +142,41 @@ async def test_idempotency_recreates_soft_deleted_pair(db, owner):
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert len(outcome.created) == 1 and outcome.recreated == 1
-    live = db.query(Event).filter(Event.author_id == owner.id, Event.deleted_at.is_(None)).all()
+    live = db.query(Event).filter(Event.owner_id == owner.id, Event.deleted_at.is_(None)).all()
     assert len(live) == 1
+
+
+async def test_idempotency_recreates_closed_detection(db, owner):
+    # The owner-reject shape since the close verb: the row stays visible as
+    # ``closed`` (before_closed_status='detected'), and a re-import treats the
+    # pair as dismissed → recreate, not skip.
+    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    geo.before_closed_status = STATUS_DETECTED
+    geo.status = "closed"
+    geo.closed_at = datetime.now(UTC)
+    db.commit()
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.recreated == 1
+    fresh = db.query(Event).filter(Event.owner_id == owner.id, Event.status == "detected").all()
+    assert len(fresh) == 1
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
     # A geolocated row already at this (detected_from_url, coordinate)
     # blocks a machine re-detection.
     existing = Event(
-        author_id=owner.id,
+        owner_id=owner.id,
         title="Human submit",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/footage",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2025, 11, 12),
         status=STATUS_GEOLOCATED,
+        geolocated_at=datetime.now(UTC),
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)
@@ -173,7 +193,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
     assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
 
-    geos = db.query(Event).filter(Event.author_id == owner.id).all()
+    geos = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert len(geos) == 6
     assert all(g.status == STATUS_DETECTED for g in geos)
     assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
@@ -184,7 +204,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     media_count = (
         db.query(Media)
         .join(Event, Media.event_id == Event.id)
-        .filter(Event.author_id == owner.id)
+        .filter(Event.owner_id == owner.id)
         .count()
     )
     assert media_count == 2
@@ -227,7 +247,7 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
         db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=bad_image_fetcher
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
-    geo = db.query(Event).filter(Event.author_id == owner.id).one()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
@@ -247,7 +267,7 @@ async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
     assert outcome.failed == 1
     assert len(outcome.created) == 1
     # The failed detection's partial row was rolled back, not orphaned.
-    assert db.query(Event).filter(Event.author_id == owner.id).count() == 1
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
 def test_validate_bytes_guards_type_and_size():

@@ -105,27 +105,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/maintenance/reap-proof-orphans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maintenance Reap Proof Orphans
-         * @description Drop orphan proof_images rows + sweep S3. Replaces the cron that
-         *     previously lived in `scripts/reap_proof_image_orphans.py`.
-         */
-        post: operations["maintenance_reap_proof_orphans_api_v1_admin_maintenance_reap_proof_orphans_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -482,112 +461,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/bounties": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Bounties
-         * @description Newest-first list. Same two-step "ids then full rows" shape as
-         *     ``GET /geolocations`` so eager-loads can't inflate the LIMIT count.
-         */
-        get: operations["list_bounties_api_v1_bounties_get"];
-        put?: never;
-        /**
-         * Create Bounty
-         * @description Post a bounty (a ``requested`` event). At least one media file is
-         *     required — the platform treats bounties as "unfinished geolocations", so
-         *     the evidence the poster has must be on the row from the start.
-         *
-         *     Parses the multipart form into clean Python types; business rules + IO
-         *     live in ``services/bounties.create_with_evidence``.
-         */
-        post: operations["create_bounty_api_v1_bounties_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/bounties/{bounty_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Bounty */
-        get: operations["get_bounty_api_v1_bounties__bounty_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Bounty
-         * @description Hard-delete by the author. Cascades drop ``event_tags``,
-         *     ``event_claims`` and ``media`` rows; the S3 objects are swept after
-         *     the commit lands. Admin soft-delete lives behind the admin router and
-         *     stamps ``deleted_at`` instead.
-         */
-        delete: operations["delete_bounty_api_v1_bounties__bounty_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/bounties/{bounty_id}/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim Bounty
-         * @description Signal "I'm working on this". Idempotent — re-claiming is a 204
-         *     no-op, not a 409. Only open requests accept new claims; once a request
-         *     is closed, claiming is rejected with 409.
-         */
-        post: operations["claim_bounty_api_v1_bounties__bounty_id__claim_post"];
-        /**
-         * Unclaim Bounty
-         * @description Stop signaling. 204 even if the caller wasn't a claimer — the
-         *     user-observable post-condition (caller not in the working set) is
-         *     what we promise, not "exactly one row was deleted."
-         */
-        delete: operations["unclaim_bounty_api_v1_bounties__bounty_id__claim_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/bounties/{bounty_id}/close": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Close Bounty
-         * @description Author withdraws the request without anyone geolocating it.
-         *
-         *     Only the author can close. Already-closed requests can't be re-closed
-         *     (terminal state). Closed requests are still readable — they live on as an
-         *     audit row showing the queue tried but didn't produce a geolocation.
-         */
-        post: operations["close_bounty_api_v1_bounties__bounty_id__close_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -595,11 +468,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Geolocations */
-        get: operations["list_geolocations_api_v1_events_get"];
+        /**
+         * List Events
+         * @description Newest-first cards for one lifecycle view.
+         *
+         *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
+         *     queue (ex ``/bounties``), whose cards additionally carry the investigator
+         *     aggregates (count + a small newest-first sample). Two-step "ids then full
+         *     rows" shape so eager-loads can't inflate the LIMIT count.
+         */
+        get: operations["list_events_api_v1_events_get"];
         put?: never;
-        /** Create Geolocation */
-        post: operations["create_geolocation_api_v1_events_post"];
+        /**
+         * Create Event
+         * @description Direct geolocate: create an event born ``geolocated``.
+         *
+         *     Parses the multipart form into clean Python types; business rules + IO
+         *     (the evidence floor, the S3 uploads, the placeholder resolution) live in
+         *     ``services/events.create_with_evidence``.
+         */
+        post: operations["create_event_api_v1_events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -615,13 +503,13 @@ export interface paths {
         };
         /**
          * List Detections
-         * @description The caller's ``detected`` geolocations awaiting submission, newest first.
+         * @description The caller's ``detected`` events awaiting a geolocate, newest first.
          *
          *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
          *     ``EventRead`` (media + tags) so the queue shows the evidence and the
-         *     frontend computes submit-readiness (>=1 media + a ``conflict`` + a
+         *     frontend computes submit-readiness (source media + a ``conflict`` + a
          *     ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
          *     desc: the latest import is the first thing to triage.
          */
@@ -722,15 +610,17 @@ export interface paths {
         };
         /**
          * List Points
-         * @description Return all geolocations as a compact array:
+         * @description Return the map's events as a compact array:
          *     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
          *     No joins, no limit, designed for map display with client-side clustering.
-         *     ``event_date`` and ``added_date`` (the ``created_at`` calendar day) are
-         *     ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
-         *     scrubbers and filters the windows client-side (no refetch per drag).
-         *     ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-         *     geolocated row, a flag, not the state string, to keep the payload small.
-         *     Cached in-memory for 60s per unique filter combination.
+         *     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
+         *     ``requested`` guess is not a confident pin, and a closed row was judged
+         *     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
+         *     are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
+         *     timeline scrubbers and filters the windows client-side (no refetch per
+         *     drag). ``detected`` is ``1`` for a machine detection (rendered marked),
+         *     ``0`` for a geolocated row, a flag, not the state string, to keep the
+         *     payload small. Cached in-memory for 60s per unique filter combination.
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
@@ -757,7 +647,8 @@ export interface paths {
          *     either keeps typing or recognises a row and abandons their version.
          *
          *     Match rule: within ~500m of the proposed (lat, lng) AND (same source
-         *     host OR same event_date). Both legs are heuristic. Authenticated-only
+         *     host OR same event_date). Coordinate-less rows never match (the
+         *     proximity predicate skips NULL points by construction). Authenticated-only
          *     so the cheap proximity probe isn't exposed to anonymous scraping
          *     (sidestepping the bbox-required hardening on /points).
          *
@@ -778,7 +669,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/proof-images": {
+    "/api/v1/events/requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -788,20 +679,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Upload Proof Image Endpoint
-         * @description Upload an inline image referenced from the proof Tiptap document.
+         * Create Event Request
+         * @description Open a request (a ``requested`` event, yesterday's bounty).
          *
-         *     Inserts a `proof_images` row with `geolocation_id=NULL` so the upload
-         *     is tracked before the form is submitted. It's linked to a geolocation
-         *     when `POST /geolocations` runs and the URL survives sanitization; if
-         *     the form is abandoned the row stays orphan and is reaped via the admin
-         *     Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`).
-         *
-         *     Rate-limited at two layers: 30/minute per IP (slowapi) and a per-user
-         *     rolling-24h DB ceiling, so one account can't fill the bucket via IP
-         *     rotation.
+         *     One source media file is required — the platform treats requests as
+         *     "unfinished geolocations", so the evidence the poster has must be on the
+         *     row from the start. Parses the multipart form into clean Python types;
+         *     business rules + IO live in ``services/events.create_request``.
          */
-        post: operations["upload_proof_image_endpoint_api_v1_events_proof_images_post"];
+        post: operations["create_event_request_api_v1_events_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -815,18 +701,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Geolocation */
-        get: operations["get_geolocation_api_v1_events__geolocation_id__get"];
+        /** Get Event */
+        get: operations["get_event_api_v1_events__geolocation_id__get"];
         put?: never;
         post?: never;
-        /** Delete Geolocation */
-        delete: operations["delete_geolocation_api_v1_events__geolocation_id__delete"];
+        /**
+         * Delete Event
+         * @description Hard-delete by the owner. Cascades drop the tag links, contributor
+         *     rows and media rows; the S3 objects (media of every role, plus the source
+         *     image derivatives) are swept after the commit lands. Admin soft-delete
+         *     lives behind the admin router and stamps ``deleted_at`` instead.
+         */
+        delete: operations["delete_event_api_v1_events__geolocation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/reject": {
+    "/api/v1/events/{geolocation_id}/close": {
         parameters: {
             query?: never;
             header?: never;
@@ -836,22 +728,23 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reject Geolocation
-         * @description Reject a ``detected`` geolocation: soft-delete, re-importable later.
+         * Close Event
+         * @description Close an event: withdraw a request or reject a detection (owner-only).
          *
-         *     Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
-         *     distinct from the hard ``DELETE`` that removes a row for good. Off
-         *     ``detected`` → 409 (a ``geolocated`` row goes through ``DELETE``).
-         *     Soft-deleted → 404.
+         *     One terminal verb for both dismissal shapes; ``before_closed_status``
+         *     records which state the row left, and the required ``close_reason`` stays
+         *     publicly visible. The row remains readable (transparency), drops off the
+         *     map, and a closed detection is re-importable. Off ``requested`` /
+         *     ``detected`` → 409; soft-deleted → 404; not the owner → 403.
          */
-        post: operations["reject_geolocation_api_v1_events__geolocation_id__reject_post"];
+        post: operations["close_event_api_v1_events__geolocation_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/submit": {
+    "/api/v1/events/{geolocation_id}/geolocate": {
         parameters: {
             query?: never;
             header?: never;
@@ -861,22 +754,53 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit Geolocation
+         * Geolocate Event
          * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
          *
          *     The one generalized fulfil / submit transition. The caller posts the whole
-         *     form (title, coordinate, source URL, dates, proof, tags, and the source
-         *     media: ``files`` added, ``remove_media_ids`` dropped), and on success the row
-         *     is written and frozen as ``geolocated``. Only ``detected_from_url``
-         *     (provenance) and ``status`` carry no field. A ``detected`` draft is owner-only
-         *     (403 otherwise); a ``requested`` event is answerable by anyone, and the
+         *     form (title, coordinates, source URL, dates, proof + its images, tags, and
+         *     the source media: ``files`` added, ``remove_media_ids`` dropped), and on
+         *     success the row is written and frozen as ``geolocated``, with the caller
+         *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
+         *     ``status`` carry no field. A ``detected`` draft is owner-only (403
+         *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
-         *     Blocked until the evidence floor is met (at least one media and the
-         *     ``conflict`` + ``capture_source`` tags, 400 otherwise). Off ``requested`` /
-         *     ``detected`` → 409. Soft-deleted rows read as 404.
+         *     Blocked until the evidence floor is met (one source media, a proof image,
+         *     and the ``conflict`` + ``capture_source`` tags — 400 otherwise). Off
+         *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          */
-        post: operations["submit_geolocation_api_v1_events__geolocation_id__submit_post"];
+        post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/investigate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Investigate Event
+         * @description Signal "I'm working on this". Idempotent — re-signalling is a 204
+         *     no-op, not a 409. Only open requests accept new signals; off
+         *     ``requested`` the signal is rejected with 409.
+         */
+        post: operations["investigate_event_api_v1_events__geolocation_id__investigate_post"];
+        /**
+         * Uninvestigate Event
+         * @description Stop signalling. 204 even if the caller wasn't signalling — the
+         *     user-observable post-condition (caller not in the working set) is
+         *     what we promise, not "exactly one row was deleted." Gated to
+         *     ``requested`` like the POST: a terminated event's signals are frozen
+         *     history.
+         */
+        delete: operations["uninvestigate_event_api_v1_events__geolocation_id__investigate_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1097,11 +1021,6 @@ export interface components {
              * @enum {string}
              */
             mode: "soft" | "hard";
-            /**
-             * Proof Image Count
-             * @default 0
-             */
-            proof_image_count: number;
             /** Title */
             title: string;
         };
@@ -1171,12 +1090,6 @@ export interface components {
             old_consumed?: number | null;
             /** Pending Registrations Deleted */
             pending_registrations_deleted?: number | null;
-            /** Rows Deleted */
-            rows_deleted?: number | null;
-            /** S3 Deleted */
-            s3_deleted?: number | null;
-            /** S3 Failed */
-            s3_failed?: number | null;
         };
         /**
          * AdminMeResponse
@@ -1286,11 +1199,6 @@ export interface components {
              */
             mode: "soft" | "hard";
             /**
-             * Proof Image Count
-             * @default 0
-             */
-            proof_image_count: number;
-            /**
              * User Id
              * Format: uuid
              */
@@ -1345,8 +1253,8 @@ export interface components {
          * @description Outcome of an archive backfill: how the detections landed.
          *
          *     The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
-         *     a live row already held; ``recreated`` a previously rejected (soft-deleted)
-         *     pair re-detected; ``failed`` a detection that raised mid-persist and was
+         *     a live row already held; ``recreated`` a previously rejected pair
+         *     re-detected; ``failed`` a detection that raised mid-persist and was
          *     rolled back (the others still land).
          */
         ArchiveImportResult: {
@@ -1380,14 +1288,51 @@ export interface components {
             /** Username */
             username: string;
         };
-        /** Body_create_bounty_api_v1_bounties_post */
-        Body_create_bounty_api_v1_bounties_post: {
+        /** Body_create_event_api_v1_events_post */
+        Body_create_event_api_v1_events_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
+            /** Event Date */
+            event_date: string;
+            /** Event Time */
+            event_time?: string | null;
+            /** File */
+            file: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Proof */
+            proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
+            /** Source Posted At */
+            source_posted_at: string;
+            /** Source Url */
+            source_url: string;
+            /** Tag Ids */
+            tag_ids?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** Body_create_event_request_api_v1_events_requests_post */
+        Body_create_event_request_api_v1_events_requests_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
             /** Event Date */
             event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
-            /** Files */
-            files: string[];
+            /** File */
+            file: string;
+            /** Lat */
+            lat?: number | null;
+            /** Lng */
+            lng?: number | null;
             /** Proof */
             proof?: string | null;
             /** Source Posted At */
@@ -1399,8 +1344,12 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_create_geolocation_api_v1_events_post */
-        Body_create_geolocation_api_v1_events_post: {
+        /** Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post */
+        Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1413,6 +1362,10 @@ export interface components {
             lng: number;
             /** Proof */
             proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
+            /** Remove Media Ids */
+            remove_media_ids?: string | null;
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */
@@ -1426,128 +1379,6 @@ export interface components {
         Body_import_archive_api_v1_events_import_archive_post: {
             /** File */
             file: string;
-        };
-        /** Body_submit_geolocation_api_v1_events__geolocation_id__submit_post */
-        Body_submit_geolocation_api_v1_events__geolocation_id__submit_post: {
-            /** Event Date */
-            event_date: string;
-            /** Event Time */
-            event_time?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            /** Proof */
-            proof?: string | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Url */
-            source_url: string;
-            /** Tag Ids */
-            tag_ids?: string | null;
-            /** Title */
-            title: string;
-        };
-        /** Body_upload_proof_image_endpoint_api_v1_events_proof_images_post */
-        Body_upload_proof_image_endpoint_api_v1_events_proof_images_post: {
-            /** File */
-            file: string;
-        };
-        /** BountyList */
-        BountyList: {
-            author: components["schemas"]["AuthorRef"];
-            /** Claimer Count */
-            claimer_count: number;
-            /** Claimer Sample */
-            claimer_sample: components["schemas"]["AuthorRef"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Demo */
-            is_demo: boolean;
-            /** Media */
-            media: components["schemas"]["MediaRead"][];
-            /** Source Url */
-            source_url: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-        };
-        /**
-         * BountyRead
-         * @description The requested-events view over the unified ``Event`` model.
-         *
-         *     A bounty is a ``Event`` with ``status='requested'`` (an open call to
-         *     geolocate) that may later become ``closed`` when the author withdraws it.
-         *     Since the merge, fulfilment is a lifecycle move on this same row rather than
-         *     a copy into a new geolocation, so there is no ``fulfilled_by`` trace.
-         */
-        BountyRead: {
-            author: components["schemas"]["AuthorRef"];
-            /** Claimers */
-            claimers: components["schemas"]["AuthorRef"][];
-            /** Closed At */
-            closed_at: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Demo */
-            is_demo: boolean;
-            /** Media */
-            media: components["schemas"]["MediaRead"][];
-            /** Proof */
-            proof: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Source Posted At
-             * Format: date-time
-             */
-            source_posted_at: string;
-            /** Source Url */
-            source_url: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * ChangePasswordRequest
@@ -1573,6 +1404,18 @@ export interface components {
         ConfirmRegistrationRequest: {
             /** Token */
             token: string;
+        };
+        /**
+         * CoordsRead
+         * @description One WGS84 point on the wire. Nesting (instead of flat ``lat`` / ``lng``
+         *     pairs) lets a payload carry two independent points — the subject and the
+         *     camera — without field-name gymnastics.
+         */
+        CoordsRead: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
         };
         /**
          * DetectedGeolocPreview
@@ -1602,9 +1445,20 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * EventCloseRequest
+         * @description Body for ``POST /events/{id}/close``. The reason is required — a closed
+         *     event stays publicly visible, so the why must travel with it.
+         */
+        EventCloseRequest: {
+            /** Close Reason */
+            close_reason: string;
+        };
         /** EventList */
         EventList: {
-            author: components["schemas"]["AuthorRef"];
+            /** Before Closed Status */
+            before_closed_status: ("requested" | "detected") | null;
+            event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;
             /**
@@ -1612,13 +1466,14 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Investigator Count */
+            investigator_count?: number | null;
+            /** Investigators Sample */
+            investigators_sample?: components["schemas"]["AuthorRef"][] | null;
             /** Is Demo */
             is_demo: boolean;
-            /** Lat */
-            lat: number | null;
-            /** Lng */
-            lng: number | null;
             media: components["schemas"]["MediaRead"] | null;
+            owner: components["schemas"]["AuthorRef"];
             /**
              * Status
              * @enum {string}
@@ -1631,37 +1486,53 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
-            author: components["schemas"]["AuthorRef"];
+            /** Before Closed Status */
+            before_closed_status: ("requested" | "detected") | null;
+            capture_source_coords: components["schemas"]["CoordsRead"] | null;
+            /** Close Reason */
+            close_reason: string | null;
+            /** Closed At */
+            closed_at: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Detected At */
+            detected_at: string | null;
             /** Detected From Url */
             detected_from_url: string | null;
             /** Detected Post At */
             detected_post_at: string | null;
+            event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;
             /** Event Time */
             event_time: string | null;
+            /** Geolocated At */
+            geolocated_at: string | null;
+            /** Geolocators */
+            geolocators: components["schemas"]["AuthorRef"][];
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Investigator Count */
+            investigator_count: number;
+            /** Investigators */
+            investigators: components["schemas"]["AuthorRef"][];
             /** Is Demo */
             is_demo: boolean;
-            /** Lat */
-            lat: number | null;
-            /** Lng */
-            lng: number | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            owner: components["schemas"]["AuthorRef"];
             /** Proof */
             proof: {
                 [key: string]: unknown;
             } | null;
+            /** Requested At */
+            requested_at: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
             /**
              * Source Posted At
@@ -1740,26 +1611,24 @@ export interface components {
             media_type: "image" | "video";
             /** Original Filename */
             original_filename?: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "source" | "proof";
             /** Sha256 */
             sha256?: string | null;
             /** Storage Url */
             storage_url: string;
         };
-        /** MediaUploadResponse */
-        MediaUploadResponse: {
-            /** Sha256 */
-            sha256: string;
-            /** Url */
-            url: string;
-        };
         /**
          * PaginatedEventDetails
-         * @description Full-detail paginated geolocations: the owner Detections-queue payload.
+         * @description Full-detail paginated events: the owner Detections-queue payload.
          *
          *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
          *     (media + tags + provenance) rather than the lightweight ``EventList``
          *     card: the Detections queue needs the media to judge a detection and the tags
-         *     to compute submit-readiness (>=1 media + a ``conflict`` + a
+         *     to compute submit-readiness (source media + a ``conflict`` + a
          *     ``capture_source`` tag) without a per-row round-trip.
          */
         PaginatedEventDetails: {
@@ -1792,9 +1661,9 @@ export interface components {
          *     is one click away for the proof body / media.
          */
         PossibleDuplicateRead: {
-            author: components["schemas"]["AuthorRef"];
             /** Distance M */
             distance_m: number;
+            event_coords: components["schemas"]["CoordsRead"];
             /** Event Date */
             event_date: string | null;
             /**
@@ -1802,10 +1671,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
+            owner: components["schemas"]["AuthorRef"];
             /** Source Url */
             source_url: string;
             /** Title */
@@ -1868,7 +1734,6 @@ export interface components {
         };
         /** SearchBountyHit */
         SearchBountyHit: {
-            author: components["schemas"]["AuthorRef"];
             /** Claimer Count */
             claimer_count: number;
             /**
@@ -1885,6 +1750,7 @@ export interface components {
             is_demo: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            owner: components["schemas"]["AuthorRef"];
             /** Source Url */
             source_url: string;
             /**
@@ -1901,7 +1767,6 @@ export interface components {
         };
         /** SearchEventHit */
         SearchEventHit: {
-            author: components["schemas"]["AuthorRef"];
             /** Event Date */
             event_date: string | null;
             /**
@@ -1915,6 +1780,7 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            owner: components["schemas"]["AuthorRef"];
             /**
              * Status
              * @enum {string}
@@ -2379,37 +2245,6 @@ export interface operations {
         };
     };
     maintenance_reap_pending_registrations_api_v1_admin_maintenance_reap_pending_registrations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminMaintenanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    maintenance_reap_proof_orphans_api_v1_admin_maintenance_reap_proof_orphans_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3013,235 +2848,11 @@ export interface operations {
             };
         };
     };
-    list_bounties_api_v1_bounties_get: {
+    list_events_api_v1_events_get: {
         parameters: {
             query?: {
+                view?: string;
                 status?: string | null;
-                tag?: string | null;
-                author?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BountyList"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_bounty_api_v1_bounties_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_create_bounty_api_v1_bounties_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BountyRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_bounty_api_v1_bounties__bounty_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bounty_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BountyRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_bounty_api_v1_bounties__bounty_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bounty_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    claim_bounty_api_v1_bounties__bounty_id__claim_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bounty_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unclaim_bounty_api_v1_bounties__bounty_id__claim_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bounty_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    close_bounty_api_v1_bounties__bounty_id__close_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bounty_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BountyRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_geolocations_api_v1_events_get: {
-        parameters: {
-            query?: {
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
@@ -3279,7 +2890,7 @@ export interface operations {
             };
         };
     };
-    create_geolocation_api_v1_events_post: {
+    create_event_api_v1_events_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3290,7 +2901,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_create_geolocation_api_v1_events_post"];
+                "multipart/form-data": components["schemas"]["Body_create_event_api_v1_events_post"];
             };
         };
         responses: {
@@ -3528,7 +3139,7 @@ export interface operations {
             };
         };
     };
-    upload_proof_image_endpoint_api_v1_events_proof_images_post: {
+    create_event_request_api_v1_events_requests_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3539,7 +3150,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_proof_image_endpoint_api_v1_events_proof_images_post"];
+                "multipart/form-data": components["schemas"]["Body_create_event_request_api_v1_events_requests_post"];
             };
         };
         responses: {
@@ -3549,7 +3160,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaUploadResponse"];
+                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */
@@ -3563,7 +3174,7 @@ export interface operations {
             };
         };
     };
-    get_geolocation_api_v1_events__geolocation_id__get: {
+    get_event_api_v1_events__geolocation_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3594,7 +3205,7 @@ export interface operations {
             };
         };
     };
-    delete_geolocation_api_v1_events__geolocation_id__delete: {
+    delete_event_api_v1_events__geolocation_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -3625,38 +3236,7 @@ export interface operations {
             };
         };
     };
-    reject_geolocation_api_v1_events__geolocation_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_geolocation_api_v1_events__geolocation_id__submit_post: {
+    close_event_api_v1_events__geolocation_id__close_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3669,7 +3249,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_submit_geolocation_api_v1_events__geolocation_id__submit_post"];
+                "application/json": components["schemas"]["EventCloseRequest"];
             };
         };
         responses: {
@@ -3681,6 +3261,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    investigate_event_api_v1_events__geolocation_id__investigate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uninvestigate_event_api_v1_events__geolocation_id__investigate_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

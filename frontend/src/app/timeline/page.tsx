@@ -11,30 +11,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
-import type { EventStatus, Media } from "@/types";
+import type { components } from "@/lib/api-types";
 
-interface TimelineEntry {
-  id: string;
-  title: string;
-  /** Nullable: a coordless / undated event can surface here. See
-   *  ``EventList``. */
-  event_date: string | null;
-  is_demo: boolean;
-  status: EventStatus;
-  lat: number | null;
-  lng: number | null;
-  author: {
-    username: string;
-  };
-  /** The card thumbnail: the geolocation's first media row, or null. */
-  media: Media | null;
-  tags: { id: string; name: string; category: "conflict" | "free" }[];
-}
-
-interface PaginatedTimeline {
-  items: TimelineEntry[];
-  total: number;
-}
+/** Shape of `GET /timeline`: the same paginated-events envelope `RecentSubmissions`
+ *  reads, one `EventListItem` per card. */
+type PaginatedTimeline = components["schemas"]["PaginatedEvents"];
 
 export default function TimelinePage() {
   const { user, loading: authLoading } = useAuth();
@@ -79,13 +60,9 @@ export default function TimelinePage() {
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }
                 media={entry.media ?? undefined}
-                author={entry.author}
+                author={entry.owner}
                 date={entry.event_date ?? undefined}
-                coords={
-                  typeof entry.lat === "number" && typeof entry.lng === "number"
-                    ? { lat: entry.lat, lng: entry.lng }
-                    : null
-                }
+                coords={entry.event_coords}
                 tags={entry.tags}
               />
             ))}

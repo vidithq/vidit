@@ -154,7 +154,6 @@ def delete_user_admin(
                 deleted_at=None,
                 cascaded_geolocations=result["geolocation_count"],
                 media_count=result["media_count"],
-                proof_image_count=result["proof_image_count"],
             )
 
         user, cascaded_geolocations = admin_service.soft_delete_user(
@@ -199,7 +198,6 @@ def delete_geolocation_admin(
                 mode="hard",
                 deleted_at=None,
                 media_count=result["media_count"],
-                proof_image_count=result["proof_image_count"],
             )
 
         geo = admin_service.soft_delete_geolocation(
@@ -336,26 +334,6 @@ def maintenance_reap_auth_tokens(
         db,
         actor_id=current_user.id,
         action="maintenance_reap_auth_tokens",
-        target=result,
-    )
-    db.commit()
-    return AdminMaintenanceResponse(**result)
-
-
-@router.post("/maintenance/reap-proof-orphans", response_model=AdminMaintenanceResponse)
-@limiter.limit("30/hour")
-def maintenance_reap_proof_orphans(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminMaintenanceResponse:
-    """Drop orphan proof_images rows + sweep S3. Replaces the cron that
-    previously lived in `scripts/reap_proof_image_orphans.py`."""
-    result = maintenance_service.reap_proof_image_orphans(db)
-    admin_service.log_admin_event(
-        db,
-        actor_id=current_user.id,
-        action="maintenance_reap_proof_orphans",
         target=result,
     )
     db.commit()

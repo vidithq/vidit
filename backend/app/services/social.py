@@ -60,7 +60,7 @@ def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID)
 
 
 def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: int = 20) -> dict:
-    """Page through geolocations authored by users that ``user_id`` follows.
+    """Page through events owned by users that ``user_id`` follows.
 
     Returns ``{"items": [(geo, lat, lng), ...], "total": int}``, ordered by
     event date (then created_at as tiebreaker), newest first — matching the
@@ -74,22 +74,22 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
         return {"items": [], "total": 0}
 
     where_clause = and_(
-        Event.author_id.in_(followed_ids),
+        Event.owner_id.in_(followed_ids),
         Event.deleted_at.is_(None),
     )
     total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     rows = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
         )
         # ``selectinload`` for tags + media: a many-to-many / one-to-many
         # ``joinedload`` would row-multiply against ``LIMIT`` and silently
         # truncate the page.
-        # ``joinedload`` is safe for the author (many-to-one, no inflation).
+        # ``joinedload`` is safe for the owner (many-to-one, no inflation).
         .options(
-            joinedload(Event.author),
+            joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.media),
         )

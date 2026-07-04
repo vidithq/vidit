@@ -1,6 +1,8 @@
-"""Read endpoints — list, the compact ``/points`` payload, and the filter / bbox / cache-key helpers behind them."""
+"""Read endpoints — list (located + requested views), the compact ``/points``
+payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
+import uuid
 from datetime import date, timedelta
 
 import orjson
@@ -13,29 +15,67 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y, ST_MakeEnvelope, ST_Within
-from sqlalchemy import and_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
-from app.models.event import STATUS_DETECTED, Event
+from app.models.event import (
+    STATUS_CLOSED,
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Event,
+    EventGeolocator,
+    EventInvestigator,
+)
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._event_query import AUTHOR_FILTER_PATTERN, apply_author_filter
-from app.routers.events._common import build_geolocation_read
+from app.routers.events._common import build_event_read, coords_or_none, source_media
 from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
 )
+from app.schemas.user import AuthorRef
 
 router = APIRouter()
 # Accepted ``media`` filter values (the ``Media.media_type`` domain). Reject
 # anything else at the boundary so a typo returns 422 instead of silently
 # matching nothing — parameterized, so never an injection risk.
 _MEDIA_TYPES = frozenset({"image", "video"})
+
+# The two read views over the one table. ``located`` is the catalog: vouched +
+# machine rows, keeping a rejected detection visible (``closed`` off
+# ``detected``). ``requested`` is the open-call queue (ex ``/bounties``),
+# keeping a withdrawn request visible the same way.
+_VIEWS = frozenset({"located", "requested"})
+
+# Detail page lists every investigator; the list card only needs a few
+# avatars + a count. Tune if the avatar strip grows.
+LIST_INVESTIGATOR_SAMPLE_SIZE = 3
+
+
+def _view_predicate(view: str):
+    """The status predicate for a read view (see ``_VIEWS``)."""
+    if view == "requested":
+        return or_(
+            Event.status == STATUS_REQUESTED,
+            and_(
+                Event.status == STATUS_CLOSED,
+                Event.before_closed_status == STATUS_REQUESTED,
+            ),
+        )
+    return or_(
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
+        and_(
+            Event.status == STATUS_CLOSED,
+            Event.before_closed_status == STATUS_DETECTED,
+        ),
+    )
 
 
 def _build_points_cache_key(
@@ -112,6 +152,8 @@ def _parse_filter_date(value: str | None, field: str) -> date | None:
 def _apply_filters(
     query: SAQuery,
     *,
+    view: str = "located",
+    status_filter: str | None = None,
     conflict: list[str] | None = None,
     capture_source: list[str] | None = None,
     tag: list[str] | None = None,
@@ -125,11 +167,17 @@ def _apply_filters(
     hide_demo: bool = False,
     bbox: str | None = None,
 ) -> SAQuery:
-    """Apply the standard geolocation filter set to a query.
+    """Apply the standard event filter set to a query.
 
-    Shared by `/geolocations` and `/geolocations/points` so the two can't
-    drift. The soft-delete filter lives here so every public read excludes
+    Shared by `/events` and `/events/points` so the two can't drift. The
+    soft-delete filter lives here so every public read excludes
     `deleted_at IS NOT NULL` rows; the admin path bypasses this helper.
+
+    ``view`` scopes to one of the two lifecycle views (see ``_VIEWS``);
+    ``status_filter`` narrows within the view (e.g. ``?status=closed`` on the
+    requested queue). Status-scoping rather than a bare coordinate predicate:
+    a ``requested`` event may carry an approximate guess now, and it must not
+    leak into the located catalog because of it.
 
     Tag semantics: ``conflict``, ``capture_source`` and ``tag`` each take a
     list of names. Within a list, **any-match (OR)**; across the lists,
@@ -138,12 +186,11 @@ def _apply_filters(
     can't poison either curated filter; ``tag`` matches any category so a
     caller can filter by a name without knowing its bucket (back-compat
     with the pre-multi-select API).
-
-    Located view only: ``location IS NOT NULL`` so a ``requested`` event (no
-    coordinates yet, served by ``/bounties``) never reaches the map / list,
-    which return coordinates for every row.
     """
-    query = query.filter(Event.deleted_at.is_(None), Event.location.isnot(None))
+    query = query.filter(Event.deleted_at.is_(None), _view_predicate(view))
+
+    if status_filter:
+        query = query.filter(Event.status == status_filter)
 
     if conflict:
         # ``.tags.any(...)`` lowers to EXISTS so a second tag filter
@@ -182,13 +229,13 @@ def _apply_filters(
         query = apply_author_filter(query, author)
 
     if media:
-        # ``.media.any(...)`` → EXISTS, so a geo with several attachments isn't
-        # row-multiplied. Values are ``Media.media_type`` (image / video).
+        # ``.media.any(...)`` → EXISTS, so an event with several attachments
+        # isn't row-multiplied. Values are ``Media.media_type`` (image / video).
         query = query.filter(Event.media.any(Media.media_type.in_(media)))
     if trusted_only:
-        # ``.author.has(...)`` → EXISTS on the FK, so it can't collide with the
+        # ``.owner.has(...)`` → EXISTS on the FK, so it can't collide with the
         # ``author`` ilike join above.
-        query = query.filter(Event.author.has(User.is_trusted.is_(True)))
+        query = query.filter(Event.owner.has(User.is_trusted.is_(True)))
     if hide_demo:
         query = query.filter(Event.is_demo.is_(False))
 
@@ -196,7 +243,7 @@ def _apply_filters(
         south, west, north, east = _parse_bbox(bbox)
         query = query.filter(
             ST_Within(
-                Event.location,
+                Event.event_coords,
                 ST_MakeEnvelope(west, south, east, north, 4326),
             )
         )
@@ -240,6 +287,38 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     return south, west, north, east
 
 
+def investigator_aggregates(
+    db: Session, event_ids: list[uuid.UUID]
+) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, list[AuthorRef]]]:
+    """Per-event investigator count + newest-first capped sample, without N+1.
+
+    Detail can afford eager-loading every row on its one event; a list runs
+    two grouped queries — one for the per-row count, one for the sample.
+    A Postgres window function would be tidier for the sample, but joined
+    order_by + a Python-side cap is simpler and the working set is small.
+    """
+    counts: dict[uuid.UUID, int] = {
+        eid: int(count)
+        for eid, count in db.query(EventInvestigator.event_id, func.count("*"))
+        .filter(EventInvestigator.event_id.in_(event_ids))
+        .group_by(EventInvestigator.event_id)
+        .all()
+    }
+    sample: dict[uuid.UUID, list[AuthorRef]] = {}
+    rows = (
+        db.query(EventInvestigator)
+        .options(joinedload(EventInvestigator.user))
+        .filter(EventInvestigator.event_id.in_(event_ids))
+        .order_by(EventInvestigator.event_id, EventInvestigator.created_at.desc())
+        .all()
+    )
+    for row in rows:
+        bucket = sample.setdefault(row.event_id, [])
+        if len(bucket) < LIST_INVESTIGATOR_SAMPLE_SIZE:
+            bucket.append(AuthorRef.model_validate(row.user))
+    return counts, sample
+
+
 @router.get("/points")
 @limiter.limit("60/minute")
 def list_points(
@@ -255,22 +334,24 @@ def list_points(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    # ``media`` accepts multiple values (``?media=image&media=video``); a geo
+    # ``media`` accepts multiple values (``?media=image&media=video``); an event
     # matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
     trusted_only: bool = False,
     hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Return all geolocations as a compact array:
+    """Return the map's events as a compact array:
     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
     No joins, no limit, designed for map display with client-side clustering.
-    ``event_date`` and ``added_date`` (the ``created_at`` calendar day) are
-    ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two timeline
-    scrubbers and filters the windows client-side (no refetch per drag).
-    ``detected`` is ``1`` for a machine detection (rendered marked), ``0`` for a
-    geolocated row, a flag, not the state string, to keep the payload small.
-    Cached in-memory for 60s per unique filter combination.
+    Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
+    ``requested`` guess is not a confident pin, and a closed row was judged
+    out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
+    are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
+    timeline scrubbers and filters the windows client-side (no refetch per
+    drag). ``detected`` is ``1`` for a machine detection (rendered marked),
+    ``0`` for a geolocated row, a flag, not the state string, to keep the
+    payload small. Cached in-memory for 60s per unique filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
         raise HTTPException(
@@ -301,8 +382,8 @@ def list_points(
 
     q = db.query(
         Event.id,
-        ST_Y(Event.location).label("lat"),
-        ST_X(Event.location).label("lng"),
+        ST_Y(Event.event_coords).label("lat"),
+        ST_X(Event.event_coords).label("lng"),
         Event.event_date,
         Event.created_at,
         Event.status,
@@ -320,6 +401,13 @@ def list_points(
         media=media,
         trusted_only=trusted_only,
         hide_demo=hide_demo,
+    )
+    # Map-only narrowing on top of the located view: a closed detection stays
+    # on the list (audit trail) but comes off the map, and a coordinate is
+    # required for a pin at all.
+    q = q.filter(
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
+        Event.event_coords.isnot(None),
     )
 
     rows = q.all()
@@ -350,8 +438,10 @@ def list_points(
 
 @router.get("", response_model=list[EventList])
 @limiter.limit("120/minute")
-def list_geolocations(
+def list_events(
     request: Request,
+    view: str = Query("located"),
+    status: str | None = None,
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
@@ -364,9 +454,25 @@ def list_geolocations(
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
+    """Newest-first cards for one lifecycle view.
+
+    ``view=located`` (default) is the catalog; ``view=requested`` the open-call
+    queue (ex ``/bounties``), whose cards additionally carry the investigator
+    aggregates (count + a small newest-first sample). Two-step "ids then full
+    rows" shape so eager-loads can't inflate the LIMIT count.
+    """
+    if view not in _VIEWS:
+        raise HTTPException(
+            status_code=422, detail=f"view must be one of: {', '.join(sorted(_VIEWS))}"
+        )
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+
     # Step 1: get IDs with limit (no joins that inflate rows)
     id_query = _apply_filters(
         db.query(Event.id),
+        view=view,
+        status_filter=status,
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
@@ -387,11 +493,11 @@ def list_geolocations(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
         )
         .options(
-            subqueryload(Event.author),
+            subqueryload(Event.owner),
             subqueryload(Event.tags),
             subqueryload(Event.media),
         )
@@ -400,18 +506,27 @@ def list_geolocations(
         .all()
     )
 
+    # The requested queue renders "N working" per card — aggregate once for
+    # the page, not per row.
+    counts: dict[uuid.UUID, int] = {}
+    sample: dict[uuid.UUID, list[AuthorRef]] = {}
+    if view == "requested":
+        counts, sample = investigator_aggregates(db, ids)
+
     return [
         EventList(
             id=geo.id,
             title=geo.title,
-            lat=lat,
-            lng=lng,
+            event_coords=coords_or_none(lat, lng),
             event_date=geo.event_date,
             is_demo=geo.is_demo,
             status=geo.status,
-            author=geo.author,
-            media=geo.media[0] if geo.media else None,
+            before_closed_status=geo.before_closed_status,
+            owner=geo.owner,
+            media=source_media(geo),
             tags=geo.tags,
+            investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
+            investigators_sample=sample.get(geo.id, []) if view == "requested" else None,
         )
         for geo, lat, lng in rows
     ]
@@ -426,13 +541,13 @@ def list_detections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The caller's ``detected`` geolocations awaiting submission, newest first.
+    """The caller's ``detected`` events awaiting a geolocate, newest first.
 
     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
     "Detections" queue behind ``/profile/{username}/detections`` where a
     ``detected`` row becomes ``geolocated`` over time. Returns full
     ``EventRead`` (media + tags) so the queue shows the evidence and the
-    frontend computes submit-readiness (>=1 media + a ``conflict`` + a
+    frontend computes submit-readiness (source media + a ``conflict`` + a
     ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
     desc: the latest import is the first thing to triage.
     """
@@ -444,7 +559,7 @@ def list_detections(
     per_page = max(1, min(per_page, 100))
 
     detected = (
-        Event.author_id == current_user.id,
+        Event.owner_id == current_user.id,
         Event.status == STATUS_DETECTED,
         Event.deleted_at.is_(None),
     )
@@ -454,18 +569,22 @@ def list_detections(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.capture_source_coords).label("capture_lat"),
+            ST_X(Event.capture_source_coords).label("capture_lng"),
         )
         # ``selectinload`` for the many-to-many / one-to-many sets — a
         # ``joinedload`` would row-multiply against ``LIMIT`` and truncate the
-        # page; ``joinedload`` is safe only for the many-to-one author /
+        # page; ``joinedload`` is safe only for the many-to-one owner /
         # requested_by (always NULL on a detection, loaded to skip a lazy hit).
         .options(
-            joinedload(Event.author),
+            joinedload(Event.owner),
             joinedload(Event.requested_by),
             selectinload(Event.tags),
             selectinload(Event.media),
+            selectinload(Event.geolocators).joinedload(EventGeolocator.user),
+            selectinload(Event.investigators).joinedload(EventInvestigator.user),
         )
         .filter(*detected)
         .order_by(Event.created_at.desc())
@@ -474,6 +593,9 @@ def list_detections(
         .all()
     )
 
-    items = [build_geolocation_read(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
+    items = [
+        build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
+        for geo, lat, lng, capture_lat, capture_lng in rows
+    ]
 
     return PaginatedEventDetails(items=items, total=total, page=page, per_page=per_page)

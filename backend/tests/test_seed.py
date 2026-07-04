@@ -22,7 +22,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
-    EventClaim,
+    EventInvestigator,
 )
 from app.models.user import User
 from app.services import seed as seed_service
@@ -450,12 +450,12 @@ def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
         # Media hangs off the row directly now (no transfer on fulfilment), so
         # every seeded event keeps at least one media regardless of status.
         assert len(e.media) >= 1
-        # location follows status: requested/closed have none, a fulfilled
-        # (geolocated) row has one.
+        # The subject point follows status: requested/closed have none, a
+        # fulfilled (geolocated) row has one.
         if e.status == STATUS_GEOLOCATED:
-            assert e.location is not None
+            assert e.event_coords is not None
         else:
-            assert e.location is None
+            assert e.event_coords is None
         # The always-on `demo` free tag for filter-chip scoping is attached to
         # every event regardless of status.
         tag_names = {t.name for t in e.tags}
@@ -470,16 +470,17 @@ def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
     assert len(fulfilled) == result["fulfilled"]
     for e in fulfilled:
         assert e.requested_by_id is not None
-        assert e.requested_by_id != e.author_id
+        assert e.requested_by_id != e.owner_id
 
 
 def test_seed_demo_bounties_attaches_some_claims(db, demo_pool):
-    """The seeder optionally attaches claims so the multi-claimer UI has
-    something to render. With a large enough count the probability of
-    at least one requested event getting a claim is overwhelming."""
+    """The seeder optionally attaches investigator signals so the
+    multi-analyst UI has something to render. With a large enough count the
+    probability of at least one requested event getting a signal is
+    overwhelming."""
     seed_service.seed_demo_bounties(db, count=20)
-    claim_count = db.query(EventClaim).count()
-    assert claim_count > 0
+    signal_count = db.query(EventInvestigator).count()
+    assert signal_count > 0
 
 
 def test_wipe_demo_bounties_only_drops_requested_view_rows(db, demo_pool, admin_user):

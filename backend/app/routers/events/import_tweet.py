@@ -80,7 +80,7 @@ def import_from_tweet(
         # the operator can spot a syndication-endpoint outage.
         logger.warning("Tweet syndication fetch failed for %s: %s", _scrub_log(body.url), exc)
         raise HTTPException(
-            status_code=502, detail="Couldn't read tweet — fill the form manually"
+            status_code=502, detail="Couldn't read tweet, fill the form manually"
         ) from exc
 
     quoted = (

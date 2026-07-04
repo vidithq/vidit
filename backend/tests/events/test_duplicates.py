@@ -34,12 +34,13 @@ def _make_geo_with_source(
     source URL and event date. ``_make_geo`` defaults both to fixed
     values that don't exercise the host / date match legs."""
     geo = Event(
-        author_id=author.id,
+        owner_id=author.id,
         title=f"Geo {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(lng, lat), srid=4326),
+        event_coords=from_shape(Point(lng, lat), srid=4326),
         source_url=source_url,
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=event_date_value,
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()

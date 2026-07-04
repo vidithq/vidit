@@ -10,8 +10,7 @@
 # vulture scans this file too, so a bare name here (or `_.attr` for a method)
 # counts as a reference and marks the real definition live. The names collapse by
 # identifier, so one entry covers every same-named attribute (e.g. a single
-# `original_filename` clears the Media column, the ProofImage column, and the
-# MediaRead field).
+# `original_filename` clears both the Media column and the MediaRead field).
 #
 # This is NOT a place to silence genuine dead code. If vulture flags a helper
 # with zero call sites anywhere (app, tests, scripts), remove it instead. Every
@@ -26,7 +25,7 @@
 # is a live, documented column (migration u7p9r1t3v5x7, data-model.md), so the
 # ORM still hydrates it on load. Flagged for the maintainer, not removed.
 created_by  # app/models/invite_code.py
-original_filename  # app/models/media.py + proof_image.py, and schemas/media.py
+original_filename  # app/models/media.py, and schemas/media.py
 claimed_at  # app/models/user.py
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
@@ -38,18 +37,16 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 # Pydantic; the field name is never read back in app/.
 used_by_username  # schemas/admin.py InviteCodeRead
 media_count  # schemas/admin.py
-proof_image_count  # schemas/admin.py
 deleted_geos  # schemas/admin.py
 with_claims  # schemas/admin.py
 fulfilled  # schemas/admin.py
 closed  # schemas/admin.py
 deleted_bounties  # schemas/admin.py
-s3_deleted  # schemas/admin.py
-s3_failed  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
-claimers  # schemas/bounty.py
-claimer_count  # schemas/bounty.py + search.py
-claimer_sample  # schemas/bounty.py
+bounties  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
+claimer_count  # schemas/search.py SearchBountyHit
+investigator_count  # schemas/event.py EventRead + EventList
+investigators_sample  # schemas/event.py EventList
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead

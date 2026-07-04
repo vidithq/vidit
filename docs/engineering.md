@@ -57,7 +57,7 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), bridged via `FlatCompat` to `eslint-config-next`'s `next/core-web-vitals` preset). The `next lint` wrapper was deprecated in Next 15 and removed in Next 16; `npm run lint` invokes `eslint` directly. |
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. |
-| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `BountyStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
+| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
 MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
 
@@ -113,17 +113,15 @@ vidit/
 │   │   │   ├── auth_event.py       # /auth/* audit log
 │   │   │   ├── auth_token.py       # Single-use password-reset tokens
 │   │   │   ├── follow.py           # Analyst → analyst follow edges
-│   │   │   ├── event.py            # Event + EventClaim (the merged bounty + geolocation lifecycle)
+│   │   │   ├── event.py            # Event + EventGeolocator + EventInvestigator (the merged bounty + geolocation + detection lifecycle)
 │   │   │   ├── invite_code.py
-│   │   │   ├── media.py
+│   │   │   ├── media.py            # Media, role source | proof, one table for footage and inline proof images
 │   │   │   ├── pending_registration.py  # Pre-creation registration staging
-│   │   │   ├── proof_image.py      # Inline images uploaded from the Tiptap proof editor
 │   │   │   ├── tag.py
 │   │   │   └── user.py
 │   │   ├── schemas/                # Pydantic v2, request/response
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
-│   │   │   ├── bounty.py
 │   │   │   ├── event.py
 │   │   │   ├── media.py
 │   │   │   ├── recovery.py         # Password-reset request/confirm bodies
@@ -133,7 +131,6 @@ vidit/
 │   │   ├── routers/                # FastAPI endpoints
 │   │   │   ├── admin.py
 │   │   │   ├── auth.py
-│   │   │   ├── bounties.py
 │   │   │   ├── events/             # Per-concern sub-routers (read/write/item/duplicates/import_tweet/import_archive)
 │   │   │   ├── search.py
 │   │   │   ├── social.py           # Follow / unfollow / timeline
@@ -145,12 +142,11 @@ vidit/
 │   │       ├── auth.py             # JWT, hashing, invite-code consume (atomic UPDATE)
 │   │       ├── auth_cookies.py     # Session + CSRF cookie issuance / clearing
 │   │       ├── auth_tokens.py      # Single-use password-reset tokens
-│   │       ├── bounties.py         # create_with_evidence (bounty side)
 │   │       ├── email.py            # Resend / console-echo email transport
 │   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
 │   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
-│   │       ├── events.py           # create_with_evidence (geo side) + typed EventError hierarchy
-│   │       ├── maintenance.py      # Reapers: auth tokens, proof orphans, pending regs
+│   │       ├── events.py           # create / create_request / geolocate / close + typed EventError hierarchy
+│   │       ├── maintenance.py      # Reapers: auth tokens, pending regs
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
@@ -171,8 +167,9 @@ vidit/
 │   │   │   ├── page.tsx            # Public landing page (storefront)
 │   │   │   ├── about/              # Public marketing / mission page
 │   │   │   ├── admin/              # Admin console (invites, demo seed, reapers)
-│   │   │   ├── bounties/           # Bounty index + detail + create
-│   │   │   ├── geolocations/       # Detail + submit form
+│   │   │   ├── bounties/           # Bounty (requested-view) index + detail + create
+│   │   │   ├── events/[id]/        # Event detail (any lifecycle state) + edit
+│   │   │   ├── geolocations/new/   # Legacy create-route redirect to /submit
 │   │   │   ├── map/                # Interactive map (the app home)
 │   │   │   ├── profile/[username]/ # Analyst profile
 │   │   │   ├── search/             # Global search

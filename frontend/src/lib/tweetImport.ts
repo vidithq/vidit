@@ -68,6 +68,14 @@ export function makeFile(
  * Upload an X-CDN image into ``/proof-images`` for inline embedding in the
  * Tiptap doc. Returns the public URL, or ``null`` on any failure — a single
  * proof-image upload never blocks the import (the analyst can re-attach).
+ *
+ * DEFERRED: the backend no longer exposes ``/events/proof-images`` (proof
+ * images now upload at publish via ``proof_files[]``, see
+ * ``components/editor/ProofEditor.tsx``), so this call always fails and
+ * every tweet import lands with zero proof images until the rich-interaction
+ * rewrite lands. The existing fail-soft design (catch → null) already
+ * degrades correctly: the import still completes, just without inline
+ * proof imagery, so this is left as-is rather than special-cased.
  */
 export async function uploadAsProofImage(
   remoteUrl: string,

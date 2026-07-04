@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { X } from "lucide-react";
 
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
@@ -15,20 +14,20 @@ import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
+import { CloseEventForm } from "@/components/event/CloseEventForm";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { apiFetch } from "@/lib/api";
 import {
+  geolocateEvent,
   missingEventFields,
-  rejectEvent,
-  submitEvent,
+  parseCaptureCoords,
   type EventFieldsState,
 } from "@/lib/events";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail, Tag } from "@/types";
 
@@ -57,8 +56,20 @@ export function EventEditForm({
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
   // string inputs from empty (not ``String(null)``) when the row lacks them.
-  const [lat, setLat] = useState(geo.lat != null ? String(geo.lat) : "");
-  const [lng, setLng] = useState(geo.lng != null ? String(geo.lng) : "");
+  const [lat, setLat] = useState(
+    geo.event_coords ? String(geo.event_coords.lat) : ""
+  );
+  const [lng, setLng] = useState(
+    geo.event_coords ? String(geo.event_coords.lng) : ""
+  );
+  // The optional camera position, seeded from the row (a detection may already
+  // carry one) and editable here. Both-or-neither at submit.
+  const [captureLat, setCaptureLat] = useState(
+    geo.capture_source_coords ? String(geo.capture_source_coords.lat) : ""
+  );
+  const [captureLng, setCaptureLng] = useState(
+    geo.capture_source_coords ? String(geo.capture_source_coords.lng) : ""
+  );
   const [sourceUrl, setSourceUrl] = useState(geo.source_url);
   const [eventDate, setEventDate] = useState(geo.event_date ?? "");
   const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
@@ -66,7 +77,10 @@ export function EventEditForm({
     toDatetimeLocalUTC(geo.source_posted_at)
   );
   const [proof, setProof] = useState<Record<string, unknown> | null>(geo.proof);
-  const [proofImageUploading, setProofImageUploading] = useState(false);
+  // Inline proof images the editor holds locally; uploaded as `proof_files[]`
+  // at submit. A detection's existing proof images are already stored URLs in
+  // the doc, so this set covers only newly-added images.
+  const [proofFiles, setProofFiles] = useState<File[]>([]);
 
   // Media is staged (applied on save), like submit: existing rows can be marked
   // for removal, new files queued for upload.
@@ -102,6 +116,7 @@ export function EventEditForm({
     title: title.trim(),
     lat: parseFloat(lat),
     lng: parseFloat(lng),
+    ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
     event_date: eventDate,
     event_time: eventTime || undefined,
@@ -110,12 +125,13 @@ export function EventEditForm({
     tag_ids: selectedTagIds,
     remove_media_ids: [...removedIds],
     files: newFiles,
+    proof_files: proofFiles,
   });
 
   // Submit is the only write to a detection: it applies the whole form and flips
   // the row to `geolocated` in one atomic request (the server enforces the floor
   // too). A `detected` row is otherwise immutable machine output.
-  const submitMutation = useMutation(() => submitEvent(geo.id, buildInput()), {
+  const submitMutation = useMutation(() => geolocateEvent(geo.id, buildInput()), {
     fallback: "Couldn't submit.",
     onSuccess: () => {
       refreshDetectionCount();
@@ -123,19 +139,14 @@ export function EventEditForm({
     },
   });
 
-  // Reject (soft-delete) the detection — the queue's old inline delete moved
-  // here so a detection card is just a click, like every other card.
-  const rejectMutation = useMutation(() => rejectEvent(geo.id), {
-    fallback: "Couldn't reject this detection.",
-    onSuccess: () => {
-      refreshDetectionCount();
-      router.push(redirectTo);
-    },
-  });
-  const confirmReject = useConfirmAction(() => rejectMutation.run());
+  // Reject (close) the detection: the queue's old inline delete moved here so a
+  // detection card is just a click, like every other card. The reason is
+  // captured in an inline `CloseEventForm` (required + publicly visible), which
+  // owns its own close mutation; this flag just toggles the panel.
+  const [rejecting, setRejecting] = useState(false);
 
-  const busy = submitMutation.loading || rejectMutation.loading;
-  const actionError = submitMutation.error ?? rejectMutation.error;
+  const busy = submitMutation.loading;
+  const actionError = submitMutation.error;
 
   // Submit floor is computed on the post-edit state: kept existing media plus
   // staged new files, and the selected curated tags.
@@ -185,12 +196,6 @@ export function EventEditForm({
       flagIncomplete(missing);
       return;
     }
-    if (proofImageUploading) {
-      submitMutation.setError(
-        "An image is still uploading, please wait before submitting."
-      );
-      return;
-    }
     setConfirmingSubmit(true);
   };
 
@@ -230,6 +235,10 @@ export function EventEditForm({
           setLat={setLat}
           lng={lng}
           setLng={setLng}
+          captureLat={captureLat}
+          setCaptureLat={setCaptureLat}
+          captureLng={captureLng}
+          setCaptureLng={setCaptureLng}
           extraCoordCandidates={[]}
           onSwapCandidate={() => {}}
           invalid={invalidKeys.has("coordinates")}
@@ -274,7 +283,7 @@ export function EventEditForm({
           importGen={0}
           proof={proof}
           onChange={setProof}
-          onUploadStateChange={setProofImageUploading}
+          onProofFilesChange={setProofFiles}
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
 
@@ -324,31 +333,12 @@ export function EventEditForm({
             Cancel
           </Link>
 
-          {/* Reject (soft-delete) lives here now, not on the queue card. */}
-          {confirmReject.armed ? (
-            <span className="ml-auto inline-flex items-center gap-1.5">
-              <Button
-                variant="danger"
-                onClick={confirmReject.trigger}
-                disabled={busy}
-                className={DANGER_CONFIRM}
-              >
-                {rejectMutation.loading ? "Rejecting…" : "Confirm reject"}
-              </Button>
-              <Button
-                variant="ghost"
-                icon
-                onClick={confirmReject.cancel}
-                disabled={busy}
-                aria-label="Cancel reject"
-              >
-                <X size={13} />
-              </Button>
-            </span>
-          ) : (
+          {/* Reject (close) lives here now, not on the queue card. It opens the
+              inline reason panel below rather than closing on a fixed reason. */}
+          {!rejecting && (
             <Button
               variant="danger"
-              onClick={confirmReject.trigger}
+              onClick={() => setRejecting(true)}
               disabled={busy}
               className="ml-auto"
             >
@@ -356,6 +346,24 @@ export function EventEditForm({
             </Button>
           )}
         </div>
+
+        {/* The reason panel for rejecting the detection: a required free-text
+            reason (kept publicly visible on the closed row). On success it
+            refreshes the detection count and returns to the queue. */}
+        {rejecting && (
+          <div className="pt-4 border-t border-neutral-800">
+            <CloseEventForm
+              eventId={geo.id}
+              status={geo.status}
+              disabled={busy}
+              onClosed={() => {
+                refreshDetectionCount();
+                router.push(redirectTo);
+              }}
+              onCancel={() => setRejecting(false)}
+            />
+          </div>
+        )}
       </form>
     </PageShell>
   );

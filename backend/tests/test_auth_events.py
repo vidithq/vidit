@@ -4,10 +4,13 @@ Two unrelated pieces covered:
 
 1. HSTS — `Strict-Transport-Security` is stamped on every response.
 2. `auth_events` audit log — each auth-path side-effect lands one row
-   with the expected shape (event name, user_id when known, IP/UA).
+   with the expected shape (event name, user_id when known; no IP/UA,
+   dropped for privacy).
 
 The audit helper is deliberately best-effort (swallows its own exceptions),
-asserted directly by patching ``db.add`` to raise.
+asserted directly by patching ``db.add`` to raise. The rate-limit key's
+right-most-XFF extraction (the only client-IP consumer left) is pinned here
+too.
 """
 
 from __future__ import annotations
@@ -404,55 +407,15 @@ def test_audit_failure_does_not_break_login_db_layer(client, existing_user, monk
     assert response.status_code == 200
 
 
-# ── IP / UA extraction ────────────────────────────────────────────────────
+# ── Rate-limit key (right-most-XFF extraction) ────────────────────────────
+# The only remaining consumer of client-IP extraction: no IP ever lands in a
+# table (privacy), but the limiter's bucket key must stay unspoofable.
 
 
 class _FakeRequest:
     def __init__(self, *, headers: dict[str, str], client_host: str | None = None):
         self.headers = headers
         self.client = type("c", (), {"host": client_host})() if client_host else None
-
-
-def test_extract_client_ip_takes_rightmost_forwarded_entry():
-    """Right-most entry is the trusted proxy's observation.
-
-    Left-most is attacker-controlled when the client can set the header
-    themselves; taking it would let a malicious client spoof the audit
-    log's IP column trivially. See `extract_client_ip` docstring.
-    """
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "1.2.3.4, 203.0.113.7"},
-        client_host="10.0.0.1",
-    )
-    assert audit.extract_client_ip(req) == "203.0.113.7"
-
-
-def test_extract_client_ip_resists_spoofing_via_prepended_xff():
-    """A client prepending garbage to XFF must not poison the audit row.
-
-    Realistic attack: client sends ``X-Forwarded-For: 1.2.3.4`` to make
-    the audit log attribute their activity to a different IP. Railway
-    appends the observed client IP, so the backend sees
-    ``1.2.3.4, <real-client>``. Taking the right-most entry recovers
-    the trusted value.
-    """
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "evil-prefix, 203.0.113.7"},
-        client_host="10.0.0.1",
-    )
-    # Right-most parses cleanly; even though the left-most is garbage
-    # we land on the trusted right-most value, not on the fallback.
-    assert audit.extract_client_ip(req) == "203.0.113.7"
-
-
-def test_extract_client_ip_falls_back_to_request_client():
-    req = _FakeRequest(headers={}, client_host="198.51.100.5")
-    assert audit.extract_client_ip(req) == "198.51.100.5"
-
-
-def test_extract_client_ip_handles_no_source():
-    req = _FakeRequest(headers={}, client_host=None)
-    assert audit.extract_client_ip(req) is None
 
 
 def test_rate_limit_key_takes_rightmost_xff_not_client_host():
@@ -470,10 +433,10 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
     every time, OR send ``X-Forwarded-For: <victim_ip>`` to pin a
     chosen victim's bucket and lock them out.
 
-    The fix: ``rate_limit_key`` routes through ``extract_client_ip``,
-    which picks the RIGHT-most entry (the trusted proxy's observation).
-    A spoofed-prefix XFF therefore resolves to the same key as a clean
-    request from the same upstream — no fresh bucket, no victim pin.
+    The fix: ``rate_limit_key`` picks the RIGHT-most entry (the trusted
+    proxy's observation). A spoofed-prefix XFF therefore resolves to the
+    same key as a clean request from the same upstream — no fresh bucket,
+    no victim pin.
     """
     # Simulate the prod shape: attacker prepends ``1.2.3.4``, Railway
     # appends the real client IP. ``request.client.host`` is what
@@ -492,6 +455,21 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
     assert audit.rate_limit_key(spoofed) == audit.rate_limit_key(clean) == "203.0.113.7"
 
 
+def test_rate_limit_key_resists_garbage_prefix():
+    """A garbage left-most entry never poisons the key: the right-most
+    (trusted) entry parses and wins."""
+    req = _FakeRequest(
+        headers={"x-forwarded-for": "evil-prefix, 203.0.113.7"},
+        client_host="10.0.0.1",
+    )
+    assert audit.rate_limit_key(req) == "203.0.113.7"
+
+
+def test_rate_limit_key_falls_back_to_request_client():
+    req = _FakeRequest(headers={}, client_host="198.51.100.5")
+    assert audit.rate_limit_key(req) == "198.51.100.5"
+
+
 def test_rate_limit_key_returns_stable_sentinel_when_no_client():
     """Edge case: no XFF, no client (test harness / unusual proxy).
     The fallback must be a stable string so slowapi can key on it
@@ -500,19 +478,12 @@ def test_rate_limit_key_returns_stable_sentinel_when_no_client():
     assert audit.rate_limit_key(no_source) == "rate-limit:no-client"
 
 
-def test_extract_user_agent_caps_oversize_strings():
-    req = _FakeRequest(headers={"user-agent": "A" * 4000})
-    out = audit.extract_user_agent(req)
-    assert out is not None
-    assert len(out) == 1024
+def test_rate_limit_key_rejects_garbage_values():
+    """Hostile / malformed X-Forwarded-For never becomes a bucket key.
 
-
-def test_extract_client_ip_rejects_garbage_values():
-    """Hostile / malformed X-Forwarded-For lands as NULL.
-
-    Postgres INET strict-rejects anything that isn't a parseable
-    IPv4 / IPv6, so an unvalidated value would poison the savepoint on
-    every audit insert. ``ipaddress.ip_address`` is the gate.
+    ``ipaddress.ip_address`` is the gate: an unparseable value falls
+    through to the next candidate or the stable sentinel, so an attacker
+    can't mint arbitrary-string buckets.
     """
     for hostile in [
         "not-an-ip",
@@ -522,19 +493,19 @@ def test_extract_client_ip_rejects_garbage_values():
         "",
     ]:
         req = _FakeRequest(headers={"x-forwarded-for": hostile})
-        assert audit.extract_client_ip(req) is None, f"should reject {hostile!r}"
+        assert audit.rate_limit_key(req) == "rate-limit:no-client", f"should reject {hostile!r}"
 
 
-def test_extract_client_ip_falls_back_when_forwarded_is_garbage():
-    """A garbage Forwarded header should not stop us from logging the proxy IP."""
+def test_rate_limit_key_falls_back_when_forwarded_is_garbage():
+    """A garbage Forwarded header should not stop us from keying on the peer."""
     req = _FakeRequest(
         headers={"x-forwarded-for": "not-an-ip"},
         client_host="198.51.100.5",
     )
-    assert audit.extract_client_ip(req) == "198.51.100.5"
+    assert audit.rate_limit_key(req) == "198.51.100.5"
 
 
-def test_extract_client_ip_honours_trusted_proxy_hops(monkeypatch):
+def test_rate_limit_key_honours_trusted_proxy_hops(monkeypatch):
     """With TRUSTED_PROXY_HOPS=2, pick the second-from-the-right entry.
 
     Two trusted proxies in front of the backend (e.g. Cloudflare →
@@ -551,15 +522,14 @@ def test_extract_client_ip_honours_trusted_proxy_hops(monkeypatch):
         headers={"x-forwarded-for": "10.0.0.1, 104.16.0.1"},
         client_host="172.16.0.1",
     )
-    assert audit.extract_client_ip(req) == "10.0.0.1"
+    assert audit.rate_limit_key(req) == "10.0.0.1"
 
 
-def test_extract_client_ip_clamps_when_chain_is_shorter_than_hops(monkeypatch):
+def test_rate_limit_key_clamps_when_chain_is_shorter_than_hops(monkeypatch):
     """A misconfigured hop count must not drop the value entirely.
 
-    Better forensics than nothing: if TRUSTED_PROXY_HOPS=3 but the
-    XFF only carries two entries, peel as far as we can (left-most)
-    rather than indexing out of range.
+    If TRUSTED_PROXY_HOPS=3 but the XFF only carries two entries, peel as
+    far as we can (left-most) rather than indexing out of range.
     """
     from app.config import settings as _settings
 
@@ -568,7 +538,7 @@ def test_extract_client_ip_clamps_when_chain_is_shorter_than_hops(monkeypatch):
         headers={"x-forwarded-for": "10.0.0.1, 203.0.113.7"},
         client_host="172.16.0.1",
     )
-    assert audit.extract_client_ip(req) == "10.0.0.1"
+    assert audit.rate_limit_key(req) == "10.0.0.1"
 
 
 # ── HSTS on short-circuited responses ────────────────────────────────────

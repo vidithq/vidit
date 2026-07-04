@@ -58,20 +58,21 @@ def test_negative_content_length_returns_413():
 
 
 def test_body_size_cap_admits_full_geolocation_batch():
-    """The cap must admit the LARGEST legitimate submit: a full batch of
-    ``max_files_per_event`` images at ``max_image_size`` each.
-    Previously the cap was ``max_video_size + 10 MB`` = 110 MB, which
-    silently 413'd a legitimate 12-image submission totalling 120 MB +
-    multipart framing (caught in PR #100 review). Locks in the bound
-    so a future regression — e.g. lowering ``max_image_size`` then
-    raising ``max_files_per_event`` — doesn't reintroduce it.
+    """The cap must admit the LARGEST legitimate submit: one source video at
+    ``max_video_size`` plus a full ``max_proof_images_per_event`` proof batch
+    at ``max_image_size`` each, riding the same multipart request.
+    An earlier cap shape (``max_video_size + 10 MB``) silently 413'd a
+    legitimate full-image submission (caught in PR #100 review). Locks in the
+    bound so a future regression (e.g. lowering ``max_image_size`` then
+    raising ``max_proof_images_per_event``) doesn't reintroduce it.
     """
     from app.config import settings
     from app.main import _MAX_REQUEST_BODY_BYTES
 
-    largest_legitimate_image_batch = settings.max_files_per_event * settings.max_image_size
-    assert largest_legitimate_image_batch <= _MAX_REQUEST_BODY_BYTES
-    assert settings.max_video_size <= _MAX_REQUEST_BODY_BYTES
+    largest_legitimate_submit = (
+        settings.max_video_size + settings.max_proof_images_per_event * settings.max_image_size
+    )
+    assert largest_legitimate_submit <= _MAX_REQUEST_BODY_BYTES
 
 
 def test_413_response_carries_cors_headers():

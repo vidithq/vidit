@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import {
   reapAuthTokens,
-  reapProofOrphans,
+  reapPendingRegistrations,
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
@@ -15,7 +15,7 @@ export function MaintenancePanel() {
   const [authResult, setAuthResult] = useState<MaintenanceResponse | null>(
     null
   );
-  const [orphanResult, setOrphanResult] = useState<MaintenanceResponse | null>(
+  const [pendingResult, setPendingResult] = useState<MaintenanceResponse | null>(
     null
   );
 
@@ -23,24 +23,24 @@ export function MaintenancePanel() {
     fallback: "Failed",
     onSuccess: setAuthResult,
   });
-  const reapOrphans = useMutation(reapProofOrphans, {
+  const reapPending = useMutation(reapPendingRegistrations, {
     fallback: "Failed",
-    onSuccess: setOrphanResult,
+    onSuccess: setPendingResult,
   });
 
   // Both actions share one error slot, cleared when either fires (the other's
   // `reset()` mirrors the old single `setError(null)` at the top of each).
-  const error = reapAuth.error ?? reapOrphans.error;
-  const running = reapAuth.loading || reapOrphans.loading;
+  const error = reapAuth.error ?? reapPending.error;
+  const running = reapAuth.loading || reapPending.loading;
 
   const onReapAuth = () => {
-    reapOrphans.reset();
+    reapPending.reset();
     void reapAuth.run();
   };
 
-  const onReapOrphans = () => {
+  const onReapPending = () => {
     reapAuth.reset();
-    void reapOrphans.run();
+    void reapPending.run();
   };
 
   return (
@@ -62,18 +62,14 @@ export function MaintenancePanel() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={onReapOrphans} disabled={running}>
-            {reapOrphans.loading
+          <Button variant="secondary" onClick={onReapPending} disabled={running}>
+            {reapPending.loading
               ? "Reaping…"
-              : "Reap orphan proof images"}
+              : "Reap expired pending registrations"}
           </Button>
-          {orphanResult && (
+          {pendingResult && (
             <span className="text-xs text-neutral-400">
-              Rows: {orphanResult.rows_deleted ?? 0} · S3:{" "}
-              {orphanResult.s3_deleted ?? 0}
-              {orphanResult.s3_failed
-                ? ` · failed: ${orphanResult.s3_failed}`
-                : ""}
+              Deleted: {pendingResult.pending_registrations_deleted ?? 0}
             </span>
           )}
         </div>

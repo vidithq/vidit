@@ -104,12 +104,14 @@ const MOCK_TAGS = [
 const MOCK_DETAIL: EventDetail = {
   id: "demo",
   title: "Strike on a depot, Donetsk",
-  lat: 48.0159,
-  lng: 37.8024,
+  event_coords: { lat: 48.0159, lng: 37.8024 },
+  capture_source_coords: null,
   event_date: "2026-05-09",
   is_demo: true,
   status: "geolocated",
-  author: {
+  close_reason: null,
+  before_closed_status: null,
+  owner: {
     id: "a1",
     username: "analyst",
     is_trusted: true,
@@ -128,8 +130,15 @@ const MOCK_DETAIL: EventDetail = {
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
   updated_at: "2026-06-01T00:00:00Z",
+  requested_at: null,
+  detected_at: null,
+  geolocated_at: "2026-06-01T00:00:00Z",
+  closed_at: null,
   media: [],
   requested_by: null,
+  geolocators: [],
+  investigator_count: 0,
+  investigators: [],
 };
 
 // The lighter geolocation-card payload (timeline / recent-submissions shape).
@@ -141,7 +150,7 @@ const MOCK_CARD_GEO = {
   status: "detected" as EventStatus,
   lat: 48.0159,
   lng: 37.8024,
-  author: { username: "analyst" },
+  owner: { username: "analyst" },
   tags: [
     { id: "t1", name: "Ukraine", category: "conflict" as const },
     { id: "t2", name: "Drone", category: "capture_source" as const },
@@ -401,12 +410,12 @@ export default function PalettePage() {
           <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author.">
             <Variant label="default (subtitle)">
               <span className="text-sm text-neutral-400">
-                <AuthorByline author={MOCK_DETAIL.author} />
+                <AuthorByline author={MOCK_DETAIL.owner} />
               </span>
             </Variant>
             <Variant label='size="xs" (panel header)'>
               <span className="text-xs text-neutral-400">
-                <AuthorByline author={MOCK_DETAIL.author} size="xs" />
+                <AuthorByline author={MOCK_DETAIL.owner} size="xs" />
               </span>
             </Variant>
           </Item>
@@ -567,7 +576,7 @@ export default function PalettePage() {
                 detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="detected" />}
-                author={MOCK_CARD_GEO.author}
+                author={MOCK_CARD_GEO.owner}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
@@ -582,7 +591,7 @@ export default function PalettePage() {
                 detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
-                author={MOCK_CARD_GEO.author}
+                author={MOCK_CARD_GEO.owner}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
@@ -613,13 +622,9 @@ export default function PalettePage() {
                 detailHref="/events/demo/edit"
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
-                author={{ username: MOCK_DETAIL.author.username }}
+                author={{ username: MOCK_DETAIL.owner.username }}
                 date={MOCK_DETAIL.event_date ?? undefined}
-                coords={
-                  MOCK_DETAIL.lat != null && MOCK_DETAIL.lng != null
-                    ? { lat: MOCK_DETAIL.lat, lng: MOCK_DETAIL.lng }
-                    : null
-                }
+                coords={MOCK_DETAIL.event_coords}
                 tags={MOCK_DETAIL.tags}
               />
             </div>

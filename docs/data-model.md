@@ -37,8 +37,6 @@ erDiagram
         UUID id PK
         UUID user_id FK "nullable"
         TEXT event
-        INET ip "nullable"
-        TEXT user_agent "nullable"
         TIMESTAMPTZ created_at
     }
 
@@ -78,10 +76,11 @@ erDiagram
 
     events {
         UUID id PK
-        UUID author_id FK "edit-rights owner"
+        UUID owner_id FK "edit-rights owner, moves to geolocator"
         UUID requested_by_id FK "nullable, who opened the request"
         VARCHAR title
-        GEOMETRY location "nullable, tied to status by CHECK"
+        GEOMETRY event_coords "nullable, the subject; required at geolocated"
+        GEOMETRY capture_source_coords "nullable, the camera position"
         TEXT source_url
         TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
@@ -89,15 +88,26 @@ erDiagram
         TIME event_time "nullable, optional UTC hour"
         TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
         TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
+        TIMESTAMPTZ requested_at "nullable, entered requested"
+        TIMESTAMPTZ detected_at "nullable, entered detected"
+        TIMESTAMPTZ geolocated_at "nullable, entered geolocated"
+        TIMESTAMPTZ closed_at "nullable, entered closed"
         VARCHAR status "requested | detected | geolocated | closed"
-        TIMESTAMPTZ closed_at "nullable, set on closed"
-        TIMESTAMPTZ deleted_at "nullable, soft-delete"
+        TEXT close_reason "nullable, free-text"
+        VARCHAR before_closed_status "nullable, status before closed"
+        TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
         BOOLEAN is_demo "synthetic demo row"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    event_claims {
+    event_geolocators {
+        UUID event_id FK
+        UUID user_id FK
+        TIMESTAMPTZ created_at
+    }
+
+    event_investigators {
         UUID event_id FK
         UUID user_id FK
         TIMESTAMPTZ created_at
@@ -106,23 +116,10 @@ erDiagram
     media {
         UUID id PK
         UUID event_id FK
+        VARCHAR role "source | proof"
         TEXT storage_url
         VARCHAR media_type
         VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
-        INET uploaded_ip "nullable, submitter IP at upload time"
-        TEXT uploaded_user_agent "nullable, submitter UA at upload time"
-        TEXT original_filename "nullable, client-supplied filename"
-        TIMESTAMPTZ created_at
-    }
-
-    proof_images {
-        UUID id PK
-        TEXT s3_key
-        UUID user_id FK
-        UUID event_id FK "nullable"
-        VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
-        INET uploaded_ip "nullable, submitter IP at upload time"
-        TEXT uploaded_user_agent "nullable, submitter UA at upload time"
         TEXT original_filename "nullable, client-supplied filename"
         TIMESTAMPTZ created_at
     }
@@ -150,15 +147,15 @@ erDiagram
     users ||--o{ auth_tokens : "user_id"
     users ||--o{ admin_events : "actor_id"
     users ||--o{ auth_events : "user_id"
-    users ||--o{ events : "author_id"
+    users ||--o{ events : "owner_id"
     users ||--o{ events : "requested_by_id"
     events ||--o{ media : "event_id"
-    events ||--o{ proof_images : "event_id"
-    users ||--o{ proof_images : "user_id"
     events ||--o{ event_tags : "event_id"
     tags ||--o{ event_tags : "tag_id"
-    events ||--o{ event_claims : "event_id"
-    users ||--o{ event_claims : "user_id"
+    events ||--o{ event_geolocators : "event_id"
+    users ||--o{ event_geolocators : "user_id"
+    events ||--o{ event_investigators : "event_id"
+    users ||--o{ event_investigators : "user_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -181,7 +178,7 @@ erDiagram
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false`, substantiated trust mark (toggle UI lands later; column ships now) |
 | `trust_reason` | `TEXT` | nullable, required at the application layer when `is_trusted=true` |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable, set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. |
-| `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every geolocation they authored. Hard-delete (the GDPR escape hatch) drops the row + cascade-drops their geolocations + sweeps S3. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every event they own. Hard-delete (the GDPR escape hatch) drops the row + the events they own + their contributor rows + sweeps S3; because the owner is always among an event's geolocators, no `geolocated` event is left below one geolocator. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff created by the admin Demo data seeder (5 fixed `demo-analyst-N` accounts with unloggable hashes + `@vidit.invalid` emails). The wipe button drops every flagged user + their geolocations in one go. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`, monotonic session-invalidation counter. The session JWT embeds this as a `tv` claim; `get_current_user` 401s on mismatch. Bumped on logout, password change, password reset, and soft-delete so every outstanding JWT for the user becomes invalid at once. Pre-migration cookies (no `tv`) 401 too; the migration's one-time forced logout is intended. |
 | `bio` | `TEXT` | nullable, short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint, so cap changes don't need migrations). |
@@ -269,15 +266,13 @@ Lifecycle: `POST /auth/register` inserts via `services/registration.py::create_p
 
 ### `auth_events`
 
-Append-only audit log for auth-relevant events. Populated synchronously from the auth router on `login` / `failed_login` / `logout` / `register_pending` / `register_resent` / `register_confirmed` / `password_reset_requested` / `password_reset_completed` / `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`) so an INSERT failure (e.g. INET coercion from a malformed `X-Forwarded-For`) rolls back only the audit row and the caller's transaction stays usable.
+Append-only audit log for auth-relevant events. Populated synchronously from the auth router on `login` / `failed_login` / `logout` / `register_pending` / `register_resent` / `register_confirmed` / `password_reset_requested` / `password_reset_completed` / `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`) so an INSERT failure rolls back only the audit row and the caller's transaction stays usable.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable, NULL when the email didn't match a live user (failed_login, password_reset_requested no-op branch, register_pending, register_resent on both branches, anonymous logout) so the row doesn't double as a probe-able email-to-existence oracle |
 | `event` | `TEXT` | NOT NULL, plain string, no DB enum so adding a new event kind doesn't require a migration |
-| `ip` | `INET` | nullable, IPv4 / IPv6, parsed via `ipaddress.ip_address` in `services/audit.py::extract_client_ip`. We take the **right-most** entry of `X-Forwarded-For` (the trusted-proxy observation), not the left-most: left-most is client-spoofable. Assumes one trusted hop (Railway); add a `TRUSTED_PROXY_HOPS` peel when a second trusted proxy lands in front. An invalid value lands as NULL rather than poisoning the savepoint. |
-| `user_agent` | `TEXT` | nullable, capped at 1024 chars |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -285,7 +280,7 @@ Indexes:
 - `ix_auth_events_user_id_created_at` on `(user_id, created_at)`, "what did this user do, latest first" forensics query
 - `ix_auth_events_event_created_at` on `(event, created_at)`, "did event X spike recently"
 
-No retention policy today.
+No IP or User-Agent is stored (dropped for privacy; network context lives only at the Cloudflare edge). No retention policy today.
 
 ---
 
@@ -310,32 +305,40 @@ Indexes:
 
 ### `events`
 
-One row is one event across the whole lifecycle. `status` is the lifecycle; `location` is an independent nullable axis tied to it by a CHECK. A bounty is a `requested` event on this table (no coordinates yet); fulfilling it is a single `UPDATE status='geolocated', location=…` on the same row.
+One row is one event across the whole lifecycle. `status` is the lifecycle; `event_coords` is an independent nullable axis tied to it by a CHECK. A bounty is a `requested` event on this table (no coordinates required yet); fulfilling it is a single `UPDATE status='geolocated', event_coords=…` on the same row plus an `event_geolocators` insert, not a copy into a new row.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `author_id` | `UUID` | FK → `users.id`, NOT NULL. Edit-rights owner. For a `requested` event this is the poster; it transfers to the fulfiller at the `geolocated` transition, so permissions stay a single-owner check across the lifecycle. |
-| `requested_by_id` | `UUID` | FK → `users.id`, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation (no request preceded it). |
+| `owner_id` | `UUID` | FK → `users.id`, NOT NULL. Edit-rights owner. For a `requested` event this is the poster; it moves to the fulfiller at the `geolocated` transition, so permissions stay a single-owner check across the lifecycle. Renamed from `author_id`; the owner is always among the event's geolocators (see `event_geolocators`). |
+| `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation. |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `location` | `GEOMETRY(Point, 4326)` | nullable, tied to `status` by `ck_events_location_status`: forbidden for `requested` (no coordinates yet), required for `geolocated` (a vouched geolocation has a place), free for `detected` / `closed`. |
+| `event_coords` | `GEOMETRY(Point, 4326)` | nullable, the subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise (a `requested` bounty may carry an approximate guess). Renamed from `location`. One subject point per event; multi-point is a deferred `event_points` child table. |
+| `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable, the camera position: where the footage was shot from. Always optional, one per event. |
 | `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row it points at the originating post; immutable once set. |
-| `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` assemble idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
+| `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` re-import idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
 | `event_date` | `DATE` | nullable, when the depicted event happened. Often unknown for a `requested` event; the submit transition requires it at `geolocated`. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
-| `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown (often: an event date is inferred from context or undated footage). |
-| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the original source posted the media (a Telegram / X post): a real post instant, so a full UTC timestamp, not a bare date, a post always has a time. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
-| `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The authorship / precedence signal ("who geolocated it first") for the claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle: `requested` (an open call to geolocate, no location yet) → `detected` (machine draft, may or may not carry a location, rendered marked on every surface and itself immutable until submit) → `geolocated` (a person vouched for it and froze it, always has a location) → `closed` (a `requested` event the author withdrew, or a `detected` row the owner rejected). Plain string (no native enum), its value domain pinned by `ck_events_status_valid` below. The default keeps a direct human submit correct without setting it; the requested / detected paths pass `status` explicitly. Owner transitions (`submit`, which writes the edits and moves `requested` / `detected` → `geolocated` in one step, and `reject`, which soft-deletes a `detected` draft for re-import) live in [`api.md`](api.md). |
-| `closed_at` | `TIMESTAMPTZ` | nullable, set when the event reaches the terminal `closed` (a withdrawn request or a rejected detection). |
-| `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (filtered from public reads; admin-only thereafter) |
+| `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown. |
+| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the original source posted the media: a real post instant, so a full UTC timestamp. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
+| `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The "who geolocated it first" precedence input for the claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
+| `requested_at` | `TIMESTAMPTZ` | nullable, stamped when the event entered `requested`. |
+| `detected_at` | `TIMESTAMPTZ` | nullable, stamped when a machine produced it (`detected`). |
+| `geolocated_at` | `TIMESTAMPTZ` | nullable, stamped when a person vouched and froze it (`geolocated`). |
+| `closed_at` | `TIMESTAMPTZ` | nullable, stamped when the event entered the terminal `closed`. |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle: `requested` (an open call to geolocate) → `detected` (machine draft, rendered marked on every surface, immutable until vouched) → `geolocated` (a person vouched and froze it, always has a location) → `closed` (withdrawn request or rejected detection). Plain string (no native enum), value domain pinned by `ck_events_status_valid`. The default keeps a direct human submit correct without setting it; the requested / detected paths pass `status` explicitly. The `geolocate` and `close` transitions live in [`api.md`](api.md). |
+| `close_reason` | `TEXT` | nullable, free-text reason the event was closed (AI image, bot bug, withdrawn…). Kept visible for transparency. A curated reason picker is deferred. |
+| `before_closed_status` | `VARCHAR(20)` | nullable, the status held just before `closed` (`requested` = withdrawn, `detected` = rejected). Drives the status badge, the requested-view routing, and lets re-import treat a closed detection as re-importable. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = admin takedown (soft-delete): filtered from public reads, the row still exists. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff seeded by the admin Demo data panel. Surfaced via the always-attached `demo` free tag (filterable in the map UI) and dropped en masse by the wipe button. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 **Check constraints:**
-- `ck_events_location_status`: `(status <> 'requested' OR location IS NULL) AND (status <> 'geolocated' OR location IS NOT NULL)`. A `requested` event carries no location; a `geolocated` one always does; `detected` / `closed` are free either way.
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database (the column is a plain `VARCHAR`, not a native enum), so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
+- `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate; the other states are free. The old "requested forbids coordinates" half is deliberately dropped so a `requested` bounty may carry an approximate guess.
+- `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). The terminal stamps are tied to status so an app path that forgets to stamp is rejected at write time, not stored as silent bad data.
+- `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected')) OR (status <> 'closed' AND before_closed_status IS NULL)`. Non-NULL and in-domain exactly when `closed`, NULL otherwise. The explicit `IS NOT NULL` is required: `NULL IN (...)` is unknown (not false), so without it a `closed` row could keep a NULL discriminator and slip through.
 
 **Temporal fields: four kinds of time.** A geolocation carries several timestamps, each a different point on the path from an event to a Vidit row. They are distinct on purpose:
 
@@ -355,24 +358,42 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 `event_date` is *editorial*: a real-world event, often known only to the day and with no canonical zone, so it's a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants*: known to the minute when present, and UTC, so they're full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
-- `GIST(location)`, required for geospatial queries (bounding-box filtering, proximity sort)
-- `(author_id)`, profile lookup
+- `GIST(event_coords)`, required for geospatial queries (bounding-box filtering, proximity sort). `capture_source_coords` is not indexed (no spatial read consumes it).
+- `(owner_id)`, profile lookup
 - `(event_date)`, `(created_at)`, time-based queries
-- `(author_id, created_at DESC)`, composite for profile listing
+- `(owner_id, created_at DESC)`, composite for profile listing. Single-author reads stay on `owner_id` until they re-home onto `event_geolocators`.
 - `ix_events_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
 - `ix_events_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
 - `ix_events_status_created_at` on `(status, created_at)`, the requested-view (ex-bounty) list, the map, and the detection queue all filter on `status` newest-first
 - `ix_events_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
 - `ix_events_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 
-> `location` is a PostGIS point in WGS84 (SRID 4326 = standard GPS coordinates), nullable per the CHECK above.
-> GeoAlchemy2 exposes `.lat` / `.lng` via `WKBElement`, or `ST_X` / `ST_Y` in raw SQL.
+> `event_coords` / `capture_source_coords` are PostGIS points in WGS84 (SRID 4326 = standard GPS coordinates). GeoAlchemy2 exposes `.lat` / `.lng` via `WKBElement`, or `ST_X` / `ST_Y` in raw SQL.
 
 ---
 
-### `event_claims`
+### `event_geolocators`
 
-Multi-analyst "I'm working on this" signal on a `requested` event. Several analysts can hold a claim on the same event at once: a public hint to coordinate, not a single-claimer reservation. The composite PK makes re-claiming idempotent, and `POST /bounties/{id}/claim` returns 204 either way.
+Durable credit for the geolocation: who vouched the location. Replaces the single `author_id` as the attribution source of truth; the `owner_id` is always among these rows. Written at the `geolocate` transition (at least one), collaborative (N).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+Composite PK: `(event_id, user_id)` (idempotent credit).
+
+**Indexes:**
+- `ix_event_geolocators_user_created_at` on `(user_id, created_at)`, the reverse "a user's geolocations" profile query.
+
+The composite PK's leading `event_id` serves the forward "who geolocated event X" read. Because `owner_id` is always among the geolocators and `hard_delete_user` deletes the events a user owns, a user erasure cannot leave a `geolocated` event below one geolocator.
+
+---
+
+### `event_investigators`
+
+Multi-analyst "I'm working on this" signal on an event. Several analysts can hold one at once: a public hint to coordinate, not a single-claimer reservation. Renamed from `event_claims` ("claim" made no sense on an event). The composite PK makes re-signalling idempotent, and `POST` / `DELETE /events/{id}/investigate` toggles it (204 either way).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -383,10 +404,10 @@ Multi-analyst "I'm working on this" signal on a `requested` event. Several analy
 Composite PK: `(event_id, user_id)`
 
 **Indexes:**
-- `ix_event_claims_event_id_created_at` on `(event_id, created_at)`, "who's working on request X right now?" detail-page query, newest-first ordering
-- `ix_event_claims_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
+- `ix_event_investigators_event_id_created_at` on `(event_id, created_at)`, "who's working on event X right now?", newest-first ordering
+- `ix_event_investigators_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
 
-Claims don't gate the lifecycle: a request can be fulfilled by an analyst who never claimed, and claims aren't cleared when the event terminates. Hard-delete on the event cascades-drops the rows.
+The signal doesn't gate the lifecycle: an event can be geolocated by an analyst who never signalled, and rows aren't cleared when the event terminates. Kept as a table (not an id-array) for the reverse `user_id` query and the per-row `created_at`. Hard-delete on the event cascade-drops the rows.
 
 ---
 
@@ -413,58 +434,28 @@ Indexes:
 
 ### `media`
 
-One `event_id` owner. A bounty is a `requested` geolocation, so all evidence is on one table; fulfilling a request no longer moves media between tables.
+Every uploaded file for an event, source footage and proof-body images alike, split by `role`. One `event_id` owner; a bounty is a `requested` event, so all evidence is on one table and fulfilling a request never moves media.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set: files upload at publish, so there is no unattached staging row (see Upload timing below). |
+| `role` | `VARCHAR` | NOT NULL, `'source'` (the footage, at most one per event via a partial unique index) or `'proof'` (inline images referenced from the proof body, N per event). |
 | `storage_url` | `TEXT` | NOT NULL, S3 / CloudFront URL |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
-| `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes, captured at upload time (`services/storage.py::UploadResult`). Stable content fingerprint that survives storage-class changes and copy operations, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows now carry the hash too, `services/seed.py::_prepare_pool_media` runs a one-pass-per-seed hash + derivative production over each unique `demo-pool/` media key, so demo content matches real upload integrity. **The hash is computed on the bytes that land on S3, for images that means after the EXIF strip, so an auditor downloading the public URL can independently verify the hash matches.** |
-| `uploaded_ip` | `INET` | nullable, submitter IP at upload time. Extracted via `services/audit.py::extract_client_ip` (right-most XFF, defended against client-spoofed prepends). NULL when the value isn't parseable as IPv4 / IPv6, on demo-seeder rows, and on rows that pre-date the column. **Admin-only, never surfaced on the public read API.** |
-| `uploaded_user_agent` | `TEXT` | nullable, submitter `User-Agent` string at upload time, capped at 1 KB. Same admin-only visibility as `uploaded_ip`. |
+| `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes, captured at upload time. Stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag (MD5 for non-multipart uploads, not stable across copies). NULL on rows that pre-date this column. Demo-seeder rows carry the hash too. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable, client-supplied filename (e.g. `IMG_1234.jpg`). Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
+`uploaded_ip` / `uploaded_user_agent` are **not stored** (dropped for privacy; network context lives only at the Cloudflare edge).
+
 **Indexes:**
 - `(sha256) WHERE sha256 IS NOT NULL`, partial index for "find every row with this content hash" audit / dedup queries; only the populated cohort, so demo rows don't bloat it.
+- unique `(event_id) WHERE role = 'source'`, the "at most one source media per event" cap.
 
-At least one media item is required per bounty (`POST /bounties` rejects an empty file list) and per `geolocated` event; a `requested` event carries the poster's evidence from the start.
+At least one `source` media is required per bounty and per `geolocated` event, and at least one `proof` image is required at the `geolocate` transition. A `requested` event carries the poster's evidence from the start.
 
-The `media` table stores the **top-level evidence files** uploaded with the form (the gallery shown above the proof body). Inline images embedded inside the proof body live in `proof_images` instead.
-
----
-
-### `proof_images`
-
-Inline images embedded inside the Tiptap proof body (one row per image referenced from the `<image>` nodes in `events.proof`).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `gen_random_uuid()` |
-| `s3_key` | `TEXT` | UNIQUE, NOT NULL, canonical key (host-stripped); inverse of `Storage.public_url` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, **nullable** until form submit |
-| `sha256` | `VARCHAR(64)` | nullable, hex-encoded SHA-256 of the uploaded bytes (same rationale and NULL-cohort as `media.sha256`). |
-| `uploaded_ip` | `INET` | nullable, submitter IP at upload (same rationale and admin-only visibility as `media.uploaded_ip`). |
-| `uploaded_user_agent` | `TEXT` | nullable, submitter UA, capped at 1 KB. Admin-only. |
-| `original_filename` | `TEXT` | nullable, client-supplied filename. Public on the read API. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-**Indexes:**
-- `(user_id)`, orphan reaper scopes by user; future per-user quota
-- `(event_id)`, collect keys for the cascade-delete S3 sweep
-- `(created_at) WHERE event_id IS NULL`, partial index for the orphan reaper
-- `(sha256) WHERE sha256 IS NOT NULL`, partial content-hash index, mirrors `ix_media_sha256`
-
-**Lifecycle:**
-1. Editor uploads an image → `POST /events/proof-images` writes to S3 and inserts a row with `event_id = NULL`.
-2. User submits the geolocation form → after sanitization, `POST /events` extracts the `<image>` srcs from the proof JSON, derives s3_keys, and `UPDATE proof_images SET event_id = :geo WHERE s3_key IN (...) AND user_id = :u AND event_id IS NULL`. The user-id scope blocks one user from claiming another user's keys.
-3. Geolocation deletion → the router collects matching `s3_key`s, deletes the S3 objects, then commits the cascade DB delete. (S3 is deleted post-commit so a failed transaction can't strand referenced files.)
-4. Form abandoned → the row stays with `event_id = NULL` and is reaped on-demand from the admin Maintenance panel (`services/maintenance.py::reap_proof_image_orphans`, 24h grace), which deletes both the S3 object and the row.
-
-Why a separate table instead of embedding the URL in the proof JSON: gives O(1) orphan reaping, lets us sweep S3 on geolocation delete, and supports per-user quotas / takedown lookups without scanning the bucket or parsing JSONB.
+**Upload timing.** Persistence happens only at publish. While writing, the proof editor holds local previews; submit uploads every file (source and proof) through the same evidence intake, in one transaction. So `event_id` is always set: there is no staging table, no `event_id IS NULL` orphan, and no proof-image reaper. This replaces the former separate `proof_images` table.
 
 ---
 
@@ -520,26 +511,38 @@ Conflicts and free-form tags share the same mechanics (filtering, many-to-many a
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS unlocks native geospatial queries (bounding-box filtering, distance computation, clustering). GeoAlchemy2 exposes those types directly to SQLAlchemy.
 
+### Why two contributor tables (`event_geolocators`, `event_investigators`) and not id-arrays?
+Both are read from both sides: an event's contributors, and a user's geolocations / investigations (the profile). A junction table indexes both directions and carries a per-row `created_at`; an id-array on `events` forces a GIN scan for the reverse query and stores no timestamp. They stay two tables rather than one `event_contributors` with a `role` because their lifecycles differ (durable attribution vs a transient signal) and a person can be a geolocator without ever having been an investigator.
+
+### Why split `author_id` into `owner_id` + `event_geolocators`?
+Edit rights and credit are different facts. `owner_id` is a single mutable permission holder (it moves to the fulfiller on geolocate); `event_geolocators` is the durable, potentially collaborative record of who vouched the location. Single-author read surfaces (profile, byline, search, trust filter) stay on `owner_id` until a second-geolocator write path exists, then re-home onto `event_geolocators`.
+
+### Why upload proof images at publish, not while typing?
+So `media` keeps a NOT NULL `event_id`: no staging table, no `event_id IS NULL` orphan, no reaper. The editor holds local previews and submit uploads every file through the one evidence intake. The trade is a browser-side editor that batches uploads at submit rather than on drop.
+
+### Why `before_closed_status`?
+`close` unifies the old withdraw and reject into one verb, but a closed request and a closed detection are different (the badge copy, the requested-view routing, and re-import all need to tell them apart). `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.
+
 ---
 
 ## Typical MVP queries
 
 ```sql
 -- All points for the map (initial load)
-SELECT id, title, ST_X(location) AS lng, ST_Y(location) AS lat, event_date
+SELECT id, title, ST_X(event_coords) AS lng, ST_Y(event_coords) AS lat, event_date
 FROM events;
 
 -- Filter by conflict
-SELECT g.id, g.title, ST_X(g.location) AS lng, ST_Y(g.location) AS lat
+SELECT g.id, g.title, ST_X(g.event_coords) AS lng, ST_Y(g.event_coords) AS lat
 FROM events g
 JOIN event_tags gt ON gt.event_id = g.id
 JOIN tags t ON t.id = gt.tag_id
 WHERE t.name = 'Ukraine' AND t.category = 'conflict';
 
--- An analyst's geolocations (profile)
+-- An analyst's geolocations (profile; stays on owner_id until it re-homes onto event_geolocators)
 SELECT id, title, event_date, created_at
 FROM events
-WHERE author_id = :user_id
+WHERE owner_id = :user_id
 ORDER BY event_date DESC;
 ```
 
@@ -553,7 +556,7 @@ A third-party KMZ export can be mapped locally to generate test data. Large bina
 
 | KML field | → | Vidit column |
 |-----------|---|---------------|
-| `coordinates` (lng, lat) | → | `events.location` |
+| `coordinates` (lng, lat) | → | `events.event_coords` |
 | `description` (first line) | → | `events.title` |
 | `TimeStamp` | → | `events.event_date` |
 | "Source(s)" URLs in `description` | → | `events.source_url` |

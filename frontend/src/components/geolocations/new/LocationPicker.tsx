@@ -4,6 +4,9 @@ import type { TweetImportCoord } from "@/types";
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { FieldHelp } from "@/components/ui/FieldHelp";
+import { OptionalHint } from "@/components/ui/OptionalHint";
+import { LABEL_TEXT } from "@/components/ui/form-styles";
 
 interface LocationPickerProps {
   lat: string;
@@ -16,10 +19,17 @@ interface LocationPickerProps {
   onSwapCandidate: (candidate: TweetImportCoord) => void;
   /** Flag the coordinate inputs as a missing required field (red outline). */
   invalid?: boolean;
+  /** The optional camera position (where the footage was shot from), distinct
+   *  from the subject coordinates above. Both halves or neither. */
+  captureLat: string;
+  setCaptureLat: (v: string) => void;
+  captureLng: string;
+  setCaptureLng: (v: string) => void;
 }
 
-/** The "Location" section: the coordinates where the footage was filmed, plus
- *  any tweet-import swap chips. Source media is its own block now
+/** The "Location" section: the subject coordinates (where the footage was
+ *  filmed), the optional camera position (where it was shot from), plus any
+ *  tweet-import swap chips. Source media is its own block now
  *  (`SourceMediaField`). Shared by the submit + edit forms. */
 export function LocationPicker({
   lat,
@@ -29,18 +39,45 @@ export function LocationPicker({
   extraCoordCandidates,
   onSwapCandidate,
   invalid = false,
+  captureLat,
+  setCaptureLat,
+  captureLng,
+  setCaptureLng,
 }: LocationPickerProps) {
   return (
     <Card as="section">
       <SectionHeading title="Location" concept="section_location" />
 
-      <CoordinateInputs
-        lat={lat}
-        setLat={setLat}
-        lng={lng}
-        setLng={setLng}
-        invalid={invalid}
-      />
+      <div className="space-y-1.5">
+        <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
+          Subject <FieldHelp concept="coordinates" />
+        </span>
+        <CoordinateInputs
+          lat={lat}
+          setLat={setLat}
+          lng={lng}
+          setLng={setLng}
+          invalid={invalid}
+        />
+      </div>
+
+      {/* The camera position — where the footage was shot from — kept apart
+          from the subject point above. Optional and always independent of the
+          lifecycle. */}
+      <div className="space-y-1.5">
+        <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
+          Camera position <FieldHelp concept="capture_source_coords" />{" "}
+          <OptionalHint />
+        </span>
+        <CoordinateInputs
+          idPrefix="capture_"
+          required={false}
+          lat={captureLat}
+          setLat={setCaptureLat}
+          lng={captureLng}
+          setLng={setCaptureLng}
+        />
+      </div>
 
       {extraCoordCandidates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs">

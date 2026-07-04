@@ -1,16 +1,15 @@
-"""Audit-log writes for auth-relevant events.
+"""Audit-log writes for auth-relevant events, plus the shared rate-limit key.
 
 `log_auth_event` inserts one row inside a SAVEPOINT and swallows its own
 exceptions: a logging blind spot beats a login outage from a poisoned
 transaction. Without the SAVEPOINT, a failed INSERT (FK violation, disk
-full, INET-coercion error from a hostile X-Forwarded-For) leaves psycopg
-in an error state and the caller's subsequent ``db.commit()`` raises
-``PendingRollbackError``. ``begin_nested()`` rolls back only the savepoint;
-the outer transaction stays usable.
+full) leaves psycopg in an error state and the caller's subsequent
+``db.commit()`` raises ``PendingRollbackError``. ``begin_nested()`` rolls
+back only the savepoint; the outer transaction stays usable.
 
-`ip` / `user_agent` are extracted from the `Request` by the caller, not
-here, because parts of the auth flow (forgot-password background task) run
-off the request thread with no live Request handle.
+No IP or User-Agent is stored (dropped for privacy; network context lives
+only at the Cloudflare edge). Client-IP extraction survives below solely as
+the rate-limiter's bucketing key — it never reaches a table.
 """
 
 from __future__ import annotations
@@ -33,8 +32,6 @@ def log_auth_event(
     *,
     event: str,
     user_id: uuid.UUID | None = None,
-    ip: str | None = None,
-    user_agent: str | None = None,
 ) -> None:
     """Insert one audit row inside a savepoint. Best-effort — never raises.
 
@@ -44,38 +41,9 @@ def log_auth_event(
     """
     try:
         with db.begin_nested():
-            db.add(
-                AuthEvent(
-                    user_id=user_id,
-                    event=event,
-                    ip=ip,
-                    user_agent=user_agent,
-                )
-            )
+            db.add(AuthEvent(user_id=user_id, event=event))
     except Exception as exc:  # noqa: BLE001 — see module docstring.
         logger.warning("auth_event log failed: event=%s user_id=%s err=%s", event, user_id, exc)
-
-
-def log_auth_event_from_request(
-    db: Session,
-    request: Request,
-    *,
-    event: str,
-    user_id: uuid.UUID | None = None,
-) -> None:
-    """Convenience wrapper for request-bound paths.
-
-    Extracts ``ip`` / ``user_agent`` and delegates to ``log_auth_event``.
-    Use the low-level form from any path that runs off the request thread
-    (e.g. a background task with no live ``Request``).
-    """
-    log_auth_event(
-        db,
-        event=event,
-        user_id=user_id,
-        ip=extract_client_ip(request),
-        user_agent=extract_user_agent(request),
-    )
 
 
 def rate_limit_key(request: Request) -> str:
@@ -91,19 +59,19 @@ def rate_limit_key(request: Request) -> str:
     and defeats every per-IP limit; ``X-Forwarded-For: <victim_ip>`` pins
     and locks out a chosen victim.
 
-    :func:`extract_client_ip` picks the **right-most** entry (what the
-    immediate trusted proxy wrote), restoring per-IP semantics. Never read
+    :func:`_client_ip` picks the **right-most** entry (what the immediate
+    trusted proxy wrote), restoring per-IP semantics. Never read
     ``request.client.host`` directly while uvicorn is in always-trust mode.
 
     Fallback: with no XFF and no client peer (test-client edge cases),
     return a stable sentinel that can't collide with a parseable IP, so all
     such requests share one bucket rather than crashing the limiter.
     """
-    ip = extract_client_ip(request)
+    ip = _client_ip(request)
     return ip if ip is not None else "rate-limit:no-client"
 
 
-def extract_client_ip(request: Request) -> str | None:
+def _client_ip(request: Request) -> str | None:
     """Pick the most accurate client IP available, validated.
 
     Take the RIGHT-most ``X-Forwarded-For`` entry, not the left-most.
@@ -116,12 +84,12 @@ def extract_client_ip(request: Request) -> str | None:
 
     Defaults to ONE trusted hop (Railway → backend). When a second trusted
     proxy lands in front (e.g. Cloudflare), bump ``TRUSTED_PROXY_HOPS`` to 2
-    to peel the extra append. The audit log is forensics, not access
-    control, so a miscount only blurs the chosen entry — no vulnerability.
+    to peel the extra append. The value only buckets the rate limiter, so a
+    miscount blurs a bucket boundary — no vulnerability.
 
-    The value feeds a Postgres ``INET`` column, which rejects non-IPs, so
-    validate via ``ipaddress.ip_address`` and return None on a bad value
-    (row goes in with ``ip = NULL`` rather than poisoning the savepoint).
+    Validated via ``ipaddress.ip_address`` so a hostile non-IP header value
+    falls through to the next candidate (or the stable sentinel) instead of
+    minting attacker-chosen bucket keys.
     """
     candidates: list[str] = []
     forwarded = request.headers.get("x-forwarded-for")
@@ -130,8 +98,8 @@ def extract_client_ip(request: Request) -> str | None:
         if entries:
             # Position ``-N`` (N == trusted hops) is what the first trusted
             # proxy saw. If the chain is shorter than N (misconfig /
-            # single-hop client), clamp to the left-most — better forensics
-            # than dropping the value.
+            # single-hop client), clamp to the left-most — a blurred bucket
+            # beats dropping the value.
             hops = max(1, settings.trusted_proxy_hops)
             index = max(-len(entries), -hops)
             candidates.append(entries[index])
@@ -148,12 +116,3 @@ def extract_client_ip(request: Request) -> str | None:
         except (ValueError, TypeError):
             continue
     return None
-
-
-def extract_user_agent(request: Request) -> str | None:
-    ua = request.headers.get("user-agent")
-    # Postgres TEXT is unbounded, but absurdly-long UA strings are almost
-    # always scraper garbage — cap so one row can't pollute the table.
-    if ua and len(ua) > 1024:
-        return ua[:1024]
-    return ua

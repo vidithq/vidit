@@ -132,12 +132,13 @@ def test_limit_outside_range_returns_422(caller):
 def test_search_matches_geolocation_by_title(db, caller):
     token = _unique_token()
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Spotted {token} convoy near checkpoint",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/post-a",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()
@@ -170,12 +171,13 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
     migration's rationale block."""
     token = _unique_token()
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title="Plain title with no match",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=f"https://example.com/{token}/post",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()
@@ -196,12 +198,13 @@ def test_search_does_not_match_geolocation_by_source_url(db, caller):
 def test_search_excludes_soft_deleted_geolocations(db, caller):
     token = _unique_token()
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Soft-deleted {token} should be hidden",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/post-b",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -227,17 +230,19 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
     # A bounty is a ``requested`` event: no location (the requested-view search
     # filter is ``status = 'requested'``).
     bounty = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Bounty {token} — please geolocate",
         source_url="https://example.com/bounty-a",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
     )
     db.add(bounty)
     db.flush()
     db.add(
         Media(
             event_id=bounty.id,
+            role="source",
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -267,11 +272,12 @@ def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
 def test_search_excludes_soft_deleted_bounties(db, caller):
     token = _unique_token()
     bounty = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Hidden bounty {token}",
         source_url="https://example.com/bounty-b",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),
     )
     db.add(bounty)
@@ -385,19 +391,21 @@ def test_search_type_all_returns_three_groups(db, caller):
     # Plant one matching row per entity so we can prove all three
     # branches fire on type=all without depending on dev-DB demo data.
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Geo {token} unique-token row",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     bounty = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Bounty {token} unique-token row",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
     )
     user = User(
         username=token,
@@ -409,6 +417,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     db.add(
         Media(
             event_id=bounty.id,
+            role="source",
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -443,25 +452,28 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     have to gate on key presence."""
     token = _unique_token()
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Geo only {token}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     bounty = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"Bounty also {token}",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
     )
     db.add_all([geo, bounty])
     db.flush()
     db.add(
         Media(
             event_id=bounty.id,
+            role="source",
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -493,11 +505,12 @@ def test_search_limit_caps_per_group(db, caller):
     bounties = []
     for i in range(4):
         b = Event(
-            author_id=caller.id,
+            owner_id=caller.id,
             title=f"Bounty {token} number {i}",
             source_url="https://example.com",
             source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
             status=STATUS_REQUESTED,
+            requested_at=datetime.now(UTC),
         )
         db.add(b)
         bounties.append(b)
@@ -506,6 +519,7 @@ def test_search_limit_caps_per_group(db, caller):
         db.add(
             Media(
                 event_id=b.id,
+                role="source",
                 storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{b.id}/x.jpg"),
                 media_type="image",
             )
@@ -588,12 +602,13 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     expect the response to have balanced sentinel parity."""
     token = _unique_token()
     geo = Event(
-        author_id=caller.id,
+        owner_id=caller.id,
         title=f"planted \x02bad\x03 then {token} fragment",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()

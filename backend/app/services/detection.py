@@ -14,6 +14,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -22,7 +23,7 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from app.models.event import STATUS_DETECTED, Event
+from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
@@ -86,38 +87,52 @@ def preview_detection(url: str, *, client: httpx.Client | None = None) -> list[D
     return [d for thread in stitch([record]) for d in detect(thread)]
 
 
+def _reimportable(row: Event) -> bool:
+    """Whether a matched row no longer blocks a re-import.
+
+    Two dismissal shapes exist: an admin soft-delete (``deleted_at``) and an
+    owner reject (``closed`` with ``before_closed_status='detected'``). Both
+    mean "this pair was judged and thrown out", so a fresh detection recreates
+    rather than skips.
+    """
+    return row.deleted_at is not None or (
+        row.status == STATUS_CLOSED and row.before_closed_status == STATUS_DETECTED
+    )
+
+
 def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     """Idempotency verdict for one detection: ``skip`` / ``create`` / ``recreate``.
 
     Scoped to ``owner``: a detection only dedups against the backfiller's own
     rows. (``detected_from_url`` embeds the handle, so it's already owner-unique
-    in practice, but the explicit ``author_id`` filter makes the invariant hold
+    in practice, but the explicit ``owner_id`` filter makes the invariant hold
     even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
-    every row sharing ``detected_from_url`` (including soft-deleted) and matches
-    the coordinate to ``_COORD_PLACES``. A live match (geolocated or detected)
-    wins → ``skip``; only a soft-deleted match → ``recreate``; no match →
+    every row sharing ``detected_from_url`` (including dismissed ones) and
+    matches the coordinate to ``_COORD_PLACES``. A live match (geolocated or
+    detected) wins → ``skip``; only dismissed matches (soft-deleted, or closed
+    off ``detected`` — see :func:`_reimportable`) → ``recreate``; no match →
     ``create``.
     """
     rows = (
         db.query(Event)
         .filter(
-            Event.author_id == owner.id,
+            Event.owner_id == owner.id,
             Event.detected_from_url == dto.detected_from_url,
         )
         .all()
     )
-    deleted_match = False
+    dismissed_match = False
     for row in rows:
-        point = cast(Point, to_shape(row.location))
+        point = cast(Point, to_shape(row.event_coords))
         same = round(point.y, _COORD_PLACES) == round(dto.coordinate.lat, _COORD_PLACES) and round(
             point.x, _COORD_PLACES
         ) == round(dto.coordinate.lng, _COORD_PLACES)
         if not same:
             continue
-        if row.deleted_at is None:
+        if not _reimportable(row):
             return "skip"
-        deleted_match = True
-    return "recreate" if deleted_match else "create"
+        dismissed_match = True
+    return "recreate" if dismissed_match else "create"
 
 
 async def _prepared_media(
@@ -162,9 +177,9 @@ async def _persist_one(
     uploaded_keys: list[str] = []
     try:
         geo = Event(
-            author_id=owner.id,
+            owner_id=owner.id,
             title=dto.title,
-            location=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
+            event_coords=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
             # No reliable footage origin from the text alone, so the originating
             # post is the honest source of record; it also surfaces as the
             # distinct ``detected_from_url`` provenance link. ``source_url`` is
@@ -175,6 +190,7 @@ async def _persist_one(
             source_posted_at=dto.posted_at,
             detected_post_at=dto.detected_post_at,
             status=STATUS_DETECTED,
+            detected_at=datetime.now(UTC),
             detected_from_url=dto.detected_from_url,
             is_demo=is_demo,
         )
@@ -182,11 +198,14 @@ async def _persist_one(
         db.flush()  # populate geo.id for media keys + the Media FK
 
         storage = get_storage()
+        # Exactly ONE media per detection — the source slot is capped at one
+        # (``uq_media_source_per_event``), so take the first tweet-order media
+        # that fetches + prepares cleanly and stop there.
         for parsed in dto.media:
             prepared = await _prepared_media(parsed, fetch_media, media_cache)
             if prepared is None:
                 continue
-            # Each geolocation owns its own S3 objects (own key) so a per-geo
+            # Each event owns its own S3 objects (own key) so a per-event
             # hard-delete sweep can't orphan a sibling's media — the cache shares
             # the prepared bytes, not the keys.
             result = await upload_prepared_media(
@@ -195,6 +214,7 @@ async def _persist_one(
             db.add(
                 Media(
                     event_id=geo.id,
+                    role="source",
                     storage_url=result.url,
                     media_type=_media_type(prepared.content_type),
                     sha256=result.sha256,
@@ -204,6 +224,7 @@ async def _persist_one(
             if landed is not None:
                 uploaded_keys.append(landed)
                 uploaded_keys.extend(result.derivative_keys)
+            break
         db.commit()
     except Exception:
         # Explicit rollback before the sweep so an autoflush in a downstream

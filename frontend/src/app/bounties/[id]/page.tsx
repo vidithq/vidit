@@ -8,20 +8,28 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
-  claimBounty,
-  closeBounty,
-  deleteBounty,
-  unclaimBounty,
-} from "@/lib/bounties";
+  deleteEvent,
+  investigateEvent,
+  uninvestigateEvent,
+} from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
-import type { BountyDetail } from "@/types";
+import { CloseEventForm } from "@/components/event/CloseEventForm";
+import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 
+/**
+ * A bounty is a ``requested`` event (see ``docs/data-model.md`` → ``events``),
+ * served by the same ``GET /events/{id}`` a located row uses; this page just
+ * renders the requested-only actions (investigate / close) around the shared
+ * ``EventDetailBody``. Close captures a required free-text reason via
+ * ``CloseEventForm``; the status badge tells a withdrawn request from a rejected
+ * detection through ``before_closed_status``.
+ */
 export default function BountyDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -30,24 +38,38 @@ export default function BountyDetailPage() {
     data: bounty,
     error: loadError,
     refetch,
-  } = useApiResource<BountyDetail>(
-    typeof params.id === "string" ? `/bounties/${params.id}` : null
+  } = useApiResource<EventDetail>(
+    typeof params.id === "string" ? `/events/${params.id}` : null
   );
-  // The three author/claim actions share one error + one pending flag, so each
-  // mutation clears the others (mirrors the old single `setActionError(null)`).
-  const toggleClaimMutation = useMutation(
-    () => (isClaimedByMe ? unclaimBounty(bounty!.id) : claimBounty(bounty!.id)),
-    { fallback: "Action failed", onSuccess: () => refetch() }
+  // Whether the inline close panel is open (replaces the old browser confirm +
+  // fixed reason).
+  const [closing, setClosing] = useState(false);
+  // Optimistic "I'm working on this": flip locally on click so the button
+  // reflects the toggle instantly (mirrors FollowButton), then refetch to
+  // reconcile the "Working on" list. Null = follow the server value.
+  const [optimisticInvestigating, setOptimisticInvestigating] = useState<
+    boolean | null
+  >(null);
+  // The investigate + delete actions share one error + one pending flag, so
+  // each mutation resets the other.
+  const toggleInvestigateMutation = useMutation(
+    (next: boolean) =>
+      next ? investigateEvent(bounty!.id) : uninvestigateEvent(bounty!.id),
+    {
+      fallback: "Action failed",
+      onSuccess: () => refetch(),
+      // Roll the optimistic flip back to the server value on failure.
+      onError: (err) => {
+        setOptimisticInvestigating(null);
+        return err instanceof Error ? err.message : undefined;
+      },
+    }
   );
-  const closeMutation = useMutation(() => closeBounty(bounty!.id), {
-    fallback: "Close failed",
-    onSuccess: () => refetch(),
-  });
   // `deleted` stays true through the post-delete navigation so the actions
   // don't re-enable in the unmount window (the row is gone; a second click
   // would 404). The old handler left its pending flag set instead of a finally.
   const [deleted, setDeleted] = useState(false);
-  const deleteMutation = useMutation(() => deleteBounty(bounty!.id), {
+  const deleteMutation = useMutation(() => deleteEvent(bounty!.id), {
     fallback: "Delete failed",
     onSuccess: () => {
       setDeleted(true);
@@ -56,12 +78,11 @@ export default function BountyDetailPage() {
   });
 
   const actionPending =
-    toggleClaimMutation.loading ||
-    closeMutation.loading ||
+    toggleInvestigateMutation.loading ||
     deleteMutation.loading ||
     deleted;
   const actionError =
-    toggleClaimMutation.error ?? closeMutation.error ?? deleteMutation.error;
+    toggleInvestigateMutation.error ?? deleteMutation.error;
 
   const error = loadError ?? actionError;
 
@@ -74,29 +95,26 @@ export default function BountyDetailPage() {
     return <PageLoading />;
   }
 
-  const isAuthor = user?.id === bounty.author.id;
-  const isClaimedByMe = !!user && bounty.claimers.some((c) => c.id === user.id);
+  const isAuthor = user?.id === bounty.owner.id;
+  const serverInvestigatingMe =
+    !!user && bounty.investigators.some((c) => c.id === user.id);
+  // Optimistic value wins until the refetch lands and clears it.
+  const isInvestigatingMe = optimisticInvestigating ?? serverInvestigatingMe;
   const canGeolocate = bounty.status === "requested";
 
-  const handleToggleClaim = async () => {
-    closeMutation.reset();
+  const handleToggleInvestigate = async () => {
     deleteMutation.reset();
-    await toggleClaimMutation.run();
-  };
-
-  const handleClose = async () => {
-    if (!confirm("Close this bounty? Other analysts will no longer be able to geolocate it.")) {
-      return;
-    }
-    toggleClaimMutation.reset();
-    deleteMutation.reset();
-    await closeMutation.run();
+    const next = !isInvestigatingMe;
+    setOptimisticInvestigating(next);
+    const ok = await toggleInvestigateMutation.run(next);
+    // On success the refetch reconciles the list; drop the optimistic override
+    // so the fresh server value takes back over.
+    if (ok !== undefined) setOptimisticInvestigating(null);
   };
 
   const handleDelete = async () => {
     if (!confirm("Delete this bounty? This cannot be undone.")) return;
-    toggleClaimMutation.reset();
-    closeMutation.reset();
+    toggleInvestigateMutation.reset();
     await deleteMutation.run();
   };
 
@@ -104,7 +122,7 @@ export default function BountyDetailPage() {
     <PageShell
       back
       title={bounty.title}
-      subtitle={<AuthorByline author={bounty.author} />}
+      subtitle={<AuthorByline author={bounty.owner} />}
     >
         {/* A bounty is an event with no coordinates, so the body renders with
             an empty Location and the missing detected-from / requested-by rows
@@ -116,9 +134,9 @@ export default function BountyDetailPage() {
             <>
               {bounty.status === "requested" && (
                 <DetailRow label="Working on" align="start">
-                  {bounty.claimers.length > 0 ? (
+                  {bounty.investigators.length > 0 ? (
                     <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
-                      {bounty.claimers.map((c) => (
+                      {bounty.investigators.map((c) => (
                         <Link
                           key={c.id}
                           href={`/profile/${c.username}`}
@@ -153,26 +171,53 @@ export default function BountyDetailPage() {
               Geolocate this
             </Link>
             {!isAuthor && (
+              // Active (signalling) reads as a filled, on state; the call-to-
+              // action reads as a quieter outline — mirrors FollowButton's
+              // variant swap so the toggle state is unambiguous.
               <Button
-                variant="secondary"
-                onClick={handleToggleClaim}
+                variant={isInvestigatingMe ? "primary" : "secondary"}
+                onClick={handleToggleInvestigate}
                 disabled={actionPending}
+                aria-pressed={isInvestigatingMe}
               >
                 <Users size={14} />
-                {isClaimedByMe ? "Stop signaling" : "I'm working on this"}
+                {isInvestigatingMe ? "Working on this" : "I'm working on this"}
               </Button>
             )}
           </div>
         )}
 
         {isAuthor && bounty.status === "requested" && (
-          <div className="pt-4 border-t border-neutral-800 flex items-center gap-4">
-            <Button variant="ghost" onClick={handleClose} disabled={actionPending}>
-              Close this bounty
-            </Button>
-            <Button variant="danger" onClick={handleDelete} disabled={actionPending}>
-              Delete this bounty
-            </Button>
+          <div className="pt-4 border-t border-neutral-800 space-y-4">
+            {closing ? (
+              <CloseEventForm
+                eventId={bounty.id}
+                status={bounty.status}
+                disabled={actionPending}
+                onClosed={() => {
+                  setClosing(false);
+                  refetch();
+                }}
+                onCancel={() => setClosing(false)}
+              />
+            ) : (
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setClosing(true)}
+                  disabled={actionPending}
+                >
+                  Close this bounty
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleDelete}
+                  disabled={actionPending}
+                >
+                  Delete this bounty
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {isAuthor && bounty.status === "closed" && (

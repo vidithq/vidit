@@ -48,7 +48,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             </h2>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
-                <AuthorByline author={detail.author} size="xs" />
+                <AuthorByline author={detail.owner} size="xs" />
               </p>
             </div>
           </div>
@@ -61,10 +61,10 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             <ShareButtons
               id={detail.id}
               title={detail.title}
-              author={detail.author.username}
+              author={detail.owner.username}
               eventDate={detail.event_date}
-              lat={detail.lat}
-              lng={detail.lng}
+              lat={detail.event_coords?.lat ?? null}
+              lng={detail.event_coords?.lng ?? null}
               status={detail.status}
             />
             <Link

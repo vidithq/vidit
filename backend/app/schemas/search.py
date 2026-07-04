@@ -3,14 +3,14 @@
 Hits carry ``*_highlight`` fields with sentinel-delimited match fragments (see
 ``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags. No raw HTML crosses the wire — XSS-safe by
-construction. Field sets mirror the list shapes (``EventList``,
-``BountyList``) plus the highlights, so the result card reuses the same components.
+construction. Field sets mirror the ``EventList`` card shape plus the
+highlights, so the result card reuses the same components.
 
-The geolocation + bounty groups are two views over the one ``geolocations``
-table (the located rows vs the ``requested`` ones), so both run through a single
+The geolocation + bounty groups are two views over the one ``events`` table
+(the located rows vs the ``requested`` ones), so both run through a single
 FTS query path in ``services.search``; the two hit shapes differ only in the
 fields each view surfaces (coordinates for the located view, claimer counts for
-the requested one).
+the requested one). "Bounty" survives here as reader vocabulary only.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class SearchEventHit(BaseModel):
     is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
-    author: AuthorRef
+    owner: AuthorRef
     tags: list[TagRead]
 
     model_config = {"from_attributes": True}
@@ -70,11 +70,12 @@ class SearchBountyHit(BaseModel):
     status: EventStatus
     created_at: datetime
     is_demo: bool
-    author: AuthorRef
+    owner: AuthorRef
     media: list[MediaRead]
     tags: list[TagRead]
     # Denormalised so the card renders the "N working" badge without a
-    # per-result fetch. Mirrors ``BountyList``.
+    # per-result fetch. Mirrors ``EventList.investigator_count``; the "claimer"
+    # name is reader vocabulary kept stable on this wire shape.
     claimer_count: int
 
     model_config = {"from_attributes": True}

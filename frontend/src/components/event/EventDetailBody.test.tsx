@@ -9,16 +9,18 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "g1",
     title: "Strike on ammunition depot",
-    lat: 48.015883,
-    lng: 37.802411,
+    event_coords: { lat: 48.015883, lng: 37.802411 },
+    capture_source_coords: null,
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     is_demo: false,
     status: "geolocated",
+    close_reason: null,
+    before_closed_status: null,
     detected_from_url: null,
     detected_post_at: null,
-    author: {
+    owner: {
       id: "u1",
       username: "ana",
       is_trusted: true,
@@ -37,13 +39,27 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     },
     created_at: "2026-06-02T10:00:00Z",
     updated_at: "2026-06-02T10:00:00Z",
-    media: [{ id: "m1", storage_url: "/local-storage/evidence.jpg", media_type: "image" }],
+    requested_at: null,
+    detected_at: null,
+    geolocated_at: "2026-06-02T10:00:00Z",
+    closed_at: null,
+    media: [
+      {
+        id: "m1",
+        storage_url: "/local-storage/evidence.jpg",
+        media_type: "image",
+        role: "source",
+      },
+    ],
     requested_by: {
       id: "u2",
       username: "poster",
       is_trusted: false,
       trust_reason: null,
     },
+    geolocators: [],
+    investigator_count: 0,
+    investigators: [],
     ...overrides,
   };
 }
@@ -197,8 +213,18 @@ describe("EventDetailBody", () => {
       <EventDetailBody
         geo={geoFixture({
           media: [
-            { id: "m1", storage_url: "/local-storage/evidence.jpg", media_type: "image" },
-            { id: "m2", storage_url: "/local-storage/clip.mp4", media_type: "video" },
+            {
+              id: "m1",
+              storage_url: "/local-storage/evidence.jpg",
+              media_type: "image",
+              role: "source",
+            },
+            {
+              id: "m2",
+              storage_url: "/local-storage/clip.mp4",
+              media_type: "video",
+              role: "source",
+            },
           ],
         })}
         variant="panel"
@@ -224,6 +250,45 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("No media available")).toBeInTheDocument();
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
+  });
+
+  it("shows the closer's reason on a closed row, and the closed tooltip reflects before_closed_status", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "closed",
+          before_closed_status: "requested",
+          close_reason: "Duplicate of an existing request.",
+          closed_at: "2026-06-05T12:00:00Z",
+          event_coords: null,
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    expect(
+      screen.getByText("Duplicate of an existing request.")
+    ).toBeInTheDocument();
+    // Closed badge tooltip distinguishes a withdrawn request from a rejected
+    // detection via before_closed_status.
+    expect(screen.getByText("Closed").closest("[title]")).toHaveAttribute(
+      "title",
+      "The author withdrew this request"
+    );
+  });
+
+  it("omits the Reason row when a closed row has no reason", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "closed",
+          before_closed_status: "detected",
+          close_reason: null,
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.queryByText("Reason")).not.toBeInTheDocument();
   });
 
   it("always shows the Source posted row (a post always has a time)", () => {

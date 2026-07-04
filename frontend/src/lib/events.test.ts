@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   missingEventFields,
+  missingEventRequestFields,
   submitReadiness,
   type EventFieldsState,
 } from "./events";
@@ -145,5 +146,39 @@ describe("submitReadiness", () => {
       "Conflict tag",
       "Capture source tag",
     ]);
+  });
+});
+
+describe("missingEventRequestFields", () => {
+  // missingEventRequestFields returns {key,label}[]; assert on the labels.
+  const requestLabels = (s: Parameters<typeof missingEventRequestFields>[0]) =>
+    missingEventRequestFields(s).map((m) => m.label);
+
+  it("returns nothing when title, source, and media are present", () => {
+    expect(
+      requestLabels({
+        title: "Unplaced footage",
+        sourceUrl: "https://t.me/c/1",
+        sourcePostedAt: "2026-01-01T00:00",
+        mediaCount: 1,
+      })
+    ).toEqual([]);
+  });
+
+  it("lists the request floor (no coords / dates / proof / tags) at once", () => {
+    expect(
+      requestLabels({ title: "", sourceUrl: "", sourcePostedAt: "", mediaCount: 0 })
+    ).toEqual(["Title", "Source URL", "Source post time", "Source media"]);
+  });
+
+  it("treats a blank-string title as missing", () => {
+    expect(
+      requestLabels({
+        title: "   ",
+        sourceUrl: "https://t.me/c/1",
+        sourcePostedAt: "2026-01-01T00:00",
+        mediaCount: 1,
+      })
+    ).toEqual(["Title"]);
   });
 });

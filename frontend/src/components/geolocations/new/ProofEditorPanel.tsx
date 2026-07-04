@@ -18,7 +18,9 @@ interface ProofEditorPanelProps {
   importGen: number;
   proof: Record<string, unknown> | null;
   onChange: (proof: Record<string, unknown> | null) => void;
-  onUploadStateChange?: (uploading: boolean) => void;
+  /** The inline proof images the editor is holding locally; the form uploads
+   *  them as `proof_files[]` at publish. Omitted in bounty mode (image-free). */
+  onProofFilesChange?: (files: File[]) => void;
   /** Bounty mode: a bounty's proof is in-progress (else it'd be a
    *  geolocation), so it's optional and image-free — see ProofEditor. */
   allowImages?: boolean;
@@ -34,7 +36,7 @@ export function ProofEditorPanel({
   importGen,
   proof,
   onChange,
-  onUploadStateChange,
+  onProofFilesChange,
   allowImages = true,
   optional = false,
   invalid = false,
@@ -56,7 +58,7 @@ export function ProofEditorPanel({
         key={importedFrom !== null ? `import-${importGen}` : "blank"}
         initialContent={proof}
         onChange={onChange}
-        onUploadStateChange={onUploadStateChange}
+        onProofFilesChange={onProofFilesChange}
         allowImages={allowImages}
       />
     </Card>

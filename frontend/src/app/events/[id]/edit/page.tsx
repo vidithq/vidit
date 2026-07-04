@@ -34,7 +34,7 @@ export default function EditEventPage() {
   // The submit flow is owner-only and state-gated to ``detected``, the same
   // gate the backend enforces (403 / 409). Surface it before the form rather
   // than letting a PATCH bounce.
-  if (user.id !== geo.author.id) {
+  if (user.id !== geo.owner.id) {
     return (
       <PageShell back title="Edit detection">
         <p className="text-sm text-neutral-400">

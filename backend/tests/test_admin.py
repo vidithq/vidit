@@ -82,7 +82,7 @@ def regular_user(db):
     # Since the merge, requests and geolocations are one table, so a single
     # author_id / requested_by_id sweep covers both.
     db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
@@ -361,12 +361,13 @@ def test_set_trust_404_for_unknown_user(admin_user):
 @pytest.fixture
 def geolocation(db, regular_user):
     geo = Event(
-        author_id=regular_user.id,
+        owner_id=regular_user.id,
         title=f"Test geo {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()
@@ -642,13 +643,14 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
     db.add(fulfiller)
     db.flush()
     event = Event(
-        author_id=fulfiller.id,  # ownership transferred to the fulfiller at submit
+        owner_id=fulfiller.id,  # ownership transferred to the fulfiller at geolocate
         requested_by_id=regular_user.id,  # the requester we will hard-delete
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(event)
     db.commit()
@@ -665,7 +667,7 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
     db.expire_all()
     assert db.query(User).filter(User.id == requester_id).first() is None
     surviving = db.query(Event).filter(Event.id == event_id).one()
-    assert surviving.author_id == fulfiller_id
+    assert surviving.owner_id == fulfiller_id
     assert surviving.requested_by_id is None
 
     # Detach stale instances (the fulfiller-authored event references the
@@ -691,13 +693,14 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
     db.add(fulfiller)
     db.flush()
     event = Event(
-        author_id=fulfiller.id,
+        owner_id=fulfiller.id,
         requested_by_id=regular_user.id,
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(event)
     db.commit()
@@ -922,18 +925,20 @@ def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
     caller relies on cascade-on-delete-from-user to clean up the row + its
     media."""
     bounty = Event(
-        author_id=author_id,
+        owner_id=author_id,
         requested_by_id=author_id,
         title=f"Bounty {uuid.uuid4().hex[:8]}",
         source_url="https://example.com/post",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
     )
     db.add(bounty)
     db.flush()
     db.add(
         Media(
             event_id=bounty.id,
+            role="source",
             storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
             media_type="image",
         )
@@ -966,7 +971,7 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     cascaded = db.query(Event).filter(Event.id == bounty_id).one()
     assert cascaded.deleted_at is not None
     # Public list excludes the soft-deleted request.
-    listing = client.get("/api/v1/bounties").json()
+    listing = client.get("/api/v1/events?view=requested").json()
     assert all(row["id"] != str(bounty_id) for row in listing)
 
 

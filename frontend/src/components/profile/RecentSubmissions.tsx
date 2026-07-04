@@ -7,30 +7,16 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { PublicProfile } from "@/lib/users";
-import type { EventStatus, Media } from "@/types";
+import type { components } from "@/lib/api-types";
+import type { EventListItem } from "@/types";
 
-export interface RecentSubmission {
-  id: string;
-  title: string;
-  /** Nullable: a coordless / undated event (a ``requested`` row) can surface
-   *  here. See ``EventList``. */
-  event_date: string | null;
-  is_demo: boolean;
-  status: EventStatus;
-  lat: number | null;
-  lng: number | null;
-  /** The card thumbnail: the geolocation's first media row, or null. */
-  media: Media | null;
-  tags: { id: string; name: string; category: "conflict" | "free" }[];
-}
+/** One card in the profile's recent-submissions list: the same compact card
+ *  shape the located catalogue and the requested (ex-bounty) queue use. A
+ *  coordless / undated event (a ``requested`` row) can surface here too. */
+export type RecentSubmission = EventListItem;
 
 /** Shape returned by `GET /users/{username}/events`. */
-export interface PaginatedSubmissions {
-  items: RecentSubmission[];
-  total: number;
-  page: number;
-  per_page: number;
-}
+export type PaginatedSubmissions = components["schemas"]["PaginatedEvents"];
 
 export function RecentSubmissions({
   profile,
@@ -64,11 +50,7 @@ export function RecentSubmissions({
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
               date={entry.event_date ?? undefined}
-              coords={
-                typeof entry.lat === "number" && typeof entry.lng === "number"
-                  ? { lat: entry.lat, lng: entry.lng }
-                  : null
-              }
+              coords={entry.event_coords}
               tags={entry.tags}
             />
           ))}
