@@ -54,12 +54,11 @@ function hit(id: string, title: string): PossibleDuplicate {
   return {
     id,
     title,
-    lat: 48,
-    lng: 37,
+    event_coords: { lat: 48, lng: 37 },
     event_date: "2026-01-05",
     source_url: "https://t.me/channel/1",
     distance_m: 120,
-    author: {
+    owner: {
       id: "u1",
       username: "ana",
       is_trusted: false,

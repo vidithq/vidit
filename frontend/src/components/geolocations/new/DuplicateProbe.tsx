@@ -137,7 +137,7 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
                 </p>
                 <p className="text-xs text-neutral-400">
                   {hit.event_date ? `${formatDate(hit.event_date)} · ` : ""}@
-                  {hit.author.username} · {formatDistance(hit.distance_m)}
+                  {hit.owner.username} · {formatDistance(hit.distance_m)}
                 </p>
               </div>
               <span className="text-xs text-orange-400 shrink-0">

@@ -166,9 +166,8 @@ def register(
     except registration.RegistrationError as exc:
         _raise_registration_error(exc)
 
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_REGISTER_PENDING,
     )
     db.commit()
@@ -206,9 +205,8 @@ def confirm_registration(
     except registration.RegistrationError as exc:
         _raise_registration_error(exc)
 
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_REGISTER_CONFIRMED,
         user_id=user.id,
     )
@@ -245,9 +243,8 @@ def resend_confirmation(
     # ``user_id`` stays NULL (no ``users`` row exists for a pending
     # registration yet), so the row records "a resend was attempted from
     # this IP" without leaking which addresses have a live pending row.
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_REGISTER_RESENT,
         user_id=None,
     )
@@ -302,9 +299,8 @@ def login(
         # "failed attempts against this account" is queryable), NULL
         # when the email didn't match (so we don't leak existence by
         # writing a probe-able mapping). Same row shape either way.
-        audit.log_auth_event_from_request(
+        audit.log_auth_event(
             db,
-            request,
             event=EVENT_FAILED_LOGIN,
             user_id=user.id if (user is not None and user.deleted_at is None) else None,
         )
@@ -314,9 +310,8 @@ def login(
     # Re-check ADMIN_EMAILS each login — covers the case where the env var
     # was added (or the address rotated in) after the user registered.
     maybe_promote_admin(user)
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_LOGIN,
         user_id=user.id,
     )
@@ -374,9 +369,8 @@ def logout(
         if user is not None and user.deleted_at is None:
             bump_token_version(user)
 
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_LOGOUT,
         user_id=user_id,
     )
@@ -454,9 +448,8 @@ def forgot_password(
     # /forgot-password request from this IP" queryable regardless of match.
     # user_id is NULL on the no-op branch so we don't leak existence via a
     # probe-able mapping.
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_PASSWORD_RESET_REQUESTED,
         user_id=user.id if (user is not None and user.deleted_at is None) else None,
     )
@@ -505,9 +498,8 @@ def reset_password(
     # must stop working now, not at its `exp`. Re-login mints a fresh
     # cookie with the bumped `tv`.
     bump_token_version(user)
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_PASSWORD_RESET_COMPLETED,
         user_id=user.id,
     )
@@ -559,9 +551,8 @@ def change_password(
     # fresh cookie on the same response (below) keeps the current device
     # logged in; the others lose access at their next request.
     bump_token_version(current_user)
-    audit.log_auth_event_from_request(
+    audit.log_auth_event(
         db,
-        request,
         event=EVENT_PASSWORD_CHANGED,
         user_id=user_id,
     )

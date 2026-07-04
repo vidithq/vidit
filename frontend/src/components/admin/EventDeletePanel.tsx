@@ -167,9 +167,7 @@ export function EventDeletePanel() {
           {result.mode === "hard" && (
             <div className="text-neutral-500">
               Swept {result.media_count} media row
-              {result.media_count === 1 ? "" : "s"} +{" "}
-              {result.proof_image_count} proof image
-              {result.proof_image_count === 1 ? "" : "s"}.
+              {result.media_count === 1 ? "" : "s"} (source + proof roles).
             </div>
           )}
         </ActionReceipt>

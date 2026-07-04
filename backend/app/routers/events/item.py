@@ -1,4 +1,5 @@
-"""Single-event ops by id — detail, delete, the submit transition, and detection reject."""
+"""Single-event ops by id: detail, delete, and the lifecycle verbs
+(geolocate, close, investigate)."""
 
 import uuid
 
@@ -13,7 +14,7 @@ from fastapi import (
     status,
 )
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
@@ -21,8 +22,10 @@ from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
     TITLE_MAX_LENGTH,
     Event,
+    EventGeolocator,
+    EventInvestigator,
 )
-from app.models.proof_image import ProofImage
+from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
@@ -32,25 +35,35 @@ from app.routers._forms import (
     parse_optional_iso_time,
     parse_optional_json_object,
 )
-from app.routers.events._common import _raise_geolocation_error, build_geolocation_read
-from app.schemas.event import EventRead
+from app.routers.events._common import _raise_event_error, build_event_read
+from app.schemas.event import EventCloseRequest, EventRead
 from app.services import events as events_service
 from app.services import permissions
-from app.services.audit import extract_client_ip, extract_user_agent
-from app.services.evidence_intake import EvidenceIntakeError
+from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.storage import (
     sweep_keys,
 )
 
 router = APIRouter()
 
+# Every relationship the detail serializer reads, eager-loaded so one event
+# costs a bounded set of queries (no per-contributor lazy hits).
+_DETAIL_LOADS = (
+    joinedload(Event.owner),
+    joinedload(Event.requested_by),
+    selectinload(Event.media.and_(Media.role == "source")),
+    selectinload(Event.tags),
+    selectinload(Event.geolocators).joinedload(EventGeolocator.user),
+    selectinload(Event.investigators).joinedload(EventInvestigator.user),
+)
 
-def _resolve_live_geolocation(db: Session, geolocation_id: uuid.UUID) -> Event:
+
+def _resolve_live_event(db: Session, geolocation_id: uuid.UUID) -> Event:
     """Fetch a live event by id, or 404.
 
     A soft-deleted row reads as 404 (an admin-removed row isn't actionable —
     same surface as a genuine 404, no enumeration oracle). Permission is the
-    caller's concern: the submit transition owns per-status authorship (a
+    caller's concern: the geolocate transition owns per-status ownership (a
     ``requested`` event is answerable by anyone).
     """
     geo = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
@@ -59,99 +72,92 @@ def _resolve_live_geolocation(db: Session, geolocation_id: uuid.UUID) -> Event:
     return geo
 
 
-def _resolve_owned_geolocation(db: Session, geolocation_id: uuid.UUID, user: User) -> Event:
-    """Fetch a live geolocation the caller authored, or raise.
-
-    The author-mutating idiom shared by the owner-only endpoints (reject): a
-    soft-deleted row reads as 404, a live row the caller didn't author is 403.
-    """
-    geo = _resolve_live_geolocation(db, geolocation_id)
-    permissions.ensure_author(geo, user)
-    return geo
-
-
-def _serialize_geolocation(db: Session, geo: Event) -> EventRead:
+def _serialize_event(db: Session, geo: Event) -> EventRead:
     """Build the read model for a just-mutated row.
 
-    Re-projects ``lat`` / ``lng`` out of the PostGIS point with the same
-    ``ST_Y`` / ``ST_X`` cast ``GET /{id}`` uses, so a mutation returns a response
-    identical in shape to a fresh read.
+    Re-projects both points out of PostGIS with the same ``ST_Y`` / ``ST_X``
+    cast ``GET /{id}`` uses, so a mutation returns a response identical in
+    shape to a fresh read.
     """
-    lat, lng = db.query(ST_Y(Event.location), ST_X(Event.location)).filter(Event.id == geo.id).one()
-    return build_geolocation_read(geo, lat=lat, lng=lng)
+    lat, lng, capture_lat, capture_lng = (
+        db.query(
+            ST_Y(Event.event_coords),
+            ST_X(Event.event_coords),
+            ST_Y(Event.capture_source_coords),
+            ST_X(Event.capture_source_coords),
+        )
+        .filter(Event.id == geo.id)
+        .one()
+    )
+    return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
 @router.get("/{geolocation_id}", response_model=EventRead)
 @limiter.limit("120/minute")
-def get_geolocation(request: Request, geolocation_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_event(request: Request, geolocation_id: uuid.UUID, db: Session = Depends(get_db)):
     row = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.capture_source_coords).label("capture_lat"),
+            ST_X(Event.capture_source_coords).label("capture_lng"),
         )
-        .options(
-            joinedload(Event.author),
-            joinedload(Event.requested_by),
-            joinedload(Event.media),
-            joinedload(Event.tags),
-        )
+        .options(*_DETAIL_LOADS)
         .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
         .first()
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    geo, lat, lng = row
-    return build_geolocation_read(geo, lat=lat, lng=lng)
+    geo, lat, lng, capture_lat, capture_lng = row
+    return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
 @router.delete("/{geolocation_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
-def delete_geolocation(
+def delete_event(
     request: Request,
     geolocation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Hard-delete by the owner. Cascades drop the tag links, contributor
+    rows and media rows; the S3 objects (media of every role, plus the source
+    image derivatives) are swept after the commit lands. Admin soft-delete
+    lives behind the admin router and stamps ``deleted_at`` instead.
+    """
     # Filter out soft-deleted rows: an admin-removed row shouldn't be
-    # author-actionable either — same observed behaviour as a genuine 404.
-    geo = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    permissions.ensure_author(geo, current_user)
+    # owner-actionable either, same observed behaviour as a genuine 404.
+    geo = _resolve_live_event(db, geolocation_id)
+    permissions.ensure_owner(geo, current_user)
 
-    # Snapshot inline proof image keys before cascade drops the rows; the
-    # S3 objects are deleted after the commit so a failed commit doesn't
-    # strand referenced files. Media files are a known parallel orphan
-    # problem, not addressed here.
-    proof_image_keys = [
-        row[0]
-        for row in db.query(ProofImage.s3_key).filter(ProofImage.geolocation_id == geo.id).all()
-    ]
+    # Snapshot the S3 keys before the cascade drops the rows; the objects are
+    # deleted after the commit so a failed commit doesn't strand referenced
+    # files.
+    media_keys = collect_media_keys(list(geo.media))
 
     db.delete(geo)
     db.commit()
 
     # On per-key S3 failures (transient outage, key already gone) the rows
-    # are already deleted — swallow and log; the next reaper sweep, which
-    # cross-references the table, picks the objects up.
-    sweep_keys(proof_image_keys, context=f"geolocation {geo.id} delete")
+    # are already deleted, so swallow and log (accepted residual orphan risk).
+    sweep_keys(media_keys, context=f"event {geo.id} delete")
 
     points_cache.invalidate()
 
 
-# ── Lifecycle transitions to ``geolocated`` and detection reject ─────
-# Submit writes the caller's edits and moves a ``requested`` or ``detected``
-# event to ``geolocated``; reject soft-deletes a ``detected`` draft. A
-# ``detected`` draft is owner-only; a ``requested`` event is answerable by
-# anyone (the fulfiller becomes the owner). A ``geolocated`` row is frozen
-# (409). See ``api.md``.
+# ── Lifecycle verbs ───────────────────────────────────────────────────
+# Geolocate writes the caller's edits and moves a ``requested`` or
+# ``detected`` event to ``geolocated``; close is the terminal withdraw /
+# reject. A ``detected`` draft is owner-only; a ``requested`` event is
+# answerable by anyone (the fulfiller becomes the owner). A ``geolocated``
+# row is frozen (409). See ``api.md``.
 
 
-@router.post("/{geolocation_id}/submit", response_model=EventRead)
+@router.post("/{geolocation_id}/geolocate", response_model=EventRead)
 @limiter.limit("30/minute")
-async def submit_geolocation(
+async def geolocate_event(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring create: the form posts the whole state and the service
@@ -161,32 +167,38 @@ async def submit_geolocation(
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
+    capture_source_lat: float | None = Form(None),
+    capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
     event_date: str = Form(...),
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
-    # Ids of existing media to drop (JSON array). New media ride in ``files``.
+    # Ids of existing media to drop (JSON array). A replacement source rides
+    # in ``files``; the proof body's new inline images in ``proof_files``.
     remove_media_ids: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
+    proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
 
     The one generalized fulfil / submit transition. The caller posts the whole
-    form (title, coordinate, source URL, dates, proof, tags, and the source
-    media: ``files`` added, ``remove_media_ids`` dropped), and on success the row
-    is written and frozen as ``geolocated``. Only ``detected_from_url``
-    (provenance) and ``status`` carry no field. A ``detected`` draft is owner-only
-    (403 otherwise); a ``requested`` event is answerable by anyone, and the
+    form (title, coordinates, source URL, dates, proof + its images, tags, and
+    the source media: ``files`` added, ``remove_media_ids`` dropped), and on
+    success the row is written and frozen as ``geolocated``, with the caller
+    credited as a geolocator. Only ``detected_from_url`` (provenance) and
+    ``status`` carry no field. A ``detected`` draft is owner-only (403
+    otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
-    Blocked until the evidence floor is met (at least one media and the
-    ``conflict`` + ``capture_source`` tags, 400 otherwise). Off ``requested`` /
-    ``detected`` → 409. Soft-deleted rows read as 404.
+    Blocked until the evidence floor is met (one source media, a proof image,
+    and the ``conflict`` + ``capture_source`` tags, 400 otherwise). Off
+    ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
     """
     files = files or []
+    proof_files = proof_files or []
     parsed_event_date = parse_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
@@ -194,17 +206,19 @@ async def submit_geolocation(
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
-    # Not owner-gated at the router: the service enforces per-status authorship
-    # (owner-only for ``detected``, open for ``requested``).
-    geo = _resolve_live_geolocation(db, geolocation_id)
+    # Not owner-gated at the router: the service enforces per-status ownership
+    # (owner-only for ``detected``, open for ``requested``) under a row lock.
+    geo = _resolve_live_event(db, geolocation_id)
     try:
-        submitted = await events_service.submit(
+        geolocated = await events_service.geolocate(
             db,
             geo=geo,
             current_user=current_user,
             title=title,
             lat=lat,
             lng=lng,
+            capture_source_lat=capture_source_lat,
+            capture_source_lng=capture_source_lng,
             source_url=source_url,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
@@ -213,31 +227,75 @@ async def submit_geolocation(
             tag_ids=parsed_tag_ids,
             remove_media_ids=parsed_remove_ids,
             files=files,
-            uploaded_ip=extract_client_ip(request),
-            uploaded_user_agent=extract_user_agent(request),
+            proof_files=proof_files,
         )
     except EvidenceIntakeError as exc:
-        _raise_geolocation_error(exc)
-    return _serialize_geolocation(db, submitted)
+        _raise_event_error(exc)
+    return _serialize_event(db, geolocated)
 
 
-@router.post("/{geolocation_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("30/minute")
-def reject_geolocation(
+@router.post("/{geolocation_id}/close", response_model=EventRead)
+@limiter.limit("60/minute")
+def close_event(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    body: EventCloseRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Close an event: withdraw a request or reject a detection (owner-only).
+
+    One terminal verb for both dismissal shapes; ``before_closed_status``
+    records which state the row left, and the required ``close_reason`` stays
+    publicly visible. The row remains readable (transparency), drops off the
+    map, and a closed detection is re-importable. Off ``requested`` /
+    ``detected`` → 409; soft-deleted → 404; not the owner → 403.
+    """
+    geo = _resolve_live_event(db, geolocation_id)
+    try:
+        closed = events_service.close(
+            db, geo=geo, current_user=current_user, close_reason=body.close_reason
+        )
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)
+    return _serialize_event(db, closed)
+
+
+@router.post("/{geolocation_id}/investigate", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
+def investigate_event(
     request: Request,
     geolocation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Reject a ``detected`` geolocation: soft-delete, re-importable later.
-
-    Owner-only. Soft-deletes the row (so a later re-import recreates it fresh),
-    distinct from the hard ``DELETE`` that removes a row for good. Off
-    ``detected`` → 409 (a ``geolocated`` row goes through ``DELETE``).
-    Soft-deleted → 404.
+    """Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
+    not a 409. Only open requests accept new signals; off ``requested`` the
+    signal is rejected with 409. The rules and the race backstop live in the
+    service.
     """
-    geo = _resolve_owned_geolocation(db, geolocation_id, current_user)
+    geo = _resolve_live_event(db, geolocation_id)
     try:
-        events_service.reject_detected(db, geo=geo)
+        events_service.investigate(db, geo=geo, current_user=current_user)
     except EvidenceIntakeError as exc:
-        _raise_geolocation_error(exc)
+        _raise_event_error(exc)
+
+
+@router.delete("/{geolocation_id}/investigate", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
+def uninvestigate_event(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stop signalling. 204 even if the caller wasn't signalling: the
+    user-observable post-condition (caller not in the working set) is what we
+    promise, not "exactly one row was deleted". Gated to ``requested`` like the
+    POST: a terminated event's signals are frozen history. Rules in the service.
+    """
+    geo = _resolve_live_event(db, geolocation_id)
+    try:
+        events_service.uninvestigate(db, geo=geo, current_user=current_user)
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 import zipfile
 
-from app.models.event import Event
+from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.services.tweet_ingest import archive_zip
 from tests.conftest import login_as
 from tests.events._helpers import client
@@ -46,7 +46,7 @@ def test_import_creates_detected_rows_owned_by_caller(db, author):
     body = resp.json()
     assert body == {"created": 1, "skipped": 0, "recreated": 0, "failed": 0}
 
-    rows = db.query(Event).filter(Event.author_id == author.id).all()
+    rows = db.query(Event).filter(Event.owner_id == author.id).all()
     assert len(rows) == 1
     assert rows[0].status == "detected"
     assert rows[0].detected_from_url  # provenance link set
@@ -58,6 +58,46 @@ def test_reimport_is_idempotent(db, author):
     # Same archive again: the pair already lives, so nothing new is created.
     second = _post(author, zip_bytes).json()
     assert second == {"created": 0, "skipped": 1, "recreated": 0, "failed": 0}
+
+
+def test_reimport_recreates_after_the_detection_is_closed_through_the_api(db, author):
+    """The full owner-facing loop, both halves through their real endpoints
+    (not just the service-level ``_disposition`` unit tests in
+    ``test_detection.py``, and not just the still-live idempotency check
+    above): import once, reject the resulting detection with the real
+    ``POST /{id}/close``, then re-run the same archive. A closed detection
+    (``before_closed_status='detected'``) is a dismissed pair, so the
+    re-import recreates a fresh live row instead of skipping it.
+    """
+    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
+    first = _post(author, zip_bytes).json()
+    assert first == {"created": 1, "skipped": 0, "recreated": 0, "failed": 0}
+
+    detected = db.query(Event).filter(Event.owner_id == author.id).one()
+    assert detected.status == STATUS_DETECTED
+
+    close_response = client.post(
+        f"/api/v1/events/{detected.id}/close",
+        headers=login_as(client, author),
+        json={"close_reason": "Bot misread the coordinates"},
+    )
+    assert close_response.status_code == 200, close_response.text
+    assert close_response.json()["before_closed_status"] == STATUS_DETECTED
+
+    second = _post(author, zip_bytes).json()
+    assert second == {"created": 1, "skipped": 0, "recreated": 1, "failed": 0}
+
+    db.expire_all()
+    rows = db.query(Event).filter(Event.owner_id == author.id).order_by(Event.created_at).all()
+    assert len(rows) == 2
+    # The original stays exactly as the close left it: visible, closed,
+    # dismissed-as-detected. The re-import didn't touch it.
+    assert rows[0].id == detected.id
+    assert rows[0].status == STATUS_CLOSED
+    assert rows[0].before_closed_status == STATUS_DETECTED
+    # The recreated row is a fresh, live detection at the same coordinate pair.
+    assert rows[1].status == STATUS_DETECTED
+    assert rows[1].detected_from_url == detected.detected_from_url
 
 
 def test_requires_auth():

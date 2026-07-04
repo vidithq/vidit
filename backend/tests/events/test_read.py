@@ -191,9 +191,12 @@ def test_detail_returns_full_shape(db, author, free_tag):
     body = response.json()
     assert body["id"] == str(geo.id)
     assert body["title"] == geo.title
-    assert body["lat"] == pytest.approx(48.7)
-    assert body["lng"] == pytest.approx(34.7)
-    assert body["author"]["username"] == author.username
+    assert body["event_coords"]["lat"] == pytest.approx(48.7)
+    assert body["event_coords"]["lng"] == pytest.approx(34.7)
+    assert body["capture_source_coords"] is None
+    assert body["owner"]["username"] == author.username
+    assert [g["username"] for g in body["geolocators"]] == []
+    assert body["investigator_count"] == 0
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
 
 
@@ -239,13 +242,14 @@ def test_points_excludes_soft_deleted(db, author):
 
 def test_detected_row_renders_marked_across_surfaces(db, author):
     geo = Event(
-        author_id=author.id,
+        owner_id=author.id,
         title="Detected geo",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
         status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
         detected_from_url="https://x.com/a/status/1",
     )
     db.add(geo)
@@ -308,7 +312,9 @@ def test_points_filters_media_trusted_and_demo(db, author):
 
     plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
     with_video = _make_geo(db, author=author, lat=41.0, lng=41.0)
-    db.add(Media(event_id=with_video.id, storage_url="s3://x/v.mp4", media_type="video"))
+    db.add(
+        Media(event_id=with_video.id, role="source", storage_url="s3://x/v.mp4", media_type="video")
+    )
     demo = _make_geo(db, author=author, lat=42.0, lng=42.0)
     demo.is_demo = True
 
@@ -342,7 +348,7 @@ def test_points_filters_media_trusted_and_demo(db, author):
     assert client.get("/api/v1/events/points?media=bogus").status_code == 422
 
     # ``by_trusted`` belongs to a user the ``author`` fixture won't clean up.
-    db.query(Event).filter(Event.author_id == trusted.id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == trusted.id).delete(synchronize_session=False)
     db.query(User).filter(User.id == trusted.id).delete(synchronize_session=False)
     db.commit()
 

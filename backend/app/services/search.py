@@ -8,8 +8,8 @@ XSS-safe by construction, no HTML across the wire. Soft-deleted rows are
 filtered at query time.
 
 Since the bounty + geolocation merge there is a single FTS query path over the
-one ``geolocations`` table (:func:`_search_events`); the located and requested
-views differ only by a status/location filter and the fields each surfaces. The
+one ``events`` table (:func:`_search_events`); the located and requested
+views differ only by a status/coords filter and the fields each surfaces. The
 TSVECTOR expressions here must match the migration's ``CREATE INDEX`` expressions
 byte-for-byte or Postgres falls back to a sequential scan; both live as module
 constants so the query and the migration can't drift.
@@ -22,7 +22,8 @@ import uuid
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.event import STATUS_REQUESTED, Event, EventClaim
+from app.models.event import STATUS_REQUESTED, Event, EventInvestigator
+from app.models.media import Media
 from app.models.user import User
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -69,16 +70,17 @@ _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesc
 def _search_events(
     db: Session, *, query: str, limit: int, extra_where: str
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
-    """Run the FTS over ``geolocations`` and return ``(ids, highlights, total)``.
+    """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
 
     The single FTS query path for both event views: the located view and the
-    requested view pass different ``extra_where`` fragments (``location IS NOT
-    NULL`` vs ``status = 'requested'``) into the same ``title`` TSVECTOR +
-    ts_headline query. ``ids`` are ranked (``ts_rank`` desc, ``created_at`` desc
-    tie-break), ``highlights`` maps each id to its ``ts_headline`` title, and
-    ``total`` is the pre-``LIMIT`` match count via ``COUNT(*) OVER ()`` so the UI
-    renders "3 of 142", not "3 of 3". Soft-deleted rows are excluded. The caller
-    hydrates the rows it needs off the ranked id list.
+    requested view pass different ``extra_where`` fragments (a located
+    status + coords predicate vs ``status = 'requested'``) into the same
+    ``title`` TSVECTOR + ts_headline query. ``ids`` are ranked (``ts_rank``
+    desc, ``created_at`` desc tie-break), ``highlights`` maps each id to its
+    ``ts_headline`` title, and ``total`` is the pre-``LIMIT`` match count via
+    ``COUNT(*) OVER ()`` so the UI renders "3 of 142", not "3 of 3".
+    Soft-deleted rows are excluded. The caller hydrates the rows it needs off
+    the ranked id list.
     """
     sql = text(
         f"""
@@ -110,13 +112,19 @@ def _search_events(
 def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N located events matching ``query`` + the pre-LIMIT total.
 
-    The located view: ``location IS NOT NULL`` (a ``requested`` row has no
-    coordinates and belongs to the requested view). Returns ``(hits, total)``:
-    ``hits`` are dicts ready for the router's Pydantic schema; ``total`` is the
-    pre-``LIMIT`` match count.
+    The located view: live ``geolocated`` / ``detected`` rows with a subject
+    coordinate. A status predicate (not bare ``event_coords IS NOT NULL``)
+    because a ``requested`` row may now carry an approximate guess yet belongs
+    to the requested view; closed rows stay out of search. Returns
+    ``(hits, total)``: ``hits`` are dicts ready for the router's Pydantic
+    schema; ``total`` is the pre-``LIMIT`` match count.
     """
     ids, highlight_by_id, total = _search_events(
-        db, query=query, limit=limit, extra_where="location IS NOT NULL"
+        db,
+        query=query,
+        limit=limit,
+        # Literal status values from ``EventStatus``, never user input.
+        extra_where="status IN ('geolocated', 'detected') AND event_coords IS NOT NULL",
     )
     if not ids:
         return [], 0
@@ -127,11 +135,11 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
     geos = (
         db.query(
             Event,
-            func.ST_Y(Event.location).label("lat"),
-            func.ST_X(Event.location).label("lng"),
+            func.ST_Y(Event.event_coords).label("lat"),
+            func.ST_X(Event.event_coords).label("lng"),
         )
         .options(
-            joinedload(Event.author),
+            joinedload(Event.owner),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -155,7 +163,7 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
                 "event_date": geo.event_date,
                 "is_demo": geo.is_demo,
                 "status": geo.status,
-                "author": geo.author,
+                "owner": geo.owner,
                 "tags": geo.tags,
             }
         )
@@ -166,8 +174,9 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     """Top-N requested events (bounties) matching ``query`` + the pre-LIMIT total.
 
     The requested view: ``status = 'requested'``. Same FTS path as the located
-    view via :func:`_search_events`; carries ``claimer_count`` so the result card
-    renders the same "N working" badge as the index.
+    view via :func:`_search_events`; carries ``claimer_count`` (investigator
+    count, reader vocabulary) so the result card renders the same "N working"
+    badge as the index.
     """
     # ``extra_where`` is interpolated raw into the query (see ``_search_events``);
     # ``STATUS_REQUESTED`` is a module Literal constant, never user input, so this
@@ -181,8 +190,8 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     geos = (
         db.query(Event)
         .options(
-            joinedload(Event.author),
-            joinedload(Event.media),
+            joinedload(Event.owner),
+            joinedload(Event.media.and_(Media.role == "source")),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -190,13 +199,13 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     )
     geo_by_id = {g.id: g for g in geos}
 
-    # One grouped count for the result set — same shape as the
-    # ``BountyList`` aggregate so the card renders the same badge.
+    # One grouped count for the result set, same shape as the requested-view
+    # list aggregate so the card renders the same badge.
     counts: dict[uuid.UUID, int] = {
         gid: int(c)
-        for gid, c in db.query(EventClaim.event_id, func.count("*"))
-        .filter(EventClaim.event_id.in_(ids))
-        .group_by(EventClaim.event_id)
+        for gid, c in db.query(EventInvestigator.event_id, func.count("*"))
+        .filter(EventInvestigator.event_id.in_(ids))
+        .group_by(EventInvestigator.event_id)
         .all()
     }
 
@@ -214,7 +223,7 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
                 "status": geo.status,
                 "created_at": geo.created_at,
                 "is_demo": geo.is_demo,
-                "author": geo.author,
+                "owner": geo.owner,
                 "media": geo.media,
                 "tags": geo.tags,
                 "claimer_count": counts.get(geo.id, 0),

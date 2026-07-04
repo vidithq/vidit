@@ -16,10 +16,11 @@ from sqlalchemy import ColumnElement, cast, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.dependencies import get_current_user, get_db
-from app.models.event import Event
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.event import (
+    CoordsRead,
     PossibleDuplicateRead,
 )
 
@@ -99,7 +100,8 @@ def list_possible_duplicates(
     either keeps typing or recognises a row and abandons their version.
 
     Match rule: within ~500m of the proposed (lat, lng) AND (same source
-    host OR same event_date). Both legs are heuristic. Authenticated-only
+    host OR same event_date). Coordinate-less rows never match (the
+    proximity predicate skips NULL points by construction). Authenticated-only
     so the cheap proximity probe isn't exposed to anonymous scraping
     (sidestepping the bbox-required hardening on /points).
 
@@ -127,14 +129,14 @@ def list_possible_duplicates(
 
     # Cast to Geography on the fly so ST_DWithin measures in metres along
     # the geoid, not degrees. The functional cast defeats the GIST index on
-    # `location` (geometry), so this seqscans today — fine at current
-    # volume. Add a functional index on `(location::geography)` if this
+    # `event_coords` (geometry), so this seqscans today, fine at current
+    # volume. Add a functional index on `(event_coords::geography)` if this
     # shows up in slow-query logs.
     point_geog = cast(
         func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326),
         Geography,
     )
-    geo_geog = cast(Event.location, Geography)
+    geo_geog = cast(Event.event_coords, Geography)
     distance_m = func.ST_Distance(geo_geog, point_geog).label("distance_m")
 
     # Explicit annotation: the host leg appends a ``BinaryExpression``
@@ -160,12 +162,18 @@ def list_possible_duplicates(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.location).label("lat"),
-            ST_X(Event.location).label("lng"),
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
             distance_m,
         )
-        .options(joinedload(Event.author))
+        .options(joinedload(Event.owner))
         .filter(Event.deleted_at.is_(None))
+        # Located rows only: a duplicate is a real placed event, not a
+        # ``requested`` guess or a dismissed ``closed`` row. The coords CHECK no
+        # longer forbids coordinates off ``geolocated`` (a request may carry an
+        # approximate guess), so the proximity predicate alone would now surface
+        # those; filter on status like ``search._search_events`` does.
+        .filter(Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)))
         .filter(func.ST_DWithin(geo_geog, point_geog, _POSSIBLE_DUPLICATES_RADIUS_M))
         .filter(or_(*match_clauses))
         .order_by(distance_m.asc())
@@ -177,12 +185,11 @@ def list_possible_duplicates(
         PossibleDuplicateRead(
             id=geo.id,
             title=geo.title,
-            lat=row_lat,
-            lng=row_lng,
+            event_coords=CoordsRead(lat=row_lat, lng=row_lng),
             event_date=geo.event_date,
             source_url=geo.source_url,
             distance_m=float(dist),
-            author=geo.author,
+            owner=geo.owner,
         )
         for geo, row_lat, row_lng, dist in rows
     ]

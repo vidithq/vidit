@@ -87,10 +87,9 @@ class AdminUserDeleteResponse(BaseModel):
     deleted_at: datetime | None = None
     # A bounty is a ``requested`` event since the merge, so a single event
     # cascade covers both located and requested rows — one count, no separate
-    # bounty tally.
+    # bounty tally. ``media_count`` covers every file (source and proof roles).
     cascaded_geolocations: int = 0
     media_count: int = 0
-    proof_image_count: int = 0
 
 
 class AdminEventDeleteResponse(BaseModel):
@@ -104,8 +103,8 @@ class AdminEventDeleteResponse(BaseModel):
     title: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
+    # Every file swept, source and proof roles alike.
     media_count: int = 0
-    proof_image_count: int = 0
 
 
 class AdminTrustUpdate(BaseModel):
@@ -186,7 +185,4 @@ class AdminMaintenanceResponse(BaseModel):
 
     expired: int | None = None
     old_consumed: int | None = None
-    rows_deleted: int | None = None
-    s3_deleted: int | None = None
-    s3_failed: int | None = None
     pending_registrations_deleted: int | None = None

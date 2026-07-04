@@ -8,18 +8,21 @@ import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
-import { createBounty, getBounty, missingBountyFields } from "@/lib/bounties";
 // Aliased: a local `submitGeolocation` validation handler below would otherwise
 // shadow this API call.
 import {
   createEvent,
+  createEventRequest,
+  getEvent,
+  geolocateEvent as geolocateEventApi,
   missingEventFields,
-  submitEvent as submitEventApi,
+  missingEventRequestFields,
+  parseCaptureCoords,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import type { BountyDetail, Tag } from "@/types";
+import type { EventDetail, Tag } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/event/TweetImportBanner";
@@ -66,7 +69,7 @@ function SubmitForm() {
   const searchParams = useSearchParams();
   const bountyIdParam = searchParams.get("bounty_id");
 
-  const [bounty, setBounty] = useState<BountyDetail | null>(null);
+  const [bounty, setBounty] = useState<EventDetail | null>(null);
   const [bountyError, setBountyError] = useState<string | null>(null);
 
   // One page, two submission types. Fulfilling a bounty (``?bounty_id=``) is
@@ -86,6 +89,10 @@ function SubmitForm() {
   const [title, setTitle] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  // Optional camera position (where the footage was shot from), distinct from
+  // the subject lat/lng. Both-or-neither is enforced at submit.
+  const [captureLat, setCaptureLat] = useState("");
+  const [captureLng, setCaptureLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [eventDate, setEventDate] = useState("");
   // Optional event time-of-day (HH:MM, UTC).
@@ -94,10 +101,14 @@ function SubmitForm() {
   // a post always has a time.
   const [sourcePostedAt, setSourcePostedAt] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
+  // The proof body's inline images, held locally by the editor and uploaded as
+  // `proof_files[]` only at publish (nothing hits S3 while typing). The editor
+  // reports the still-referenced set on every edit.
+  const [proofFiles, setProofFiles] = useState<File[]>([]);
   // Separate from the geolocation proof: a bounty's proof is the same idea but
   // in progress (else it'd be a geolocation), optional, and stored on
   // `bounties.proof`. Kept apart so toggling submit type doesn't bleed one
-  // draft into the other.
+  // draft into the other. (Image-free, so no proof_files companion.)
   const [bountyProof, setBountyProof] = useState<Record<string, unknown> | null>(
     null
   );
@@ -117,7 +128,6 @@ function SubmitForm() {
   } = useApiResource<Tag[]>("/tags?curated=true");
   const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [proofImageUploading, setProofImageUploading] = useState(false);
 
   // Incomplete-form feedback (shared notice + in-form red outlines).
   const {
@@ -160,7 +170,7 @@ function SubmitForm() {
   // this pre-fill is the only carry-over for them. Locking source_url is the UX cue.
   useEffect(() => {
     if (!bountyIdParam) return;
-    getBounty(bountyIdParam)
+    getEvent(bountyIdParam)
       .then((b) => {
         if (b.status !== "requested") {
           setBountyError(
@@ -198,17 +208,24 @@ function SubmitForm() {
   // Bounty + geolocation are mutually-exclusive submit paths sharing one error
   // banner; each mutation clears the other so the single-slot behaviour holds.
   const bountyMutation = useMutation(
-    () =>
-      createBounty({
+    () => {
+      const latNum = parseFloat(lat);
+      const lngNum = parseFloat(lng);
+      const hasGuess = !isNaN(latNum) && !isNaN(lngNum);
+      return createEventRequest({
         title: title.trim(),
         source_url: sourceUrl.trim(),
         proof: bountyProof,
+        lat: hasGuess ? latNum : undefined,
+        lng: hasGuess ? lngNum : undefined,
+        ...parseCaptureCoords(captureLat, captureLng),
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
         tag_ids: selectedTagIds,
         files,
-      }),
+      });
+    },
     {
       fallback: "Submission failed",
       onSuccess: (created) => router.push(`/bounties/${created.id}`),
@@ -219,14 +236,17 @@ function SubmitForm() {
     (): Promise<{ id: string }> => {
       const latNum = parseFloat(lat);
       const lngNum = parseFloat(lng);
-      // Fulfilling a request is a lifecycle move on that same event: submit
+      const capture = parseCaptureCoords(captureLat, captureLng);
+      // Fulfilling a request is a lifecycle move on that same event: geolocate
       // (``requested`` → ``geolocated``) transfers ownership to the fulfiller.
-      // Its media is already on the row, so no files are staged / removed here.
+      // Its source media is already on the row, so no source files are staged /
+      // removed here; the fulfiller's proof images still upload at publish.
       if (bounty) {
-        return submitEventApi(bounty.id, {
+        return geolocateEventApi(bounty.id, {
           title,
           lat: latNum,
           lng: lngNum,
+          ...capture,
           source_url: sourceUrl,
           event_date: eventDate,
           event_time: eventTime || undefined,
@@ -235,12 +255,14 @@ function SubmitForm() {
           tag_ids: selectedTagIds,
           remove_media_ids: [],
           files: [],
+          proof_files: proofFiles,
         });
       }
       return createEvent({
         title,
         lat: latNum,
         lng: lngNum,
+        ...capture,
         source_url: sourceUrl,
         event_date: eventDate,
         event_time: eventTime || undefined,
@@ -248,6 +270,7 @@ function SubmitForm() {
         proof,
         tag_ids: selectedTagIds,
         files,
+        proof_files: proofFiles,
       });
     },
     {
@@ -260,7 +283,7 @@ function SubmitForm() {
   const submitting = bountyMutation.loading || geolocationMutation.loading;
 
   const submitBounty = async () => {
-    const missing = missingBountyFields({
+    const missing = missingEventRequestFields({
       title,
       sourceUrl,
       sourcePostedAt,
@@ -313,12 +336,6 @@ function SubmitForm() {
       flagIncomplete(missing);
       return;
     }
-    if (proofImageUploading) {
-      geolocationMutation.setError(
-        "An image is still uploading — please wait before submitting."
-      );
-      return;
-    }
     await geolocationMutation.run();
   };
 
@@ -364,10 +381,10 @@ function SubmitForm() {
     <>
       You&apos;re fulfilling a bounty posted by{" "}
       <Link
-        href={`/profile/${bounty!.author.username}`}
+        href={`/profile/${bounty!.owner.username}`}
         className={TEXT_LINK}
       >
-        @{bounty!.author.username}
+        @{bounty!.owner.username}
       </Link>
       . Title, tags, dates, and the proof so far are pre-filled from the bounty;
       refine them. Source and media stay locked (that&apos;s the bounty&apos;s
@@ -394,9 +411,6 @@ function SubmitForm() {
           onChange={(t) => {
             setSubmitType(t);
             setArchiveMode(false);
-            // Bounty mode has no image upload, so a flag left true by an
-            // in-flight geolocation upload would wedge the submit button.
-            if (t === "bounty") setProofImageUploading(false);
           }}
         />
       )}
@@ -445,8 +459,17 @@ function SubmitForm() {
             once a tweet is imported so the "Imported from @x" confirmation shows. */}
         {canImport && (tweetPrefillOpen || importedFrom) && (
           <TweetImportBanner
-            onImported={applyTweetImport}
-            onClear={clearImportedTweet}
+            onImported={(parsed) => {
+              // The editor remounts on import (its key changes); its inline
+              // images are real URLs, so drop any locally-staged proof files so
+              // the staged set matches the freshly-mounted doc.
+              setProofFiles([]);
+              applyTweetImport(parsed);
+            }}
+            onClear={() => {
+              setProofFiles([]);
+              clearImportedTweet();
+            }}
             importedFrom={importedFrom}
             linkedX={user?.external_links?.x ?? null}
           />
@@ -480,6 +503,10 @@ function SubmitForm() {
             setLat={setLat}
             lng={lng}
             setLng={setLng}
+            captureLat={captureLat}
+            setCaptureLat={setCaptureLat}
+            captureLng={captureLng}
+            setCaptureLng={setCaptureLng}
             extraCoordCandidates={extraCoordCandidates}
             onSwapCandidate={swapCoordCandidate}
             invalid={invalidKeys.has("coordinates")}
@@ -524,7 +551,7 @@ function SubmitForm() {
             importGen={importGen}
             proof={proof}
             onChange={setProof}
-            onUploadStateChange={setProofImageUploading}
+            onProofFilesChange={setProofFiles}
             invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
           />
         ) : (
@@ -569,22 +596,16 @@ function SubmitForm() {
         )}
 
         <div className="flex items-center gap-4">
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={submitting || proofImageUploading}
-          >
+          <Button type="submit" variant="primary" disabled={submitting}>
             {isBounty
               ? submitting
                 ? "Posting…"
                 : "Post bounty"
               : submitting
                 ? "Submitting…"
-                : proofImageUploading
-                  ? "Image uploading…"
-                  : lockedFromBounty
-                    ? "Submit geolocation (fulfil request)"
-                    : "Submit geolocation"}
+                : lockedFromBounty
+                  ? "Submit geolocation (fulfil request)"
+                  : "Submit geolocation"}
           </Button>
           <Link
             href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}

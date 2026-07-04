@@ -32,6 +32,12 @@ interface MediaManagerProps {
  * thumbnails (persisted + locally-staged) as items, FileManager owns the grid,
  * the add tile, drag-drop, and the remove chrome. Object URLs for staged files
  * are revoked on change / unmount so a clear → re-pick cycle doesn't leak blobs.
+ *
+ * **One source per event.** An event carries at most one `source` media (the
+ * backend enforces it with a partial unique index). So this is a single-file
+ * picker: the add tile disappears once a source is present (kept existing or
+ * staged), and the analyst removes the current one to swap it. `FileManager`'s
+ * `multiple={false}` also caps a multi-file drop to the first file.
  */
 export function MediaManager({
   existing = [],
@@ -94,7 +100,8 @@ export function MediaManager({
       items={items}
       onAddFiles={locked ? undefined : onAddFiles}
       accept={ACCEPTED_MEDIA_MIME}
-      multiple
+      // One source per event: single-file picker. The add tile hides once a
+      // source is present (existing or staged), so a second can't be staged.
       addLabel="Add media"
       layout="grid"
     />

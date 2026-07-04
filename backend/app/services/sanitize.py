@@ -20,11 +20,18 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
-# The canonical empty proof document. ``geolocations.proof`` is NOT NULL — every
+# The canonical empty proof document. ``events.proof`` is NOT NULL, so every
 # row carries a proof doc — so a submission with no proof body and the migration
 # that backfilled pre-existing NULLs both store this. It renders as "no proof"
 # through the proof renderer rather than a shape the frontend doesn't expect.
 EMPTY_TIPTAP_DOC: dict[str, Any] = {"type": "doc", "content": []}
+
+# Image src scheme the editor uses for a not-yet-uploaded proof image: the
+# node references the file riding in the same multipart request
+# (``placeholder://<filename>``). Evidence intake resolves each placeholder to
+# an uploaded S3 URL before the doc is stored, so a persisted doc never
+# carries one (an unresolved placeholder is a 400 at intake).
+PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
 # Tiptap StarterKit nodes (+ Image extension wired in
 # frontend/src/components/editor/ProofEditor.tsx).
@@ -53,17 +60,23 @@ _MAX_DEPTH = 32
 _MAX_NODES = 5_000
 
 
-def _safe_image_src(value: Any) -> str | None:
+def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
     """Image src must be relative or point at the configured CDN.
 
     With no CloudFront configured, any https:// passes (dev media URLs); in
     prod with `cloudfront_domain` set, only that host. http://localhost
     local-storage URLs pass only when `cloudfront_domain` is unset AND
     `storage_backend == "local"`, so a CDN-less-but-S3 staging env doesn't
-    accept loopback URLs.
+    accept loopback URLs. ``allow_placeholders`` additionally admits
+    ``placeholder://<filename>`` srcs, intake-time only, never persisted
+    (see ``PROOF_PLACEHOLDER_PREFIX``).
     """
     if not isinstance(value, str):
         return None
+    if allow_placeholders and value.startswith(PROOF_PLACEHOLDER_PREFIX):
+        # A bare prefix names no file; intake could never match it, so drop
+        # the node here rather than 400 the whole submission later.
+        return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
     # Reject protocol-relative URLs (``//evil.com/x``) BEFORE the
     # relative-path early-return below: the browser resolves them against
     # the page scheme, so a persisted ``//attacker.example/pixel.gif`` would
@@ -105,9 +118,9 @@ def _safe_link_href(value: Any) -> str | None:
 def extract_image_srcs(doc: Any) -> list[str]:
     """Collect image src URLs from a Tiptap document (sanitized or not).
 
-    Used after sanitization to link `proof_images` rows to the referencing
-    geolocation. Returns srcs in tree order, deduped so the caller can pass
-    the result straight to a SQL `IN (...)`.
+    Evidence intake uses it to match ``placeholder://`` srcs to uploaded
+    files, enforce the proof-image floor, and diff kept vs dropped proof
+    media on edit. Returns srcs in tree order, deduped.
     """
     seen: set[str] = set()
     srcs: list[str] = []
@@ -131,23 +144,31 @@ def extract_image_srcs(doc: Any) -> list[str]:
     return srcs
 
 
-def sanitize_tiptap_doc(doc: Any, *, allow_images: bool = True) -> dict[str, Any]:
+def sanitize_tiptap_doc(
+    doc: Any, *, allow_images: bool = True, allow_placeholders: bool = False
+) -> dict[str, Any]:
     """Validate a Tiptap document against the allowlist.
 
     Drops unknown nodes/marks/attrs. Strips images with unsafe src and
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
 
-    ``allow_images=False`` drops every image node. Bounty proofs use this:
-    the bounty create path never adopts inline images into ``proof_images``
-    rows (that table only has a ``geolocation_id``), so a kept image would
-    orphan and get reaped — a broken image in the stored proof. Geolocations
-    adopt their images, so they keep the default.
+    ``allow_images=False`` drops every image node. Request (bounty) proofs use
+    this: the request path carries no ``proof_files``, so a kept image node
+    would reference nothing. ``allow_placeholders=True`` admits the
+    ``placeholder://`` srcs the geolocate paths resolve at intake (see
+    ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")
     counter = [0]
-    sanitized = _sanitize_node(doc, depth=0, counter=counter, allow_images=allow_images)
+    sanitized = _sanitize_node(
+        doc,
+        depth=0,
+        counter=counter,
+        allow_images=allow_images,
+        allow_placeholders=allow_placeholders,
+    )
     if sanitized is None:
         return {"type": "doc", "content": []}
     sanitized.setdefault("content", [])
@@ -176,7 +197,7 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
 
 
 def _sanitize_node(
-    node: Any, *, depth: int, counter: list[int], allow_images: bool
+    node: Any, *, depth: int, counter: list[int], allow_images: bool, allow_placeholders: bool
 ) -> dict[str, Any] | None:
     if depth > _MAX_DEPTH:
         raise ValueError(f"Tiptap document exceeds max depth ({_MAX_DEPTH})")
@@ -197,7 +218,9 @@ def _sanitize_node(
     allowed_attrs = _ALLOWED_NODES[node_type]
     raw_attrs = node.get("attrs")
     if isinstance(raw_attrs, dict) and allowed_attrs:
-        clean_attrs = _sanitize_attrs(node_type, raw_attrs, allowed_attrs)
+        clean_attrs = _sanitize_attrs(
+            node_type, raw_attrs, allowed_attrs, allow_placeholders=allow_placeholders
+        )
         if clean_attrs is None:
             return None  # signal: drop the entire node (e.g. image with unsafe src)
         if clean_attrs:
@@ -218,7 +241,13 @@ def _sanitize_node(
         clean_content = [
             c
             for c in (
-                _sanitize_node(child, depth=depth + 1, counter=counter, allow_images=allow_images)
+                _sanitize_node(
+                    child,
+                    depth=depth + 1,
+                    counter=counter,
+                    allow_images=allow_images,
+                    allow_placeholders=allow_placeholders,
+                )
                 for child in raw_content
             )
             if c
@@ -251,7 +280,7 @@ def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
 
 
 def _sanitize_attrs(
-    node_type: str, raw_attrs: dict[str, Any], allowed: set[str]
+    node_type: str, raw_attrs: dict[str, Any], allowed: set[str], *, allow_placeholders: bool
 ) -> dict[str, Any] | None:
     """Returns the cleaned attr dict, or None if the whole node should be dropped."""
     cleaned: dict[str, Any] = {}
@@ -259,7 +288,7 @@ def _sanitize_attrs(
         if key not in allowed:
             continue
         if node_type == "image" and key == "src":
-            safe = _safe_image_src(value)
+            safe = _safe_image_src(value, allow_placeholders=allow_placeholders)
             if safe is None:
                 return None  # unsafe image — drop the node entirely
             cleaned[key] = safe

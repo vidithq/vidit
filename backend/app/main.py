@@ -14,7 +14,6 @@ from app.ratelimit import limiter
 from app.routers import (
     admin,
     auth,
-    bounties,
     events,
     search,
     social,
@@ -59,17 +58,17 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # path; the absent/chunked path still falls through to ``validate_file`` per
 # file (bounded by the stream-reader, no worse than the per-file cap).
 #
-# Ceiling admits the largest legitimate request — one ``max_video_size`` video
-# (100 MB) OR a full ``max_files_per_geolocation`` batch at ``max_image_size``
-# (12 × 10 MB = 120 MB) — plus 10 MB for multipart envelope and form fields.
-# PR #100 caught the previous shape (``max_video_size + 10 MB`` = 110 MB)
-# silently rejecting a 12-image submission. All three caps read from
-# ``settings`` so this module never imports a router (the old shape's
-# ``from app.routers.events import …`` formed a fragile import edge).
-_MAX_REQUEST_BODY_BYTES = max(
-    settings.max_video_size,
-    settings.max_files_per_geolocation * settings.max_image_size,
-) + (10 * 1024 * 1024)
+# Ceiling admits the largest legitimate request: one source file
+# (``max_video_size``, 100 MB, the bigger of the two per-file caps) plus a
+# full ``max_proof_images_per_event`` proof batch at ``max_image_size``
+# (10 × 10 MB), plus 10 MB for multipart envelope and form fields. All three
+# caps read from ``settings`` so this module never imports a router (the old
+# shape's ``from app.routers.events import …`` formed a fragile import edge).
+_MAX_REQUEST_BODY_BYTES = (
+    settings.max_video_size
+    + settings.max_proof_images_per_event * settings.max_image_size
+    + (10 * 1024 * 1024)
+)
 
 
 @app.middleware("http")
@@ -129,7 +128,6 @@ async def add_hsts_header(request: Request, call_next):
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(bounties.router, prefix="/api/v1/bounties", tags=["bounties"])
 # events ships several sub-routers (one per concern); mount each under the
 # shared prefix. Order is load-bearing — see ``routers/events/__init__.py``.
 for _event_router in events.routers:

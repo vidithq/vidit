@@ -10,22 +10,12 @@ standalone scripts.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.models.auth_token import AuthToken
-from app.models.proof_image import ProofImage
 from app.services import registration as registration_service
-from app.services.storage import StorageDeleteError, get_storage
-
-logger = logging.getLogger(__name__)
-
-
-# 24h grace is wider than any realistic submit latency, so an in-flight
-# submit can't have its image reaped from under it.
-PROOF_ORPHAN_GRACE_HOURS = 24
 
 # Consumed tokens kept for replay-debugging via the audit log; live-but-
 # expired rows have no value and are dropped immediately past expiry.
@@ -64,71 +54,6 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     )
     db.commit()
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
-
-
-def reap_proof_image_orphans(db: Session) -> dict[str, int]:
-    """Drop proof_images rows + S3 objects for abandoned uploads.
-
-    A row is an orphan if the user uploaded the image from the editor but
-    never submitted a geolocation linking it (form abandoned, retry with
-    different images, browser crash). The 24h grace prevents reaping a row
-    out from under an in-flight submit.
-
-    Returns counts of rows deleted, S3 objects deleted, and per-key S3
-    failures (rows for failed deletes are kept so the next sweep retries).
-    """
-    cutoff = datetime.now(UTC) - timedelta(hours=PROOF_ORPHAN_GRACE_HOURS)
-
-    orphans = (
-        db.query(ProofImage)
-        .filter(
-            ProofImage.geolocation_id.is_(None),
-            ProofImage.created_at < cutoff,
-        )
-        .all()
-    )
-    if not orphans:
-        return {"rows_deleted": 0, "s3_deleted": 0, "s3_failed": 0}
-
-    keys = [row.s3_key for row in orphans]
-    failed_keys: set[str] = set()
-    try:
-        get_storage().delete_many(keys)
-    except StorageDeleteError as exc:
-        failed_keys = set(exc.errors)
-        logger.warning(
-            "proof-image reaper: %d/%d S3 deletes failed; keeping their rows for retry",
-            len(failed_keys),
-            len(keys),
-        )
-    logger.info(
-        "proof-image reaper: %d/%d S3 objects deleted",
-        len(keys) - len(failed_keys),
-        len(keys),
-    )
-
-    succeeded_ids = [row.id for row in orphans if row.s3_key not in failed_keys]
-    rows_deleted = 0
-    if succeeded_ids:
-        # Re-assert geolocation_id IS NULL inside the DELETE: guards the
-        # narrow race where a user links one of these rows between the
-        # SELECT above and this DELETE, which would otherwise silently drop
-        # a now-linked row.
-        rows_deleted = (
-            db.query(ProofImage)
-            .filter(
-                ProofImage.id.in_(succeeded_ids),
-                ProofImage.geolocation_id.is_(None),
-            )
-            .delete(synchronize_session=False)
-        )
-        db.commit()
-
-    return {
-        "rows_deleted": rows_deleted or 0,
-        "s3_deleted": len(keys) - len(failed_keys),
-        "s3_failed": len(failed_keys),
-    }
 
 
 def reap_pending_registrations(db: Session) -> dict[str, int]:

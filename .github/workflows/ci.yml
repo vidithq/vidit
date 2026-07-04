@@ -72,6 +72,9 @@ jobs:
       - name: mypy
         run: uv run mypy app
 
+      - name: vulture
+        run: uv run vulture
+
   backend-test:
     name: Backend tests
     # Gated on the lint job: ruff + mypy fail in well under a minute,

@@ -129,27 +129,19 @@ export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
  *  `original_filename` are null on pre-column + demo-pool rows. */
 export type Media = components["schemas"]["MediaRead"];
 
-/** Full geolocation detail (`GET /events/{id}`, `GET /events/detections`).
+/** Full event detail (`GET /events/{id}`, `GET /events/detections`).
  *  Adds the source URL, the proof body, the full media list, provenance
  *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
- *  trace on top of the compact ``EventList`` card fields. ``lat`` / ``lng`` /
- *  ``event_date`` / ``event_time`` are nullable but always serialised. */
+ *  trace on top of the compact ``EventList`` card fields. Covers every
+ *  lifecycle state: a ``requested`` row (the ex-bounty view) reads through
+ *  this same shape, with ``event_coords`` null unless the poster attached a
+ *  guess. */
 export type EventDetail = components["schemas"]["EventRead"];
 
-/** The requested-view (bounty) shares the one unified lifecycle enum; a
- *  requested row is ``requested`` or (once withdrawn) ``closed``. */
-export type BountyStatus = EventStatus;
-
-/** Compact bounty card (`GET /bounties`). The requested-view counterpart of the
- *  ``EventList`` geolocation card: carries the denormalised ``claimer_count``
- *  plus a capped ``claimer_sample`` (newest claimers) for the index avatar strip. */
-export type BountyListItem = components["schemas"]["BountyList"];
-
-/** Full bounty detail (`GET /bounties/{id}`). The requested-view counterpart of
- *  {@link EventDetail}: adds the proof body, the ``closed_at`` timestamp, and the
- *  full ``claimers`` list. ``event_date`` / ``event_time`` are nullable (a bounty
- *  is an unfinished geolocation). */
-export type BountyDetail = components["schemas"]["BountyRead"];
+/** Compact event card (`GET /events`). ``investigator_count`` /
+ *  ``investigators_sample`` are populated only on the requested view (the
+ *  ex-bounty queue); null on the located catalogue. */
+export type EventListItem = components["schemas"]["EventList"];
 
 /** The ``type=`` filter values, echoed back on the response. */
 export type SearchType = components["schemas"]["SearchResponse"]["type"];
@@ -164,8 +156,8 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
  */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view (bounty) search hit. Mirrors {@link BountyListItem} plus
- *  the ``title_highlight`` fragment; carries ``claimer_count`` so the card
+/** A requested-view (bounty) search hit: an event card plus the
+ *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
  *  renders the same "N working" badge. */
 export type SearchBountyHit = components["schemas"]["SearchBountyHit"];
 

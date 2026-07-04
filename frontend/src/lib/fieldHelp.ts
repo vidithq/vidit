@@ -25,6 +25,10 @@ export const FIELD_HELP = {
     text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). Where the footage was filmed, not where it was posted.",
     label: "What are the coordinates?",
   },
+  capture_source_coords: {
+    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when it's a different spot from the subject: e.g. a drone or a rooftop looking at the strike. Leave blank when the camera is at the subject or the vantage point is unknown.",
+    label: "What is the camera position?",
+  },
   source_url: {
     text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet.",
     label: "What is the source?",

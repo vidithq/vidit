@@ -114,9 +114,9 @@ def test_image_relative_url_passes():
 
 
 def test_allow_images_false_drops_images_keeps_text():
-    """Bounty descriptions sanitise with allow_images=False: an otherwise-valid
-    image is dropped (it would orphan — no bounty_id on proof_images) while the
-    surrounding text survives."""
+    """A request's proof sanitises with allow_images=False: an otherwise-valid
+    image is dropped (no proof_files ride the request path to anchor it) while
+    the surrounding text survives."""
     doc = {
         "type": "doc",
         "content": [

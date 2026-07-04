@@ -19,27 +19,12 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
 /**
- * The body's data shape. The event-only fields (location, detected-from,
- * requested-by, and the nullable event date/time) are optional so a
- * BountyDetail, which omits or leaves them optional, renders through the same
- * body: the missing spots show empty or drop out, with no extra branching.
+ * The body's data shape: an `EventDetail` as-is. Every lifecycle state
+ * (located, detected, requested, closed) shares this one shape: a coordless
+ * `requested` row just carries a null `event_coords`, and the missing
+ * detected-from / requested-by spots drop out with no extra branching.
  */
-export type EventDetailBodyData = Omit<
-  EventDetail,
-  | "lat"
-  | "lng"
-  | "detected_from_url"
-  | "detected_post_at"
-  | "requested_by"
-  | "event_date"
-  | "event_time"
-> &
-  Partial<
-    Pick<
-      EventDetail,
-      "lat" | "lng" | "detected_from_url" | "requested_by" | "event_date" | "event_time"
-    >
-  >;
+export type EventDetailBodyData = EventDetail;
 
 interface EventDetailBodyProps {
   geo: EventDetailBodyData;
@@ -134,8 +119,23 @@ function DetailRows({
   const rows = (
     <>
       <DetailRow label="Status" concept="status" compact={compact}>
-        <StatusBadge status={geo.status} />
+        <StatusBadge
+          status={geo.status}
+          beforeClosedStatus={geo.before_closed_status}
+        />
       </DetailRow>
+      {/* The closer's free-text reason, kept publicly visible on a closed row
+          (transparency: why the request was withdrawn or the detection
+          rejected). Sits next to the Status badge. */}
+      {geo.status === "closed" && geo.close_reason && (
+        <DetailRow label="Reason" compact={compact} align="start">
+          <span
+            className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right ml-4 max-w-[300px]`}
+          >
+            {geo.close_reason}
+          </span>
+        </DetailRow>
+      )}
       <DetailRow
         label="Event date"
         concept="event_date"
@@ -202,7 +202,7 @@ function DetailRows({
       )}
       {!compact && (
         <DetailRow label="Author" compact={compact}>
-          <AuthorByline author={geo.author} prefix={false} className="text-sm" />
+          <AuthorByline author={geo.owner} prefix={false} className="text-sm" />
         </DetailRow>
       )}
       {detailExtras}
@@ -229,8 +229,8 @@ function DetailRows({
             className="text-sm"
           >
             <span className="text-neutral-200 font-mono text-xs">
-              {geo.lat != null && geo.lng != null
-                ? `${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}`
+              {geo.event_coords
+                ? `${geo.event_coords.lat.toFixed(6)}, ${geo.event_coords.lng.toFixed(6)}`
                 : "—"}
             </span>
           </DetailRow>

@@ -4,8 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
-import { bountyListPath } from "@/lib/bounties";
-import type { BountyListItem, BountyStatus } from "@/types";
+import { eventListPath } from "@/lib/events";
+import type { EventListItem, EventStatus } from "@/types";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -20,7 +20,7 @@ import { Pill } from "@/components/ui/Pill";
 // (withdrawn); a fulfilled request becomes a ``geolocated`` event and leaves
 // this view. Default "requested" so the queue opens on the still-actionable
 // entries.
-const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
+const STATUS_FILTERS: { value: EventStatus | "all"; label: string }[] = [
   { value: "requested", label: "Open" },
   { value: "closed", label: "Closed" },
   { value: "all", label: "All" },
@@ -29,10 +29,13 @@ const STATUS_FILTERS: { value: BountyStatus | "all"; label: string }[] = [
 export default function BountiesPage() {
   const { user, loading } = useRequireAuth();
 
-  const [statusFilter, setStatusFilter] = useState<BountyStatus | "all">("requested");
-  const { data: bounties, error } = useApiResource<BountyListItem[]>(
+  const [statusFilter, setStatusFilter] = useState<EventStatus | "all">("requested");
+  const { data: bounties, error } = useApiResource<EventListItem[]>(
     user
-      ? bountyListPath(statusFilter === "all" ? {} : { status: statusFilter })
+      ? eventListPath({
+          view: "requested",
+          status: statusFilter === "all" ? undefined : statusFilter,
+        })
       : null
   );
 
@@ -120,12 +123,17 @@ export default function BountiesPage() {
                   variant="compact"
                   detailHref={`/bounties/${b.id}`}
                   title={b.title}
-                  badge={<StatusBadge status={b.status} />}
-                  media={b.media[0]}
-                  author={b.author}
-                  date={b.created_at}
-                  source={{ url: b.source_url, isDemo: b.is_demo }}
-                  working={b.claimer_count}
+                  badge={
+                    <StatusBadge
+                      status={b.status}
+                      beforeClosedStatus={b.before_closed_status}
+                    />
+                  }
+                  media={b.media ?? undefined}
+                  author={b.owner}
+                  date={b.event_date ?? undefined}
+                  coords={b.event_coords}
+                  working={b.investigator_count ?? undefined}
                   tags={b.tags}
                 />
               ))}

@@ -86,4 +86,4 @@ class User(Base):
         JSONB, default=dict, nullable=False, server_default="{}"
     )
 
-    geolocations = relationship("Event", back_populates="author", foreign_keys="Event.author_id")
+    events = relationship("Event", back_populates="owner", foreign_keys="Event.owner_id")

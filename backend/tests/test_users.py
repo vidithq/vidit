@@ -66,7 +66,7 @@ def live_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -84,7 +84,7 @@ def soft_deleted_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -103,7 +103,7 @@ def trusted_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(Event).filter(Event.author_id == user_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -117,12 +117,13 @@ def _make_geo(
     deleted: bool = False,
 ) -> Event:
     geo = Event(
-        author_id=author.id,
+        owner_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        location=from_shape(Point(34.5, 48.5), srid=4326),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=event_date or date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
     )
     if deleted:
         geo.deleted_at = datetime.now(UTC)

@@ -101,22 +101,24 @@ export function useTweetImport(form: TweetImportFormBindings) {
       setExtraCoordCandidates([]);
     }
 
-    // Split media; download primary into ``files[]``, upload proof
-    // images to ``/proof-images`` and embed them in the seed proof body.
+    // Split media; download the primary (source) into ``files[]``, and the
+    // proof images inline into the seed proof body. One source per event, so
+    // only the first successfully-fetched primary is staged (the source-media
+    // control is single-file too).
     const { primary, proof: proofMedia } = splitMedia(parsed.media);
     const tweetId =
       parsed.original_tweet_url.split("/").pop() ?? "tweet";
 
-    const primaryFiles: File[] = [];
-    for (let i = 0; i < primary.length; i++) {
+    let primaryFile: File | null = null;
+    for (let i = 0; i < primary.length && primaryFile === null; i++) {
       if (!isCurrent()) return;
       const m = primary[i];
       const fetched = await fetchProxyBlob(m.remote_url, controller.signal);
       if (fetched === null) continue;
-      primaryFiles.push(makeFile(fetched, m, tweetId, i));
+      primaryFile = makeFile(fetched, m, tweetId, i);
     }
     if (!isCurrent()) return;
-    if (primaryFiles.length > 0) form.setFiles(primaryFiles);
+    if (primaryFile !== null) form.setFiles([primaryFile]);
 
     // ``proofMedia`` is already image-only by ``splitMedia``.
     const proofImageUrls: string[] = [];

@@ -15,15 +15,11 @@ export default function DetectionCard({ geo }: { geo: EventDetail }) {
       variant="compact"
       detailHref={`/events/${geo.id}/edit`}
       title={geo.title}
-      author={geo.author}
+      author={geo.owner}
       badge={<StatusBadge status={geo.status} />}
       media={geo.media[0]}
       date={geo.event_date ?? undefined}
-      coords={
-        geo.lat != null && geo.lng != null
-          ? { lat: geo.lat, lng: geo.lng }
-          : null
-      }
+      coords={geo.event_coords}
       source={
         geo.detected_from_url
           ? { url: geo.detected_from_url, isDemo: sourceIsSynthetic(geo) }

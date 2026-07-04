@@ -33,9 +33,9 @@ EXPOSE 8000
 # returns ``x_forwarded_for_hosts[0]``), which is **attacker-controlled**
 # on Railway because Railway *appends* to ``X-Forwarded-For`` rather than
 # overwriting it. Anything in this codebase that needs the real client IP
-# (rate limits, audit log) MUST NOT read ``request.client.host`` directly
-# — it must route through ``services.audit.extract_client_ip``, which
-# parses XFF and picks the **right-most** entry (the one the trusted
+# (rate limits, audit log) MUST NOT read ``request.client.host`` directly.
+# It must route through ``services.audit._client_ip``, which
+# parses XFF and picks the **right-most** entry, the one the trusted
 # proxy actually wrote). That's how ``slowapi.Limiter(key_func=rate_limit_key)``
 # closes the spoof vector that would otherwise let an attacker rotate
 # ``X-Forwarded-For: <random>`` to mint a fresh rate-limit bucket per
@@ -52,5 +52,5 @@ EXPOSE 8000
 #
 # If a second trusted proxy ever sits in front of Railway (Cloudflare,
 # etc.), bump ``TRUSTED_PROXY_HOPS`` in env vars to match — see
-# ``app/services/audit.py::extract_client_ip``.
+# ``app/services/audit.py::_client_ip``.
 CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*"]

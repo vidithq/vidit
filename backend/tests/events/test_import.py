@@ -173,10 +173,10 @@ def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatc
         json={"url": "https://x.com/handle/status/1234567890"},
     )
     assert response.status_code == 502
-    # The graceful banner string the frontend renders verbatim — the
+    # The graceful banner string the frontend renders verbatim: the
     # transport detail is hidden behind it so a syndication outage and
     # a schema-drift bug are operationally identical to the caller.
-    assert response.json()["detail"] == "Couldn't read tweet — fill the form manually"
+    assert response.json()["detail"] == "Couldn't read tweet, fill the form manually"
 
 
 # ── GET /geolocations/import-from-tweet/media ─────────────────────────────

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers.events._common import coords_or_none, source_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.services import social
 
@@ -30,13 +31,13 @@ def get_timeline(
         EventList(
             id=geo.id,
             title=geo.title,
-            lat=lat,
-            lng=lng,
+            event_coords=coords_or_none(lat, lng),
             event_date=geo.event_date,
             is_demo=geo.is_demo,
             status=geo.status,
-            author=geo.author,
-            media=geo.media[0] if geo.media else None,
+            before_closed_status=geo.before_closed_status,
+            owner=geo.owner,
+            media=source_media(geo),
             tags=geo.tags,
         )
         for geo, lat, lng in result["items"]

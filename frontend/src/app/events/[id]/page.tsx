@@ -29,15 +29,15 @@ export default function EventPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={<AuthorByline author={geo.author} />}
+      subtitle={<AuthorByline author={geo.owner} />}
       actions={
         <ShareButtons
           id={geo.id}
           title={geo.title}
-          author={geo.author.username}
+          author={geo.owner.username}
           eventDate={geo.event_date}
-          lat={geo.lat}
-          lng={geo.lng}
+          lat={geo.event_coords?.lat ?? null}
+          lng={geo.event_coords?.lng ?? null}
           status={geo.status}
         />
       }
@@ -46,7 +46,7 @@ export default function EventPage() {
           {/* A located row (``geolocated`` / ``detected`` with coords) gets the
               Location module; a coordless event (a ``requested`` row served here
               by id) has no point, so the block is omitted. */}
-          {geo.lat != null && geo.lng != null && (
+          {geo.event_coords && (
             <div>
               <SectionEyebrow title="Location" concept="section_location" />
               {/* Map + coordinates are one module: the coords read as a Details-
@@ -61,9 +61,16 @@ export default function EventPage() {
                       date slots are inert here, so pass empty strings. */}
                   <Map
                     points={[
-                      [geo.id, geo.lat, geo.lng, "", "", geo.status === "detected" ? 1 : 0],
+                      [
+                        geo.id,
+                        geo.event_coords.lat,
+                        geo.event_coords.lng,
+                        "",
+                        "",
+                        geo.status === "detected" ? 1 : 0,
+                      ],
                     ]}
-                    center={{ lat: geo.lat, lng: geo.lng }}
+                    center={{ lat: geo.event_coords.lat, lng: geo.event_coords.lng }}
                     zoom={12}
                   />
                 </div>
@@ -73,7 +80,7 @@ export default function EventPage() {
                   className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
                 >
                   <span className="text-sm text-neutral-200 font-mono">
-                    {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
+                    {geo.event_coords.lat.toFixed(6)}, {geo.event_coords.lng.toFixed(6)}
                   </span>
                 </DetailRow>
               </div>

@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Text
-from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -40,10 +39,8 @@ class AuthEvent(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     event: Mapped[str] = mapped_column(Text, nullable=False)
-    # INET stores IPv4/IPv6 in native sizes (4/16 bytes) and makes subnet/
-    # containment queries trivial (e.g. "any failed_login from this /24 last hour").
-    ip: Mapped[str | None] = mapped_column(INET, nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # No IP / User-Agent columns: dropped for privacy, network context lives
+    # only at the Cloudflare edge.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

@@ -22,18 +22,14 @@ class Settings(BaseSettings):
     local_storage_dir: str = ".local-storage"
     max_image_size: int = 10 * 1024 * 1024  # 10 MB
     max_video_size: int = 100 * 1024 * 1024  # 100 MB
-    # Per-submission file count cap: above a realistic OSINT submission (one
-    # source video + a handful of frames), tight enough to refuse pathological
-    # multi-thousand-file payloads that would pin the worker through the
-    # Pillow + derivative + S3 pipeline. Lives in config (not the geolocations
-    # router) so the body-size middleware reads it at boot without a
+    # Per-event cap on inline proof images (the ``proof_files`` batch a submit
+    # carries). Above a legitimate analyst writeup (a dozen annotated frames is
+    # rare), tight enough to refuse a pathological payload that would pin the
+    # worker through the Pillow + S3 pipeline. The source side needs no knob:
+    # an event carries exactly one source media. Lives in config (not the
+    # events router) so the body-size middleware reads it at boot without a
     # ``main → routers`` import edge. Per-file caps are the two settings above.
-    max_files_per_geolocation: int = 12
-    # Per-user ceiling on inline-proof image uploads in any rolling 24h window.
-    # Above a legitimate analyst workflow (a writeup with a dozen annotated
-    # frames), caps a single account being weaponised to fill the bucket.
-    # Per-identity backstop to the /proof-images IP-level slowapi rate limit.
-    max_proof_images_per_user_per_day: int = 200
+    max_proof_images_per_event: int = 10
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
     # Extra origin regex OR'd with `cors_origins` by Starlette's CORSMiddleware.
     # Default whitelists every `localhost:<port>` so one backend can serve
@@ -59,10 +55,11 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = 0.0
 
     # Trusted proxy hops in front of the backend. Each appends its observed
-    # connecting IP to ``X-Forwarded-For``, so ``extract_client_ip`` picks the
-    # entry at position ``-trusted_proxy_hops`` (1 = right-most = Railway only,
-    # current prod topology; bump to 2 if Cloudflare or another trusted reverse
-    # proxy ever sits in front of Railway).
+    # connecting IP to ``X-Forwarded-For``, so the rate-limit key
+    # (``services.audit.rate_limit_key``) picks the entry at position
+    # ``-trusted_proxy_hops`` (1 = right-most = Railway only, current prod
+    # topology; bump to 2 if Cloudflare or another trusted reverse proxy ever
+    # sits in front of Railway).
     trusted_proxy_hops: int = 1
 
     # Transactional email. `console` (local-dev default) logs instead of

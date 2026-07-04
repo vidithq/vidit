@@ -21,9 +21,9 @@ _HASH_CHUNK_SIZE = 64 * 1024
 class UploadResult(NamedTuple):
     """What an ``upload`` / ``upload_bytes`` call hands back.
 
-    ``sha256`` is persisted on the ``Media`` / ``ProofImage`` row as a stable
-    content fingerprint. The S3 ETag is unfit: MD5 for non-multipart, not
-    stable across copies.
+    ``sha256`` is persisted on the ``Media`` row as a stable content
+    fingerprint. The S3 ETag is unfit: MD5 for non-multipart, not stable
+    across copies.
 
     ``derivative_keys`` are the sibling S3 keys this upload landed alongside
     the original (hero + thumbnail for images, empty for videos). Callers add
@@ -366,10 +366,11 @@ def sweep_keys(keys: list[str], *, context: str) -> None:
 
     Callers reach this AFTER the DB transaction has committed (or rolled
     back): a storage failure must not propagate and turn a settled DB state
-    into a retryable 500. The proof-image reaper picks up survivors.
+    into a retryable 500. A failed delete leaves an orphaned object, the
+    accepted residual risk, logged for a manual sweep.
 
     ``context`` is a short caller phrase for the log, e.g.
-    ``f"geolocation {geo.id} hard-delete"``.
+    ``f"event {geo.id} hard-delete"``.
     """
     if not keys:
         return
@@ -579,10 +580,10 @@ def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
     """Inline image embedded in a Tiptap proof body.
 
-    Per-user prefix (not per-geolocation) because the image is uploaded
-    from the editor before the geolocation row exists. Always an image (the
-    endpoint rejects everything else), so EXIF strip + buffered upload
-    always applies.
+    Per-user prefix, the convention from the editor-upload era, kept so
+    existing proof URLs and new ones live under one shape. Always an image
+    (evidence intake rejects everything else), so EXIF strip + buffered
+    upload always applies.
 
     Skips derivatives: inline proof images render through Tiptap's
     ``<img src=…>`` via the raw storage URL, so hero/thumb JPEGs would be

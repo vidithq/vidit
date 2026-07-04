@@ -42,7 +42,8 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
-    EventClaim,
+    EventGeolocator,
+    EventInvestigator,
     EventStatus,
 )
 from app.models.media import Media
@@ -457,9 +458,10 @@ def _prepare_pool_media(
     templates: dict[str, dict[str, list[str]]],
     storage: Storage,
 ) -> dict[str, str]:
-    """Hash every pool media key + produce derivatives where missing.
+    """Hash every pool key + produce derivatives where source images miss them.
 
-    For each unique media key referenced by `templates`:
+    For each unique key referenced by `templates` (both buckets: ``media``
+    becomes the source row, ``proof`` the proof rows):
 
     1. Download the original bytes. **Runs once per seed invocation, not
        once per pool lifetime** — the sha256 isn't cached on the bucket, so
@@ -468,16 +470,16 @@ def _prepare_pool_media(
        sibling object.
     2. Compute the sha256 hex so the row constructor sets ``Media.sha256``,
        matching the evidence-integrity contract real uploads honour.
-    3. For images, generate JPEG hero + thumbnail derivatives at the sibling
-       keys — skipped if already present. Skipping matters: a re-seed would
-       otherwise rewrite identical bytes, which the bucket's Object Lock +
-       versioning turns into unbounded version churn.
+    3. For ``media``-bucket images, generate JPEG hero + thumbnail derivatives
+       at the sibling keys, skipped if already present. Skipping matters: a
+       re-seed would otherwise rewrite identical bytes, which the bucket's
+       Object Lock + versioning turns into unbounded version churn. Proof
+       keys get no derivatives (inline proof images render from the raw URL,
+       same as real uploads).
 
     Videos: hashed for the row, no derivatives (no first-frame extraction).
 
-    Returns ``{pool_key: sha256_hex}``. Proof-image keys are excluded —
-    they create no Media rows and render through the editor via the
-    original URL.
+    Returns ``{pool_key: sha256_hex}`` across both buckets.
 
     Failure handling (both partial-success, neither aborts the seed): a
     per-key ``get_bytes`` miss is logged + skipped (the row lands with
@@ -487,8 +489,10 @@ def _prepare_pool_media(
     frontend 404s on the hero/thumb until the next seed).
     """
     unique_media_keys: set[str] = set()
+    unique_proof_keys: set[str] = set()
     for template in templates.values():
         unique_media_keys.update(template["media"])
+        unique_proof_keys.update(template["proof"])
 
     # One list_keys call up front to pick up derivatives from a prior seed
     # run. (``_discover_templates`` already paid this once; the re-list is
@@ -497,7 +501,7 @@ def _prepare_pool_media(
 
     sha256_by_key: dict[str, str] = {}
     derivatives_written = 0
-    for key in sorted(unique_media_keys):
+    for key in sorted(unique_media_keys | unique_proof_keys):
         try:
             data = storage.get_bytes(key)
         except Exception:
@@ -516,6 +520,9 @@ def _prepare_pool_media(
             continue
         sha256_by_key[key] = hashlib.sha256(data).hexdigest()
 
+        if key in unique_proof_keys:
+            # Proof images render from the raw URL: hash only, no derivatives.
+            continue
         content_type = _image_content_type_from_key(key)
         if content_type is None:
             # Videos — hash the row, skip derivatives (no first-frame extract).
@@ -656,26 +663,31 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     template_ids = list(templates.keys())
     storage = get_storage()
 
-    # One pass over every unique pool media key: compute sha256 and produce
-    # derivatives. Runs once per invocation regardless of `count`, since the
-    # N demo rows all reference the same unique pool keys.
+    # One pass over every unique pool key (media + proof buckets): compute
+    # sha256 and produce derivatives. Runs once per invocation regardless of
+    # `count`, since the N demo rows all reference the same unique pool keys.
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
-    # Buffer M2M link rows per batch, flushed via one Core
-    # `INSERT INTO event_tags` — far cheaper than 1-4 ORM
-    # relationship writes per geo.
+    # Buffer M2M link + geolocator rows per batch, each flushed via one Core
+    # INSERT, far cheaper than 1-4 ORM relationship writes per geo.
     pending_links: list[dict[str, uuid.UUID]] = []
+    pending_geolocators: list[dict[str, Any]] = []
 
     def _flush_batch() -> None:
-        # Flush queued geos so the M2M insert's FK targets exist, but DON'T
-        # commit yet, so geos and their tag links live or die together: an
-        # M2M insert failure rolls back the geos too and the next click
-        # retries cleanly. `commit() → insert links → commit()` left geos
-        # committed and tagless on a mid-flush failure.
+        # Flush queued geos so the Core inserts' FK targets exist, but DON'T
+        # commit yet, so geos and their tag links / geolocator credit live or
+        # die together: an insert failure rolls back the geos too and the next
+        # click retries cleanly. `commit() → insert links → commit()` left
+        # geos committed and tagless on a mid-flush failure.
         db.flush()
         if pending_links:
             db.execute(insert(event_tags), pending_links)
             pending_links.clear()
+        if pending_geolocators:
+            # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
+            # ``Table`` and ``insert()`` accepts it.
+            db.execute(insert(EventGeolocator.__table__), pending_geolocators)  # type: ignore[arg-type]
+            pending_geolocators.clear()
         db.commit()
         db.expire_all()
 
@@ -693,30 +705,31 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         event_date = _random_event_date()
         geo = Event(
             id=geo_id,
-            author_id=author_id,
+            owner_id=author_id,
             title=DEMO_TITLE,
-            location=from_shape(Point(lon, lat), srid=4326),
+            event_coords=from_shape(Point(lon, lat), srid=4326),
             source_url="https://vidit.app/demo-data",
             event_date=event_date,
             source_posted_at=_random_source_posted_at(event_date),
+            # Born ``geolocated`` (the model default): stamp it, or the
+            # ``ck_events_geolocated_stamp`` CHECK rejects the row.
+            geolocated_at=datetime.now(UTC),
             is_demo=True,
         )
 
-        media_subset = random.sample(
-            template["media"],
-            k=random.randint(1, min(3, len(template["media"]))),
-        )
-        for key in media_subset:
-            geo.media.append(
-                Media(
-                    storage_url=storage.public_url(key),
-                    media_type=_media_type_from_key(key),
-                    # ``get`` → ``None`` if the prep pass skipped this key
-                    # (storage miss between list + read): still a usable row,
-                    # just one a future audit flags as hash-less.
-                    sha256=pool_sha256_by_key.get(key),
-                )
+        # Exactly one source media (the DB caps source at one per event).
+        source_key = random.choice(template["media"])
+        geo.media.append(
+            Media(
+                role="source",
+                storage_url=storage.public_url(source_key),
+                media_type=_media_type_from_key(source_key),
+                # ``get`` → ``None`` if the prep pass skipped this key
+                # (storage miss between list + read): still a usable row,
+                # just one a future audit flags as hash-less.
+                sha256=pool_sha256_by_key.get(source_key),
             )
+        )
 
         proof_keys: list[str] = []
         if template["proof"]:
@@ -729,6 +742,22 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         # seed write path identical to the public one so future drift in
         # `_build_proof` or the allowlist is caught, not silently bypassed.
         geo.proof = sanitize_tiptap_doc(_build_proof(proof_keys))
+        # Same shape real submissions persist: one Media(role='proof') row per
+        # inline image the proof body references.
+        for key in proof_keys:
+            geo.media.append(
+                Media(
+                    role="proof",
+                    storage_url=storage.public_url(key),
+                    media_type="image",
+                    sha256=pool_sha256_by_key.get(key),
+                )
+            )
+
+        # Durable credit: the demo owner vouched their own geolocation.
+        pending_geolocators.append(
+            {"event_id": geo_id, "user_id": author_id, "created_at": datetime.now(UTC)}
+        )
 
         # Pick tag IDs from the memoised dict and stage the link rows for
         # the bulk Core insert — no DB hit, no ORM traversal.
@@ -796,9 +825,13 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
 DEMO_BOUNTY_TITLE = "Demo bounty — unplaced footage"
 DEMO_BOUNTY_SOURCE_URL = "https://vidit.app/demo-data"
 
-# Probability a demo request gets ≥1 synthetic claim — gives the "N
-# working" badge something to render so the multi-claimer UI surfaces.
+# Probability a demo request gets ≥1 synthetic investigator, giving the "N
+# working" badge something to render so the multi-analyst UI surfaces.
 DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
+
+# Free-text close reason on withdrawn demo requests, so the transparency
+# surface (the reason chip on a closed row) has something to render.
+DEMO_CLOSE_REASON = "Withdrawn by the poster (synthetic demo row)."
 
 # Status mix over the merged lifecycle. ``requested`` dominates so the default
 # "open queue" view feels populated; ``geolocated`` is the fulfilled case (a
@@ -831,14 +864,16 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 
     Reuses the demo-author pool and the ``demo-pool/`` prefix. Each event gets a
     random subset of one template's ``media/`` files. Since the bounty +
-    geolocation merge these are all rows on the one ``geolocations`` table:
+    geolocation merge these are all rows on the one ``events`` table:
 
-    * ``requested`` — an open call: no location, ``requested_by_id`` = author,
-      may get 1–3 synthetic claims (see ``DEMO_BOUNTY_CLAIM_PROBABILITY``).
-    * ``geolocated`` — the fulfilled case: a located row whose ``author_id`` is a
-      *different* demo analyst (the fulfiller) while ``requested_by_id`` keeps the
-      original poster, so "requested by @x, geolocated by @y" reads naturally.
-    * ``closed`` — a withdrawn request: no location, ``closed_at`` stamped.
+    * ``requested``: an open call, no location, ``requested_by_id`` = poster,
+      may get 1-3 synthetic investigators (``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+    * ``geolocated``: the fulfilled case, a located row whose ``owner_id`` is a
+      *different* demo analyst (the fulfiller, also credited in
+      ``event_geolocators``) while ``requested_by_id`` keeps the original
+      poster, so "requested by @x, geolocated by @y" reads naturally.
+    * ``closed``: a withdrawn request, no location, ``closed_at`` +
+      ``before_closed_status='requested'`` + a demo ``close_reason``.
 
     Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter chips +
     the requested_by banner UIs have data. Idempotent on demo authors / tags;
@@ -869,7 +904,8 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
     pending_geo_tag_links: list[dict[str, uuid.UUID]] = []
-    pending_claim_rows: list[dict[str, Any]] = []
+    pending_investigator_rows: list[dict[str, Any]] = []
+    pending_geolocator_rows: list[dict[str, Any]] = []
     counts: dict[EventStatus, int] = {
         STATUS_REQUESTED: 0,
         STATUS_GEOLOCATED: 0,
@@ -890,6 +926,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 
         geo_id = uuid.uuid4()
         event_date = _random_event_date()
+        now = datetime.now(UTC)
         if status == STATUS_GEOLOCATED:
             # Fulfilled: a located row. A *different* demo analyst is the owner
             # (the fulfiller) while the poster stays on ``requested_by_id`` so
@@ -899,61 +936,70 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
             lat, lon = _pick_point_for(region)
             geo = Event(
                 id=geo_id,
-                author_id=fulfiller_id,
+                owner_id=fulfiller_id,
                 requested_by_id=author_id,
                 title=DEMO_TITLE,
-                location=from_shape(Point(lon, lat), srid=4326),
+                event_coords=from_shape(Point(lon, lat), srid=4326),
                 source_url=DEMO_BOUNTY_SOURCE_URL,
                 event_date=event_date,
                 source_posted_at=_random_source_posted_at(event_date),
                 status=STATUS_GEOLOCATED,
+                requested_at=now,
+                geolocated_at=now,
                 is_demo=True,
+            )
+            # The fulfiller vouched the location: durable credit.
+            pending_geolocator_rows.append(
+                {"event_id": geo_id, "user_id": fulfiller_id, "created_at": now}
             )
         else:
             # Requested or closed — no location; the poster owns the row and is
-            # also the requester. ``closed_at`` stamped for the withdrawn case.
+            # also the requester. The withdrawn case stamps ``closed_at`` and
+            # records which state it left (+ a visible reason).
             geo = Event(
                 id=geo_id,
-                author_id=author_id,
+                owner_id=author_id,
                 requested_by_id=author_id,
                 title=DEMO_BOUNTY_TITLE,
                 source_url=DEMO_BOUNTY_SOURCE_URL,
                 event_date=event_date,
                 source_posted_at=_random_source_posted_at(event_date),
                 status=status,
-                closed_at=datetime.now(UTC) if status == STATUS_CLOSED else None,
+                requested_at=now,
+                closed_at=now if status == STATUS_CLOSED else None,
+                before_closed_status=STATUS_REQUESTED if status == STATUS_CLOSED else None,
+                close_reason=DEMO_CLOSE_REASON if status == STATUS_CLOSED else None,
                 is_demo=True,
             )
         db.add(geo)
 
-        media_subset = random.sample(
-            template["media"],
-            k=random.randint(1, min(3, len(template["media"]))),
-        )
-        for key in media_subset:
-            db.add(
-                Media(
-                    event_id=geo_id,
-                    storage_url=storage.public_url(key),
-                    media_type=_media_type_from_key(key),
-                    sha256=pool_sha256_by_key.get(key),
-                )
+        # One source media per event (the DB caps source at one).
+        source_key = random.choice(template["media"])
+        db.add(
+            Media(
+                event_id=geo_id,
+                role="source",
+                storage_url=storage.public_url(source_key),
+                media_type=_media_type_from_key(source_key),
+                sha256=pool_sha256_by_key.get(source_key),
             )
+        )
 
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
             pending_geo_tag_links.append({"event_id": geo_id, "tag_id": tid})
 
-        # Claims only make sense on the open queue — closed / geolocated events
-        # don't accept new claims, and stale backfilled claims would mislead the UI.
+        # Investigators only make sense on the open queue, not closed / geolocated
+        # events don't accept new signals, and stale backfilled ones would
+        # mislead the UI.
         if status == STATUS_REQUESTED and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
             other_authors = [aid for aid in author_ids if aid != author_id]
             if other_authors:
-                claim_count = random.randint(1, min(3, len(other_authors)))
-                for claimer_id in random.sample(other_authors, k=claim_count):
-                    pending_claim_rows.append(
+                signal_count = random.randint(1, min(3, len(other_authors)))
+                for investigator_id in random.sample(other_authors, k=signal_count):
+                    pending_investigator_rows.append(
                         {
                             "event_id": geo_id,
-                            "user_id": claimer_id,
+                            "user_id": investigator_id,
                             "created_at": datetime.now(UTC),
                         }
                     )
@@ -962,11 +1008,13 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     db.flush()
     if pending_geo_tag_links:
         db.execute(insert(event_tags), pending_geo_tag_links)
-    if pending_claim_rows:
-        # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
-        # ``Table`` and ``insert()`` accepts it — same as the
-        # ``insert(event_tags)`` call above.
-        db.execute(insert(EventClaim.__table__), pending_claim_rows)  # type: ignore[arg-type]
+    # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
+    # ``Table`` and ``insert()`` accepts it, same as the
+    # ``insert(event_tags)`` call above.
+    if pending_investigator_rows:
+        db.execute(insert(EventInvestigator.__table__), pending_investigator_rows)  # type: ignore[arg-type]
+    if pending_geolocator_rows:
+        db.execute(insert(EventGeolocator.__table__), pending_geolocator_rows)  # type: ignore[arg-type]
     db.commit()
 
     return {
@@ -1016,7 +1064,7 @@ def wipe_demo(db: Session) -> dict[str, int]:
        `ON DELETE CASCADE`: when the cascade drops the secondary rows
        first, the ORM's queued DELETE finds zero rows and raises
        `StaleDataError`. Bulk Core DELETE bypasses ORM cascade; the DB FK
-       cascade handles `event_tags`, `media`, `proof_images`.
+       cascade handles `event_tags`, `media`, and the contributor tables.
 
     The `demo-pool/` S3 objects are NOT touched — shared re-seeding assets,
     not per-geo media.

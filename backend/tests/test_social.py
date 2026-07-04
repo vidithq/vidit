@@ -68,12 +68,13 @@ def _make_user(db, *, suffix: str | None = None) -> User:
 
 def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = None) -> Event:
     geo = Event(
-        author_id=author.id,
+        owner_id=author.id,
         title=title,
-        location=from_shape(Point(37.802, 48.012), srid=4326),
+        event_coords=from_shape(Point(37.802, 48.012), srid=4326),
         source_url="https://example.com/proof",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=event or date.today(),
+        geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
     db.commit()
@@ -315,6 +316,7 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     db.add(
         Media(
             event_id=geo_a.id,
+            role="source",
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo_a.id}/thumb.jpg",
             media_type="image",
         )
@@ -332,8 +334,8 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     assert body["total"] == 2
     # Coordinates are inline (no N+1 follow-up fetch required).
     for item in body["items"]:
-        assert isinstance(item["lat"], (int, float))
-        assert isinstance(item["lng"], (int, float))
+        assert isinstance(item["event_coords"]["lat"], (int, float))
+        assert isinstance(item["event_coords"]["lng"], (int, float))
     # The card thumbnail rides the list payload: first media row, else null.
     by_title = {item["title"]: item for item in body["items"]}
     assert by_title["A"]["media"]["storage_url"].endswith("thumb.jpg")
