@@ -153,11 +153,10 @@ def sanitize_tiptap_doc(
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
 
-    ``allow_images=False`` drops every image node. Request (request) proofs use
-    this: the request path carries no ``proof_files``, so a kept image node
-    would reference nothing. ``allow_placeholders=True`` admits the
-    ``placeholder://`` srcs the geolocate paths resolve at intake (see
-    ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
+    ``allow_images=False`` drops every image node, for a caller that has no way
+    to resolve image srcs. ``allow_placeholders=True`` admits the
+    ``placeholder://`` srcs the create paths (geolocation and request) resolve at
+    intake (see ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")

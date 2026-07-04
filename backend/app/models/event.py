@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 # Lifecycle status — the merged request + geolocation event lifecycle.
-#   ``requested``   an open call to geolocate (yesterday's request ``open``); may
+#   ``requested``   an open call to geolocate (a request for help); may
 #                   carry an approximate coordinate guess.
 #   ``detected``    a machine draft (archive import / the bot); public on every
 #                   read surface but clearly marked, may or may not carry a
@@ -292,7 +292,7 @@ class Event(Base):
             name="ck_events_status_valid",
         ),
         # "Open requests / detections / geolocations, newest first" — the list,
-        # map and requested-view (ex-request) reads all filter on status.
+        # map and requested-view reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
         # Backs the assemble idempotency look-up (one per detection during a
         # backfill). Partial on the populated cohort — human rows are always NULL.

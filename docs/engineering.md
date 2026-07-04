@@ -167,7 +167,7 @@ vidit/
 │   │   │   ├── page.tsx            # Public landing page (storefront)
 │   │   │   ├── about/              # Public marketing / mission page
 │   │   │   ├── admin/              # Admin console (invites, demo seed, reapers)
-│   │   │   ├── requests/           # Request (requested-view) index + detail + create
+│   │   │   ├── requests/           # Request (requested-view) index + detail (create lives at /submit)
 │   │   │   ├── events/[id]/        # Event detail (any lifecycle state) + edit
 │   │   │   ├── geolocations/new/   # Legacy create-route redirect to /submit
 │   │   │   ├── map/                # Interactive map (the app home)

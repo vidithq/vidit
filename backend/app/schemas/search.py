@@ -10,7 +10,7 @@ The geolocation + request groups are two views over the one ``events`` table
 (the located rows vs the ``requested`` ones), so both run through a single
 FTS query path in ``services.search``; the two hit shapes differ only in the
 fields each view surfaces (coordinates for the located view, claimer counts for
-the requested one). "Request" survives here as reader vocabulary only.
+the requested one).
 """
 
 from __future__ import annotations

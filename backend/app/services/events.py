@@ -49,7 +49,6 @@ from app.services.evidence_intake import (
 )
 from app.services.permissions import ensure_owner
 from app.services.sanitize import (
-    EMPTY_TIPTAP_DOC,
     extract_image_srcs,
     sanitize_tiptap_doc,
 )
@@ -300,6 +299,7 @@ async def create_request(
     source_posted_at: datetime,
     tag_ids: list,
     file: UploadFile,
+    proof_files: list[UploadFile],
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -314,9 +314,11 @@ async def create_request(
     both-or-neither), as is the camera point. Tags are optional too: the
     geolocate transition enforces the curated floor. One source file is
     required: a request is an "unfinished geolocation", so the poster's
-    evidence must be on the row from the start. The proof body is image-free
-    (there are no ``proof_files`` on this path; inline images are dropped by
-    the sanitiser).
+    evidence must be on the row from the start. The proof body MAY carry images
+    (a request can be work started but not finished): they ride in
+    ``proof_files`` and resolve against ``placeholder://`` srcs exactly like the
+    geolocate path. Unlike a geolocation there is no proof-image floor, so a
+    blank request stays imageless.
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -328,7 +330,10 @@ async def create_request(
 
     _require_submission_media(file is not None)
 
-    proof_data = _sanitize_proof(proof_data, allow_images=False)
+    # Allow optional inline proof images: the intake resolves ``placeholder://``
+    # srcs from ``proof_files`` like the geolocate path. No ``_require_proof_image``
+    # floor here, a request may be imageless.
+    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
 
     geo = Event(
         owner_id=current_user.id,
@@ -340,8 +345,9 @@ async def create_request(
         event_coords=guess_point,
         capture_source_coords=capture_point,
         source_url=source_url,
-        # NOT NULL: a request with no proof body stores the empty doc, not NULL.
-        proof=proof_data if proof_data is not None else EMPTY_TIPTAP_DOC,
+        # ``proof`` lands via the intake below (placeholders rewritten) when
+        # present; the model's empty-doc default keeps the column NOT NULL for a
+        # blank request.
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
@@ -357,8 +363,8 @@ async def create_request(
         db,
         event=geo,
         source_files=[file],
-        proof_doc=None,
-        proof_files=[],
+        proof_doc=proof_data,
+        proof_files=proof_files,
         sweep_context="event request create rollback",
     )
 

@@ -133,14 +133,14 @@ export type Media = components["schemas"]["MediaRead"];
  *  Adds the source URL, the proof body, the full media list, provenance
  *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
  *  trace on top of the compact ``EventList`` card fields. Covers every
- *  lifecycle state: a ``requested`` row (the ex-request view) reads through
+ *  lifecycle state: a ``requested`` row (the requested view) reads through
  *  this same shape, with ``event_coords`` null unless the poster attached a
  *  guess. */
 export type EventDetail = components["schemas"]["EventRead"];
 
 /** Compact event card (`GET /events`). ``investigator_count`` /
  *  ``investigators_sample`` are populated only on the requested view (the
- *  ex-request queue); null on the located catalogue. */
+ *  requested queue); null on the located catalogue. */
 export type EventListItem = components["schemas"]["EventList"];
 
 /** The ``type=`` filter values, echoed back on the response. */
@@ -156,7 +156,7 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
  */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view (request) search hit: an event card plus the
+/** A requested-view search hit: an event card plus the
  *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
  *  renders the same "N working" badge. */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];

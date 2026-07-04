@@ -108,18 +108,31 @@ describe("geolocateEvent multipart", () => {
 });
 
 describe("createEventRequest multipart", () => {
-  it("posts the camera point when supplied but no proof_files (image-free)", async () => {
+  it("posts the camera point and no proof_files part when none supplied", async () => {
     mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
     await createEventRequest({
       title: "Footage wanted",
       source_url: "https://t.me/c/2",
       source_posted_at: "2026-01-01T00:00",
       files: [vid],
+      proof_files: [],
       ...parseCaptureCoords("50.1", "30.2"),
     });
     const body = lastBody();
     expect(body.get("capture_source_lat")).toBe("50.1");
     expect(body.get("capture_source_lng")).toBe("30.2");
     expect(body.has("proof_files")).toBe(false);
+  });
+
+  it("uploads proof_files when a request carries proof images", async () => {
+    mockFetch.mockResolvedValue({ id: "e2", status: "requested" });
+    await createEventRequest({
+      title: "Started, not finished",
+      source_url: "https://t.me/c/3",
+      source_posted_at: "2026-01-01T00:00",
+      files: [vid],
+      proof_files: [pngA, pngB],
+    });
+    expect(lastBody().getAll("proof_files")).toEqual([pngA, pngB]);
   });
 });

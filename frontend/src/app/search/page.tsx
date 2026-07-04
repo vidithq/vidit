@@ -228,8 +228,8 @@ function SearchPageBody() {
 
             {showGroup("request") && results.requests.length > 0 && (
               <ResultGroup title="Requests" count={results.total.requests}>
-                {results.requests.map((b) => (
-                  <RequestResult key={b.id} hit={b} />
+                {results.requests.map((r) => (
+                  <RequestResult key={r.id} hit={r} />
                 ))}
               </ResultGroup>
             )}

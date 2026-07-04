@@ -1,4 +1,4 @@
-"""Write endpoints: create a geolocated event, and open a request (ex-request).
+"""Write endpoints: create a geolocated event, and open a request.
 
 Proof images ride INSIDE the create multipart (``proof_files`` matched to
 ``placeholder://`` srcs in the proof document), so there is no standalone
@@ -160,10 +160,13 @@ async def create_event_request(
     source_posted_at: str = Form(...),
     tag_ids: str | None = Form(None),
     file: UploadFile = File(...),
+    # The proof body's inline images (optional on a request), matched to the
+    # doc's ``placeholder://`` srcs, same as the direct-create form.
+    proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Open a request (a ``requested`` event, yesterday's request).
+    """Open a request (a ``requested`` event).
 
     One source media file is required: the platform treats requests as
     "unfinished geolocations", so the evidence the poster has must be on the
@@ -175,14 +178,16 @@ async def create_event_request(
     if not source_url.strip():
         raise HTTPException(status_code=400, detail="source_url is required")
 
+    proof_files = proof_files or []
+
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    # event_date is optional on a request, and event_time may stand alone: an
+    # approximate hour-of-day (sun position / shadows) is knowable without the
+    # date, so a time is NOT gated on a date.
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
-    # A time-of-day needs its day; event_date is optional on a request.
-    if parsed_event_time is not None and parsed_event_date is None:
-        raise HTTPException(status_code=422, detail="event_time requires event_date")
 
     try:
         geo = await events_service.create_request(
@@ -200,6 +205,7 @@ async def create_event_request(
             source_posted_at=parsed_source_posted_at,
             tag_ids=parsed_tag_ids,
             file=file,
+            proof_files=proof_files,
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

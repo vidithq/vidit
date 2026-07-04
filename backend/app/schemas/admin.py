@@ -153,7 +153,7 @@ class AdminWipeDemoResponse(BaseModel):
 class AdminSeedDemoRequestsRequest(BaseModel):
     """Body for ``POST /admin/seed-demo-requests``.
 
-    Capped lower than the geolocation seeder — requests are an inbox, not a
+    Capped lower than the geolocation seeder: requests are an inbox, not a
     catalog, and 5000 covers the queue UI.
     """
 

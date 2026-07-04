@@ -680,7 +680,7 @@ export interface paths {
         put?: never;
         /**
          * Create Event Request
-         * @description Open a request (a ``requested`` event, yesterday's request).
+         * @description Open a request (a ``requested`` event).
          *
          *     One source media file is required: the platform treats requests as
          *     "unfinished geolocations", so the evidence the poster has must be on the
@@ -1122,7 +1122,7 @@ export interface components {
          * AdminSeedDemoRequestsRequest
          * @description Body for ``POST /admin/seed-demo-requests``.
          *
-         *     Capped lower than the geolocation seeder — requests are an inbox, not a
+         *     Capped lower than the geolocation seeder: requests are an inbox, not a
          *     catalog, and 5000 covers the queue UI.
          */
         AdminSeedDemoRequestsRequest: {
@@ -1335,6 +1335,8 @@ export interface components {
             lng?: number | null;
             /** Proof */
             proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */

@@ -3,8 +3,8 @@
  *
  * **One home for every concept.** Each entry pairs the explanation (`text`,
  * shown in the tooltip) with its accessible `label` (the trigger's aria-label).
- * Every `?` across the app — submit forms, geolocation + request detail pages,
- * the map panel — renders `<FieldHelp concept="…" />` and reads from here, so a
+ * Every `?` across the app (submit forms, geolocation + request detail pages,
+ * the map panel) renders `<FieldHelp concept="…" />` and reads from here, so a
  * concept reads identically wherever it appears and changing it is a one-line
  * edit. The wording mirrors the field descriptions in `docs/data-model.md`.
  */

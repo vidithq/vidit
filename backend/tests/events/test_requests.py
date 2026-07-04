@@ -558,45 +558,67 @@ def test_create_event_date_optional_source_required(db, author):
     db.commit()
 
 
-def test_create_strips_inline_images_from_proof(db, author):
-    """A request's proof is image-free: an inline image that would otherwise
-    pass sanitisation is dropped (there are no proof_files on this path to
-    anchor it) while the surrounding text survives."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": "Lead on the depot."}],
-            },
-            {"type": "image", "attrs": {"src": "/uploads/x.png"}},
-        ],
-    }
+def test_create_request_keeps_proof_image(db, author, tmp_path, monkeypatch):
+    """A request MAY carry proof images (work started but not finished): a
+    ``placeholder://`` src resolves from ``proof_files`` to a real URL and a
+    ``Media(role='proof')`` row lands alongside the source, exactly like a
+    geolocation. There is no proof-image floor, so the imageless requests in the
+    other tests still succeed."""
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
         data={
-            "title": "Image in proof",
+            "title": "Request with a proof image",
             "source_url": "https://example.com/post/1",
             "source_posted_at": "2026-05-01T12:00",
-            "proof": json.dumps(doc),
+            "proof": proof_form_field(),
+        },
+        files=[("file", ("tiny.jpg", TINY_JPEG, "image/jpeg")), proof_file_part()],
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "requested"
+    srcs = [n["attrs"]["src"] for n in body["proof"]["content"] if n["type"] == "image"]
+    assert len(srcs) == 1
+    assert srcs[0].startswith("http")  # placeholder rewritten to the landed URL
+    assert "placeholder://" not in json.dumps(body["proof"])
+
+    request_id = uuid.UUID(body["id"])
+    rows = db.query(Media).filter(Media.event_id == request_id).all()
+    assert {m.role for m in rows} == {"source", "proof"}
+
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_request_event_time_without_event_date(db, author):
+    """A request accepts an event time with no event date: an approximate
+    hour-of-day (sun position / shadows) is knowable before the day is."""
+    response = client.post(
+        "/api/v1/events/requests",
+        headers=login_as(client, author),
+        data={
+            "title": "Timed but undated",
+            "source_url": "https://example.com/post/3",
+            "source_posted_at": "2026-05-03T09:30",
+            "event_time": "14:30",
         },
         files={"file": _tiny_jpeg()},
     )
     assert response.status_code == 201, response.text
-    stored = response.json()["proof"]
-    node_types = [node["type"] for node in stored["content"]]
-    assert "image" not in node_types
-    assert stored["content"] == [
-        {
-            "type": "paragraph",
-            "content": [{"type": "text", "text": "Lead on the depot."}],
-        }
-    ]
+    body = response.json()
+    assert body["event_date"] is None
+    assert body["event_time"].startswith("14:30")
 
-    bid = uuid.UUID(response.json()["id"])
-    db.query(Media).filter(Media.event_id == bid).delete(synchronize_session=False)
-    db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
+    request_id = uuid.UUID(body["id"])
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
 
 

@@ -1,4 +1,4 @@
-"""``GET /search`` — full-text search across geolocations, requests, users.
+"""``GET /search``: full-text search across geolocations, requests, users.
 
 Single endpoint, single query box, grouped response. See
 ``services/search.py`` for the FTS plumbing. Auth matches the rest of the

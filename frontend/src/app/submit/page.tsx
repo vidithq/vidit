@@ -11,6 +11,7 @@ import { apiFetch } from "@/lib/api";
 import {
   createEvent,
   createEventRequest,
+  FIELD_LABELS,
   getEvent,
   geolocateEvent as geolocateEventApi,
   missingEventFields,
@@ -56,19 +57,19 @@ type Req = { label: string; keys: MissingFieldKey[] };
 // The request floor: enough to be actionable by someone else. A subset of the
 // geolocation floor, shown first so the escalation reads top to bottom.
 const REQUEST_REQS: Req[] = [
-  { label: "Title", keys: ["title"] },
-  { label: "Source media", keys: ["source_media"] },
-  { label: "Source URL", keys: ["source_url"] },
-  { label: "Source post time", keys: ["source_posted_at"] },
+  { label: FIELD_LABELS.title, keys: ["title"] },
+  { label: FIELD_LABELS.source_media, keys: ["source_media"] },
+  { label: FIELD_LABELS.source_url, keys: ["source_url"] },
+  { label: FIELD_LABELS.source_posted_at, keys: ["source_posted_at"] },
 ];
 
 // What a full geolocation adds on top of the request floor.
 const GEO_EXTRA_REQS: Req[] = [
-  { label: "Coordinates", keys: ["coordinates"] },
-  { label: "Event date", keys: ["event_date"] },
-  { label: "Proof image", keys: ["proof", "proof_image"] },
-  { label: "Conflict tag", keys: ["conflict_tag"] },
-  { label: "Capture source tag", keys: ["capture_source_tag"] },
+  { label: FIELD_LABELS.coordinates, keys: ["coordinates"] },
+  { label: FIELD_LABELS.event_date, keys: ["event_date"] },
+  { label: FIELD_LABELS.proof_image, keys: ["proof", "proof_image"] },
+  { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
+  { label: FIELD_LABELS.capture_source_tag, keys: ["capture_source_tag"] },
 ];
 
 // Inline X logo: lucide ships none, and "from an X post" reads clearer with the
@@ -88,7 +89,7 @@ function XGlyph({ size = 14 }: { size?: number }) {
 function ReqChecklist({
   reqs,
   missing,
-  metTone = "accent",
+  metTone = "secondary",
 }: {
   reqs: Req[];
   missing: Set<MissingFieldKey>;
@@ -163,9 +164,9 @@ function SubmitForm() {
   const [sourcePostedAt, setSourcePostedAt] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   // The proof body's inline images, held locally by the editor and uploaded as
-  // `proof_files[]` only when publishing a geolocation (nothing hits S3 while
-  // typing). The request publish path drops them: a request is image-free by the
-  // server contract, so its proof is context notes, not a cross-reference.
+  // `proof_files[]` at publish (nothing hits S3 while typing). Both publish
+  // paths carry them: a geolocation requires an image, a request may attach them
+  // (work started but not finished) or stay imageless.
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   // useState, not useApiResource: TagPicker appends newly created tags
@@ -271,6 +272,7 @@ function SubmitForm() {
         source_posted_at: sourcePostedAt,
         tag_ids: selectedTagIds,
         files,
+        proof_files: proofFiles,
       });
     },
     {
@@ -593,8 +595,8 @@ function SubmitForm() {
         />
 
         {/* One proof editor, images allowed. Optional at the field level: a
-            geolocation needs an image (named in the readiness list), a request is
-            image-free (the server strips inline images on that path). */}
+            geolocation needs an image (named in the readiness list); a request
+            may attach images (work in progress) or stay imageless. */}
         <ProofEditorPanel
           importedFrom={importedFrom}
           importGen={importGen}
@@ -622,7 +624,7 @@ function SubmitForm() {
         {lockedFromRequest ? (
           // Fulfilment can only become a geolocation: one action, no request path.
           <div className="space-y-3">
-            <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} metTone="secondary" />
+            <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} />
             <Button
               type="button"
               variant="primary"
@@ -646,13 +648,13 @@ function SubmitForm() {
               <p className="text-sm text-neutral-400">
                 To post a request for others to locate, add:
               </p>
-              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} metTone="secondary" />
+              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
             </div>
             <div className="space-y-2">
               <p className="text-sm text-neutral-400">
                 Plus, to publish it as a full geolocation:
               </p>
-              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} metTone="secondary" />
+              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
               <Button
