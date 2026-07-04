@@ -7,10 +7,10 @@
  * Dark is the historical default and stays inert (no `data-theme`, or
  * `data-theme="dark"`, both fall back to Tailwind's default neutral scale).
  * `light` reflects `data-theme="light"` onto `<html>`, which remaps the
- * `--color-neutral-*` scale to an inverted light ramp in
- * [`globals.css`](../app/globals.css), re-colouring every `neutral-*` utility
- * with no per-component change. The map can't read CSS variables, so `Map.tsx`
- * swaps its basemap style off `useTheme`.
+ * `--color-neutral-*` scale (plus the semantic red / amber scales) to a curated
+ * light ramp in [`globals.css`](../app/globals.css), re-colouring every
+ * `neutral-*` utility with no per-component change. The map can't read CSS
+ * variables, so `Map.tsx` swaps its basemap style off `useTheme`.
  */
 
 import { createAttributePreference } from "./attributePreference";

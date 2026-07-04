@@ -119,6 +119,9 @@ export default function Map({
   const marker = paletteMapColors(usePalette());
   const DETECTED = marker.detected;
   const theme = useTheme();
+  // Halo around the selected point: white reads on the dark basemap, but
+  // vanishes on light Positron, so flip it to a dark ring in light mode.
+  const SELECTED_STROKE = theme === "light" ? "#1a1a1a" : "#ffffff";
 
   useEffect(() => {
     let ok = false;
@@ -260,7 +263,7 @@ export default function Map({
           paint={{
             "circle-radius": 7,
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
-            "circle-stroke-color": "#ffffff",
+            "circle-stroke-color": SELECTED_STROKE,
             "circle-stroke-width": 2,
             "circle-opacity": 1,
           }}

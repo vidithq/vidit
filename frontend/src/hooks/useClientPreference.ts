@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * Subscribe a component to a browser-local preference (accent palette, theme,
@@ -9,15 +9,17 @@ import { useSyncExternalStore } from "react";
  * mismatch: the stored value is corrected on the first client commit.
  *
  * The store lives in `localStorage`; changes in this tab fire `event`, and the
- * native `storage` event covers *other* tabs.
+ * native `storage` event covers *other* tabs. `subscribe` is memoised on
+ * `event` so `useSyncExternalStore` doesn't detach and reattach the listeners
+ * on every render (`getSnapshot` is a stable module-level ref at each call site).
  */
 export function useClientPreference<T>(
   getSnapshot: () => T,
   event: string,
   getServerSnapshot: () => T,
 ): T {
-  return useSyncExternalStore(
-    (callback) => {
+  const subscribe = useCallback(
+    (callback: () => void) => {
       window.addEventListener(event, callback);
       window.addEventListener("storage", callback);
       return () => {
@@ -25,7 +27,7 @@ export function useClientPreference<T>(
         window.removeEventListener("storage", callback);
       };
     },
-    getSnapshot,
-    getServerSnapshot,
+    [event],
   );
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

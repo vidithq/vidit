@@ -32,6 +32,12 @@
   }
 }
 
+/* Dark is the default theme; the light block below flips this to `light`. Keeps
+   native widgets (scrollbars, date / select popups, autofill) in step. */
+:root {
+  color-scheme: dark;
+}
+
 /* ---------------------------------------------------------------------------
    Accent palette switching.
 
@@ -125,6 +131,9 @@
    `useTheme` (dark-matter <-> positron); the marker hexes stay in `palette.ts`.
 --------------------------------------------------------------------------- */
 [data-theme="light"] {
+  /* Tell the UA to paint native widgets (date / select popups, autofill,
+     scrollbar corner) light too, so they track the theme instead of the OS. */
+  color-scheme: light;
   --color-neutral-50: #1a1a1a;
   --color-neutral-100: #232323;
   --color-neutral-200: #303030;
@@ -139,6 +148,36 @@
   --color-neutral-800: #e4e1db;
   --color-neutral-900: #f7f5f1;
   --color-neutral-950: #eae8e4;
+
+  /* The semantic red / amber scales (danger + warning surfaces: FORM_ERROR_BANNER,
+     WARNING_CALLOUT, danger pills / buttons) are tuned light-on-dark, so on a
+     light surface the pale text stops wash out. Mirror each scale about its 500
+     midpoint: the hue stays, only lightness flips, giving dark saturated text on
+     a light tint (the light-mode counterpart of the dark recipe). The orange
+     accent is owned by the palette switch above, so it is deliberately left
+     alone here. */
+  --color-red-50: #450a0a;
+  --color-red-100: #7f1d1d;
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+  --color-red-500: #ef4444;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-red-950: #fef2f2;
+  --color-amber-50: #451a03;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-amber-950: #fffbeb;
 }
 
 /*
@@ -185,7 +224,7 @@
   outline: none;
 }
 
-/* Custom scrollbar — follows the neutral scale, so it flips with the theme */
+/* Custom scrollbar: follows the neutral scale, so it flips with the theme */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-neutral-700) transparent;
@@ -230,7 +269,7 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
   order: 2 !important;
 }
 
-/* MapLibre controls — paints follow the neutral scale, so they flip with the
+/* MapLibre controls: paints follow the neutral scale, so they flip with the
    theme; only the glyph inversion is theme-specific (see below). */
 .maplibregl-ctrl-group {
   background: var(--color-neutral-900) !important;
@@ -262,10 +301,12 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
   filter: none;
 }
 /* Warm the light basemap (Positron ships a cool grey) so it matches the warm
-   off-white surfaces, without hosting a custom style: a faint sepia on the
-   canvas tints the greyscale land toward cream. Light theme only; the dark
-   basemap (dark-matter) is untouched. The controls + attribution are separate
-   DOM, so they keep their neutral chrome above. */
+   off-white surfaces, without hosting a custom style: a faint sepia on the map
+   canvas tints the greyscale land toward cream. The filter covers the whole
+   WebGL canvas, so the accent markers warm-shift slightly too; at 0.12 they stay
+   clearly on-hue (verified down to the blue palette, the coolest one). Light
+   theme only; the dark basemap (dark-matter) is untouched. The controls +
+   attribution are separate DOM, so they keep their neutral chrome above. */
 [data-theme="light"] .maplibregl-canvas {
   filter: sepia(0.12) saturate(1.05);
 }

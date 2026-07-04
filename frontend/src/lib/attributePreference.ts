@@ -28,7 +28,12 @@ export interface AttributePreference<T extends string> {
 export function createAttributePreference<T extends string>(config: {
   /** `localStorage` key, e.g. `vidit:palette`. */
   key: string;
-  /** `<html>` dataset key, e.g. `palette` (renders as `data-palette`). */
+  /**
+   * The camelCase `dataset` key (NOT the HTML attribute name), e.g. `palette`
+   * writes `data-palette`. A multi-word key must be camelCase (`colorScheme`
+   * for `data-color-scheme`); a literal `data-*` string here would write the
+   * wrong attribute and the matching CSS selector would never fire.
+   */
   attribute: string;
   /** Custom event dispatched on change, e.g. `vidit:palette-changed`. */
   event: string;
