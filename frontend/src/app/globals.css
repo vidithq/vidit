@@ -107,30 +107,38 @@
    The second axis, independent of the accent palette above (which re-tints the
    `orange-*` scale). The whole neutral base, backgrounds, text, borders, is a
    Tailwind `neutral-*` utility compiling to `var(--color-neutral-*)`; light
-   mode re-points that scale to an inverted ramp on `<html data-theme="light">`,
-   flipping the UI with no per-component change. Dark is the default and stays
-   inert (no attribute, or `data-theme="dark"`, both keep Tailwind's defaults).
+   mode re-points that scale on `<html data-theme="light">`, flipping the UI
+   with no per-component change. Dark is the default and stays inert (no
+   attribute, or `data-theme="dark"`, both keep Tailwind's defaults).
 
-   The ramp is Tailwind's own `neutral` values mirrored about the `500`
-   midpoint, so every relative pairing survives the flip: a dark surface
-   (`neutral-900`) becomes light, light text (`neutral-100`) becomes dark, and
-   in-between muted tones keep their contrast order. `500` is self-inverse.
+   This is a curated soft ramp, not a mechanical inversion of the dark scale: a
+   flat near-white expanse is harsh on the eyes, so the canvas (`neutral-950`,
+   the largest surface) is a soft warm grey and the raised surfaces
+   (`neutral-900`, cards / panels / rail) sit a step *lighter*, reading as
+   near-white cards floating on the grey rather than the whole viewport going
+   white. Text tops out at a dark grey (`neutral-100` = #232323), not near-black,
+   so the contrast stays comfortable. The mid greys keep their order for borders
+   and muted text. This mirrors how the dark theme avoids pure black (#0a0a0a,
+   not #000) and pure white text (#f5f5f5, not #fff).
 
    The map basemap can't read CSS variables, so `Map.tsx` swaps its style off
-   `useTheme` (dark-matter <-> positron); the same for the marker hexes below.
+   `useTheme` (dark-matter <-> positron); the marker hexes stay in `palette.ts`.
 --------------------------------------------------------------------------- */
 [data-theme="light"] {
-  --color-neutral-50: #0a0a0a;
-  --color-neutral-100: #171717;
-  --color-neutral-200: #262626;
-  --color-neutral-300: #404040;
-  --color-neutral-400: #525252;
-  --color-neutral-500: #737373;
-  --color-neutral-600: #a3a3a3;
-  --color-neutral-700: #d4d4d4;
-  --color-neutral-800: #e5e5e5;
-  --color-neutral-900: #f5f5f5;
-  --color-neutral-950: #fafafa;
+  --color-neutral-50: #1a1a1a;
+  --color-neutral-100: #232323;
+  --color-neutral-200: #303030;
+  --color-neutral-300: #454545;
+  --color-neutral-400: #585858;
+  --color-neutral-500: #767676;
+  --color-neutral-600: #9a9a9a;
+  /* The light surfaces carry a faint warmth (R > G > B) so the sidebar, cards,
+     and panels read as a warm off-white rather than a clinical grey; the text
+     greys above stay neutral. */
+  --color-neutral-700: #d0cdc7;
+  --color-neutral-800: #e4e1db;
+  --color-neutral-900: #f7f5f1;
+  --color-neutral-950: #eae8e4;
 }
 
 /*
@@ -252,4 +260,12 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
 [data-theme="light"] .maplibregl-ctrl-group button span,
 [data-theme="light"] .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
   filter: none;
+}
+/* Warm the light basemap (Positron ships a cool grey) so it matches the warm
+   off-white surfaces, without hosting a custom style: a faint sepia on the
+   canvas tints the greyscale land toward cream. Light theme only; the dark
+   basemap (dark-matter) is untouched. The controls + attribution are separate
+   DOM, so they keep their neutral chrome above. */
+[data-theme="light"] .maplibregl-canvas {
+  filter: sepia(0.12) saturate(1.05);
 }

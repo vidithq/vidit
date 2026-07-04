@@ -13,13 +13,13 @@
 
 **Dark by default, light on demand.** Uniform background, opaque panels, one warm accent for contrast. Dark reads better for long-session, data-dense work and stays the default; light is a second axis for readers who want it.
 
-The theme is independent of the accent hue. The pick is browser-local (`localStorage` key `vidit:theme`), applied as `data-theme="light"` on `<html>`, which remaps the Tailwind `neutral-*` scale to an inverted light ramp ([`globals.css`](../frontend/src/app/globals.css)); dark is the default and carries no attribute. Every `neutral-*` utility flips with no per-component change, the same mechanism as the accent palette below, so both preferences share one plumbing ([`attributePreference.ts`](../frontend/src/lib/attributePreference.ts)). The map basemap can't read CSS variables, so [`Map.tsx`](../frontend/src/components/map/Map.tsx) swaps CARTO Dark Matter for its light counterpart Positron off [`useTheme`](../frontend/src/hooks/useTheme.ts).
+The theme is independent of the accent hue. The pick is browser-local (`localStorage` key `vidit:theme`), applied as `data-theme="light"` on `<html>`, which remaps the Tailwind `neutral-*` scale to a curated soft light ramp ([`globals.css`](../frontend/src/app/globals.css)); dark is the default and carries no attribute. Every `neutral-*` utility flips with no per-component change, the same mechanism as the accent palette below, so both preferences share one plumbing ([`attributePreference.ts`](../frontend/src/lib/attributePreference.ts)). The map basemap can't read CSS variables, so [`Map.tsx`](../frontend/src/components/map/Map.tsx) swaps CARTO Dark Matter for its light counterpart Positron off [`useTheme`](../frontend/src/hooks/useTheme.ts).
 
 ## Colour palette
 
 ### Foundation
 
-The dark roles below are the default. Light theme mirrors the `neutral-*` ramp about the `neutral-500` midpoint (`globals.css`), so each role holds with background and text tones swapped.
+The dark roles below are the default. Light theme re-points the same `neutral-*` scale to a curated soft ramp (`globals.css`): a soft warm grey canvas (`neutral-950`) with warm off-white cards (`neutral-900`) floating on it, and dark-grey text (`neutral-100` = `#232323`, not black), so a large light surface reads as easy on the eyes rather than a flat near-white glare. The light surfaces carry a faint warmth (`R > G > B`); the text greys stay neutral. It mirrors how the dark scale avoids pure black and pure white.
 
 | Role | Color | Tailwind | Usage |
 |------|-------|----------|-------|
@@ -101,7 +101,7 @@ Constants (the pill tones live on `<Pill>` as `PILL_TONE`; these colour-only pai
 
 ## Map
 
-- **Style:** CARTO Dark Matter (with labels), `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`; the light theme swaps its matched counterpart Positron, `.../gl/positron-gl-style/style.json` (see [Theme](#theme))
+- **Style:** CARTO Dark Matter (with labels), `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`; the light theme swaps its matched counterpart Positron, `.../gl/positron-gl-style/style.json` (see [Theme](#theme)), with a faint `sepia` on the canvas (`globals.css`) warming Positron's cool grey to match the warm light surfaces
 - **Renderer:** MapLibre GL JS (vector tiles) with globe projection
 - Map labels (cities, regions) are discreet light-gray
 - Point geometry: default radius 6px, selected 7px + 2px white border; opacity 1.0 (points), 0.85 (clusters); pointer cursor on hover
