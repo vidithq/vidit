@@ -321,7 +321,11 @@ export default function Sidebar() {
           <Link
             href="/login"
             title={!labelsVisible ? "Sign in" : undefined}
-            className={`${ROW_CLASS} overflow-hidden text-neutral-400 hover:text-orange-400 hover:bg-neutral-800`}
+            className={`${ROW_CLASS} overflow-hidden ${
+              pathname === "/login"
+                ? ACCENT_SURFACE
+                : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
+            }`}
           >
             <LogIn size={18} strokeWidth={1.8} className="shrink-0" />
             {labelsVisible && (
