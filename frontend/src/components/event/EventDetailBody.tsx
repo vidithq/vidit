@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import type { EventDetail } from "@/types";
-import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
+import { formatDate, formatInstant } from "@/lib/format";
 import { sourceIsSynthetic } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -140,10 +140,20 @@ function DetailRows({
         label="Event date"
         concept="event_date"
         compact={compact}
-        value={
-          geo.event_date ? formatEventDate(geo.event_date, geo.event_time) : "—"
-        }
+        value={geo.event_date ? formatDate(geo.event_date) : "—"}
       />
+      {/* Time-of-day gets its own row, not folded into Event date: it can be
+          known without the day (an approximate hour from sun position or
+          shadows on a request), so it must surface even when the date is "—".
+          Shown only when set, matching the other optional rows. */}
+      {geo.event_time && (
+        <DetailRow
+          label="Event time"
+          concept="event_time"
+          compact={compact}
+          value={`${geo.event_time.slice(0, 5)} UTC`}
+        />
+      )}
       <DetailRow
         label="Source posted"
         concept="source_posted_at"

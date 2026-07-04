@@ -169,14 +169,15 @@ class Event(Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     # NOT NULL: every row carries a proof document. The empty-doc default catches
     # ORM constructions that omit proof; the create flow and machine path pass a
-    # real doc. Inline rather than importing ``EMPTY_TIPTAP_DOC`` (models must not
-    # depend on services).
+    # real doc. Inlined here (a fresh dict per row) rather than importing a shared
+    # constant from services, which the models layer must not depend on.
     proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
     # Nullable: often unknown for a ``requested`` event; the geolocate floor
     # requires it at the ``geolocated`` transition (as with the curated tags).
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # Optional time-of-day for ``event_date``, in UTC. NULL when the hour is
-    # unknown, as the event date is often inferred from context or footage.
+    # Optional time-of-day, in UTC. May stand alone: an approximate hour (sun
+    # position, shadows) can be known before the day is, so it does not require
+    # ``event_date``. NULL when the hour is unknown.
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # When the original source (a Telegram channel, an X account, …) posted the
     # media. A real post instant, hence a full UTC timestamp and NOT NULL.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -9,6 +9,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
 import {
+  cleanNumber,
   createEvent,
   createEventRequest,
   FIELD_LABELS,
@@ -17,6 +18,7 @@ import {
   missingEventFields,
   missingEventRequestFields,
   parseCaptureCoords,
+  parseGuessCoords,
   type MissingFieldKey,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
@@ -30,7 +32,7 @@ import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
-import { Pill, type PillTone } from "@/components/ui/Pill";
+import { Pill } from "@/components/ui/Pill";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -51,14 +53,16 @@ type Mode = "single" | "bulk";
 // A publish-floor requirement, shown as a tick in the readiness list. `keys` are
 // the `missingEvent*` field keys it covers (proof needs two, "no proof" vs
 // "text only"), so met state derives from the live missing set and the validator
-// stays the one source of truth.
-type Req = { label: string; keys: MissingFieldKey[] };
+// stays the one source of truth. `inheritedOnFulfil` marks a floor the fulfiller
+// doesn't re-supply because the request already carries it (its media), so it
+// drops out of the fulfilment checklist.
+type Req = { label: string; keys: MissingFieldKey[]; inheritedOnFulfil?: boolean };
 
 // The request floor: enough to be actionable by someone else. A subset of the
 // geolocation floor, shown first so the escalation reads top to bottom.
 const REQUEST_REQS: Req[] = [
   { label: FIELD_LABELS.title, keys: ["title"] },
-  { label: FIELD_LABELS.source_media, keys: ["source_media"] },
+  { label: FIELD_LABELS.source_media, keys: ["source_media"], inheritedOnFulfil: true },
   { label: FIELD_LABELS.source_url, keys: ["source_url"] },
   { label: FIELD_LABELS.source_posted_at, keys: ["source_posted_at"] },
 ];
@@ -83,17 +87,15 @@ function XGlyph({ size = 14 }: { size?: number }) {
 }
 
 // The readiness tick-list: one Pill per requirement, a check once met and a
-// hollow ring while pending. `metTone` picks how loud the met state reads
-// (accent filled, secondary outline, or neutral). Reuses the Pill primitive
-// (static span, no onClick) so it can't be mistaken for a selectable chip.
+// hollow ring while pending. Met reads as the `secondary` (outline) tone,
+// pending as `neutral`. Reuses the Pill primitive (static span, no onClick) so
+// it can't be mistaken for a selectable chip.
 function ReqChecklist({
   reqs,
   missing,
-  metTone = "secondary",
 }: {
   reqs: Req[];
   missing: Set<MissingFieldKey>;
-  metTone?: PillTone;
 }) {
   return (
     <ul className="flex flex-wrap gap-1.5">
@@ -102,7 +104,7 @@ function ReqChecklist({
         return (
           <li key={r.label}>
             <Pill
-              tone={met ? metTone : "neutral"}
+              tone={met ? "secondary" : "neutral"}
               icon={
                 met ? (
                   <Check size={12} strokeWidth={2.5} />
@@ -182,7 +184,9 @@ function SubmitForm() {
     error: curatedTagsError,
     refetch: reloadCuratedTags,
   } = useApiResource<Tag[]>("/tags?curated=true");
-  const curatedTags = curatedTagsData ?? [];
+  // Stable reference (the `?? []` fallback would otherwise mint a new array each
+  // render), so the readiness memos below don't recompute on unrelated renders.
+  const curatedTags = useMemo(() => curatedTagsData ?? [], [curatedTagsData]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   // In-form red outlines: set when a publish action is clicked while its floor
@@ -256,16 +260,14 @@ function SubmitForm() {
   // The two publish paths share one error banner; each mutation clears the other
   // so the single-slot behaviour holds.
   const requestMutation = useMutation(
-    () => {
-      const latNum = parseFloat(lat);
-      const lngNum = parseFloat(lng);
-      const hasGuess = !isNaN(latNum) && !isNaN(lngNum);
-      return createEventRequest({
+    () =>
+      createEventRequest({
         title: title.trim(),
         source_url: sourceUrl.trim(),
         proof,
-        lat: hasGuess ? latNum : undefined,
-        lng: hasGuess ? lngNum : undefined,
+        // Optional approximate guess, both-or-neither, same strict parse as the
+        // camera point below (no silent truncation of a half-typed coordinate).
+        ...parseGuessCoords(lat, lng),
         ...parseCaptureCoords(captureLat, captureLng),
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
@@ -273,8 +275,7 @@ function SubmitForm() {
         tag_ids: selectedTagIds,
         files,
         proof_files: proofFiles,
-      });
-    },
+      }),
     {
       fallback: "Submission failed",
       onSuccess: (created) => router.push(`/requests/${created.id}`),
@@ -283,8 +284,11 @@ function SubmitForm() {
 
   const geolocationMutation = useMutation(
     (): Promise<{ id: string }> => {
-      const latNum = parseFloat(lat);
-      const lngNum = parseFloat(lng);
+      // Required here (gated by `geoReady`), parsed strictly like the camera
+      // point so the same coordinate can't read valid one way and invalid the
+      // other; the gate keeps a NaN from ever reaching a publish.
+      const latNum = cleanNumber(lat) ?? NaN;
+      const lngNum = cleanNumber(lng) ?? NaN;
       const capture = parseCaptureCoords(captureLat, captureLng);
       // Fulfilling a request is a lifecycle move on that same event: geolocate
       // (``requested`` to ``geolocated``) transfers ownership to the fulfiller.
@@ -333,8 +337,30 @@ function SubmitForm() {
 
   // Live readiness for the two actions, straight from the shared validators.
   // Media is supplied by the request on a fulfilment, so it isn't required there.
-  const geoMissing = missingEventFields(
-    {
+  // Memoised so the field scans (incl. the curated-tag `.some()` passes) only
+  // recompute when an input they read changes, not on every unrelated render.
+  const geoMissing = useMemo(
+    () =>
+      missingEventFields(
+        {
+          title,
+          lat,
+          lng,
+          sourceUrl,
+          eventDate,
+          sourcePostedAt,
+          proof,
+          mediaCount: files.length,
+          hasConflictTag: curatedTags.some(
+            (t) => t.category === "conflict" && selectedTagIds.includes(t.id)
+          ),
+          hasCaptureSourceTag: curatedTags.some(
+            (t) => t.category === "capture_source" && selectedTagIds.includes(t.id)
+          ),
+        },
+        { requireMedia: !lockedFromRequest }
+      ),
+    [
       title,
       lat,
       lng,
@@ -342,34 +368,46 @@ function SubmitForm() {
       eventDate,
       sourcePostedAt,
       proof,
-      mediaCount: files.length,
-      hasConflictTag: curatedTags.some(
-        (t) => t.category === "conflict" && selectedTagIds.includes(t.id)
-      ),
-      hasCaptureSourceTag: curatedTags.some(
-        (t) => t.category === "capture_source" && selectedTagIds.includes(t.id)
-      ),
-    },
-    { requireMedia: !lockedFromRequest }
+      files.length,
+      curatedTags,
+      selectedTagIds,
+      lockedFromRequest,
+    ]
   );
-  const reqMissing = missingEventRequestFields({
-    title,
-    sourceUrl,
-    sourcePostedAt,
-    mediaCount: files.length,
-  });
-  const geoMissingKeys = new Set<MissingFieldKey>(geoMissing.map((m) => m.key));
-  const reqMissingKeys = new Set<MissingFieldKey>(reqMissing.map((m) => m.key));
+  const reqMissing = useMemo(
+    () =>
+      missingEventRequestFields({
+        title,
+        sourceUrl,
+        sourcePostedAt,
+        mediaCount: files.length,
+      }),
+    [title, sourceUrl, sourcePostedAt, files.length]
+  );
+  const geoMissingKeys = useMemo(
+    () => new Set<MissingFieldKey>(geoMissing.map((m) => m.key)),
+    [geoMissing]
+  );
+  const reqMissingKeys = useMemo(
+    () => new Set<MissingFieldKey>(reqMissing.map((m) => m.key)),
+    [reqMissing]
+  );
   // Readiness drives the button emphasis: full strength when the floor is met,
   // dimmed while short. The button stays clickable so a click still flags the
   // gaps red; the dim is the at-a-glance "not ready yet" cue.
   const geoReady = geoMissing.length === 0 && curatedTags.length > 0;
   const reqReady = reqMissing.length === 0;
 
-  const publishGeolocation = async () => {
+  // Both publish handlers clear the shared error banner (the two mutations share
+  // one slot) and any prior red outlines before re-validating.
+  const resetActions = () => {
     requestMutation.reset();
     geolocationMutation.reset();
     clearIncomplete();
+  };
+
+  const publishGeolocation = async () => {
+    resetActions();
     // A pending / failed curated-tags load is a recoverable state, not a missing
     // field: surface it in the banner (Retry lives above) instead of the outlines.
     if (curatedTags.length === 0) {
@@ -388,9 +426,7 @@ function SubmitForm() {
   };
 
   const postRequest = async () => {
-    requestMutation.reset();
-    geolocationMutation.reset();
-    clearIncomplete();
+    resetActions();
     if (reqMissing.length) {
       flagIncomplete(reqMissing);
       return;
@@ -447,7 +483,7 @@ function SubmitForm() {
   // On a fulfilment, media is supplied by the request, so it drops out of the
   // geolocation floor shown to the fulfiller.
   const geoFulfilReqs = [
-    ...REQUEST_REQS.filter((r) => !r.keys.includes("source_media")),
+    ...REQUEST_REQS.filter((r) => !r.inheritedOnFulfil),
     ...GEO_EXTRA_REQS,
   ];
 

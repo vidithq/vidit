@@ -114,11 +114,25 @@ export function parseCaptureCoords(
   return { capture_source_lat: lat, capture_source_lng: lng };
 }
 
+/** The optional subject-coordinate guess a request may carry, ready to spread
+ *  into the input. Same both-or-neither rule and strict parse as the camera
+ *  point (`parseCaptureCoords`), so the two coordinate pairs on the submit form
+ *  can't drift onto different validity rules. */
+export function parseGuessCoords(
+  latStr: string,
+  lngStr: string
+): { lat: number; lng: number } | Record<string, never> {
+  const lat = cleanNumber(latStr);
+  const lng = cleanNumber(lngStr);
+  if (lat === null || lng === null) return {};
+  return { lat, lng };
+}
+
 /** Parse a whole string as a finite number, or `null`. Unlike `parseFloat`,
  *  this rejects partially-numeric input (`"50.1abc"`), so a malformed pair
- *  clears the camera coords rather than storing a truncated value. Blank /
+ *  clears the coordinates rather than storing a truncated value. Blank /
  *  whitespace-only reads as absent (`null`), preserving both-or-neither. */
-function cleanNumber(value: string): number | null {
+export function cleanNumber(value: string): number | null {
   if (value.trim() === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -444,13 +458,16 @@ export function missingEventFields(
   s: EventFieldsState,
   { requireMedia = true, requireTags = true }: EventFieldsOptions = {}
 ): MissingField[] {
-  const lat = parseFloat(s.lat);
-  const lng = parseFloat(s.lng);
+  // Same strict parse as the camera point (`cleanNumber`): a partially numeric
+  // coordinate (`"48.85abc"`) reads as missing rather than silently truncating
+  // to 48.85 at publish, so the readiness gate matches what actually posts.
+  const lat = cleanNumber(s.lat);
+  const lng = cleanNumber(s.lng);
   const coordsValid =
-    !isNaN(lat) &&
+    lat !== null &&
     lat >= LAT_MIN &&
     lat <= LAT_MAX &&
-    !isNaN(lng) &&
+    lng !== null &&
     lng >= LNG_MIN &&
     lng <= LNG_MAX;
 

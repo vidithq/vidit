@@ -622,6 +622,68 @@ def test_create_request_event_time_without_event_date(db, author):
     db.commit()
 
 
+def test_create_request_blank_proof_stores_empty_doc(db, author):
+    """A request with no proof body stores the canonical empty doc, never NULL.
+    ``events.proof`` is NOT NULL and ``create_request`` omits an explicit
+    ``proof=``, so the model default has to fire and the intake must leave it in
+    place (it only overwrites ``proof`` when a doc came in). No proof media lands."""
+    response = client.post(
+        "/api/v1/events/requests",
+        headers=login_as(client, author),
+        data={
+            "title": "No proof yet",
+            "source_url": "https://example.com/post/blank",
+            "source_posted_at": "2026-05-04T10:00",
+        },
+        files={"file": _tiny_jpeg()},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["proof"] == {"type": "doc", "content": []}
+
+    request_id = uuid.UUID(body["id"])
+    proof_media = db.query(Media).filter(Media.event_id == request_id, Media.role == "proof")
+    assert proof_media.count() == 0
+
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_create_request_drops_unsafe_proof_image_src(db, author):
+    """Images are allowed on a request now, but the sanitiser still runs: an
+    unsafe src (a protocol-relative URL, an exfiltration vector) is dropped, not
+    stored. Replaces the old strip-everything coverage now that safe images
+    persist, keeping the request path guarded like the geolocation one."""
+    unsafe_doc = {
+        "type": "doc",
+        "content": [
+            {"type": "image", "attrs": {"src": "//evil.example/pixel.gif"}},
+            {"type": "paragraph", "content": [{"type": "text", "text": "wip"}]},
+        ],
+    }
+    response = client.post(
+        "/api/v1/events/requests",
+        headers=login_as(client, author),
+        data={
+            "title": "Unsafe proof image",
+            "source_url": "https://example.com/post/unsafe",
+            "source_posted_at": "2026-05-05T11:00",
+            "proof": json.dumps(unsafe_doc),
+        },
+        files={"file": _tiny_jpeg()},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert not [n for n in body["proof"]["content"] if n["type"] == "image"]
+    assert "evil.example" not in json.dumps(body["proof"])
+
+    request_id = uuid.UUID(body["id"])
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
+    db.commit()
+
+
 def test_create_rejects_invalid_event_date(author):
     """Garbage ``event_date`` → 422 before any S3 round-trip."""
     response = client.post(
