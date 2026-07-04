@@ -20,6 +20,8 @@ import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
 import { usePalette } from "@/hooks/usePalette";
 import { PALETTES, setPalette } from "@/lib/palette";
+import { useTheme } from "@/hooks/useTheme";
+import { setTheme } from "@/lib/theme";
 
 
 
@@ -32,6 +34,7 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false);
   const helpHidden = useHelpHidden();
   const palette = usePalette();
+  const theme = useTheme();
 
   const changePassword = useMutation(
     () =>
@@ -110,6 +113,21 @@ export default function SettingsPage() {
               on={!helpHidden}
               onToggle={() => setHelpHidden(!helpHidden)}
               aria-label="Show help tooltips"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-neutral-800 pt-4">
+            <div>
+              <p className="text-sm text-neutral-200">Light mode</p>
+              <p className="text-xs text-neutral-500">
+                Switch the interface and map to a light background. Dark by
+                default.
+              </p>
+            </div>
+            <Switch
+              on={theme === "light"}
+              onToggle={() => setTheme(theme === "light" ? "dark" : "light")}
+              aria-label="Light mode"
             />
           </div>
 

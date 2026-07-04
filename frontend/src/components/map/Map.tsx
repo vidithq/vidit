@@ -11,9 +11,18 @@ import MapGL, {
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { MapPoint } from "@/types";
 import { usePalette } from "@/hooks/usePalette";
+import { useTheme } from "@/hooks/useTheme";
 import { paletteMapColors } from "@/lib/palette";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
+
+// CARTO basemap pair, matched light / dark tiles. maplibre paint can't read CSS
+// variables, so the base tiles swap here off the theme rather than in the CSS
+// neutral remap that flips the rest of the UI (see globals.css).
+const BASEMAP_STYLE = {
+  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+} as const;
 
 interface MapProps {
   points: MapPoint[];
@@ -109,6 +118,7 @@ export default function Map({
   // same hue (distinct by lightness, not a separate colour).
   const marker = paletteMapColors(usePalette());
   const DETECTED = marker.detected;
+  const theme = useTheme();
 
   useEffect(() => {
     let ok = false;
@@ -142,7 +152,7 @@ export default function Map({
 
   if (!mounted) {
     return (
-      <div className={`w-full h-full bg-[#0a0a0a] flex items-center justify-center ${className || ""}`}>
+      <div className={`w-full h-full bg-neutral-950 flex items-center justify-center ${className || ""}`}>
         <span className="text-neutral-500 text-sm">Loading map...</span>
       </div>
     );
@@ -150,7 +160,7 @@ export default function Map({
 
   if (webglMissing) {
     return (
-      <div className={`w-full h-full bg-[#0a0a0a] flex items-center justify-center px-6 ${className || ""}`}>
+      <div className={`w-full h-full bg-neutral-950 flex items-center justify-center px-6 ${className || ""}`}>
         <p className="max-w-md text-center text-neutral-400 text-sm">
           The map needs WebGL, which is disabled in your browser. If you&apos;re on Tor Browser, switch the security level to Standard.
         </p>
@@ -176,7 +186,7 @@ export default function Map({
         onViewChange({ latitude, longitude, zoom: z });
       }}
       style={{ width: "100%", height: "100%" }}
-      mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+      mapStyle={BASEMAP_STYLE[theme]}
       projection="globe"
       attributionControl={false}
     >

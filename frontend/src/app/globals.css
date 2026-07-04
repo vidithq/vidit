@@ -101,6 +101,38 @@
   --color-orange-950: #4c0519;
 }
 
+/* ---------------------------------------------------------------------------
+   Light theme.
+
+   The second axis, independent of the accent palette above (which re-tints the
+   `orange-*` scale). The whole neutral base, backgrounds, text, borders, is a
+   Tailwind `neutral-*` utility compiling to `var(--color-neutral-*)`; light
+   mode re-points that scale to an inverted ramp on `<html data-theme="light">`,
+   flipping the UI with no per-component change. Dark is the default and stays
+   inert (no attribute, or `data-theme="dark"`, both keep Tailwind's defaults).
+
+   The ramp is Tailwind's own `neutral` values mirrored about the `500`
+   midpoint, so every relative pairing survives the flip: a dark surface
+   (`neutral-900`) becomes light, light text (`neutral-100`) becomes dark, and
+   in-between muted tones keep their contrast order. `500` is self-inverse.
+
+   The map basemap can't read CSS variables, so `Map.tsx` swaps its style off
+   `useTheme` (dark-matter <-> positron); the same for the marker hexes below.
+--------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --color-neutral-50: #0a0a0a;
+  --color-neutral-100: #171717;
+  --color-neutral-200: #262626;
+  --color-neutral-300: #404040;
+  --color-neutral-400: #525252;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #a3a3a3;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-800: #e5e5e5;
+  --color-neutral-900: #f5f5f5;
+  --color-neutral-950: #fafafa;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -145,10 +177,10 @@
   outline: none;
 }
 
-/* Custom scrollbar — dark theme */
+/* Custom scrollbar — follows the neutral scale, so it flips with the theme */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #404040 transparent;
+  scrollbar-color: var(--color-neutral-700) transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
@@ -157,11 +189,11 @@
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: var(--color-neutral-700);
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+  background: var(--color-neutral-600);
 }
 
 /* Native date/time inputs (date / time / datetime-local): mute the empty
@@ -190,27 +222,34 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
   order: 2 !important;
 }
 
-/* Dark theme for MapLibre controls */
+/* MapLibre controls — paints follow the neutral scale, so they flip with the
+   theme; only the glyph inversion is theme-specific (see below). */
 .maplibregl-ctrl-group {
-  background: #171717 !important;
-  border: 1px solid #404040 !important;
+  background: var(--color-neutral-900) !important;
+  border: 1px solid var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button {
-  border-color: #404040 !important;
+  border-color: var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button + button {
-  border-top-color: #404040 !important;
+  border-top-color: var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button span {
   filter: invert(1);
 }
 .maplibregl-ctrl-attrib {
   background: transparent !important;
-  color: #525252 !important;
+  color: var(--color-neutral-600) !important;
 }
 .maplibregl-ctrl-attrib a {
-  color: #525252 !important;
+  color: var(--color-neutral-600) !important;
 }
 .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
   filter: invert(1);
+}
+/* MapLibre ships black glyph icons, inverted to white for the dark UI above.
+   In light mode keep them black (no invert) so they read on the light chrome. */
+[data-theme="light"] .maplibregl-ctrl-group button span,
+[data-theme="light"] .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
+  filter: none;
 }

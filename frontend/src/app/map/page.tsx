@@ -150,7 +150,7 @@ export default function HomePage() {
   }, [points, eventStart, eventEnd, submittedStart, submittedEnd]);
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden bg-[#0a0a0a]">
+    <div className="h-screen w-screen relative overflow-hidden bg-neutral-950">
       <Map
         points={visiblePoints}
         selectedId={selectedId}

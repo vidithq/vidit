@@ -29,23 +29,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // `suppressHydrationWarning`: the inline script below sets `data-palette` on
-    // <html> before hydration, which the server markup doesn't carry, so React
-    // would flag the attribute mismatch. Scoped to this one element.
+    // `suppressHydrationWarning`: the inline script below sets `data-palette`
+    // and `data-theme` on <html> before hydration, which the server markup
+    // doesn't carry, so React would flag the attribute mismatch. Scoped to this
+    // one element.
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply the saved accent palette before first paint so themed UI
-            doesn't flash the default hue on load. Sets only an attribute, so an
-            unexpected stored value is inert (no matching override = default). */}
+        {/* Apply the saved accent palette + light/dark theme before first paint
+            so themed UI doesn't flash the default hue or a dark background on
+            load. Sets only attributes, so an unexpected stored value is inert
+            (no matching override = default). */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var p=localStorage.getItem('vidit:palette');if(p)document.documentElement.dataset.palette=p;}catch(e){}})();",
+              "(function(){try{var d=document.documentElement.dataset,p=localStorage.getItem('vidit:palette'),t=localStorage.getItem('vidit:theme');if(p)d.palette=p;if(t)d.theme=t;}catch(e){}})();",
           }}
         />
       </head>
       <body
-        className={`${montserrat.variable} font-sans bg-[#0a0a0a] text-neutral-100 min-h-screen`}
+        className={`${montserrat.variable} font-sans bg-neutral-950 text-neutral-100 min-h-screen`}
       >
         <Providers>
           <Sidebar />
