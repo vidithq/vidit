@@ -17,7 +17,7 @@ from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import client, proof_file_part, proof_form_field
 
-# ── POST /events — auth + validation paths ────────────────────────────────
+# ── POST /events, auth + validation paths ────────────────────────────────
 
 
 def _form(**overrides):
@@ -151,7 +151,7 @@ def test_create_rejects_too_many_proof_files(author, conflict_tag, capture_sourc
 def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_source_tag):
     """A source file with a MIME type outside `ALLOWED_TYPES` is rejected with
     the typed `invalid_file` envelope BEFORE any S3 IO. Passes the required
-    tags + proof so the request reaches the file-validate loop in the intake —
+    tags + proof so the request reaches the file-validate loop in the intake,
     without them, an earlier floor guard fires first and the test exercises
     the wrong code path."""
     response = client.post(
@@ -167,7 +167,7 @@ def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_sourc
 
 
 def test_create_rejects_video_proof_file(author, conflict_tag, capture_source_tag):
-    """A proof part must be an image — the proof body embeds ``<img>`` nodes,
+    """A proof part must be an image, the proof body embeds ``<img>`` nodes,
     so a video there could never render."""
     doc = {
         "type": "doc",
@@ -243,7 +243,7 @@ def test_create_rejects_placeholder_without_matching_file(author, conflict_tag, 
 
 def test_create_rejects_unreferenced_proof_file(author, conflict_tag, capture_source_tag):
     """The reverse mismatch: an uploaded proof file no placeholder references
-    would land as an untracked S3 object — 400 instead."""
+    would land as an untracked S3 object, 400 instead."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -263,7 +263,7 @@ def test_create_rejects_unreferenced_proof_file(author, conflict_tag, capture_so
     assert "stray.jpg" in detail["message"]
 
 
-# ── POST /events — required tag categories ────────────────────────────────
+# ── POST /events, required tag categories ────────────────────────────────
 
 
 def test_create_rejects_no_tags(author):
@@ -312,7 +312,7 @@ def test_create_rejects_free_tag_only(author, free_tag):
     """A free tag alone satisfies neither required category → 400.
 
     Guards against the resolved-category check being fooled by *any*
-    tag being present — it has to be the right categories.
+    tag being present, it has to be the right categories.
     """
     response = client.post(
         "/api/v1/events",
@@ -441,7 +441,7 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
     `Storage.delete_many` before the exception bubbles.
 
     Passes the two required tags (conflict + capture source) so the request
-    reaches the upload stage — without them the required-category guard would
+    reaches the upload stage, without them the required-category guard would
     400 *before* any upload and the test would pass vacuously.
 
     Uses local storage so we can inspect the filesystem directly.

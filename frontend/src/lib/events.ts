@@ -92,10 +92,20 @@ export function parseCaptureCoords(
   latStr: string,
   lngStr: string
 ): { capture_source_lat: number; capture_source_lng: number } | Record<string, never> {
-  const lat = parseFloat(latStr);
-  const lng = parseFloat(lngStr);
-  if (isNaN(lat) || isNaN(lng)) return {};
+  const lat = cleanNumber(latStr);
+  const lng = cleanNumber(lngStr);
+  if (lat === null || lng === null) return {};
   return { capture_source_lat: lat, capture_source_lng: lng };
+}
+
+/** Parse a whole string as a finite number, or `null`. Unlike `parseFloat`,
+ *  this rejects partially-numeric input (`"50.1abc"`), so a malformed pair
+ *  clears the camera coords rather than storing a truncated value. Blank /
+ *  whitespace-only reads as absent (`null`), preserving both-or-neither. */
+function cleanNumber(value: string): number | null {
+  if (value.trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function getEvent(id: string): Promise<EventDetail> {
@@ -143,31 +153,57 @@ export interface EventEditInput {
   proof_files: File[];
 }
 
-/** Append the multipart fields shared by create + geolocate: every field
- *  except geolocate's `remove_media_ids`. The source-media key differs by
- *  endpoint (create / request take a singular `file`, geolocate a plural
- *  `files` list for kept-plus-new), so the caller passes it. One assembler so
- *  the paths can't drift on the rest of the contract. */
-function appendEventFormFields(
+/** The multipart fields every write path encodes identically: metadata,
+ *  the optional camera point (both-or-neither), and the tag set. Factored out
+ *  of `appendEventFormFields` and `createEventRequest` so the two paths can't
+ *  drift on this shared subset. The paths differ only on the subject point
+ *  (`lat`/`lng` required on geolocate, optional on a request), `event_date`
+ *  (required vs optional), the source-media key, and `proof_files`, which each
+ *  caller appends itself. */
+function appendSharedEventFields(
   fd: FormData,
-  input: Omit<EventEditInput, "remove_media_ids">,
-  sourceKey: "file" | "files" = "files"
+  input: {
+    title: string;
+    source_url: string;
+    source_posted_at: string;
+    proof?: Record<string, unknown> | null;
+    capture_source_lat?: number;
+    capture_source_lng?: number;
+    event_time?: string;
+    tag_ids?: string[];
+  }
 ): void {
   fd.append("title", input.title);
-  fd.append("lat", String(input.lat));
-  fd.append("lng", String(input.lng));
+  fd.append("source_url", input.source_url);
   // Both-or-neither: only send the camera point when both halves are present,
   // matching the backend `_optional_point` contract (a lone half is a 400).
   if (input.capture_source_lat !== undefined && input.capture_source_lng !== undefined) {
     fd.append("capture_source_lat", String(input.capture_source_lat));
     fd.append("capture_source_lng", String(input.capture_source_lng));
   }
-  fd.append("source_url", input.source_url);
-  fd.append("event_date", input.event_date);
   if (input.event_time) fd.append("event_time", input.event_time);
   fd.append("source_posted_at", input.source_posted_at);
   if (input.proof) fd.append("proof", JSON.stringify(input.proof));
-  if (input.tag_ids.length > 0) fd.append("tag_ids", JSON.stringify(input.tag_ids));
+  if (input.tag_ids && input.tag_ids.length > 0) {
+    fd.append("tag_ids", JSON.stringify(input.tag_ids));
+  }
+}
+
+/** Append the multipart fields shared by create + geolocate: every field
+ *  except geolocate's `remove_media_ids`. The source-media key differs by
+ *  endpoint (create / request take a singular `file`, geolocate a plural
+ *  `files` list for kept-plus-new), so the caller passes it. Builds on
+ *  `appendSharedEventFields` and adds the always-present subject point,
+ *  `event_date`, the source media, and the proof-body images. */
+function appendEventFormFields(
+  fd: FormData,
+  input: Omit<EventEditInput, "remove_media_ids">,
+  sourceKey: "file" | "files" = "files"
+): void {
+  appendSharedEventFields(fd, input);
+  fd.append("lat", String(input.lat));
+  fd.append("lng", String(input.lng));
+  fd.append("event_date", input.event_date);
   for (const file of input.files) {
     fd.append(sourceKey, file);
   }
@@ -225,7 +261,7 @@ export interface EventRequestInput {
   source_url: string;
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
-  /** Optional approximate guess — both halves or neither. */
+  /** Optional approximate guess: both halves or neither. */
   lat?: number;
   lng?: number;
   /** Optional camera position (where the footage was shot from), if known.
@@ -244,29 +280,15 @@ export interface EventRequestInput {
 
 export function createEventRequest(input: EventRequestInput): Promise<EventDetail> {
   const fd = new FormData();
-  fd.append("title", input.title);
-  fd.append("source_url", input.source_url);
-  if (input.proof) {
-    fd.append("proof", JSON.stringify(input.proof));
-  }
+  // Shared metadata + camera point + tags. A request's deltas from a
+  // geolocation: the subject point is optional (each half guarded, not
+  // both-or-neither), `event_date` is optional, the source rides under the
+  // singular `file` key, and there are no `proof_files`.
+  appendSharedEventFields(fd, input);
   if (input.lat !== undefined) fd.append("lat", String(input.lat));
   if (input.lng !== undefined) fd.append("lng", String(input.lng));
-  if (
-    input.capture_source_lat !== undefined &&
-    input.capture_source_lng !== undefined
-  ) {
-    fd.append("capture_source_lat", String(input.capture_source_lat));
-    fd.append("capture_source_lng", String(input.capture_source_lng));
-  }
   if (input.event_date) {
     fd.append("event_date", input.event_date);
-  }
-  if (input.event_time) {
-    fd.append("event_time", input.event_time);
-  }
-  fd.append("source_posted_at", input.source_posted_at);
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    fd.append("tag_ids", JSON.stringify(input.tag_ids));
   }
   for (const file of input.files) {
     fd.append("file", file);
@@ -302,7 +324,7 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
-/** Caller joins the "I'm working on this" set. Idempotent — re-signalling
+/** Caller joins the "I'm working on this" set. Idempotent: re-signalling
  *  is a 204 no-op, not an error. `POST /events/{id}/investigate`. */
 export function investigateEvent(id: string): Promise<void> {
   return apiFetch<void>(`/events/${id}/investigate`, { method: "POST" });
@@ -440,7 +462,7 @@ export function missingEventFields(
  * Every still-unmet required field for a request (ex-bounty), as human labels
  * for `IncompleteFormNotice`. A request is an unfinished geolocation, so its
  * floor is a subset of the geolocation one (no coordinates, dates, proof, or
- * tags) — just enough to be actionable: a title, the source, and the footage.
+ * tags), just enough to be actionable: a title, the source, and the footage.
  * Mirrors the server `POST /events/requests` requirements.
  */
 export function missingEventRequestFields(s: {

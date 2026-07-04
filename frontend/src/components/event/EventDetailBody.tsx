@@ -20,7 +20,7 @@ import type { Concept } from "@/lib/fieldHelp";
 
 /**
  * The body's data shape: an `EventDetail` as-is. Every lifecycle state
- * (located, detected, requested, closed) shares this one shape — a coordless
+ * (located, detected, requested, closed) shares this one shape: a coordless
  * `requested` row just carries a null `event_coords`, and the missing
  * detected-from / requested-by spots drop out with no extra branching.
  */

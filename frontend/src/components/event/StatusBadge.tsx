@@ -23,8 +23,8 @@ type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_stat
  *   claim independent verification, only that a person stands behind it; the
  *   neutral colour keeps the accent states the attention-drawing marks.
  * - `closed` (neutral, a cross): a terminal audit row. Its tooltip reflects
- *   ``before_closed_status`` when supplied — a withdrawn request vs a rejected
- *   detection — since the one badge covers both dismissal shapes.
+ *   ``before_closed_status`` when supplied (a withdrawn request vs a rejected
+ *   detection) since the one badge covers both dismissal shapes.
  *
  * Shown on cards, the detail pages (geolocation + requested), search results,
  * and the Detections queue.

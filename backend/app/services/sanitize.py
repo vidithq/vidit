@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
-# The canonical empty proof document. ``events.proof`` is NOT NULL — every
+# The canonical empty proof document. ``events.proof`` is NOT NULL, so every
 # row carries a proof doc — so a submission with no proof body and the migration
 # that backfilled pre-existing NULLs both store this. It renders as "no proof"
 # through the proof renderer rather than a shape the frontend doesn't expect.
@@ -68,7 +68,7 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     local-storage URLs pass only when `cloudfront_domain` is unset AND
     `storage_backend == "local"`, so a CDN-less-but-S3 staging env doesn't
     accept loopback URLs. ``allow_placeholders`` additionally admits
-    ``placeholder://<filename>`` srcs — intake-time only, never persisted
+    ``placeholder://<filename>`` srcs, intake-time only, never persisted
     (see ``PROOF_PLACEHOLDER_PREFIX``).
     """
     if not isinstance(value, str):

@@ -12,7 +12,7 @@ terminal withdraw / reject.
 Errors are typed `EventError` subclasses with stable `.code`
 strings, translated to HTTP via the same `{code, message}` envelope as
 `RegistrationError` / `AdminError`. Status mapping lives in
-`routers/events/_common.py` (`_EVENT_ERROR_STATUS`) — keep in sync
+`routers/events/_common.py` (`_EVENT_ERROR_STATUS`), kept in sync
 when adding a code.
 """
 
@@ -24,6 +24,7 @@ from typing import cast
 from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
@@ -35,6 +36,7 @@ from app.models.event import (
     BeforeClosedStatus,
     Event,
     EventGeolocator,
+    EventInvestigator,
 )
 from app.models.tag import Tag
 from app.models.user import User
@@ -95,7 +97,7 @@ class EventStateError(EventError):
 
 
 def validate_coordinates(lat: float, lng: float) -> None:
-    """Reject out-of-range coordinates — the single bounds check shared by the
+    """Reject out-of-range coordinates: the single bounds check shared by the
     human create + geolocate paths."""
     if not -90 <= lat <= 90:
         raise InvalidCoordinatesError("Latitude must be between -90 and 90")
@@ -106,7 +108,7 @@ def validate_coordinates(lat: float, lng: float) -> None:
 def _optional_point(lat: float | None, lng: float | None, *, field: str):
     """Validate + build an optional PostGIS point from a half-typed form pair.
 
-    A lone half of the pair is a client bug, not a droppable value — reject it
+    A lone half of the pair is a client bug, not a droppable value, so reject it
     rather than silently storing nothing.
     """
     if lat is None and lng is None:
@@ -147,7 +149,7 @@ def _require_submission_media(has_media: bool) -> None:
     """Enforce the source floor: one source media on the row.
 
     The sibling of :func:`_require_submission_tags`, shared by every write
-    (create, request, geolocate) — an event never exists without its footage.
+    (create, request, geolocate): an event never exists without its footage.
     """
     if not has_media:
         raise MediaRequiredError("A source media file is required")
@@ -166,6 +168,21 @@ def _require_proof_image(proof_doc: dict | None) -> None:
 
 def _resolve_tags(db: Session, tag_ids: list) -> list[Tag]:
     return db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+
+
+def _credit_geolocator(db: Session, geo: Event, user: User) -> None:
+    """Make ``user`` the owner of record and record durable geolocation credit.
+
+    The one place that upholds the invariant "a ``geolocated`` event's
+    ``owner_id`` is always among its ``event_geolocators``" (asserted on the
+    model, and the basis for the GDPR-erasure floor in
+    ``admin.hard_delete_user``). Every geolocation-producing path routes through
+    here instead of hand-pairing the two writes, so a future transition can't set
+    the owner and forget the credit. Idempotent on the credit row by its
+    composite PK.
+    """
+    geo.owner_id = user.id
+    db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
 
 
 async def create_with_evidence(
@@ -191,8 +208,8 @@ async def create_with_evidence(
     The router has already turned raw multipart fields into clean Python
     types; this deals only with business rules and IO. The row is born
     ``geolocated`` (the model's ``status`` server_default), stamped
-    ``geolocated_at``, and the creator lands in ``event_geolocators`` — the
-    durable credit the owner column alone doesn't carry.
+    ``geolocated_at``, and the creator lands in ``event_geolocators`` (the
+    durable credit the owner column alone doesn't carry).
 
     The full evidence floor applies: subject coordinates, exactly ONE source
     file, at least one proof image in the proof body (a ``placeholder://`` src
@@ -200,7 +217,7 @@ async def create_with_evidence(
     ``conflict`` + ``capture_source`` tags. ``capture_source_lat`` / ``lng``
     (the camera point) are optional, both-or-neither.
 
-    Failure modes (:class:`EvidenceIntakeError` subclasses — event rules
+    Failure modes (:class:`EvidenceIntakeError` subclasses, event rules
     here, shared file/media rules from ``evidence_intake``):
 
     * Out-of-range lat/lng (:class:`InvalidCoordinatesError`)
@@ -225,7 +242,7 @@ async def create_with_evidence(
 
     proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
 
-    # The rest of the floor, checked before any upload — a missing tag or an
+    # The rest of the floor, checked before any upload: a missing tag or an
     # image-less proof 400s without paying an S3 round-trip.
     _require_proof_image(proof_data)
     effective_tags = _resolve_tags(db, tag_ids)
@@ -248,8 +265,10 @@ async def create_with_evidence(
 
     db.add(geo)
     db.flush()
-    # Durable credit: the creator vouched this location.
-    db.add(EventGeolocator(event_id=geo.id, user_id=current_user.id))
+    # Durable credit: the creator vouched this location. ``owner_id`` is already
+    # on the row above; ``_credit_geolocator`` re-asserts it and adds the credit
+    # row so the owner-among-geolocators invariant lives in one place.
+    _credit_geolocator(db, geo, current_user)
 
     await attach_evidence_and_commit(
         db,
@@ -288,11 +307,11 @@ async def create_request(
     ``title`` / ``source_url`` and malformed JSON; this owns the business
     rules + IO. The row is born ``requested``, stamped ``requested_at``, with
     ``owner_id = requested_by_id = current_user`` so the poster keeps edit
-    rights until a fulfiller takes over — and stays credited as the requester
+    rights until a fulfiller takes over, and stays credited as the requester
     after.
 
     Coordinates are OPTIONAL (an approximate guess is allowed on a request,
-    both-or-neither), as is the camera point. Tags are optional too — the
+    both-or-neither), as is the camera point. Tags are optional too: the
     geolocate transition enforces the curated floor. One source file is
     required: a request is an "unfinished geolocation", so the poster's
     evidence must be on the row from the start. The proof body is image-free
@@ -379,16 +398,16 @@ async def geolocate(
     anchor) and ``status`` carry no form field.
 
     Concurrency: the row is re-fetched ``with_for_update()`` FIRST, then the
-    status re-checked — two racing geolocates serialize on the row lock and
+    status re-checked: two racing geolocates serialize on the row lock and
     the loser sees the 409, restoring the pre-merge fulfilment lock (see
     migration ``n0i2d4e6f8a0`` for the historic pattern). The
     ``uq_media_source_per_event`` index is the DB-level backstop.
 
     Permissions differ by the source state:
 
-    * ``detected`` — a machine draft, owner-only: ``current_user`` must be its
+    * ``detected``: a machine draft, owner-only: ``current_user`` must be its
       ``owner_id`` (403 otherwise). It stays the owner.
-    * ``requested`` — an open call anyone may answer: ``owner_id`` (the
+    * ``requested``: an open call anyone may answer: ``owner_id`` (the
       edit-rights owner) transfers to ``current_user``, the fulfiller.
       ``requested_by_id`` is left as the original poster, so the merge preserves
       who asked.
@@ -469,13 +488,11 @@ async def geolocate(
         geo.tags = effective_tags
         geo.status = STATUS_GEOLOCATED
         geo.geolocated_at = datetime.now(UTC)
-        # Fulfilling an open request hands edit-rights to the fulfiller; the
-        # original poster stays on ``requested_by_id`` (untouched here).
-        if geo.owner_id != current_user.id:
-            geo.owner_id = current_user.id
-    # Durable credit for the caller (idempotent by PK; a first geolocate never
-    # has a prior row).
-    db.add(EventGeolocator(event_id=geo.id, user_id=current_user.id))
+    # Fulfilling an open request hands edit-rights to the fulfiller (the original
+    # poster stays on ``requested_by_id``) and records durable credit. Both go
+    # through ``_credit_geolocator`` so the owner-among-geolocators invariant is
+    # written in one place. Idempotent by PK; a first geolocate has no prior row.
+    _credit_geolocator(db, geo, current_user)
 
     # Drop the source media flagged for removal: snapshot their S3 keys, delete
     # the rows, and FLUSH the deletes so the replacement insert below can't
@@ -509,7 +526,7 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     """Close an event: withdraw a request or reject a detection, in one verb.
 
     Owner-only. The row stays publicly visible (transparency: the queue tried
-    and didn't produce a geolocation, or a machine draft was judged wrong) —
+    and didn't produce a geolocation, or a machine draft was judged wrong).
     ``before_closed_status`` records which state it left so the badge, the
     requested-view routing, and detection re-import can tell the two apart. A
     closed detection is re-importable (see ``detection._disposition``);
@@ -519,6 +536,12 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     (``geolocated`` is frozen, ``closed`` is terminal). Commits, invalidates
     the points cache, returns the refreshed row.
     """
+    # Serialize on the row like ``geolocate``: a ``requested`` event is
+    # fulfillable by anyone, so a concurrent geolocate (a different actor) could
+    # otherwise be silently overwritten by this owner-only close reading a stale
+    # in-memory status. ``populate_existing`` refreshes the identity-mapped row
+    # from the freshly locked SELECT before the owner and status re-checks.
+    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
     ensure_owner(geo, current_user)
     if geo.status not in (STATUS_REQUESTED, STATUS_DETECTED):
         raise EventStateError("Only requested or detected events can be closed")
@@ -531,3 +554,49 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     db.refresh(geo)
     points_cache.invalidate()
     return geo
+
+
+def investigate(db: Session, *, geo: Event, current_user: User) -> None:
+    """Record a public "I'm working on this" signal. Idempotent: re-signalling
+    is a no-op, not a conflict. Only an open ``requested`` event accepts a
+    signal; off ``requested`` it raises :class:`EventStateError` (409).
+
+    The ``EventInvestigator`` composite PK ``(event_id, user_id)`` is the race
+    backstop: two concurrent signals both pass the friendly-path SELECT, only one
+    wins the INSERT, and the SAVEPOINT turns the loser's ``IntegrityError`` into
+    the idempotent no-op instead of a 500. Mirrors ``services/social.follow_user``.
+    """
+    if geo.status != STATUS_REQUESTED:
+        raise EventStateError(f"Cannot investigate an event with status {geo.status}")
+    existing = (
+        db.query(EventInvestigator)
+        .filter(
+            EventInvestigator.event_id == geo.id,
+            EventInvestigator.user_id == current_user.id,
+        )
+        .first()
+    )
+    if existing is not None:
+        return
+    try:
+        with db.begin_nested():
+            db.add(EventInvestigator(event_id=geo.id, user_id=current_user.id))
+    except IntegrityError:
+        # Loser of the race: the row already exists, which IS the post-condition.
+        pass
+    db.commit()
+
+
+def uninvestigate(db: Session, *, geo: Event, current_user: User) -> None:
+    """Drop the caller's investigate signal. Idempotent: a no-op when the caller
+    wasn't signalling (the post-condition is "caller not in the working set", not
+    "exactly one row deleted"). Gated to ``requested`` like :func:`investigate`:
+    a terminated event's signals are frozen history.
+    """
+    if geo.status != STATUS_REQUESTED:
+        raise EventStateError(f"Cannot investigate an event with status {geo.status}")
+    db.query(EventInvestigator).filter(
+        EventInvestigator.event_id == geo.id,
+        EventInvestigator.user_id == current_user.id,
+    ).delete(synchronize_session=False)
+    db.commit()

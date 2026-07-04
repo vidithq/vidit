@@ -20,7 +20,7 @@ from app.models.user import User
 
 
 class _HasOwnerId(Protocol):
-    """Anything carrying a ``UUID`` ``owner_id`` column — duck-typed.
+    """Anything carrying a ``UUID`` ``owner_id`` column, duck-typed.
 
     Lets type-checkers verify callers pass the right shape without
     importing the concrete ``Event`` model here. ``uuid.UUID``

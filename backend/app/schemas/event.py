@@ -27,15 +27,15 @@ class ArchiveImportResult(BaseModel):
 
 class CoordsRead(BaseModel):
     """One WGS84 point on the wire. Nesting (instead of flat ``lat`` / ``lng``
-    pairs) lets a payload carry two independent points — the subject and the
-    camera — without field-name gymnastics."""
+    pairs) lets a payload carry two independent points, the subject and the
+    camera, without field-name gymnastics."""
 
     lat: float
     lng: float
 
 
 class EventCloseRequest(BaseModel):
-    """Body for ``POST /events/{id}/close``. The reason is required — a closed
+    """Body for ``POST /events/{id}/close``. The reason is required: a closed
     event stays publicly visible, so the why must travel with it."""
 
     close_reason: str = Field(min_length=1, max_length=2000)
@@ -50,7 +50,7 @@ class EventRead(BaseModel):
     # not optional: ``build_event_read`` (the sole constructor) always passes
     # it, so the key is always serialised.
     event_coords: CoordsRead | None
-    # The camera point — where the footage was shot from. Always optional.
+    # The camera point: where the footage was shot from. Always optional.
     capture_source_coords: CoordsRead | None
     source_url: str
     proof: dict[str, Any] | None
@@ -93,7 +93,7 @@ class EventRead(BaseModel):
     # detail read (the list card carries a capped sample instead).
     investigator_count: int
     investigators: list[AuthorRef]
-    # ONLY the ``source`` rows — proof images travel inside the proof JSON as
+    # ONLY the ``source`` rows: proof images travel inside the proof JSON as
     # URLs, so surfacing their rows here would double-render them.
     media: list[MediaRead]
     tags: list[TagRead]

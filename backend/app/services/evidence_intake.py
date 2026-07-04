@@ -1,7 +1,7 @@
 """Shared evidence-intake orchestration for media-backed submissions.
 
-Every write that attaches files to an event — direct geolocate, request
-create, the geolocate transition — funnels through
+Every write that attaches files to an event (direct geolocate, request
+create, the geolocate transition) funnels through
 :func:`attach_evidence_and_commit`: validate the batch up front, stream the
 source file and the proof images to S3 with key tracking, attach one ``Media``
 row per file (``role='source'`` / ``role='proof'``), rewrite the proof doc's
@@ -14,7 +14,7 @@ Proof images travel INSIDE the multipart submit (upload at publish): the
 Tiptap doc references a not-yet-uploaded file as ``placeholder://<filename>``
 and the request carries the file in ``proof_files``. Matching is by sanitised
 original filename; a placeholder with no file, or a file no placeholder
-references, is a 400 — nothing uploads on a mismatched batch. The rollback
+references, is a 400: nothing uploads on a mismatched batch. The rollback
 path keeps the best-effort ``sweep_keys`` on commit failure (the accepted
 residual risk, same as source media).
 
@@ -111,8 +111,8 @@ def _match_proof_files(
 ) -> list[tuple[str, UploadFile]]:
     """Pair each ``placeholder://<filename>`` src with its uploaded file.
 
-    Strict both ways — an unmatched placeholder would persist as a broken
-    image, an unreferenced file as an untracked S3 object — and cheap, so it
+    Strict both ways (an unmatched placeholder would persist as a broken
+    image, an unreferenced file as an untracked S3 object) and cheap, so it
     runs before any upload. Returns ``(placeholder_src, file)`` pairs in doc
     order.
     """
@@ -191,7 +191,7 @@ async def attach_evidence_and_commit(
       src is rewritten to the public URL, and a ``Media(role='proof')`` row
       lands. Already-uploaded S3 URLs in the doc pass through untouched (the
       edit flow), and existing ``role='proof'`` rows whose URL no longer
-      appears in the final doc are deleted — their objects swept post-commit.
+      appears in the final doc are deleted, their objects swept post-commit.
 
     Every file is validated up front so a bad file can't strand its siblings
     in S3. The commit is inside the try, so a commit-time failure (FK

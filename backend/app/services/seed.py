@@ -460,7 +460,7 @@ def _prepare_pool_media(
 ) -> dict[str, str]:
     """Hash every pool key + produce derivatives where source images miss them.
 
-    For each unique key referenced by `templates` (both buckets — ``media``
+    For each unique key referenced by `templates` (both buckets: ``media``
     becomes the source row, ``proof`` the proof rows):
 
     1. Download the original bytes. **Runs once per seed invocation, not
@@ -471,7 +471,7 @@ def _prepare_pool_media(
     2. Compute the sha256 hex so the row constructor sets ``Media.sha256``,
        matching the evidence-integrity contract real uploads honour.
     3. For ``media``-bucket images, generate JPEG hero + thumbnail derivatives
-       at the sibling keys — skipped if already present. Skipping matters: a
+       at the sibling keys, skipped if already present. Skipping matters: a
        re-seed would otherwise rewrite identical bytes, which the bucket's
        Object Lock + versioning turns into unbounded version churn. Proof
        keys get no derivatives (inline proof images render from the raw URL,
@@ -521,7 +521,7 @@ def _prepare_pool_media(
         sha256_by_key[key] = hashlib.sha256(data).hexdigest()
 
         if key in unique_proof_keys:
-            # Proof images render from the raw URL — hash only, no derivatives.
+            # Proof images render from the raw URL: hash only, no derivatives.
             continue
         content_type = _image_content_type_from_key(key)
         if content_type is None:
@@ -669,7 +669,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
     # Buffer M2M link + geolocator rows per batch, each flushed via one Core
-    # INSERT — far cheaper than 1-4 ORM relationship writes per geo.
+    # INSERT, far cheaper than 1-4 ORM relationship writes per geo.
     pending_links: list[dict[str, uuid.UUID]] = []
     pending_geolocators: list[dict[str, Any]] = []
 
@@ -825,7 +825,7 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
 DEMO_BOUNTY_TITLE = "Demo bounty — unplaced footage"
 DEMO_BOUNTY_SOURCE_URL = "https://vidit.app/demo-data"
 
-# Probability a demo request gets ≥1 synthetic investigator — gives the "N
+# Probability a demo request gets ≥1 synthetic investigator, giving the "N
 # working" badge something to render so the multi-analyst UI surfaces.
 DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
 
@@ -864,15 +864,15 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
 
     Reuses the demo-author pool and the ``demo-pool/`` prefix. Each event gets a
     random subset of one template's ``media/`` files. Since the bounty +
-    geolocation merge these are all rows on the one ``geolocations`` table:
+    geolocation merge these are all rows on the one ``events`` table:
 
-    * ``requested`` — an open call: no location, ``requested_by_id`` = poster,
-      may get 1–3 synthetic investigators (``DEMO_BOUNTY_CLAIM_PROBABILITY``).
-    * ``geolocated`` — the fulfilled case: a located row whose ``owner_id`` is a
+    * ``requested``: an open call, no location, ``requested_by_id`` = poster,
+      may get 1-3 synthetic investigators (``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+    * ``geolocated``: the fulfilled case, a located row whose ``owner_id`` is a
       *different* demo analyst (the fulfiller, also credited in
       ``event_geolocators``) while ``requested_by_id`` keeps the original
       poster, so "requested by @x, geolocated by @y" reads naturally.
-    * ``closed`` — a withdrawn request: no location, ``closed_at`` +
+    * ``closed``: a withdrawn request, no location, ``closed_at`` +
       ``before_closed_status='requested'`` + a demo ``close_reason``.
 
     Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter chips +
@@ -948,7 +948,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                 geolocated_at=now,
                 is_demo=True,
             )
-            # The fulfiller vouched the location — durable credit.
+            # The fulfiller vouched the location: durable credit.
             pending_geolocator_rows.append(
                 {"event_id": geo_id, "user_id": fulfiller_id, "created_at": now}
             )
@@ -988,7 +988,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
             pending_geo_tag_links.append({"event_id": geo_id, "tag_id": tid})
 
-        # Investigators only make sense on the open queue — closed / geolocated
+        # Investigators only make sense on the open queue, not closed / geolocated
         # events don't accept new signals, and stale backfilled ones would
         # mislead the UI.
         if status == STATUS_REQUESTED and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
@@ -1009,7 +1009,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     if pending_geo_tag_links:
         db.execute(insert(event_tags), pending_geo_tag_links)
     # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
-    # ``Table`` and ``insert()`` accepts it — same as the
+    # ``Table`` and ``insert()`` accepts it, same as the
     # ``insert(event_tags)`` call above.
     if pending_investigator_rows:
         db.execute(insert(EventInvestigator.__table__), pending_investigator_rows)  # type: ignore[arg-type]

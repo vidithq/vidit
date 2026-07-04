@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.event import Event
 from app.models.follow import Follow
+from app.models.media import Media
 from app.models.user import User
 
 
@@ -91,7 +92,7 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
-            selectinload(Event.media),
+            selectinload(Event.media.and_(Media.role == "source")),
         )
         .filter(where_clause)
         .order_by(Event.event_date.desc(), Event.created_at.desc())

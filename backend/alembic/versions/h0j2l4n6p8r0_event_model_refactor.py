@@ -59,7 +59,7 @@ def upgrade() -> None:
     op.execute("ALTER INDEX idx_events_location RENAME TO idx_events_event_coords")
 
     # ── events: new columns ──────────────────────────────────────────────
-    # No spatial index on capture_source_coords — deliberate, no spatial read
+    # No spatial index on capture_source_coords, deliberate, no spatial read
     # consumes it (docs/data-model.md).
     op.add_column(
         "events",
@@ -86,7 +86,7 @@ def upgrade() -> None:
     # were soft-deleted, never 'closed').
     op.execute("UPDATE events SET before_closed_status = 'requested' WHERE status = 'closed'")
     # Every write path stamped closed_at, but the CHECK below makes it a hard
-    # invariant — patch any stray dev row rather than fail the upgrade.
+    # invariant, patch any stray dev row rather than fail the upgrade.
     op.execute(
         "UPDATE events SET closed_at = updated_at WHERE status = 'closed' AND closed_at IS NULL"
     )
@@ -150,7 +150,7 @@ def upgrade() -> None:
         "event_geolocators",
         ["user_id", "created_at"],
     )
-    # The owner of every geolocated row vouched it — seed the credit table so
+    # The owner of every geolocated row vouched it, seed the credit table so
     # attribution predates this migration.
     op.execute(
         "INSERT INTO event_geolocators (event_id, user_id, created_at) "
@@ -170,7 +170,7 @@ def upgrade() -> None:
     op.create_check_constraint("ck_media_role_valid", "media", "role IN ('source', 'proof')")
 
     # Dedupe before the unique index: dev rows may carry N media per event.
-    # Keep the oldest per event (created_at, id) and drop the rest —
+    # Keep the oldest per event (created_at, id) and drop the rest,
     # sanctioned, the dev/prod DBs are wipeable.
     op.execute(
         "DELETE FROM media m USING ("

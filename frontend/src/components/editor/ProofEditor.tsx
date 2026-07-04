@@ -5,6 +5,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
+import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
 interface ProofEditorProps {
@@ -113,7 +114,7 @@ export default function ProofEditor({
   // Revoke every staged blob URL on unmount so a compose → navigate cycle
   // doesn't leak object URLs. `entriesRef.current` is a stable array (only ever
   // pushed to, never reassigned), so capturing it here still sees every image
-  // added later — and satisfies the ref-in-cleanup lint rule.
+  // added later, and satisfies the ref-in-cleanup lint rule.
   useEffect(() => {
     const entries = entriesRef.current;
     return () => {
@@ -124,7 +125,7 @@ export default function ProofEditor({
   const pickImage = (file: File) => {
     if (!editor) return;
     const name = safeProofFilename(file.name, usedNamesRef.current);
-    if (name === null) return; // unusable filename — skip rather than stage junk
+    if (name === null) return; // unusable filename, skip rather than stage junk
     usedNamesRef.current.add(name);
     // Upload the file under exactly `name` so the server's
     // `safe_original_filename` reproduces the placeholder suffix. When the
@@ -196,7 +197,7 @@ export default function ProofEditor({
               + Image
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={ACCEPTED_IMAGE_MIME}
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];

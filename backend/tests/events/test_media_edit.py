@@ -2,7 +2,7 @@
 
 Geolocate is the only write to a detection: the form posts the whole state, a
 replacement source rides in ``files``, existing media are dropped via
-``remove_media_ids``, proof images in ``proof_files`` — all applied in one
+``remove_media_ids``, proof images in ``proof_files``, all applied in one
 atomic request that also flips the row to ``geolocated``. So these media
 mechanics are exercised through geolocate (with the tag + proof floor met).
 Shared fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` / the
@@ -114,7 +114,7 @@ def test_geolocate_adds_source_media(db, author, conflict_tag, capture_source_ta
 
 def test_geolocate_swaps_source_in_one_call(db, author, conflict_tag, capture_source_tag):
     """Drop the existing source and add a new one atomically (net still exactly
-    one, so both the floor and the one-source cap hold — the deletes flush
+    one, so both the floor and the one-source cap hold, the deletes flush
     before the insert, or the partial unique index would trip mid-flush)."""
     geo = _detected(db, author, with_media=True)
     old_id = str(geo.media[0].id)

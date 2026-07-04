@@ -61,7 +61,7 @@ export function LocationPicker({
         />
       </div>
 
-      {/* The camera position — where the footage was shot from — kept apart
+      {/* The camera position (where the footage was shot from) kept apart
           from the subject point above. Optional and always independent of the
           lifecycle. */}
       <div className="space-y-1.5">

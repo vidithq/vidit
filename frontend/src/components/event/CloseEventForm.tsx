@@ -25,8 +25,8 @@ interface CloseEventFormProps {
 /**
  * Inline "close this event" panel: a required free-text reason plus a confirm /
  * cancel pair, composed from the shared primitives (`Textarea`, `Button`, the
- * `FORM_*` constants). One verb closes both dismissal shapes — a withdrawn
- * request and a rejected detection — so the copy keys off `status`. The reason
+ * `FORM_*` constants). One verb closes both dismissal shapes (a withdrawn
+ * request and a rejected detection) so the copy keys off `status`. The reason
  * stays publicly visible on the closed row (transparency), which is why the
  * backend requires it; this enforces the same non-empty rule client-side.
  */

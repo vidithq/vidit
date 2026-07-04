@@ -11,7 +11,7 @@ poster). Local storage backend so file uploads exercise the real path.
 
 What we lock in:
 
-* Soft-delete invariant — every public read filters ``deleted_at IS NULL``.
+* Soft-delete invariant, every public read filters ``deleted_at IS NULL``.
 * ``GET /events?view=requested`` scoping + status / tag / author filters.
 * The requested list carries ``investigator_count`` + a small
   ``investigators_sample``.
@@ -114,7 +114,7 @@ def _make_bounty(
 ) -> Event:
     """A request row: a ``requested`` (or withdrawn ``closed``) ``Event`` with
     no location and ``requested_by_id`` set to the poster, mirroring the
-    create path (stamps included — the CHECKs demand them).
+    create path (stamps included, the CHECKs demand them).
     """
     now = datetime.now(UTC)
     bounty = Event(
@@ -151,7 +151,7 @@ def _make_bounty(
     return bounty
 
 
-# ── GET /events?view=requested — list ─────────────────────────────────────
+# ── GET /events?view=requested, list ─────────────────────────────────────
 
 
 def test_list_returns_seeded_bounty(db, author):
@@ -184,7 +184,7 @@ def test_list_filters_by_status(db, author):
 
 def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
     """The requested view keeps a withdrawn request visible but routes a
-    rejected detection (``closed`` off ``detected``) to the located view —
+    rejected detection (``closed`` off ``detected``) to the located view,
     ``before_closed_status`` is the split."""
     withdrawn = _make_bounty(db, author=author, status=STATUS_CLOSED)
     rejected = _make_geo(db, author=author, status=STATUS_CLOSED)
@@ -198,7 +198,7 @@ def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
 
 def test_list_excludes_located_events(db, author):
     """A ``geolocated`` event (a fulfilled request, or a direct submit) is
-    served by the located view and must never surface in the requested one —
+    served by the located view and must never surface in the requested one,
     even though it shares the table."""
     requested = _make_bounty(db, author=author)
     located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
@@ -275,7 +275,7 @@ def test_located_list_leaves_investigator_aggregates_null(db, author):
     assert row["investigators_sample"] is None
 
 
-# ── GET /events/{id} — requested detail ───────────────────────────────────
+# ── GET /events/{id}, requested detail ───────────────────────────────────
 
 
 def test_detail_returns_full_shape(db, author, free_tag):
@@ -323,7 +323,7 @@ def test_detail_lists_every_investigator(db, author, second_user, third_user):
         db.commit()
 
 
-# ── POST /events/requests — auth + validation + happy path ────────────────
+# ── POST /events/requests, auth + validation + happy path ────────────────
 
 
 def test_create_requires_authentication():
@@ -440,7 +440,7 @@ def test_create_rejects_unsanitisable_proof(author):
 
 
 def test_create_rejects_half_typed_coordinate_guess(author):
-    """A lone half of the optional (lat, lng) guess is a client bug — 400."""
+    """A lone half of the optional (lat, lng) guess is a client bug, 400."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -482,7 +482,7 @@ def test_create_happy_path(db, author, free_tag):
 
     bounty_id = uuid.UUID(body["id"])
     # The created row is a requested event with no location and the poster on
-    # ``requested_by_id`` — the invariant fulfilment relies on.
+    # ``requested_by_id``, the invariant fulfilment relies on.
     row = db.query(Event).filter(Event.id == bounty_id).one()
     assert row.status == STATUS_REQUESTED
     assert row.event_coords is None
@@ -494,7 +494,7 @@ def test_create_happy_path(db, author, free_tag):
 
 
 def test_create_accepts_coordinate_guess(db, author):
-    """A request may carry an approximate (lat, lng) guess — stored and
+    """A request may carry an approximate (lat, lng) guess, stored and
     round-tripped, without promoting the row out of ``requested``."""
     response = client.post(
         "/api/v1/events/requests",
@@ -620,13 +620,13 @@ def test_create_rejects_invalid_event_date(author):
 def test_create_populates_sha256_on_media(db, author):
     """SHA-256 hash of the uploaded bytes lands on the row + read API.
 
-    Independent recomputation should match — that's the whole pitch:
+    Independent recomputation should match, that's the whole pitch:
     given the API response, an auditor can prove the bytes on S3 still
     match what the analyst submitted.
     """
     # The EXIF strip re-encodes, so the post-strip sha256 isn't known ahead of
     # time; assert API-response hash == row hash (internal consistency).
-    # End-to-end auditor-replay needs a real S3 fetch — out of scope here.
+    # End-to-end auditor-replay needs a real S3 fetch, out of scope here.
     payload = TINY_JPEG
 
     response = client.post(
@@ -729,7 +729,7 @@ def test_investigate_is_idempotent(db, author, second_user):
 
 
 def test_multiple_analysts_can_investigate_same_request(db, author, second_user, third_user):
-    """The core multi-analyst contract — two investigators both signalling."""
+    """The core multi-analyst contract, two investigators both signalling."""
     bounty = _make_bounty(db, author=author)
     r1 = client.post(
         f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
@@ -788,7 +788,7 @@ def test_uninvestigate_removes_row(db, author, second_user):
 
 
 def test_uninvestigate_is_noop_when_not_signalling(db, author, second_user):
-    """Withdrawing a signal you never gave is still a 204 — the user-
+    """Withdrawing a signal you never gave is still a 204, the user-
     observable post-condition (caller not in the working set) is what
     we promise, not "exactly one row was deleted." """
     bounty = _make_bounty(db, author=author)
@@ -799,7 +799,7 @@ def test_uninvestigate_is_noop_when_not_signalling(db, author, second_user):
 
 
 def test_uninvestigate_rejected_off_requested(db, author, second_user):
-    """A terminated event's signals are frozen history — 409, mirroring POST."""
+    """A terminated event's signals are frozen history, 409, mirroring POST."""
     bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
     response = client.delete(
         f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
@@ -846,7 +846,7 @@ def test_close_transitions_to_closed(db, author):
 
 
 def test_close_rejected_on_terminal_state(db, author):
-    """An already-closed request can't be re-closed (terminal state) — 409."""
+    """An already-closed request can't be re-closed (terminal state), 409."""
     bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
     response = client.post(
         f"/api/v1/events/{bounty.id}/close",
@@ -857,7 +857,7 @@ def test_close_rejected_on_terminal_state(db, author):
     assert response.json()["detail"]["code"] == "invalid_state"
 
 
-# ── POST /events/{id}/geolocate — fulfilment in place ─────────────────────
+# ── POST /events/{id}/geolocate, fulfilment in place ─────────────────────
 # Since the merge, fulfilling a request is not a row copy: the requested event
 # is transitioned in place by the geolocate endpoint. Any authed user may
 # answer an open request; ``owner_id`` transfers to the fulfiller (who is also
@@ -1013,7 +1013,7 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
 def test_geolocate_fulfilment_honors_analyst_title_and_tags(
     db, author, second_user, free_tag, conflict_tag, capture_source_tag
 ):
-    """The fulfilling analyst CAN refine the title and tags — they know more than
+    """The fulfilling analyst CAN refine the title and tags, they know more than
     the poster did (place name resolved, conflict tag added). The refined values
     land on the row; the required conflict + capture_source floor is enforced."""
     bounty = _make_bounty(db, author=author, title="Original bounty title", tags=[free_tag])
@@ -1060,7 +1060,7 @@ def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_u
 def test_geolocate_fulfilment_rejected_when_closed(
     db, author, second_user, conflict_tag, capture_source_tag
 ):
-    """A withdrawn (``closed``) request is terminal, not answerable — geolocate
+    """A withdrawn (``closed``) request is terminal, not answerable, geolocate
     409s with the invalid_state code (only ``requested`` / ``detected``
     transition)."""
     bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)

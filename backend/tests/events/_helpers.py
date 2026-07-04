@@ -62,7 +62,7 @@ def _make_geo(
         geo.status = status
     # Stamp per the lifecycle CHECKs (a geolocated row without geolocated_at,
     # or a closed one without closed_at + before_closed_status, is rejected by
-    # Postgres) — mirroring what every write path stamps.
+    # Postgres), mirroring what every write path stamps.
     effective_status = status or STATUS_GEOLOCATED
     if effective_status == STATUS_GEOLOCATED:
         geo.geolocated_at = now

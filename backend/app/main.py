@@ -58,10 +58,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # path; the absent/chunked path still falls through to ``validate_file`` per
 # file (bounded by the stream-reader, no worse than the per-file cap).
 #
-# Ceiling admits the largest legitimate request — one source file
+# Ceiling admits the largest legitimate request: one source file
 # (``max_video_size``, 100 MB, the bigger of the two per-file caps) plus a
 # full ``max_proof_images_per_event`` proof batch at ``max_image_size``
-# (10 × 10 MB) — plus 10 MB for multipart envelope and form fields. All three
+# (10 × 10 MB), plus 10 MB for multipart envelope and form fields. All three
 # caps read from ``settings`` so this module never imports a router (the old
 # shape's ``from app.routers.events import …`` formed a fragile import edge).
 _MAX_REQUEST_BODY_BYTES = (

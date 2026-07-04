@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.event import Event
 from app.models.follow import Follow
+from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers.events._common import coords_or_none, source_media
@@ -177,7 +178,7 @@ def get_user_geolocations(
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
-            selectinload(Event.media),
+            selectinload(Event.media.and_(Media.role == "source")),
         )
         .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
         .order_by(Event.event_date.desc())

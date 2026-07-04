@@ -172,7 +172,7 @@ export default function BountyDetailPage() {
             </Link>
             {!isAuthor && (
               // Active (signalling) reads as a filled, on state; the call-to-
-              // action reads as a quieter outline — mirrors FollowButton's
+              // action reads as a quieter outline, mirroring FollowButton's
               // variant swap so the toggle state is unambiguous.
               <Button
                 variant={isInvestigatingMe ? "primary" : "secondary"}

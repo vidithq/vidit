@@ -110,7 +110,7 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     every row sharing ``detected_from_url`` (including dismissed ones) and
     matches the coordinate to ``_COORD_PLACES``. A live match (geolocated or
     detected) wins → ``skip``; only dismissed matches (soft-deleted, or closed
-    off ``detected`` — see :func:`_reimportable`) → ``recreate``; no match →
+    off ``detected``, see :func:`_reimportable`) → ``recreate``; no match →
     ``create``.
     """
     rows = (
@@ -123,6 +123,12 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     )
     dismissed_match = False
     for row in rows:
+        # A ``detected`` row may legitimately carry no coordinate (the model
+        # permits it), and can't match a coordinate-bearing detection anyway, so
+        # skip it rather than let ``to_shape(None)`` raise and abort the whole
+        # re-import for this owner.
+        if row.event_coords is None:
+            continue
         point = cast(Point, to_shape(row.event_coords))
         same = round(point.y, _COORD_PLACES) == round(dto.coordinate.lat, _COORD_PLACES) and round(
             point.x, _COORD_PLACES
@@ -198,7 +204,7 @@ async def _persist_one(
         db.flush()  # populate geo.id for media keys + the Media FK
 
         storage = get_storage()
-        # Exactly ONE media per detection — the source slot is capped at one
+        # Exactly ONE media per detection: the source slot is capped at one
         # (``uq_media_source_per_event``), so take the first tweet-order media
         # that fetches + prepares cleanly and stop there.
         for parsed in dto.media:

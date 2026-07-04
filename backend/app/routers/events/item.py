@@ -1,4 +1,4 @@
-"""Single-event ops by id — detail, delete, and the lifecycle verbs
+"""Single-event ops by id: detail, delete, and the lifecycle verbs
 (geolocate, close, investigate)."""
 
 import uuid
@@ -14,19 +14,18 @@ from fastapi import (
     status,
 )
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
 from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
-    STATUS_REQUESTED,
     TITLE_MAX_LENGTH,
     Event,
     EventGeolocator,
     EventInvestigator,
 )
+from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
@@ -52,7 +51,7 @@ router = APIRouter()
 _DETAIL_LOADS = (
     joinedload(Event.owner),
     joinedload(Event.requested_by),
-    selectinload(Event.media),
+    selectinload(Event.media.and_(Media.role == "source")),
     selectinload(Event.tags),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
     selectinload(Event.investigators).joinedload(EventInvestigator.user),
@@ -129,7 +128,7 @@ def delete_event(
     lives behind the admin router and stamps ``deleted_at`` instead.
     """
     # Filter out soft-deleted rows: an admin-removed row shouldn't be
-    # owner-actionable either — same observed behaviour as a genuine 404.
+    # owner-actionable either, same observed behaviour as a genuine 404.
     geo = _resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 
@@ -142,7 +141,7 @@ def delete_event(
     db.commit()
 
     # On per-key S3 failures (transient outage, key already gone) the rows
-    # are already deleted — swallow and log (accepted residual orphan risk).
+    # are already deleted, so swallow and log (accepted residual orphan risk).
     sweep_keys(media_keys, context=f"event {geo.id} delete")
 
     points_cache.invalidate()
@@ -195,7 +194,7 @@ async def geolocate_event(
     otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
     Blocked until the evidence floor is met (one source media, a proof image,
-    and the ``conflict`` + ``capture_source`` tags — 400 otherwise). Off
+    and the ``conflict`` + ``capture_source`` tags, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
     """
     files = files or []
@@ -270,41 +269,16 @@ def investigate_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Signal "I'm working on this". Idempotent — re-signalling is a 204
-    no-op, not a 409. Only open requests accept new signals; off
-    ``requested`` the signal is rejected with 409.
+    """Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
+    not a 409. Only open requests accept new signals; off ``requested`` the
+    signal is rejected with 409. The rules and the race backstop live in the
+    service.
     """
     geo = _resolve_live_event(db, geolocation_id)
-    if geo.status != STATUS_REQUESTED:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot investigate an event with status {geo.status}",
-        )
-
-    existing = (
-        db.query(EventInvestigator)
-        .filter(
-            EventInvestigator.event_id == geo.id,
-            EventInvestigator.user_id == current_user.id,
-        )
-        .first()
-    )
-    if existing is not None:
-        return
-
-    # The SELECT above is the friendly-path read; the ``EventInvestigator``
-    # composite PK ``(event_id, user_id)`` is the actual race backstop.
-    # A double-click or two tabs both pass the SELECT, only one wins the
-    # INSERT — without this SAVEPOINT the loser sees a 500 from the
-    # unhandled ``IntegrityError`` instead of the idempotent 204. Mirrors
-    # ``services/social.follow_user``.
     try:
-        with db.begin_nested():
-            db.add(EventInvestigator(event_id=geo.id, user_id=current_user.id))
-    except IntegrityError:
-        # Loser of the race — the row exists, which IS the post-condition.
-        pass
-    db.commit()
+        events_service.investigate(db, geo=geo, current_user=current_user)
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)
 
 
 @router.delete("/{geolocation_id}/investigate", status_code=status.HTTP_204_NO_CONTENT)
@@ -315,21 +289,13 @@ def uninvestigate_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Stop signalling. 204 even if the caller wasn't signalling — the
-    user-observable post-condition (caller not in the working set) is
-    what we promise, not "exactly one row was deleted." Gated to
-    ``requested`` like the POST: a terminated event's signals are frozen
-    history.
+    """Stop signalling. 204 even if the caller wasn't signalling: the
+    user-observable post-condition (caller not in the working set) is what we
+    promise, not "exactly one row was deleted". Gated to ``requested`` like the
+    POST: a terminated event's signals are frozen history. Rules in the service.
     """
     geo = _resolve_live_event(db, geolocation_id)
-    if geo.status != STATUS_REQUESTED:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot investigate an event with status {geo.status}",
-        )
-
-    db.query(EventInvestigator).filter(
-        EventInvestigator.event_id == geo.id,
-        EventInvestigator.user_id == current_user.id,
-    ).delete(synchronize_session=False)
-    db.commit()
+    try:
+        events_service.uninvestigate(db, geo=geo, current_user=current_user)
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)

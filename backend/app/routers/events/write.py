@@ -1,4 +1,4 @@
-"""Write endpoints — create a geolocated event, and open a request (ex-bounty).
+"""Write endpoints: create a geolocated event, and open a request (ex-bounty).
 
 Proof images ride INSIDE the create multipart (``proof_files`` matched to
 ``placeholder://`` srcs in the proof document), so there is no standalone
@@ -132,7 +132,7 @@ async def create_event(
         _raise_event_error(exc)
 
     # A direct create is born ``geolocated`` with no preceding request, so
-    # ``requested_by`` is null — ``build_event_read`` reads it off the row.
+    # ``requested_by`` is null, so ``build_event_read`` reads it off the row.
     capture_lat, capture_lng = _capture_coords(geo)
     return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
@@ -142,13 +142,13 @@ async def create_event(
 async def create_event_request(
     request: Request,
     # ``max_length`` ceilings mirror the direct-create form: title is the DB
-    # column width (String(255)), source_url a chosen API bound — so
+    # column width (String(255)), source_url a chosen API bound, so
     # over-length input 422s at the boundary, not at flush time AFTER the
     # attached file has already hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
     proof: str | None = Form(None),
-    # An approximate guess is allowed on a request — both halves or neither.
+    # An approximate guess is allowed on a request (both halves or neither).
     lat: float | None = Form(None),
     lng: float | None = Form(None),
     capture_source_lat: float | None = Form(None),
@@ -165,7 +165,7 @@ async def create_event_request(
 ):
     """Open a request (a ``requested`` event, yesterday's bounty).
 
-    One source media file is required — the platform treats requests as
+    One source media file is required: the platform treats requests as
     "unfinished geolocations", so the evidence the poster has must be on the
     row from the start. Parses the multipart form into clean Python types;
     business rules + IO live in ``services/events.create_request``.

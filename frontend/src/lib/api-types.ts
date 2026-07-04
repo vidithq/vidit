@@ -682,7 +682,7 @@ export interface paths {
          * Create Event Request
          * @description Open a request (a ``requested`` event, yesterday's bounty).
          *
-         *     One source media file is required — the platform treats requests as
+         *     One source media file is required: the platform treats requests as
          *     "unfinished geolocations", so the evidence the poster has must be on the
          *     row from the start. Parses the multipart form into clean Python types;
          *     business rules + IO live in ``services/events.create_request``.
@@ -766,7 +766,7 @@ export interface paths {
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
          *     Blocked until the evidence floor is met (one source media, a proof image,
-         *     and the ``conflict`` + ``capture_source`` tags — 400 otherwise). Off
+         *     and the ``conflict`` + ``capture_source`` tags, 400 otherwise). Off
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
@@ -787,18 +787,18 @@ export interface paths {
         put?: never;
         /**
          * Investigate Event
-         * @description Signal "I'm working on this". Idempotent — re-signalling is a 204
-         *     no-op, not a 409. Only open requests accept new signals; off
-         *     ``requested`` the signal is rejected with 409.
+         * @description Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
+         *     not a 409. Only open requests accept new signals; off ``requested`` the
+         *     signal is rejected with 409. The rules and the race backstop live in the
+         *     service.
          */
         post: operations["investigate_event_api_v1_events__geolocation_id__investigate_post"];
         /**
          * Uninvestigate Event
-         * @description Stop signalling. 204 even if the caller wasn't signalling — the
-         *     user-observable post-condition (caller not in the working set) is
-         *     what we promise, not "exactly one row was deleted." Gated to
-         *     ``requested`` like the POST: a terminated event's signals are frozen
-         *     history.
+         * @description Stop signalling. 204 even if the caller wasn't signalling: the
+         *     user-observable post-condition (caller not in the working set) is what we
+         *     promise, not "exactly one row was deleted". Gated to ``requested`` like the
+         *     POST: a terminated event's signals are frozen history. Rules in the service.
          */
         delete: operations["uninvestigate_event_api_v1_events__geolocation_id__investigate_delete"];
         options?: never;
@@ -1408,8 +1408,8 @@ export interface components {
         /**
          * CoordsRead
          * @description One WGS84 point on the wire. Nesting (instead of flat ``lat`` / ``lng``
-         *     pairs) lets a payload carry two independent points — the subject and the
-         *     camera — without field-name gymnastics.
+         *     pairs) lets a payload carry two independent points, the subject and the
+         *     camera, without field-name gymnastics.
          */
         CoordsRead: {
             /** Lat */
@@ -1447,7 +1447,7 @@ export interface components {
         };
         /**
          * EventCloseRequest
-         * @description Body for ``POST /events/{id}/close``. The reason is required — a closed
+         * @description Body for ``POST /events/{id}/close``. The reason is required: a closed
          *     event stays publicly visible, so the why must travel with it.
          */
         EventCloseRequest: {

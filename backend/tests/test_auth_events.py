@@ -2,8 +2,8 @@
 
 Two unrelated pieces covered:
 
-1. HSTS — `Strict-Transport-Security` is stamped on every response.
-2. `auth_events` audit log — each auth-path side-effect lands one row
+1. HSTS, `Strict-Transport-Security` is stamped on every response.
+2. `auth_events` audit log, each auth-path side-effect lands one row
    with the expected shape (event name, user_id when known; no IP/UA,
    dropped for privacy).
 
@@ -115,7 +115,7 @@ def test_hsts_header_on_health(client):
 def test_hsts_header_on_404(client):
     response = client.get("/this-route-does-not-exist")
     assert response.status_code == 404
-    # The header must travel even on error responses — TLS-stripping
+    # The header must travel even on error responses, TLS-stripping
     # attacks don't care whether the upstream is healthy.
     assert response.headers.get("strict-transport-security") == "max-age=15768000"
 
@@ -301,7 +301,7 @@ def test_resend_confirmation_writes_event_on_matched_pending(
 
     Mirrors the ``/forgot-password`` discipline: ``user_id`` stays NULL
     on both branches because the ``users`` row doesn't exist yet for a
-    pending registration — the audit row records "a resend was attempted
+    pending registration, the audit row records "a resend was attempted
     from this IP" without leaking which addresses have a live pending.
     """
     email_addr = f"reg-{uuid.uuid4().hex}@example.com"
@@ -336,7 +336,7 @@ def test_resend_confirmation_writes_event_on_unknown_email(client, email_silence
     """The no-op branch still writes an audit row.
 
     Closes the same "rate of requests" gap that ``/forgot-password``
-    covers — without this, an attacker scripting resends against random
+    covers, without this, an attacker scripting resends against random
     addresses would leave no trace, defeating the rate-limit's
     forensics value.
     """
@@ -358,7 +358,7 @@ def test_audit_failure_does_not_break_login_python_layer(client, existing_user, 
     """Python-layer failure (model __init__ raises).
 
     Covers the path where the failure happens before the row hits the
-    DB — the ``with db.begin_nested()`` opens the savepoint, the
+    DB, the ``with db.begin_nested()`` opens the savepoint, the
     ``AuthEvent(...)`` argument evaluation raises, and the savepoint's
     ``__exit__`` rolls back. The outer ``except Exception`` swallows it.
     """
@@ -378,7 +378,7 @@ def test_audit_failure_does_not_break_login_python_layer(client, existing_user, 
 def test_audit_failure_does_not_break_login_db_layer(client, existing_user, monkeypatch):
     """Real DB-level failure (FK violation on flush inside the savepoint).
 
-    The realistic failure mode in prod — a malformed row that only
+    The realistic failure mode in prod, a malformed row that only
     blows up on flush. Without ``db.begin_nested()``, the failed flush
     would poison the psycopg connection and the caller's next
     ``db.commit()`` would raise ``PendingRollbackError``. With the
@@ -388,7 +388,7 @@ def test_audit_failure_does_not_break_login_db_layer(client, existing_user, monk
     Trigger: monkeypatch ``AuthEvent`` to return a row carrying a
     bogus ``user_id`` UUID that violates the FK to ``users.id``. The
     INSERT only fails when SQLAlchemy flushes the savepoint on
-    ``__exit__`` — exactly the regression the savepoint exists to
+    ``__exit__``, exactly the regression the savepoint exists to
     prevent.
     """
     from app.models.auth_event import AuthEvent as RealAuthEvent
@@ -426,7 +426,7 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
     LEFT-most entry of ``X-Forwarded-For`` (verified in the uvicorn
     source: ``always_trust=True`` → ``return x_forwarded_for_hosts[0]``).
     Railway *appends* to XFF rather than overwriting it, so the
-    left-most entry is whatever the client typed — fully attacker-
+    left-most entry is whatever the client typed, fully attacker-
     controlled. If slowapi keyed on that value (as the default
     ``get_remote_address`` does), an attacker could rotate
     ``X-Forwarded-For: <random>`` per request to mint a fresh bucket
@@ -435,13 +435,13 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
 
     The fix: ``rate_limit_key`` picks the RIGHT-most entry (the trusted
     proxy's observation). A spoofed-prefix XFF therefore resolves to the
-    same key as a clean request from the same upstream — no fresh bucket,
+    same key as a clean request from the same upstream, no fresh bucket,
     no victim pin.
     """
     # Simulate the prod shape: attacker prepends ``1.2.3.4``, Railway
     # appends the real client IP. ``request.client.host`` is what
     # uvicorn would have written (left-most = attacker), but we never
-    # read it — the rightmost wins.
+    # read it, the rightmost wins.
     spoofed = _FakeRequest(
         headers={"x-forwarded-for": "1.2.3.4, 203.0.113.7"},
         client_host="1.2.3.4",
@@ -450,7 +450,7 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
         headers={"x-forwarded-for": "203.0.113.7"},
         client_host="203.0.113.7",
     )
-    # Both requests land in the SAME bucket — the spoof can't mint a
+    # Both requests land in the SAME bucket, the spoof can't mint a
     # fresh one and can't pin a third party's bucket.
     assert audit.rate_limit_key(spoofed) == audit.rate_limit_key(clean) == "203.0.113.7"
 
@@ -512,7 +512,7 @@ def test_rate_limit_key_honours_trusted_proxy_hops(monkeypatch):
     Railway → backend) means the chain reads
     ``client, cloudflare_observation``. Cloudflare is the immediate
     trusted proxy and wrote the right-most entry, but Cloudflare's
-    own IP is not the client — the *client* IP is what Cloudflare
+    own IP is not the client, the *client* IP is what Cloudflare
     saw when it appended, i.e. the second-from-the-right.
     """
     from app.config import settings as _settings

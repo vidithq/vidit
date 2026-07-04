@@ -260,7 +260,7 @@ def hard_delete_geolocation(
     if geo is None:
         raise EventNotFoundError("Event not found")
 
-    # Capture S3 keys *before* the cascade fires — every media row, source and
+    # Capture S3 keys *before* the cascade fires: every media row, source and
     # proof roles alike. Media rows store the public URL; reverse-lookup via
     # the storage layer so `delete_many` gets actual keys (its contract).
     storage = get_storage()
@@ -364,7 +364,7 @@ def hard_delete_user(
 
     Order matters:
 
-    1. Capture S3 keys upfront — the media URLs (all roles: source footage +
+    1. Capture S3 keys upfront: the media URLs (all roles: source footage +
        proof images) across their events, located and requested alike. The
        cascade about to fire would drop those rows before we could read them.
     2. Manually delete each event: ``owner_id`` carries no ``ON DELETE

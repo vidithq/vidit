@@ -40,7 +40,7 @@ def test_delete_returns_404_for_unknown_id(author):
 def test_delete_returns_404_for_soft_deleted(db, author):
     """Admin already removed it; the owner sees the same 404 surface.
 
-    Same observed behaviour as an unknown id — the owner can't infer
+    Same observed behaviour as an unknown id, the owner can't infer
     that "an admin reached in and removed this," only that the row is
     gone from their perspective.
     """
@@ -177,7 +177,7 @@ def test_geolocate_returns_403_when_not_owner(db, author, second_user):
 
 
 def test_geolocate_rejects_geolocated_row(db, author):
-    """A ``geolocated`` row is frozen — geolocate 409s with the invalid_state code."""
+    """A ``geolocated`` row is frozen, geolocate 409s with the invalid_state code."""
     geo = _make_geo(db, author=author)  # default status = geolocated
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -437,7 +437,7 @@ def test_close_keeps_detected_row_visible(db, author):
 
 
 def test_closed_detection_leaves_the_map(db, author):
-    """A rejected detection comes off ``/points`` — the map shows live
+    """A rejected detection comes off ``/points``, the map shows live
     confidence, the list keeps the audit trail."""
     geo = _detected(db, author)
     points = {row[0] for row in client.get("/api/v1/events/points").json()}

@@ -1,4 +1,4 @@
-"""Read endpoints — list (located + requested views), the compact ``/points``
+"""Read endpoints: list (located + requested views), the compact ``/points``
 payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
@@ -293,7 +293,7 @@ def investigator_aggregates(
     """Per-event investigator count + newest-first capped sample, without N+1.
 
     Detail can afford eager-loading every row on its one event; a list runs
-    two grouped queries — one for the per-row count, one for the sample.
+    two grouped queries: one for the per-row count, one for the sample.
     A Postgres window function would be tidier for the sample, but joined
     order_by + a Python-side cap is simpler and the working set is small.
     """
@@ -499,14 +499,14 @@ def list_events(
         .options(
             subqueryload(Event.owner),
             subqueryload(Event.tags),
-            subqueryload(Event.media),
+            subqueryload(Event.media.and_(Media.role == "source")),
         )
         .filter(Event.id.in_(ids))
         .order_by(Event.created_at.desc())
         .all()
     )
 
-    # The requested queue renders "N working" per card — aggregate once for
+    # The requested queue renders "N working" per card, so aggregate once for
     # the page, not per row.
     counts: dict[uuid.UUID, int] = {}
     sample: dict[uuid.UUID, list[AuthorRef]] = {}
@@ -582,7 +582,7 @@ def list_detections(
             joinedload(Event.owner),
             joinedload(Event.requested_by),
             selectinload(Event.tags),
-            selectinload(Event.media),
+            selectinload(Event.media.and_(Media.role == "source")),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),
         )

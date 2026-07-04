@@ -9,7 +9,7 @@ back only the savepoint; the outer transaction stays usable.
 
 No IP or User-Agent is stored (dropped for privacy; network context lives
 only at the Cloudflare edge). Client-IP extraction survives below solely as
-the rate-limiter's bucketing key — it never reaches a table.
+the rate-limiter's bucketing key: it never reaches a table.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def _client_ip(request: Request) -> str | None:
     Defaults to ONE trusted hop (Railway → backend). When a second trusted
     proxy lands in front (e.g. Cloudflare), bump ``TRUSTED_PROXY_HOPS`` to 2
     to peel the extra append. The value only buckets the rate limiter, so a
-    miscount blurs a bucket boundary — no vulnerability.
+    miscount blurs a bucket boundary, no vulnerability.
 
     Validated via ``ipaddress.ip_address`` so a hostile non-IP header value
     falls through to the next candidate (or the stable sentinel) instead of
@@ -98,7 +98,7 @@ def _client_ip(request: Request) -> str | None:
         if entries:
             # Position ``-N`` (N == trusted hops) is what the first trusted
             # proxy saw. If the chain is shorter than N (misconfig /
-            # single-hop client), clamp to the left-most — a blurred bucket
+            # single-hop client), clamp to the left-most: a blurred bucket
             # beats dropping the value.
             hops = max(1, settings.trusted_proxy_hops)
             index = max(-len(entries), -hops)

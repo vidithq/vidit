@@ -55,6 +55,12 @@ describe("parseCaptureCoords", () => {
     expect(parseCaptureCoords("", "")).toEqual({});
     expect(parseCaptureCoords("abc", "30.2")).toEqual({});
   });
+
+  it("rejects a partially-numeric value rather than truncating it", () => {
+    // `parseFloat("50.1abc")` would be 50.1; a clean-number parse clears it.
+    expect(parseCaptureCoords("50.1abc", "30.2")).toEqual({});
+    expect(parseCaptureCoords("50.1", "30.2xyz")).toEqual({});
+  });
 });
 
 describe("createEvent multipart", () => {

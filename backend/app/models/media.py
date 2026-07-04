@@ -14,7 +14,7 @@ MediaType = Literal["image", "video"]
 
 # Role domain: ``source`` is the footage (at most one per event, enforced by
 # ``uq_media_source_per_event``); ``proof`` is an inline image referenced from
-# the proof body (N per event). No Python default — every writer states the
+# the proof body (N per event). No Python default: every writer states the
 # role explicitly, so a forgotten role can't silently pass as source.
 MediaRole = Literal["source", "proof"]
 
@@ -26,7 +26,7 @@ class Media(Base):
     a ``requested`` event, so all evidence hangs off the one table and
     fulfilling a request never moves media. ``role`` splits the footage from
     the proof-body images; both upload at publish, so ``event_id`` is always
-    set (no staging row, no orphan reaper — this replaced ``proof_images``).
+    set (no staging row, no orphan reaper, this replaced ``proof_images``).
     """
 
     __tablename__ = "media"

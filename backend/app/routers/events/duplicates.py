@@ -129,7 +129,7 @@ def list_possible_duplicates(
 
     # Cast to Geography on the fly so ST_DWithin measures in metres along
     # the geoid, not degrees. The functional cast defeats the GIST index on
-    # `event_coords` (geometry), so this seqscans today — fine at current
+    # `event_coords` (geometry), so this seqscans today, fine at current
     # volume. Add a functional index on `(event_coords::geography)` if this
     # shows up in slow-query logs.
     point_geog = cast(

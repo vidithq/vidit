@@ -69,7 +69,7 @@ def build_event_read(
 
     Coordinates are passed in (re-projected from the PostGIS points by the
     caller, or already in hand from a create) rather than re-queried here, so
-    the response sites — create, detail, and the lifecycle mutations — build an
+    the response sites (create, detail, and the lifecycle mutations) build an
     identical shape from one place. ``requested_by`` reads off the model
     relationship (``None`` for a directly-submitted geolocation); callers
     eager-load it along with ``geolocators`` / ``investigators`` and their

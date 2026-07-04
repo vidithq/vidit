@@ -58,7 +58,7 @@ class EventInvestigator(Base):
     """Soft, public "I'm working on this" signal on a ``requested`` event.
 
     Renamed from ``event_claims`` ("claim" made no sense on an event).
-    Multi-analyst by design — geolocation is collaborative and partly
+    Multi-analyst by design: geolocation is collaborative and partly
     competitive, several analysts may pull at the same media in parallel. The
     composite PK makes re-signalling idempotent; the signal never gates the
     event's lifecycle, and the ``event_id`` cascade drops rows on hard-delete.
@@ -132,8 +132,8 @@ class Event(Base):
 
     ``status`` (see ``EventStatus``) is the lifecycle. ``event_coords`` is an
     independent nullable axis: required for a ``geolocated`` row (a vouched
-    geolocation has a place), optional otherwise — a ``requested`` event may
-    carry an approximate guess — enforced by ``ck_events_coords_status``.
+    geolocation has a place), optional otherwise (a ``requested`` event may
+    carry an approximate guess), enforced by ``ck_events_coords_status``.
     Fulfilling a request is a single ``UPDATE status='geolocated',
     event_coords=…`` on this row plus an ``event_geolocators`` insert, not a
     copy into a new one.
@@ -156,13 +156,13 @@ class Event(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    # The subject: what the footage shows. Nullable — required at ``geolocated``,
+    # The subject: what the footage shows. Nullable, required at ``geolocated``,
     # optional otherwise (a ``requested`` event may carry an approximate guess);
     # presence is tied to ``status`` by ``ck_events_coords_status``. One subject
     # point per event; multi-point is a deferred ``event_points`` child table.
     event_coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
     # The camera position: where the footage was shot from. Always optional,
-    # one per event. Deliberately unindexed — no spatial read consumes it.
+    # one per event. Deliberately unindexed: no spatial read consumes it.
     capture_source_coords = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )

@@ -366,7 +366,7 @@ def sweep_keys(keys: list[str], *, context: str) -> None:
 
     Callers reach this AFTER the DB transaction has committed (or rolled
     back): a storage failure must not propagate and turn a settled DB state
-    into a retryable 500. A failed delete leaves an orphaned object — the
+    into a retryable 500. A failed delete leaves an orphaned object, the
     accepted residual risk, logged for a manual sweep.
 
     ``context`` is a short caller phrase for the log, e.g.

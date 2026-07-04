@@ -1,6 +1,6 @@
 // Proof-image placeholder plumbing for upload-at-publish.
 //
-// FE↔BE mirror (hand-kept, change the pair together — see AGENTS.md → "Single
+// FE↔BE mirror (hand-kept, change the pair together, see AGENTS.md → "Single
 // source of truth"):
 //  - `PROOF_PLACEHOLDER_PREFIX` mirrors `sanitize.PROOF_PLACEHOLDER_PREFIX`.
 //  - `safeProofFilename` mirrors `storage.safe_original_filename`: the editor
@@ -28,7 +28,7 @@ function sanitizeFilename(name: string): string | null {
   const base = name.replace(/\\/g, "/").split("/").pop()?.trim() ?? "";
   if (!base) return null;
   for (const ch of base) {
-    // \p{Cc} = control, \p{Cf} = format (RTL-override etc.) — the backend's
+    // \p{Cc} = control, \p{Cf} = format (RTL-override etc.), the backend's
     // `_BAD_UNICODE_CATEGORIES`.
     if (/\p{Cc}|\p{Cf}/u.test(ch)) return null;
   }
@@ -39,7 +39,7 @@ function sanitizeFilename(name: string): string | null {
  * The unique, backend-safe filename to stage a picked proof image under.
  * Sanitises like the backend, then disambiguates against `used` (names already
  * claimed this session) so two picks of `IMG.jpg` don't collide on one
- * placeholder — the server rejects a duplicate proof filename. The caller must
+ * placeholder: the server rejects a duplicate proof filename. The caller must
  * upload the file under this exact name (rebuilding the `File` when it differs)
  * so `safe_original_filename(uploaded.name)` reproduces it. Returns `null` when
  * the name is unusable even after sanitising.

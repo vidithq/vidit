@@ -23,6 +23,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.event import STATUS_REQUESTED, Event, EventInvestigator
+from app.models.media import Media
 from app.models.user import User
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -190,7 +191,7 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
         db.query(Event)
         .options(
             joinedload(Event.owner),
-            joinedload(Event.media),
+            joinedload(Event.media.and_(Media.role == "source")),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -198,7 +199,7 @@ def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     )
     geo_by_id = {g.id: g for g in geos}
 
-    # One grouped count for the result set — same shape as the requested-view
+    # One grouped count for the result set, same shape as the requested-view
     # list aggregate so the card renders the same badge.
     counts: dict[uuid.UUID, int] = {
         gid: int(c)
