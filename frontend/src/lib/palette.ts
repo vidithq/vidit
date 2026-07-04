@@ -1,8 +1,8 @@
 /**
- * Client-side accent-palette preference. Like the help-tooltip toggle
- * (`helpPreference`), it's a pure display choice, so it lives in
- * `localStorage`: it follows the browser, costs no request, and works for
- * logged-out readers too.
+ * Client-side accent-palette preference: one axis, independent of the light /
+ * dark theme ([`theme.ts`](./theme.ts)). Both share the same browser-local
+ * plumbing ([`attributePreference.ts`](./attributePreference.ts)): a
+ * `localStorage` value mirrored onto `<html data-*>`.
  *
  * The accent reaches the screen two ways, kept in step from here:
  *  - UI chrome: a `data-palette` attribute on <html> remaps the Tailwind
@@ -17,6 +17,8 @@
  * shade lighter (the `300` stop): a machine `detected` point reads as the same
  * family as a submitted one but stays distinct by lightness.
  */
+
+import { createAttributePreference } from "./attributePreference";
 
 export type PaletteId = "orange" | "blue" | "emerald" | "violet" | "rose";
 
@@ -92,33 +94,26 @@ export const PALETTES: readonly PaletteOption[] = [
 
 export const DEFAULT_PALETTE: PaletteId = "orange";
 
-const KEY = "vidit:palette";
 export const PALETTE_EVENT = "vidit:palette-changed";
 
 function isPaletteId(value: string | null): value is PaletteId {
   return value !== null && PALETTES.some((p) => p.id === value);
 }
 
-export function getPalette(): PaletteId {
-  if (typeof window === "undefined") return DEFAULT_PALETTE;
-  const stored = window.localStorage.getItem(KEY);
-  return isPaletteId(stored) ? stored : DEFAULT_PALETTE;
-}
+const pref = createAttributePreference<PaletteId>({
+  key: "vidit:palette",
+  attribute: "palette",
+  event: PALETTE_EVENT,
+  fallback: DEFAULT_PALETTE,
+  isValid: isPaletteId,
+});
 
-export function setPalette(id: PaletteId): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, id);
-  applyPalette(id);
-  // Notify every live `usePalette` reader in this tab; the native `storage`
-  // event only fires in *other* tabs.
-  window.dispatchEvent(new Event(PALETTE_EVENT));
-}
-
+/** The stored accent palette, or the default when absent / invalid. */
+export const getPalette = pref.get;
+/** Persist the accent palette, reflect it on <html>, and notify readers. */
+export const setPalette = pref.set;
 /** Reflect the palette onto <html data-palette>, which remaps the accent scale. */
-export function applyPalette(id: PaletteId): void {
-  if (typeof document === "undefined") return;
-  document.documentElement.dataset.palette = id;
-}
+export const applyPalette = pref.apply;
 
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;

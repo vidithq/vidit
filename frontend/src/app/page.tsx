@@ -127,7 +127,7 @@ const ROADMAP: {
 
 export default function LandingPage() {
   return (
-    <main className="bg-[#0a0a0a] text-neutral-100">
+    <main className="bg-neutral-950 text-neutral-100">
       {/* The shared PageFrame puts the landing's content at the same left inset
           and column as every app page; each section adds only its own vertical
           rhythm. */}

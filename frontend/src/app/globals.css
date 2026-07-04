@@ -32,6 +32,12 @@
   }
 }
 
+/* Dark is the default theme; the light block below flips this to `light`. Keeps
+   native widgets (scrollbars, date / select popups, autofill) in step. */
+:root {
+  color-scheme: dark;
+}
+
 /* ---------------------------------------------------------------------------
    Accent palette switching.
 
@@ -101,6 +107,79 @@
   --color-orange-950: #4c0519;
 }
 
+/* ---------------------------------------------------------------------------
+   Light theme.
+
+   The second axis, independent of the accent palette above (which re-tints the
+   `orange-*` scale). The whole neutral base, backgrounds, text, borders, is a
+   Tailwind `neutral-*` utility compiling to `var(--color-neutral-*)`; light
+   mode re-points that scale on `<html data-theme="light">`, flipping the UI
+   with no per-component change. Dark is the default and stays inert (no
+   attribute, or `data-theme="dark"`, both keep Tailwind's defaults).
+
+   This is a curated soft ramp, not a mechanical inversion of the dark scale: a
+   flat near-white expanse is harsh on the eyes, so the canvas (`neutral-950`,
+   the largest surface) is a soft warm grey and the raised surfaces
+   (`neutral-900`, cards / panels / rail) sit a step *lighter*, reading as
+   near-white cards floating on the grey rather than the whole viewport going
+   white. Text tops out at a dark grey (`neutral-100` = #232323), not near-black,
+   so the contrast stays comfortable. The mid greys keep their order for borders
+   and muted text. This mirrors how the dark theme avoids pure black (#0a0a0a,
+   not #000) and pure white text (#f5f5f5, not #fff).
+
+   The map basemap can't read CSS variables, so `Map.tsx` swaps its style off
+   `useTheme` (dark-matter <-> positron); the marker hexes stay in `palette.ts`.
+--------------------------------------------------------------------------- */
+[data-theme="light"] {
+  /* Tell the UA to paint native widgets (date / select popups, autofill,
+     scrollbar corner) light too, so they track the theme instead of the OS. */
+  color-scheme: light;
+  --color-neutral-50: #1a1a1a;
+  --color-neutral-100: #232323;
+  --color-neutral-200: #303030;
+  --color-neutral-300: #454545;
+  --color-neutral-400: #585858;
+  --color-neutral-500: #767676;
+  --color-neutral-600: #9a9a9a;
+  /* The light surfaces carry a faint warmth (R > G > B) so the sidebar, cards,
+     and panels read as a warm off-white rather than a clinical grey; the text
+     greys above stay neutral. */
+  --color-neutral-700: #d0cdc7;
+  --color-neutral-800: #e4e1db;
+  --color-neutral-900: #f7f5f1;
+  --color-neutral-950: #eae8e4;
+
+  /* The semantic red / amber scales (danger + warning surfaces: FORM_ERROR_BANNER,
+     WARNING_CALLOUT, danger pills / buttons) are tuned light-on-dark, so on a
+     light surface the pale text stops wash out. Mirror each scale about its 500
+     midpoint: the hue stays, only lightness flips, giving dark saturated text on
+     a light tint (the light-mode counterpart of the dark recipe). The orange
+     accent is owned by the palette switch above, so it is deliberately left
+     alone here. */
+  --color-red-50: #450a0a;
+  --color-red-100: #7f1d1d;
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+  --color-red-500: #ef4444;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-red-950: #fef2f2;
+  --color-amber-50: #451a03;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-amber-950: #fffbeb;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -145,10 +224,10 @@
   outline: none;
 }
 
-/* Custom scrollbar — dark theme */
+/* Custom scrollbar: follows the neutral scale, so it flips with the theme */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #404040 transparent;
+  scrollbar-color: var(--color-neutral-700) transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
@@ -157,11 +236,11 @@
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: var(--color-neutral-700);
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+  background: var(--color-neutral-600);
 }
 
 /* Native date/time inputs (date / time / datetime-local): mute the empty
@@ -190,27 +269,44 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
   order: 2 !important;
 }
 
-/* Dark theme for MapLibre controls */
+/* MapLibre controls: paints follow the neutral scale, so they flip with the
+   theme; only the glyph inversion is theme-specific (see below). */
 .maplibregl-ctrl-group {
-  background: #171717 !important;
-  border: 1px solid #404040 !important;
+  background: var(--color-neutral-900) !important;
+  border: 1px solid var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button {
-  border-color: #404040 !important;
+  border-color: var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button + button {
-  border-top-color: #404040 !important;
+  border-top-color: var(--color-neutral-700) !important;
 }
 .maplibregl-ctrl-group button span {
   filter: invert(1);
 }
 .maplibregl-ctrl-attrib {
   background: transparent !important;
-  color: #525252 !important;
+  color: var(--color-neutral-600) !important;
 }
 .maplibregl-ctrl-attrib a {
-  color: #525252 !important;
+  color: var(--color-neutral-600) !important;
 }
 .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
   filter: invert(1);
+}
+/* MapLibre ships black glyph icons, inverted to white for the dark UI above.
+   In light mode keep them black (no invert) so they read on the light chrome. */
+[data-theme="light"] .maplibregl-ctrl-group button span,
+[data-theme="light"] .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
+  filter: none;
+}
+/* Warm the light basemap (Positron ships a cool grey) so it matches the warm
+   off-white surfaces, without hosting a custom style: a faint sepia on the map
+   canvas tints the greyscale land toward cream. The filter covers the whole
+   WebGL canvas, so the accent markers warm-shift slightly too; at 0.12 they stay
+   clearly on-hue (verified down to the blue palette, the coolest one). Light
+   theme only; the dark basemap (dark-matter) is untouched. The controls +
+   attribution are separate DOM, so they keep their neutral chrome above. */
+[data-theme="light"] .maplibregl-canvas {
+  filter: sepia(0.12) saturate(1.05);
 }

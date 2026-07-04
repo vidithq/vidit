@@ -31,7 +31,7 @@ export default function Error({ error, reset }: ErrorProps) {
   }, [error]);
 
   return (
-    <main className="min-h-screen pl-14 flex items-center justify-center bg-[#0a0a0a] text-neutral-100">
+    <main className="min-h-screen pl-14 flex items-center justify-center bg-neutral-950 text-neutral-100">
       <div className="max-w-md mx-auto px-6 text-center space-y-4">
         <h1 className="text-2xl font-semibold text-orange-400">
           Something went wrong
