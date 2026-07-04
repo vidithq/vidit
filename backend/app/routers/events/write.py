@@ -1,4 +1,4 @@
-"""Write endpoints: create a geolocated event, and open a request (ex-bounty).
+"""Write endpoints: create a geolocated event, and open a request (ex-request).
 
 Proof images ride INSIDE the create multipart (``proof_files`` matched to
 ``placeholder://`` srcs in the proof document), so there is no standalone
@@ -163,7 +163,7 @@ async def create_event_request(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Open a request (a ``requested`` event, yesterday's bounty).
+    """Open a request (a ``requested`` event, yesterday's request).
 
     One source media file is required: the platform treats requests as
     "unfinished geolocations", so the evidence the poster has must be on the

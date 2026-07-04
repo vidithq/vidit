@@ -4,7 +4,7 @@ import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Label/value definition rows shared by the geolocation detail body (page +
-// dense map-panel `compact` variant) and the bounty detail page, which had
+// dense map-panel `compact` variant) and the request detail page, which had
 // hand-rolled the same `row`/`label`/`value` class strings separately.
 //
 // Pass a text-ish value via `value` (wrapped in the value span) or a raw node

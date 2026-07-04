@@ -18,7 +18,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // - Click model is uniform: the whole card navigates to `detailHref` via a
 //   stretched link. The author byline sits above it (`relative z-20`) and
 //   stays independently clickable. No nested <a>.
-// - It renders the slots that carry data; an entity without `coords` (a bounty)
+// - It renders the slots that carry data; an entity without `coords` (a request)
 //   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
 // - The thumbnail is the private `MediaThumb` below: the real media when
 //   `media` is present, its marked "no media" box otherwise.

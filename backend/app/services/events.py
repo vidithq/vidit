@@ -389,7 +389,7 @@ async def geolocate(
     """Transition a ``requested`` or ``detected`` event to ``geolocated``.
 
     The one generalized "give this event a vouched location" write, folding
-    bounty fulfilment and detection submit into a single step. The form posts
+    request fulfilment and detection submit into a single step. The form posts
     the whole state (title, coordinates, source URL, event date + time, source
     post time, proof + its images, tags, and the source media: ``files`` added,
     ``remove_media_ids`` dropped), and on success the row becomes

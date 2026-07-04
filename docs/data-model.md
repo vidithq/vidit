@@ -305,15 +305,15 @@ Indexes:
 
 ### `events`
 
-One row is one event across the whole lifecycle. `status` is the lifecycle; `event_coords` is an independent nullable axis tied to it by a CHECK. A bounty is a `requested` event on this table (no coordinates required yet); fulfilling it is a single `UPDATE status='geolocated', event_coords=…` on the same row plus an `event_geolocators` insert, not a copy into a new row.
+One row is one event across the whole lifecycle. `status` is the lifecycle; `event_coords` is an independent nullable axis tied to it by a CHECK. A request is a `requested` event on this table (no coordinates required yet); fulfilling it is a single `UPDATE status='geolocated', event_coords=…` on the same row plus an `event_geolocators` insert, not a copy into a new row.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `owner_id` | `UUID` | FK → `users.id`, NOT NULL. Edit-rights owner. For a `requested` event this is the poster; it moves to the fulfiller at the `geolocated` transition, so permissions stay a single-owner check across the lifecycle. Renamed from `author_id`; the owner is always among the event's geolocators (see `event_geolocators`). |
-| `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who opened the request, preserved across fulfilment so who posted the bounty isn't erased. NULL for a directly-submitted geolocation. |
+| `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who opened the request, preserved across fulfilment so who posted the request isn't erased. NULL for a directly-submitted geolocation. |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `event_coords` | `GEOMETRY(Point, 4326)` | nullable, the subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise (a `requested` bounty may carry an approximate guess). Renamed from `location`. One subject point per event; multi-point is a deferred `event_points` child table. |
+| `event_coords` | `GEOMETRY(Point, 4326)` | nullable, the subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise (a `requested` request may carry an approximate guess). Renamed from `location`. One subject point per event; multi-point is a deferred `event_points` child table. |
 | `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable, the camera position: where the footage was shot from. Always optional, one per event. |
 | `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row it points at the originating post; immutable once set. |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` re-import idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
@@ -336,7 +336,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `eve
 
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database (the column is a plain `VARCHAR`, not a native enum), so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
-- `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate; the other states are free. The old "requested forbids coordinates" half is deliberately dropped so a `requested` bounty may carry an approximate guess.
+- `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate; the other states are free. The old "requested forbids coordinates" half is deliberately dropped so a `requested` request may carry an approximate guess.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). The terminal stamps are tied to status so an app path that forgets to stamp is rejected at write time, not stored as silent bad data.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected')) OR (status <> 'closed' AND before_closed_status IS NULL)`. Non-NULL and in-domain exactly when `closed`, NULL otherwise. The explicit `IS NOT NULL` is required: `NULL IN (...)` is unknown (not false), so without it a `closed` row could keep a NULL discriminator and slip through.
 
@@ -364,7 +364,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `(owner_id, created_at DESC)`, composite for profile listing. Single-author reads stay on `owner_id` until they re-home onto `event_geolocators`.
 - `ix_events_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
 - `ix_events_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
-- `ix_events_status_created_at` on `(status, created_at)`, the requested-view (ex-bounty) list, the map, and the detection queue all filter on `status` newest-first
+- `ix_events_status_created_at` on `(status, created_at)`, the requested-view (ex-request) list, the map, and the detection queue all filter on `status` newest-first
 - `ix_events_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
 - `ix_events_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 
@@ -434,7 +434,7 @@ Indexes:
 
 ### `media`
 
-Every uploaded file for an event, source footage and proof-body images alike, split by `role`. One `event_id` owner; a bounty is a `requested` event, so all evidence is on one table and fulfilling a request never moves media.
+Every uploaded file for an event, source footage and proof-body images alike, split by `role`. One `event_id` owner; a request is a `requested` event, so all evidence is on one table and fulfilling a request never moves media.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -453,7 +453,7 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 - `(sha256) WHERE sha256 IS NOT NULL`, partial index for "find every row with this content hash" audit / dedup queries; only the populated cohort, so demo rows don't bloat it.
 - unique `(event_id) WHERE role = 'source'`, the "at most one source media per event" cap.
 
-At least one `source` media is required per bounty and per `geolocated` event, and at least one `proof` image is required at the `geolocate` transition. A `requested` event carries the poster's evidence from the start.
+At least one `source` media is required per request and per `geolocated` event, and at least one `proof` image is required at the `geolocate` transition. A `requested` event carries the poster's evidence from the start.
 
 **Upload timing.** Persistence happens only at publish. While writing, the proof editor holds local previews; submit uploads every file (source and proof) through the same evidence intake, in one transaction. So `event_id` is always set: there is no staging table, no `event_id IS NULL` orphan, and no proof-image reaper. This replaces the former separate `proof_images` table.
 

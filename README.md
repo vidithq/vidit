@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/live-vidit.app-orange)](https://vidit.app)
 
-A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + Tiptap proof + tags), community bounties, and analyst profiles.
+A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + Tiptap proof + tags), community requests, and analyst profiles.
 
 Live at **[vidit.app](https://vidit.app)** (closed beta).
 
@@ -175,4 +175,4 @@ Licensed under the [GNU Affero General Public License v3.0](LICENSE). See [`CONT
 
 ## Acknowledgements
 
-The demo content shipped on the landing video and in the seed bounties uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.
+The demo content shipped on the landing video and in the seed requests uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.

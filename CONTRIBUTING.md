@@ -20,7 +20,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 
 ## Pull request flow
 
-1. **Fork + branch.** Name the branch after the work, not the issue number — `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-bounty-claim`.
+1. **Fork + branch.** Name the branch after the work, not the issue number — `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-request-claim`.
 2. **One coherent change per PR.** A bug fix shouldn't drag in surrounding cleanup; "while I was there" refactors land in their own PR.
 3. **Write the tests that lock in the change.** Backend: `pytest` next to whatever you touched. Frontend: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.

@@ -8,8 +8,6 @@ import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
-// Aliased: a local `submitGeolocation` validation handler below would otherwise
-// shadow this API call.
 import {
   createEvent,
   createEventRequest,
@@ -18,19 +16,20 @@ import {
   missingEventFields,
   missingEventRequestFields,
   parseCaptureCoords,
+  type MissingFieldKey,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import type { EventDetail, Tag } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { Archive, ArrowLeft } from "lucide-react";
 import { TweetImportBanner } from "@/components/event/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
+import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { Pill, type PillTone } from "@/components/ui/Pill";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -40,10 +39,40 @@ import { TitleField } from "@/components/geolocations/TitleField";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
-type SubmitType = "geolocation" | "bounty";
+// Two submission modes, picked at the top. `single` is one event by hand,
+// optionally pre-filled from an X post; `bulk` is the archive on-ramp that
+// backfills many. There is no geolocation vs request pick: the analyst fills what
+// they have and the two publish actions unlock from the content (a placed
+// coordinate plus evidence publishes a geolocation, the bare footage posts a
+// request for others to locate).
+type Mode = "single" | "bulk";
 
-// Inline X logo — lucide ships none, and "Import from a tweet" reads clearer
-// with the source platform's mark than a generic import glyph.
+// A publish-floor requirement, shown as a tick in the readiness list. `keys` are
+// the `missingEvent*` field keys it covers (proof needs two, "no proof" vs
+// "text only"), so met state derives from the live missing set and the validator
+// stays the one source of truth.
+type Req = { label: string; keys: MissingFieldKey[] };
+
+// The request floor: enough to be actionable by someone else. A subset of the
+// geolocation floor, shown first so the escalation reads top to bottom.
+const REQUEST_REQS: Req[] = [
+  { label: "Title", keys: ["title"] },
+  { label: "Source media", keys: ["source_media"] },
+  { label: "Source URL", keys: ["source_url"] },
+  { label: "Source post time", keys: ["source_posted_at"] },
+];
+
+// What a full geolocation adds on top of the request floor.
+const GEO_EXTRA_REQS: Req[] = [
+  { label: "Coordinates", keys: ["coordinates"] },
+  { label: "Event date", keys: ["event_date"] },
+  { label: "Proof image", keys: ["proof", "proof_image"] },
+  { label: "Conflict tag", keys: ["conflict_tag"] },
+  { label: "Capture source tag", keys: ["capture_source_tag"] },
+];
+
+// Inline X logo: lucide ships none, and "from an X post" reads clearer with the
+// source platform's mark than a generic import glyph.
 function XGlyph({ size = 14 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
@@ -52,9 +81,47 @@ function XGlyph({ size = 14 }: { size?: number }) {
   );
 }
 
+// The readiness tick-list: one Pill per requirement, a check once met and a
+// hollow ring while pending. `metTone` picks how loud the met state reads
+// (accent filled, secondary outline, or neutral). Reuses the Pill primitive
+// (static span, no onClick) so it can't be mistaken for a selectable chip.
+function ReqChecklist({
+  reqs,
+  missing,
+  metTone = "accent",
+}: {
+  reqs: Req[];
+  missing: Set<MissingFieldKey>;
+  metTone?: PillTone;
+}) {
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {reqs.map((r) => {
+        const met = r.keys.every((k) => !missing.has(k));
+        return (
+          <li key={r.label}>
+            <Pill
+              tone={met ? metTone : "neutral"}
+              icon={
+                met ? (
+                  <Check size={12} strokeWidth={2.5} />
+                ) : (
+                  <Circle size={9} strokeWidth={2} />
+                )
+              }
+            >
+              {r.label}
+            </Pill>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function SubmitPage() {
   // `useSearchParams` opts out of static prerender; Next requires the bailing
-  // component under a Suspense boundary. Fallback is minimal — the inner form
+  // component under a Suspense boundary. Fallback is minimal: the inner form
   // shows its own "Loading…" once auth resolves.
   return (
     <Suspense fallback={<PageLoading />}>
@@ -67,30 +134,24 @@ function SubmitForm() {
   const { user, loading: authLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const bountyIdParam = searchParams.get("bounty_id");
+  const requestIdParam = searchParams.get("request_id");
 
-  const [bounty, setBounty] = useState<EventDetail | null>(null);
-  const [bountyError, setBountyError] = useState<string | null>(null);
+  const [request, setRequest] = useState<EventDetail | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
-  // One page, two submission types. Fulfilling a bounty (``?bounty_id=``) is
-  // always a geolocation, so the toggle is hidden there; ``?type=bounty`` (the
-  // "Post bounty" entry) seeds bounty mode.
-  const [submitType, setSubmitType] = useState<SubmitType>(
-    !bountyIdParam && searchParams.get("type") === "bounty" ? "bounty" : "geolocation"
+  // Single vs bulk. Seeded to the archive on-ramp from `?import=1` (the
+  // onboarding + /import redirect target); otherwise the single-event form.
+  const [mode, setMode] = useState<Mode>(
+    searchParams.get("import") === "1" ? "bulk" : "single"
   );
-  const isBounty = submitType === "bounty";
-
-  // Geolocation sub-mode: the manual form, or the bulk archive on-ramp. Seeded
-  // from `?import=1` (the onboarding + /import redirect target).
-  const [archiveMode, setArchiveMode] = useState(searchParams.get("import") === "1");
-  // Inline "pre-fill from a post" banner, revealed from the import strip.
+  // The inline "pre-fill from an X post" affordance, revealed inside single mode.
   const [tweetPrefillOpen, setTweetPrefillOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   // Optional camera position (where the footage was shot from), distinct from
-  // the subject lat/lng. Both-or-neither is enforced at submit.
+  // the subject lat/lng. Both-or-neither is enforced at publish.
   const [captureLat, setCaptureLat] = useState("");
   const [captureLng, setCaptureLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -102,25 +163,19 @@ function SubmitForm() {
   const [sourcePostedAt, setSourcePostedAt] = useState("");
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   // The proof body's inline images, held locally by the editor and uploaded as
-  // `proof_files[]` only at publish (nothing hits S3 while typing). The editor
-  // reports the still-referenced set on every edit.
+  // `proof_files[]` only when publishing a geolocation (nothing hits S3 while
+  // typing). The request publish path drops them: a request is image-free by the
+  // server contract, so its proof is context notes, not a cross-reference.
   const [proofFiles, setProofFiles] = useState<File[]>([]);
-  // Separate from the geolocation proof: a bounty's proof is the same idea but
-  // in progress (else it'd be a geolocation), optional, and stored on
-  // `bounties.proof`. Kept apart so toggling submit type doesn't bleed one
-  // draft into the other. (Image-free, so no proof_files companion.)
-  const [bountyProof, setBountyProof] = useState<Record<string, unknown> | null>(
-    null
-  );
   const [files, setFiles] = useState<File[]>([]);
   // useState, not useApiResource: TagPicker appends newly created tags
   // via setTags, so the list is server-seeded but locally mutable.
   const [tags, setTags] = useState<Tag[]>([]);
-  // Required curated selectors (conflict + capture source) for geolocations.
-  // `?curated=true` includes the full taxonomy even for options no live
-  // geolocation references yet, else the first analyst to use one couldn't pick
-  // it and the required field would be unsatisfiable. A failed load (empty
-  // `curatedTags`) surfaces a recoverable `curatedTagsError`.
+  // Curated selectors (conflict + capture source). Required only to publish a
+  // geolocation, so the field itself is optional; the readiness list names them
+  // as part of the geolocation floor. `?curated=true` includes the full taxonomy
+  // even for options no live geolocation references yet, else the first analyst
+  // to use one couldn't pick it. A failed load surfaces a recoverable error.
   const {
     data: curatedTagsData,
     error: curatedTagsError,
@@ -129,14 +184,11 @@ function SubmitForm() {
   const curatedTags = curatedTagsData ?? [];
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
-  // Incomplete-form feedback (shared notice + in-form red outlines).
-  const {
-    missingFields,
-    invalidKeys,
-    validationAttempt,
-    flagIncomplete,
-    clearIncomplete,
-  } = useIncompleteForm();
+  // In-form red outlines: set when a publish action is clicked while its floor
+  // is short, so the analyst sees which fields to fix (the tick-list says what,
+  // the outline says where). The single notice banner isn't rendered here; the
+  // tick-list is the standing summary.
+  const { invalidKeys, flagIncomplete, clearIncomplete } = useIncompleteForm();
 
   const {
     importedFrom,
@@ -164,50 +216,45 @@ function SubmitForm() {
       .catch(() => {});
   }, []);
 
-  // Load the bounty being fulfilled to pre-fill + lock inherited fields.
-  // On fulfilment the server forces only `source_url` + media from the bounty;
+  // Load the request being fulfilled to pre-fill + lock inherited fields.
+  // On fulfilment the server forces only `source_url` + media from the request;
   // the other inherited fields (title, dates, proof, tags) are form-sourced, so
   // this pre-fill is the only carry-over for them. Locking source_url is the UX cue.
   useEffect(() => {
-    if (!bountyIdParam) return;
-    getEvent(bountyIdParam)
+    if (!requestIdParam) return;
+    getEvent(requestIdParam)
       .then((b) => {
         if (b.status !== "requested") {
-          setBountyError(
-            `This bounty is ${b.status}, so it can't be fulfilled. Open the bounty page instead.`
+          setRequestError(
+            `This request is ${b.status}, so it can't be fulfilled. Open the request page instead.`
           );
           return;
         }
-        setBounty(b);
+        setRequest(b);
         setTitle(b.title);
         setSourceUrl(b.source_url);
-        // Carry the bounty's optional metadata into the geolocation form: the
-        // dates the poster knew, and the in-progress proof so the analyst
-        // continues from it instead of a blank editor. The form mounts only
-        // after the bounty loads (Loading guard below), so the proof editor
-        // picks `proof` up as its initial content.
+        // Carry the request's optional metadata into the form: the dates the
+        // poster knew, and the in-progress proof so the analyst continues from
+        // it instead of a blank editor. The form mounts only after the request
+        // loads (Loading guard below), so the proof editor picks `proof` up as
+        // its initial content.
         setEventDate(b.event_date ?? "");
         setEventTime(b.event_time?.slice(0, 5) ?? "");
         setSourcePostedAt(toDatetimeLocalUTC(b.source_posted_at));
         setProof(b.proof ?? null);
         setSelectedTagIds(b.tags.map((t) => t.id));
       })
-      .catch((err: Error) => setBountyError(err.message));
-  }, [bountyIdParam]);
+      .catch((err: Error) => setRequestError(err.message));
+  }, [requestIdParam]);
 
-  const lockedFromBounty = bounty !== null;
-  // Geolocation-only fields (coordinates, dates, proof) are hidden in bounty
-  // mode — a bounty is an unfinished geolocation.
-  const showGeoFields = !isBounty;
-  // No type toggle while fulfilling a bounty: that path is always a geolocation.
-  const showToggle = !bountyIdParam;
-  // Import (pre-fill from a post, or bulk archive) is offered only when adding a
-  // geolocation and not fulfilling a bounty.
-  const canImport = showGeoFields && !lockedFromBounty;
+  const lockedFromRequest = request !== null;
+  // Import (post pre-fill or bulk archive) is offered only on a fresh create,
+  // not while fulfilling someone else's request.
+  const canImport = !lockedFromRequest;
 
-  // Bounty + geolocation are mutually-exclusive submit paths sharing one error
-  // banner; each mutation clears the other so the single-slot behaviour holds.
-  const bountyMutation = useMutation(
+  // The two publish paths share one error banner; each mutation clears the other
+  // so the single-slot behaviour holds.
+  const requestMutation = useMutation(
     () => {
       const latNum = parseFloat(lat);
       const lngNum = parseFloat(lng);
@@ -215,7 +262,7 @@ function SubmitForm() {
       return createEventRequest({
         title: title.trim(),
         source_url: sourceUrl.trim(),
-        proof: bountyProof,
+        proof,
         lat: hasGuess ? latNum : undefined,
         lng: hasGuess ? lngNum : undefined,
         ...parseCaptureCoords(captureLat, captureLng),
@@ -228,7 +275,7 @@ function SubmitForm() {
     },
     {
       fallback: "Submission failed",
-      onSuccess: (created) => router.push(`/bounties/${created.id}`),
+      onSuccess: (created) => router.push(`/requests/${created.id}`),
     }
   );
 
@@ -238,11 +285,11 @@ function SubmitForm() {
       const lngNum = parseFloat(lng);
       const capture = parseCaptureCoords(captureLat, captureLng);
       // Fulfilling a request is a lifecycle move on that same event: geolocate
-      // (``requested`` → ``geolocated``) transfers ownership to the fulfiller.
+      // (``requested`` to ``geolocated``) transfers ownership to the fulfiller.
       // Its source media is already on the row, so no source files are staged /
       // removed here; the fulfiller's proof images still upload at publish.
-      if (bounty) {
-        return geolocateEventApi(bounty.id, {
+      if (request) {
+        return geolocateEventApi(request.id, {
           title,
           lat: latNum,
           lng: lngNum,
@@ -279,28 +326,50 @@ function SubmitForm() {
     }
   );
 
-  const error = bountyMutation.error ?? geolocationMutation.error;
-  const submitting = bountyMutation.loading || geolocationMutation.loading;
+  const error = requestMutation.error ?? geolocationMutation.error;
+  const submitting = requestMutation.loading || geolocationMutation.loading;
 
-  const submitBounty = async () => {
-    const missing = missingEventRequestFields({
+  // Live readiness for the two actions, straight from the shared validators.
+  // Media is supplied by the request on a fulfilment, so it isn't required there.
+  const geoMissing = missingEventFields(
+    {
       title,
+      lat,
+      lng,
       sourceUrl,
+      eventDate,
       sourcePostedAt,
+      proof,
       mediaCount: files.length,
-    });
-    if (missing.length) {
-      flagIncomplete(missing);
-      return;
-    }
-    await bountyMutation.run();
-  };
+      hasConflictTag: curatedTags.some(
+        (t) => t.category === "conflict" && selectedTagIds.includes(t.id)
+      ),
+      hasCaptureSourceTag: curatedTags.some(
+        (t) => t.category === "capture_source" && selectedTagIds.includes(t.id)
+      ),
+    },
+    { requireMedia: !lockedFromRequest }
+  );
+  const reqMissing = missingEventRequestFields({
+    title,
+    sourceUrl,
+    sourcePostedAt,
+    mediaCount: files.length,
+  });
+  const geoMissingKeys = new Set<MissingFieldKey>(geoMissing.map((m) => m.key));
+  const reqMissingKeys = new Set<MissingFieldKey>(reqMissing.map((m) => m.key));
+  // Readiness drives the button emphasis: full strength when the floor is met,
+  // dimmed while short. The button stays clickable so a click still flags the
+  // gaps red; the dim is the at-a-glance "not ready yet" cue.
+  const geoReady = geoMissing.length === 0 && curatedTags.length > 0;
+  const reqReady = reqMissing.length === 0;
 
-  const submitGeolocation = async () => {
-    // The required Conflict / Capture-source options must be loaded before we
-    // can tell "didn't pick one" from "couldn't load the choices". A failed or
-    // pending load is a recoverable state, not a missing field — surface it in
-    // the single-line banner (with Retry above) instead of the field list.
+  const publishGeolocation = async () => {
+    requestMutation.reset();
+    geolocationMutation.reset();
+    clearIncomplete();
+    // A pending / failed curated-tags load is a recoverable state, not a missing
+    // field: surface it in the banner (Retry lives above) instead of the outlines.
     if (curatedTags.length === 0) {
       geolocationMutation.setError(
         curatedTagsError
@@ -309,154 +378,134 @@ function SubmitForm() {
       );
       return;
     }
-    const selectedSet = new Set(selectedTagIds);
-    // Mirrors the server submission check, inline so the analyst fixes the whole
-    // form in one pass instead of as a 400. When fulfilling a bounty its media
-    // transfers in, so staged files aren't required.
-    const missing = missingEventFields(
-      {
-        title,
-        lat,
-        lng,
-        sourceUrl,
-        eventDate,
-        sourcePostedAt,
-        proof,
-        mediaCount: files.length,
-        hasConflictTag: curatedTags.some(
-          (t) => t.category === "conflict" && selectedSet.has(t.id)
-        ),
-        hasCaptureSourceTag: curatedTags.some(
-          (t) => t.category === "capture_source" && selectedSet.has(t.id)
-        ),
-      },
-      { requireMedia: !lockedFromBounty }
-    );
-    if (missing.length) {
-      flagIncomplete(missing);
+    if (geoMissing.length) {
+      flagIncomplete(geoMissing);
       return;
     }
     await geolocationMutation.run();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    bountyMutation.reset();
+  const postRequest = async () => {
+    requestMutation.reset();
     geolocationMutation.reset();
     clearIncomplete();
-    if (isBounty) {
-      await submitBounty();
-    } else {
-      await submitGeolocation();
+    if (reqMissing.length) {
+      flagIncomplete(reqMissing);
+      return;
     }
+    await requestMutation.run();
   };
 
   if (authLoading || !user) {
     return <PageLoading />;
   }
 
-  // Bounty referenced but couldn't load (404 / wrong status / network).
-  if (bountyIdParam && bountyError) {
+  // Request referenced but couldn't load (404 / wrong status / network).
+  if (requestIdParam && requestError) {
     return (
-      <PageShell title="Geolocate a bounty">
-        <div className={FORM_ERROR_BANNER}>{bountyError}</div>
-        <Link href="/bounties" className={`text-sm ${TEXT_LINK}`}>
-          ← Back to bounties
+      <PageShell title="Geolocate a request">
+        <div className={FORM_ERROR_BANNER}>{requestError}</div>
+        <Link href="/requests" className={`text-sm ${TEXT_LINK}`}>
+          ← Back to requests
         </Link>
       </PageShell>
     );
   }
 
-  // Bounty referenced but still loading — block the form until the
+  // Request referenced but still loading: block the form until the
   // title / source / tags are known to pre-fill.
-  if (bountyIdParam && !bounty) {
-    return <PageLoading label="Loading bounty…" />;
+  if (requestIdParam && !request) {
+    return <PageLoading label="Loading request…" />;
   }
 
-  // Header is uniform across both toggle states — the toggle below owns the
-  // geolocation-vs-bounty framing. Fulfilment is a distinct entry (no toggle),
-  // so it keeps its own title + instructions.
-  const pageTitle = lockedFromBounty ? "Geolocate a bounty" : "Submit";
-  const subtitle = lockedFromBounty ? (
+  // Fulfilment is a distinct entry: it keeps its own title + instructions and
+  // publishes only a geolocation. A fresh submit gets the neutral framing (fill
+  // what you have, then publish a geolocation or a request).
+  const pageTitle = lockedFromRequest ? "Geolocate a request" : "Submit";
+  const subtitle = lockedFromRequest ? (
     <>
-      You&apos;re fulfilling a bounty posted by{" "}
+      You&apos;re fulfilling a request posted by{" "}
       <Link
-        href={`/profile/${bounty!.owner.username}`}
+        href={`/profile/${request!.owner.username}`}
         className={TEXT_LINK}
       >
-        @{bounty!.owner.username}
+        @{request!.owner.username}
       </Link>
-      . Title, tags, dates, and the proof so far are pre-filled from the bounty;
-      refine them. Source and media stay locked (that&apos;s the bounty&apos;s
+      . Title, tags, dates, and the proof so far are pre-filled from the request;
+      refine them. Source and media stay locked (that&apos;s the request&apos;s
       evidence). Add the coordinates and finish the proof (cross-referenced
       satellite imagery). When you submit, this request becomes a geolocation and
       keeps a note of who requested it.
     </>
   ) : (
-    "Add a geolocation, or post a bounty for footage you couldn't place yet."
+    "Fill in what you have. Publish it as a geolocation once you've placed it, or as a request for others to locate."
   );
+
+  const showBulk = canImport && mode === "bulk";
+  // On a fulfilment, media is supplied by the request, so it drops out of the
+  // geolocation floor shown to the fulfiller.
+  const geoFulfilReqs = [
+    ...REQUEST_REQS.filter((r) => !r.keys.includes("source_media")),
+    ...GEO_EXTRA_REQS,
+  ];
 
   return (
     <PageShell title={pageTitle} subtitle={subtitle}>
-      {/* Primary choice: your placed work (Geolocation) vs a request to others
-          (Bounty). Hidden in fulfilment, which is always a geolocation. */}
-      {showToggle && (
-        <SegmentedControl
-          aria-label="Submission type"
-          options={[
-            { value: "geolocation", label: "Geolocation" },
-            { value: "bounty", label: "Bounty" },
-          ]}
-          value={submitType}
-          onChange={(t) => {
-            setSubmitType(t);
-            setArchiveMode(false);
-          }}
-        />
-      )}
-
-      {/* Under Geolocation (not fulfilment): two scales of "bring your existing
-          X work": pre-fill one from a post, or bulk-import your archive. The
-          manual form stays the default below. */}
-      {canImport && !archiveMode && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => setTweetPrefillOpen((v) => !v)}
-            aria-pressed={tweetPrefillOpen}
-          >
-            <XGlyph size={12} />
-            Pre-fill from an X post
-          </Button>
-          <Button variant="secondary" onClick={() => setArchiveMode(true)}>
-            <Archive size={13} strokeWidth={1.8} />
-            Import your X archive
-          </Button>
+      {/* Single vs bulk (fresh create only). Single hosts the one-event form
+          plus the optional X-post pre-fill; bulk is the archive on-ramp. */}
+      {canImport && (
+        <div className="mt-4">
+          <SegmentedControl
+            aria-label="Submission mode"
+            options={[
+              { value: "single", label: "Single" },
+              {
+                value: "bulk",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Archive size={13} strokeWidth={1.8} />
+                    Bulk import
+                  </span>
+                ),
+              },
+            ]}
+            value={mode}
+            onChange={setMode}
+          />
         </div>
       )}
 
       {/* Archive on-ramp swaps in for the form; the form stays mounted (hidden)
-          so its draft survives a Back. */}
-      {canImport && archiveMode && (
-        <div className="mt-4 space-y-4">
-          <Button variant="ghost" onClick={() => setArchiveMode(false)}>
-            <ArrowLeft size={14} strokeWidth={1.8} />
-            Back to the form
-          </Button>
+          so its draft survives switching back. */}
+      {showBulk && (
+        <div className="mt-4">
           <ImportArchivePanel username={user.username} />
         </div>
       )}
 
-      {/* `noValidate`: the shared IncompleteFormNotice owns required-field
-          feedback, so the browser's one-bubble-at-a-time native validation must
-          not preempt it. */}
+      {/* No `onSubmit` route: the publish actions are explicit buttons. Clicking
+          one while its floor is short flags the missing fields red instead of
+          posting. `noValidate` keeps the browser's native bubbles from firing. */}
       <form
-        onSubmit={handleSubmit}
-        className={canImport && archiveMode ? "hidden" : "mt-4 space-y-6"}
+        onSubmit={(e) => e.preventDefault()}
+        className={showBulk ? "hidden" : "mt-4 space-y-6"}
         noValidate
       >
-        {/* Inline pre-fill from a post (the old floating button is gone); stays
-            once a tweet is imported so the "Imported from @x" confirmation shows. */}
+        {/* Single mode carries a "pre-fill from an X post" affordance; the banner
+            stays once a post is imported so the "Imported from @x" confirmation
+            shows. */}
+        {canImport && mode === "single" && (
+          <div>
+            <Button
+              variant="secondary"
+              onClick={() => setTweetPrefillOpen((v) => !v)}
+              aria-pressed={tweetPrefillOpen}
+            >
+              <XGlyph size={12} />
+              Pre-fill from an X post
+            </Button>
+          </div>
+        )}
         {canImport && (tweetPrefillOpen || importedFrom) && (
           <TweetImportBanner
             onImported={(parsed) => {
@@ -482,37 +531,38 @@ function SubmitForm() {
           invalid={invalidKeys.has("title")}
         />
 
-        {/* Source media is its own block; coordinates get the Location block
-            (a bounty has no point yet, so Location is geolocation-only). */}
+        {/* Source media is its own block; the subject coordinate gets the
+            Location block below. */}
         <SourceMediaField
-          existing={bounty ? bounty.media : []}
-          locked={lockedFromBounty}
+          existing={request ? request.media : []}
+          locked={lockedFromRequest}
           invalid={invalidKeys.has("source_media")}
-          staged={lockedFromBounty ? [] : files}
-          onAddFiles={lockedFromBounty ? undefined : (f) => setFiles([...files, ...f])}
+          staged={lockedFromRequest ? [] : files}
+          onAddFiles={lockedFromRequest ? undefined : (f) => setFiles([...files, ...f])}
           onRemoveStaged={
-            lockedFromBounty
+            lockedFromRequest
               ? undefined
               : (i) => setFiles(files.filter((_, idx) => idx !== i))
           }
         />
 
-        {showGeoFields && (
-          <LocationPicker
-            lat={lat}
-            setLat={setLat}
-            lng={lng}
-            setLng={setLng}
-            captureLat={captureLat}
-            setCaptureLat={setCaptureLat}
-            captureLng={captureLng}
-            setCaptureLng={setCaptureLng}
-            extraCoordCandidates={extraCoordCandidates}
-            onSwapCandidate={swapCoordCandidate}
-            invalid={invalidKeys.has("coordinates")}
-          />
-        )}
+        <LocationPicker
+          lat={lat}
+          setLat={setLat}
+          lng={lng}
+          setLng={setLng}
+          captureLat={captureLat}
+          setCaptureLat={setCaptureLat}
+          captureLng={captureLng}
+          setCaptureLng={setCaptureLng}
+          extraCoordCandidates={extraCoordCandidates}
+          onSwapCandidate={swapCoordCandidate}
+          invalid={invalidKeys.has("coordinates")}
+        />
 
+        {/* Event date is required only to publish a geolocation, so it's
+            optional at the field level; the readiness list names it as part of
+            the geolocation floor. */}
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
@@ -522,98 +572,112 @@ function SubmitForm() {
           setEventTime={setEventTime}
           sourcePostedAt={sourcePostedAt}
           setSourcePostedAt={setSourcePostedAt}
-          sourceUrlLocked={lockedFromBounty}
-          eventDateRequired={showGeoFields}
+          sourceUrlLocked={lockedFromRequest}
+          eventDateRequired={false}
           eventDateInvalid={invalidKeys.has("event_date")}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 
-        {showGeoFields && curatedTagsError && (
-          <CuratedTagsError onRetry={reloadCuratedTags} />
-        )}
+        {curatedTagsError && <CuratedTagsError onRetry={reloadCuratedTags} />}
         <TagPicker
           tags={tags}
           setTags={setTags}
           curatedTags={curatedTags}
           selectedTagIds={selectedTagIds}
           setSelectedTagIds={setSelectedTagIds}
-          requireConflict={showGeoFields}
-          requireCaptureSource={showGeoFields}
+          requireConflict={false}
+          requireCaptureSource={false}
           conflictInvalid={invalidKeys.has("conflict_tag")}
           captureSourceInvalid={invalidKeys.has("capture_source_tag")}
         />
 
-        {showGeoFields ? (
-          <ProofEditorPanel
-            key="geo-proof"
-            importedFrom={importedFrom}
-            importGen={importGen}
-            proof={proof}
-            onChange={setProof}
-            onProofFilesChange={setProofFiles}
-            invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
-          />
-        ) : (
-          // Same Proof section, harmonised: a bounty's proof is a geolocation
-          // proof still in progress (else it'd be a geolocation), so it's
-          // optional and image-free — the bounty create path doesn't adopt
-          // inline images, which would orphan. Stored as `proof`. The distinct
-          // key remounts a fresh, correctly-configured editor on toggle.
-          <ProofEditorPanel
-            key="bounty-proof"
-            importedFrom={null}
-            importGen={0}
-            proof={bountyProof}
-            onChange={setBountyProof}
-            allowImages={false}
-            optional
-          />
-        )}
-
-        {showGeoFields && (
-          <DuplicateProbe
-            lat={lat}
-            lng={lng}
-            sourceUrl={sourceUrl}
-            eventDate={eventDate}
-            skip={lockedFromBounty}
-          />
-        )}
-
-        {/* Validation + errors render next to the button, not atop this long
-            form, so a blocked submit is visible without scrolling up. The notice
-            lists every missing field at once; the banner carries server / load
-            failures. They're mutually exclusive in practice. */}
-        <IncompleteFormNotice
-          key={validationAttempt}
-          missing={missingFields.map((m) => m.label)}
+        {/* One proof editor, images allowed. Optional at the field level: a
+            geolocation needs an image (named in the readiness list), a request is
+            image-free (the server strips inline images on that path). */}
+        <ProofEditorPanel
+          importedFrom={importedFrom}
+          importGen={importGen}
+          proof={proof}
+          onChange={setProof}
+          onProofFilesChange={setProofFiles}
+          optional
+          invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
+
+        <DuplicateProbe
+          lat={lat}
+          lng={lng}
+          sourceUrl={sourceUrl}
+          eventDate={eventDate}
+          skip={lockedFromRequest}
+        />
+
         {error && (
           <div className={FORM_ERROR_BANNER} role="alert">
             {error}
           </div>
         )}
 
-        <div className="flex items-center gap-4">
-          <Button type="submit" variant="primary" disabled={submitting}>
-            {isBounty
-              ? submitting
-                ? "Posting…"
-                : "Post bounty"
-              : submitting
-                ? "Submitting…"
-                : lockedFromBounty
-                  ? "Submit geolocation (fulfil request)"
-                  : "Submit geolocation"}
-          </Button>
-          <Link
-            href={isBounty ? "/bounties" : lockedFromBounty ? `/bounties/${bounty!.id}` : "/"}
-            className={buttonClasses("ghost")}
-          >
-            Cancel
-          </Link>
-        </div>
+        {lockedFromRequest ? (
+          // Fulfilment can only become a geolocation: one action, no request path.
+          <div className="space-y-3">
+            <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} metTone="secondary" />
+            <Button
+              type="button"
+              variant="primary"
+              disabled={submitting}
+              className={geoReady ? "" : "opacity-60"}
+              onClick={publishGeolocation}
+            >
+              <MapPin size={14} strokeWidth={2} />
+              {geolocationMutation.loading
+                ? "Publishing…"
+                : "Publish geolocation (fulfil request)"}
+            </Button>
+          </div>
+        ) : (
+          // Two outcomes gated on the content. The readiness list escalates: meet
+          // the request floor and a request can post; add the extra rows and a full
+          // geolocation can publish. Clicking an action while short flags the
+          // gaps red rather than posting.
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm text-neutral-400">
+                To post a request for others to locate, add:
+              </p>
+              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} metTone="secondary" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-neutral-400">
+                Plus, to publish it as a full geolocation:
+              </p>
+              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} metTone="secondary" />
+            </div>
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Button
+                type="button"
+                variant="primary"
+                disabled={submitting}
+                className={geoReady ? "" : "opacity-60"}
+                onClick={publishGeolocation}
+              >
+                <MapPin size={14} strokeWidth={2} />
+                {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={submitting}
+                className={reqReady ? "" : "opacity-60"}
+                onClick={postRequest}
+              >
+                <Megaphone size={14} strokeWidth={2} />
+                {requestMutation.loading ? "Posting…" : "Publish request"}
+              </Button>
+            </div>
+          </div>
+        )}
       </form>
     </PageShell>
   );

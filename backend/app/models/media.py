@@ -22,7 +22,7 @@ MediaRole = Literal["source", "proof"]
 class Media(Base):
     """File attachment owned by one event, source footage and proof imagery alike.
 
-    Single ``event_id`` owner since the bounty + geolocation merge: a bounty is
+    Single ``event_id`` owner since the request + geolocation merge: a request is
     a ``requested`` event, so all evidence hangs off the one table and
     fulfilling a request never moves media. ``role`` splits the footage from
     the proof-body images; both upload at publish, so ``event_id`` is always

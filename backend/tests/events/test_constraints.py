@@ -229,7 +229,7 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
 
 
 # ── investigate: gated to `requested` for any other status, not only closed
-# `test_bounties.py` covers the ``closed`` case; the router's guard is a
+# `test_requests.py` covers the ``closed`` case; the router's guard is a
 # single ``geo.status != STATUS_REQUESTED`` check, so the narrow gap is
 # confirming the two other non-``requested`` statuses hit the same 409.
 

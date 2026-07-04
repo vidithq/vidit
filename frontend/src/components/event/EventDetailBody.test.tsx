@@ -65,7 +65,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 describe("EventDetailBody", () => {
-  it("panel variant: thumbnail media, section headings, no bounty/author rows", () => {
+  it("panel variant: thumbnail media, section headings, no request/author rows", () => {
     const geo = geoFixture();
     render(<EventDetailBody geo={geo} variant="panel" />);
     const img = screen.getByRole("img");
@@ -74,7 +74,7 @@ describe("EventDetailBody", () => {
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(geo.media[0]).thumbnail
     );
-    expect(screen.queryByText("Bounty")).not.toBeInTheDocument();
+    expect(screen.queryByText("Request")).not.toBeInTheDocument();
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
     // Not just the row label — the author's username must not appear
     // anywhere in the panel body (it lives in the panel header).

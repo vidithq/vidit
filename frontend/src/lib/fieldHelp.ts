@@ -3,7 +3,7 @@
  *
  * **One home for every concept.** Each entry pairs the explanation (`text`,
  * shown in the tooltip) with its accessible `label` (the trigger's aria-label).
- * Every `?` across the app — submit forms, geolocation + bounty detail pages,
+ * Every `?` across the app — submit forms, geolocation + request detail pages,
  * the map panel — renders `<FieldHelp concept="…" />` and reads from here, so a
  * concept reads identically wherever it appears and changing it is a one-line
  * edit. The wording mirrors the field descriptions in `docs/data-model.md`.
@@ -57,7 +57,7 @@ export const FIELD_HELP = {
     text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the author withdrew the request.",
     label: "What does the status mean?",
   },
-  bounty_status: {
+  request_status: {
     text: "Requested: waiting for an analyst to geolocate it. Once someone does, it becomes a geolocation. Closed: the author withdrew it.",
     label: "What does the status mean?",
   },
@@ -67,7 +67,7 @@ export const FIELD_HELP = {
   },
   // Section-level concepts (the `?` next to a section heading).
   section_location: {
-    text: "The footage being located, and the coordinates where it was filmed. A bounty has just the footage; whoever picks it up adds the coordinates.",
+    text: "The footage being located, and the coordinates where it was filmed. A request has just the footage; whoever picks it up adds the coordinates.",
     label: "What goes in Location?",
   },
   section_import: {
@@ -83,7 +83,7 @@ export const FIELD_HELP = {
     label: "What goes in Tags?",
   },
   section_proof: {
-    text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a bounty it's the partial reasoning so far, since the match isn't finished yet.",
+    text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
   // Detection submit action, spelled out here.

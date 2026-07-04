@@ -35,7 +35,7 @@ They need a single place to centralize geolocations, a structured format to pres
 
 **Closed-beta MVP.** Invite-only auth, interactive map with conflict/tag filters, geolocation submission (coordinates + source URL + media + Tiptap proof + tags), geolocation detail pages, analyst profiles.
 
-**Curated-platform consolidation.** Profile expansion (bio, external links, X identity anchor), admin panel (invite minting, soft/hard delete, trusted-contributor flag, demo seeding, reaper jobs), social graph (follow, timeline feed), full-text search across geolocations / analysts / bounties, bounties (open requests for geolocations to fulfil), UX polish.
+**Curated-platform consolidation.** Profile expansion (bio, external links, X identity anchor), admin panel (invite minting, soft/hard delete, trusted-contributor flag, demo seeding, reaper jobs), social graph (follow, timeline feed), full-text search across geolocations / analysts / requests, requests (open requests for geolocations to fulfil), UX polish.
 
 Per-PR detail in [`CHANGELOG.md`](../CHANGELOG.md).
 
@@ -59,7 +59,7 @@ The decisions that bound it:
 - **Consent is the action.** The upload and the tag *are* the consent: in-product, self-serve, scoped to the analyst's own posts. Nothing is fetched, processed, or published for anyone who hasn't acted; there is no out-of-band ask.
 - **Attribution is provisional; ownership is not verified in v0.4.** An import attributes work to a `@handle` without proving the uploader controls it: X's OAuth consent is too broad for a privacy-conscious audience and X offers no lighter identity integration (no OIDC; OAuth 1.0a is worse). The exposure is bounded: everything lands `detected` (draft, clearly marked), nothing is publicly vouched without a later submit, and the beta stays invite-gated. Handle-ownership proof + a claim/dispute pipeline move to v0.5.
 - **Detection is deterministic.** A parseable coordinate marks a geolocation tweet; there is no LLM classifier. The work is robust coordinate and media extraction, not training a model.
-- **Machine output is provisional but public.** Imported and bot-ingested geolocations land `detected` and appear on **every** public surface (map, search, timeline, profile), **always clearly marked**; the owner reviews and **submits** them, which removes the marker and freezes the row. A direct submission or a bounty fulfilment is born `geolocated`.
+- **Machine output is provisional but public.** Imported and bot-ingested geolocations land `detected` and appear on **every** public surface (map, search, timeline, profile), **always clearly marked**; the owner reviews and **submits** them, which removes the marker and freezes the row. A direct submission or a request fulfilment is born `geolocated`.
 
 This pulls anonymous read forward from v0.5 and adds the onboarding machinery: the extraction core, the archive intake, the `detected → submitted` submit flow, and an author identity decoupled from the auth account (shipped). The bot replies in-thread with dedup and coordinate-vs-image warnings, and a value layer (image-coordinate cross-checks and near-duplicate media matching) is what makes the import worth the analyst's while. Going public is gated on a legal review, a reduced surface since only the analyst's own consented work is ever processed.
 
@@ -73,7 +73,7 @@ Three layers protect quality:
 
 - **Anti-abuse on registration** — CAPTCHA, honeypot, disposable-email blocklist, rate limits.
 - **Content moderation on uploads** — AWS Rekognition + CSAM scanning.
-- **Trusted-contributor flag** as a reader-facing filter — single bit, admin-granted with a required `trust_reason`, visible and filterable across map / timeline / search / bounty index.
+- **Trusted-contributor flag** as a reader-facing filter — single bit, admin-granted with a required `trust_reason`, visible and filterable across map / timeline / search / request index.
 
 Asymmetric design: read is open, write is open after registration, the trust mark is a curated quality filter on top.
 
@@ -98,7 +98,7 @@ Long-term items deferred for cost, scale, philosophical fit, or because the curr
 ### Enrichment
 
 - **Automated source archival** (Wayback Machine / archive.today) on every submission, so links survive X URL rotation. Today: manual save when an analyst remembers. Revisit when link rot becomes a felt problem in the catalog.
-- **OCR on uploaded media** to make captions and signage searchable. Today: full-text search covers titles, bios, bounty descriptions. Revisit when analysts ask for image-content search.
+- **OCR on uploaded media** to make captions and signage searchable. Today: full-text search covers titles, bios, request descriptions. Revisit when analysts ask for image-content search.
 - **Related-events suggestions** on a geolocation page. Revisit when catalog density makes manual discovery slow.
 - **Translation of proof text** between major languages. Revisit when the non-English contributor base grows.
 - **Public read-only API** (rate-limited). Revisit on integration demand from other tools or the press.

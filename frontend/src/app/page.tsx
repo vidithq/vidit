@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Globe, Target, Import, Tags, Archive, Filter, Play } from "lucide-react";
+import { Globe, Megaphone, Import, Tags, Archive, Filter, Play } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { Dot } from "@/components/ui/Dot";
@@ -48,8 +48,8 @@ const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL;
 const DEMO_VIDEO_IS_FILE =
   !!DEMO_VIDEO_URL && /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(DEMO_VIDEO_URL);
 
-// Icons reuse the product's vocabulary: `Globe`/`Target`/`Filter` echo
-// Map, Bounties, and the trust mark elsewhere in the app.
+// Icons reuse the product's vocabulary: `Globe`/`Megaphone`/`Filter` echo
+// Map, Requests, and the trust mark elsewhere in the app.
 const FEATURES: {
   icon: typeof Globe;
   title: string;
@@ -61,9 +61,9 @@ const FEATURES: {
     body: "Every geolocation the community submits, on one map you can filter by conflict, capture source, date, or analyst.",
   },
   {
-    icon: Target,
-    title: "Bounties for the community",
-    body: "Post a bounty to point the community at an event that needs geolocating, and steer effort where it matters.",
+    icon: Megaphone,
+    title: "Requests for the community",
+    body: "Post a request to point the community at an event that needs geolocating, and steer effort where it matters.",
   },
   {
     icon: Import,

@@ -5,7 +5,7 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 
 /**
  * The detail-surface media block, shared by the geolocation detail page, the
- * map's detail side panel, and the bounty detail page (which had each grown
+ * map's detail side panel, and the request detail page (which had each grown
  * their own copy, drifting on video posters and img vs next/image).
  *
  * - `page`: 2-up grid at `hero` resolution (~384 CSS px per cell, sharp at 2x

@@ -11,7 +11,7 @@ import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
 
 /** One card in the profile's recent-submissions list: the same compact card
- *  shape the located catalogue and the requested (ex-bounty) queue use. A
+ *  shape the located catalogue and the requested (ex-request) queue use. A
  *  coordless / undated event (a ``requested`` row) can surface here too. */
 export type RecentSubmission = EventListItem;
 

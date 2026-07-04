@@ -21,15 +21,15 @@ interface DetailsFieldsProps {
    *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;
-  /** Render the source URL read-only — it's inherited from the bounty on a
-   *  fulfilment (shows a "from bounty" hint). The detection edit form leaves it
+  /** Render the source URL read-only — it's inherited from the request on a
+   *  fulfilment (shows a "from request" hint). The detection edit form leaves it
    *  editable (`false`). */
   sourceUrlLocked: boolean;
   /** A machine detection's provenance — the post it was imported from. Shown
    *  read-only inside this block (it's the one immutable field) when provided;
    *  the submit form omits it. */
   detectedFromUrl?: string | null;
-  /** Geolocation requires the event date; on a bounty (an unfinished
+  /** Geolocation requires the event date; on a request (an unfinished
    *  geolocation) it's optional. Event time is always optional; the source post
    *  time is always required. */
   eventDateRequired?: boolean;

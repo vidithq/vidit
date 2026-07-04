@@ -30,15 +30,15 @@ interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
    * ``panel`` — map's 380px overlay: stacked ``thumbnail`` media, bare rows,
-   * no bounty-trace/author rows (the author sits in the panel header).
+   * no request-trace/author rows (the author sits in the panel header).
    * ``page`` — full detail page: 2-up ``hero`` media grid, card-chrome rows
-   * plus bounty-trace + author rows, section headings.
+   * plus request-trace + author rows, section headings.
    */
   variant: "panel" | "page";
   /** Rendered between the media block and the key-value rows — the
    *  full page slots its Location map here. */
   children?: ReactNode;
-  /** Extra DetailRows appended to the Details section, where the bounty view
+  /** Extra DetailRows appended to the Details section, where the request view
    *  slots its "Working on" and "Closed" rows. */
   detailExtras?: ReactNode;
 }
@@ -189,7 +189,7 @@ function DetailRows({
       {/* Compact panel omits requested-by + author rows: the author is in
           the panel header, the trace belongs to the full page. Since the merge,
           fulfilment is a lifecycle move on this same row, so the trace is who
-          opened the request (``requested_by``), not a link to a separate bounty. */}
+          opened the request (``requested_by``), not a link to a separate request. */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" compact={compact}>
           <Link

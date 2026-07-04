@@ -50,8 +50,8 @@ export function authorshipState(
  * parent populates title / source / event date / media / coordinates. A
  * shortcut, not an authority — the analyst still reviews and submits.
  *
- * Hidden in bounty-fulfilment mode (source URL + media are locked to the
- * bounty, so a pre-fill has nothing to land in). The fetch + state population
+ * Hidden in request-fulfilment mode (source URL + media are locked to the
+ * request, so a pre-fill has nothing to land in). The fetch + state population
  * live in the parent so the form keeps one source of truth per field — see
  * ``frontend/src/app/submit/page.tsx``.
  */

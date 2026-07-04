@@ -34,7 +34,7 @@ interface TagPickerProps {
 }
 
 /**
- * Shared tag-selection section for the geolocation + bounty submit forms.
+ * Shared tag-selection section for the geolocation + request submit forms.
  * Both render *this* so they can't drift apart — only `subtitle` and the
  * `require*` flags differ. Conflict is multi-select, capture source single-
  * select (one lens per piece of media); both come from the curated taxonomy,

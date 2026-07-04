@@ -153,7 +153,7 @@ def sanitize_tiptap_doc(
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
 
-    ``allow_images=False`` drops every image node. Request (bounty) proofs use
+    ``allow_images=False`` drops every image node. Request (request) proofs use
     this: the request path carries no ``proof_files``, so a kept image node
     would reference nothing. ``allow_placeholders=True`` admits the
     ``placeholder://`` srcs the geolocate paths resolve at intake (see

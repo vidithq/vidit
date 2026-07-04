@@ -5,7 +5,7 @@ import { useEffect } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
-import { DemoBountiesPanel } from "@/components/admin/DemoBountiesPanel";
+import { DemoRequestsPanel } from "@/components/admin/DemoRequestsPanel";
 import { DemoDataPanel } from "@/components/admin/DemoDataPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { InviteCodesPanel } from "@/components/admin/InviteCodesPanel";
@@ -42,7 +42,7 @@ export default function AdminPage() {
       <TrustPanel />
       <EventDeletePanel />
       <DemoDataPanel />
-      <DemoBountiesPanel />
+      <DemoRequestsPanel />
       <MaintenancePanel />
     </PageShell>
   );

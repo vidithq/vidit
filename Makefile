@@ -62,7 +62,7 @@ mock-demo-user:
 # downscales for free.
 # See video/README.md for the breakdown of each step.
 promo: mock-admin mock-demo-user
-	cd video && node seed-bounties.js
+	cd video && node seed-requests.js
 	cd video && node record-submit.js
 	cp video/out/recording-submit.mp4 video/public/recording-submit.mp4
 	cd video && npx remotion render src/index.ts Demo out/promo-4k.mp4 --codec h264 --crf 16 --scale 2

@@ -1,9 +1,17 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Search as SearchIcon } from "lucide-react";
+import { MapPin, Megaphone, Search as SearchIcon, Users } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
@@ -11,7 +19,7 @@ import { search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  SearchBountyHit,
+  SearchRequestHit,
   SearchEventHit,
   SearchResponse,
   SearchType,
@@ -25,11 +33,11 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 
-const TYPE_FILTERS: { value: SearchType; label: string }[] = [
+const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
-  { value: "geolocation", label: "Geolocations" },
-  { value: "bounty", label: "Bounties" },
-  { value: "user", label: "Analysts" },
+  { value: "geolocation", label: "Geolocations", icon: <MapPin size={11} /> },
+  { value: "request", label: "Requests", icon: <Megaphone size={11} /> },
+  { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 
 // Debounce window: reactive enough to feel live, long enough not to fire
@@ -114,7 +122,7 @@ function SearchPageBody() {
   const totalHits = useMemo(() => {
     if (!results) return 0;
     return (
-      results.total.geolocations + results.total.bounties + results.total.users
+      results.total.geolocations + results.total.requests + results.total.users
     );
   }, [results]);
 
@@ -132,7 +140,7 @@ function SearchPageBody() {
   return (
     <PageShell
       title="Search"
-      subtitle="One discovery surface across the platform: type to search geolocations, bounties and analysts at once. Matched fragments are highlighted in each result."
+      subtitle="One discovery surface across the platform: type to search geolocations, requests and analysts at once. Matched fragments are highlighted in each result."
     >
         <Input
           type="search"
@@ -149,6 +157,7 @@ function SearchPageBody() {
             <Pill
               key={opt.value}
               tone={typeFilter === opt.value ? "accent" : "neutral"}
+              icon={opt.icon}
               onClick={() => onChipClick(opt.value)}
             >
               {opt.label}
@@ -181,7 +190,7 @@ function SearchPageBody() {
 
         {!activeQuery.trim() && (
           <EmptyState>
-            Start typing to search across geolocations, bounties and analysts.
+            Start typing to search across geolocations, requests and analysts.
           </EmptyState>
         )}
 
@@ -217,10 +226,10 @@ function SearchPageBody() {
               </ResultGroup>
             )}
 
-            {showGroup("bounty") && results.bounties.length > 0 && (
-              <ResultGroup title="Bounties" count={results.total.bounties}>
-                {results.bounties.map((b) => (
-                  <BountyResult key={b.id} hit={b} />
+            {showGroup("request") && results.requests.length > 0 && (
+              <ResultGroup title="Requests" count={results.total.requests}>
+                {results.requests.map((b) => (
+                  <RequestResult key={b.id} hit={b} />
                 ))}
               </ResultGroup>
             )}
@@ -299,11 +308,11 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
   );
 }
 
-function BountyResult({ hit }: { hit: SearchBountyHit }) {
+function RequestResult({ hit }: { hit: SearchRequestHit }) {
   return (
     <EntityCard
       variant="compact"
-      detailHref={`/bounties/${hit.id}`}
+      detailHref={`/requests/${hit.id}`}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}

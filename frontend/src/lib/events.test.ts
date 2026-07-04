@@ -80,7 +80,7 @@ describe("missingEventFields", () => {
     expect(labels({ ...complete, proof: null })).toEqual(["Proof"]);
   });
 
-  it("skips the source-media floor when media isn't required (bounty fulfilment)", () => {
+  it("skips the source-media floor when media isn't required (request fulfilment)", () => {
     expect(labels({ ...complete, mediaCount: 0 }, { requireMedia: false })).toEqual(
       []
     );

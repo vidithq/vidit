@@ -1,7 +1,7 @@
-"""End-to-end tests for the requested view (ex ``/bounties``).
+"""End-to-end tests for the requested view (ex ``/requests``).
 
-Since the bounty + geolocation merge, the requested view is served by the
-events surface: a bounty is an ``Event`` with ``status='requested'`` (an open
+Since the request + geolocation merge, the requested view is served by the
+events surface: a request is an ``Event`` with ``status='requested'`` (an open
 call to geolocate, with one source media and optionally an approximate
 coordinate guess), and it stays visible as ``closed`` (with
 ``before_closed_status='requested'``) once the poster withdraws it. Fulfilment
@@ -101,7 +101,7 @@ def _required_tag_ids(*tags: Tag) -> str:
     return json.dumps([str(t.id) for t in tags])
 
 
-def _make_bounty(
+def _make_request(
     db,
     *,
     author: User,
@@ -117,10 +117,10 @@ def _make_bounty(
     create path (stamps included, the CHECKs demand them).
     """
     now = datetime.now(UTC)
-    bounty = Event(
+    request = Event(
         owner_id=author.id,
         requested_by_id=author.id,
-        title=title or f"Bounty {uuid.uuid4().hex[:8]}",
+        title=title or f"Request {uuid.uuid4().hex[:8]}",
         source_url=source_url,
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=status,
@@ -130,41 +130,41 @@ def _make_bounty(
         close_reason="Withdrawn" if status == STATUS_CLOSED else None,
     )
     if deleted:
-        bounty.deleted_at = datetime.now(UTC)
+        request.deleted_at = datetime.now(UTC)
     if tags:
-        bounty.tags = tags
-    db.add(bounty)
+        request.tags = tags
+    db.add(request)
     db.flush()
     if with_media:
         db.add(
             Media(
-                event_id=bounty.id,
+                event_id=request.id,
                 role="source",
                 storage_url=(
-                    f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"
+                    f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"
                 ),
                 media_type="image",
             )
         )
     db.commit()
-    db.refresh(bounty)
-    return bounty
+    db.refresh(request)
+    return request
 
 
 # ── GET /events?view=requested, list ─────────────────────────────────────
 
 
-def test_list_returns_seeded_bounty(db, author):
-    bounty = _make_bounty(db, author=author)
+def test_list_returns_seeded_request(db, author):
+    request = _make_request(db, author=author)
     response = client.get(_LIST)
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
-    assert str(bounty.id) in ids
+    assert str(request.id) in ids
 
 
 def test_list_excludes_soft_deleted(db, author):
-    live = _make_bounty(db, author=author)
-    dead = _make_bounty(db, author=author, deleted=True)
+    live = _make_request(db, author=author)
+    dead = _make_request(db, author=author, deleted=True)
     response = client.get(_LIST)
     ids = {row["id"] for row in response.json()}
     assert str(live.id) in ids
@@ -172,8 +172,8 @@ def test_list_excludes_soft_deleted(db, author):
 
 
 def test_list_filters_by_status(db, author):
-    open_one = _make_bounty(db, author=author, status=STATUS_REQUESTED)
-    closed = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    open_one = _make_request(db, author=author, status=STATUS_REQUESTED)
+    closed = _make_request(db, author=author, status=STATUS_CLOSED)
 
     response = client.get(f"{_LIST}&status={STATUS_REQUESTED}")
     assert response.status_code == 200
@@ -186,7 +186,7 @@ def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
     """The requested view keeps a withdrawn request visible but routes a
     rejected detection (``closed`` off ``detected``) to the located view,
     ``before_closed_status`` is the split."""
-    withdrawn = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    withdrawn = _make_request(db, author=author, status=STATUS_CLOSED)
     rejected = _make_geo(db, author=author, status=STATUS_CLOSED)
     rejected.before_closed_status = "detected"
     db.commit()
@@ -200,7 +200,7 @@ def test_list_excludes_located_events(db, author):
     """A ``geolocated`` event (a fulfilled request, or a direct submit) is
     served by the located view and must never surface in the requested one,
     even though it shares the table."""
-    requested = _make_bounty(db, author=author)
+    requested = _make_request(db, author=author)
     located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
 
     ids = {row["id"] for row in client.get(_LIST).json()}
@@ -213,8 +213,8 @@ def test_list_rejects_unknown_view(author):
 
 
 def test_list_filters_by_tag(db, author, free_tag):
-    with_tag = _make_bounty(db, author=author, tags=[free_tag])
-    without_tag = _make_bounty(db, author=author)
+    with_tag = _make_request(db, author=author, tags=[free_tag])
+    without_tag = _make_request(db, author=author)
 
     response = client.get(f"{_LIST}&tag={free_tag.name}")
     assert response.status_code == 200
@@ -224,17 +224,17 @@ def test_list_filters_by_tag(db, author, free_tag):
 
 
 def test_list_filters_by_author_substring(db, author):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     needle = author.username[2:6]
     response = client.get(f"{_LIST}&author={needle}")
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
-    assert str(bounty.id) in ids
+    assert str(request.id) in ids
 
 
 def test_list_honours_limit(db, author):
     for _ in range(3):
-        _make_bounty(db, author=author)
+        _make_request(db, author=author)
     response = client.get(f"{_LIST}&limit=2")
     assert response.status_code == 200
     assert len(response.json()) <= 2
@@ -249,19 +249,19 @@ def test_list_rejects_out_of_range_limit(author):
 def test_list_carries_investigator_aggregates(db, author, second_user, third_user):
     """The requested list gives every card a count + a small avatar sample
     without N+1. The detail endpoint serves the full investigators list."""
-    bounty = _make_bounty(db, author=author)
-    db.add(EventInvestigator(event_id=bounty.id, user_id=second_user.id))
-    db.add(EventInvestigator(event_id=bounty.id, user_id=third_user.id))
+    request = _make_request(db, author=author)
+    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
+    db.add(EventInvestigator(event_id=request.id, user_id=third_user.id))
     db.commit()
     try:
         response = client.get(_LIST)
         assert response.status_code == 200
-        row = next(r for r in response.json() if r["id"] == str(bounty.id))
+        row = next(r for r in response.json() if r["id"] == str(request.id))
         assert row["investigator_count"] == 2
         usernames = {u["username"] for u in row["investigators_sample"]}
         assert usernames == {second_user.username, third_user.username}
     finally:
-        db.query(EventInvestigator).filter(EventInvestigator.event_id == bounty.id).delete(
+        db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -279,13 +279,13 @@ def test_located_list_leaves_investigator_aggregates_null(db, author):
 
 
 def test_detail_returns_full_shape(db, author, free_tag):
-    bounty = _make_bounty(db, author=author, tags=[free_tag])
-    response = client.get(f"/api/v1/events/{bounty.id}")
+    request = _make_request(db, author=author, tags=[free_tag])
+    response = client.get(f"/api/v1/events/{request.id}")
     assert response.status_code == 200
     body = response.json()
-    assert body["id"] == str(bounty.id)
-    assert body["title"] == bounty.title
-    assert body["source_url"] == bounty.source_url
+    assert body["id"] == str(request.id)
+    assert body["title"] == request.title
+    assert body["source_url"] == request.source_url
     assert body["status"] == STATUS_REQUESTED
     assert body["event_coords"] is None
     assert body["requested_at"] is not None
@@ -299,25 +299,25 @@ def test_detail_returns_full_shape(db, author, free_tag):
 
 
 def test_detail_404_for_soft_deleted(db, author):
-    bounty = _make_bounty(db, author=author, deleted=True)
-    response = client.get(f"/api/v1/events/{bounty.id}")
+    request = _make_request(db, author=author, deleted=True)
+    response = client.get(f"/api/v1/events/{request.id}")
     assert response.status_code == 404
 
 
 def test_detail_lists_every_investigator(db, author, second_user, third_user):
-    bounty = _make_bounty(db, author=author)
-    db.add(EventInvestigator(event_id=bounty.id, user_id=second_user.id))
-    db.add(EventInvestigator(event_id=bounty.id, user_id=third_user.id))
+    request = _make_request(db, author=author)
+    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
+    db.add(EventInvestigator(event_id=request.id, user_id=third_user.id))
     db.commit()
     try:
-        response = client.get(f"/api/v1/events/{bounty.id}")
+        response = client.get(f"/api/v1/events/{request.id}")
         assert response.status_code == 200
         body = response.json()
         usernames = {c["username"] for c in body["investigators"]}
         assert usernames == {second_user.username, third_user.username}
         assert body["investigator_count"] == 2
     finally:
-        db.query(EventInvestigator).filter(EventInvestigator.event_id == bounty.id).delete(
+        db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -480,16 +480,16 @@ def test_create_happy_path(db, author, free_tag):
     assert body["media"][0]["role"] == "source"
     assert body["investigators"] == []
 
-    bounty_id = uuid.UUID(body["id"])
+    request_id = uuid.UUID(body["id"])
     # The created row is a requested event with no location and the poster on
     # ``requested_by_id``, the invariant fulfilment relies on.
-    row = db.query(Event).filter(Event.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == request_id).one()
     assert row.status == STATUS_REQUESTED
     assert row.event_coords is None
     assert row.requested_by_id == author.id
 
-    db.query(Media).filter(Media.event_id == bounty_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -513,9 +513,9 @@ def test_create_accepts_coordinate_guess(db, author):
     assert body["status"] == STATUS_REQUESTED
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
 
-    bounty_id = uuid.UUID(body["id"])
-    db.query(Media).filter(Media.event_id == bounty_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+    request_id = uuid.UUID(body["id"])
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -526,7 +526,7 @@ def test_create_event_date_optional_source_required(db, author):
         "/api/v1/events/requests",
         headers=login_as(client, author),
         data={
-            "title": "Dated bounty",
+            "title": "Dated request",
             "source_url": "https://example.com/post/1",
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-02T09:30",
@@ -541,7 +541,7 @@ def test_create_event_date_optional_source_required(db, author):
         "/api/v1/events/requests",
         headers=login_as(client, author),
         data={
-            "title": "Undated bounty",
+            "title": "Undated request",
             "source_url": "https://example.com/post/2",
             "source_posted_at": "2026-05-02T09:30",
         },
@@ -651,9 +651,9 @@ def test_create_populates_sha256_on_media(db, author):
     assert row.role == "source"
     assert row.original_filename == "tiny.jpg"
 
-    bounty_id = uuid.UUID(body["id"])
-    db.query(Media).filter(Media.event_id == bounty_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+    request_id = uuid.UUID(body["id"])
+    db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
+    db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
 
 
@@ -661,66 +661,66 @@ def test_create_populates_sha256_on_media(db, author):
 
 
 def test_delete_requires_authentication(db, author):
-    bounty = _make_bounty(db, author=author)
-    response = client.delete(f"/api/v1/events/{bounty.id}")
+    request = _make_request(db, author=author)
+    response = client.delete(f"/api/v1/events/{request.id}")
     assert response.status_code == 401
 
 
 def test_delete_returns_404_for_soft_deleted(db, author):
-    bounty = _make_bounty(db, author=author, deleted=True)
-    response = client.delete(f"/api/v1/events/{bounty.id}", headers=login_as(client, author))
+    request = _make_request(db, author=author, deleted=True)
+    response = client.delete(f"/api/v1/events/{request.id}", headers=login_as(client, author))
     assert response.status_code == 404
 
 
 def test_delete_returns_403_when_not_owner(db, author, second_user):
-    bounty = _make_bounty(db, author=author)
-    response = client.delete(f"/api/v1/events/{bounty.id}", headers=login_as(client, second_user))
+    request = _make_request(db, author=author)
+    response = client.delete(f"/api/v1/events/{request.id}", headers=login_as(client, second_user))
     assert response.status_code == 403
 
 
 def test_delete_succeeds_for_owner_and_cascades_media(db, author):
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
-    response = client.delete(f"/api/v1/events/{bounty_id}", headers=login_as(client, author))
+    request = _make_request(db, author=author)
+    request_id = request.id
+    response = client.delete(f"/api/v1/events/{request_id}", headers=login_as(client, author))
     assert response.status_code == 204
     db.expire_all()
-    assert db.query(Event).filter(Event.id == bounty_id).first() is None
-    assert db.query(Media).filter(Media.event_id == bounty_id).count() == 0
+    assert db.query(Event).filter(Event.id == request_id).first() is None
+    assert db.query(Media).filter(Media.event_id == request_id).count() == 0
 
 
 # ── POST /events/{id}/investigate ─────────────────────────────────────────
 
 
 def test_investigate_requires_authentication(db, author):
-    bounty = _make_bounty(db, author=author)
-    response = client.post(f"/api/v1/events/{bounty.id}/investigate")
+    request = _make_request(db, author=author)
+    response = client.post(f"/api/v1/events/{request.id}/investigate")
     assert response.status_code == 401
 
 
 def test_investigate_inserts_row(db, author, second_user):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
     db.expire_all()
-    rows = db.query(EventInvestigator).filter(EventInvestigator.event_id == bounty.id).all()
+    rows = db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).all()
     assert len(rows) == 1
     assert rows[0].user_id == second_user.id
 
 
 def test_investigate_is_idempotent(db, author, second_user):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     for _ in range(3):
         response = client.post(
-            f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+            f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
         )
         assert response.status_code == 204
     db.expire_all()
     assert (
         db.query(EventInvestigator)
         .filter(
-            EventInvestigator.event_id == bounty.id,
+            EventInvestigator.event_id == request.id,
             EventInvestigator.user_id == second_user.id,
         )
         .count()
@@ -730,35 +730,35 @@ def test_investigate_is_idempotent(db, author, second_user):
 
 def test_multiple_analysts_can_investigate_same_request(db, author, second_user, third_user):
     """The core multi-analyst contract, two investigators both signalling."""
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     r1 = client.post(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     r2 = client.post(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, third_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, third_user)
     )
     assert r1.status_code == 204
     assert r2.status_code == 204
     db.expire_all()
     user_ids = {
         c.user_id
-        for c in db.query(EventInvestigator).filter(EventInvestigator.event_id == bounty.id).all()
+        for c in db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).all()
     }
     assert user_ids == {second_user.id, third_user.id}
 
 
 def test_investigate_rejected_off_requested(db, author, second_user):
-    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 409
 
 
 def test_investigate_404_for_soft_deleted(db, author, second_user):
-    bounty = _make_bounty(db, author=author, deleted=True)
+    request = _make_request(db, author=author, deleted=True)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 404
 
@@ -767,19 +767,19 @@ def test_investigate_404_for_soft_deleted(db, author, second_user):
 
 
 def test_uninvestigate_removes_row(db, author, second_user):
-    bounty = _make_bounty(db, author=author)
-    db.add(EventInvestigator(event_id=bounty.id, user_id=second_user.id))
+    request = _make_request(db, author=author)
+    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
     db.commit()
 
     response = client.delete(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
     db.expire_all()
     assert (
         db.query(EventInvestigator)
         .filter(
-            EventInvestigator.event_id == bounty.id,
+            EventInvestigator.event_id == request.id,
             EventInvestigator.user_id == second_user.id,
         )
         .count()
@@ -791,18 +791,18 @@ def test_uninvestigate_is_noop_when_not_signalling(db, author, second_user):
     """Withdrawing a signal you never gave is still a 204, the user-
     observable post-condition (caller not in the working set) is what
     we promise, not "exactly one row was deleted." """
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.delete(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 204
 
 
 def test_uninvestigate_rejected_off_requested(db, author, second_user):
     """A terminated event's signals are frozen history, 409, mirroring POST."""
-    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = client.delete(
-        f"/api/v1/events/{bounty.id}/investigate", headers=login_as(client, second_user)
+        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
     )
     assert response.status_code == 409
 
@@ -811,9 +811,9 @@ def test_uninvestigate_rejected_off_requested(db, author, second_user):
 
 
 def test_close_owner_only(db, author, second_user):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/close",
+        f"/api/v1/events/{request.id}/close",
         headers=login_as(client, second_user),
         json={"close_reason": "not mine to close"},
     )
@@ -821,9 +821,9 @@ def test_close_owner_only(db, author, second_user):
 
 
 def test_close_requires_reason(db, author):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/close",
+        f"/api/v1/events/{request.id}/close",
         headers=login_as(client, author),
         json={},
     )
@@ -831,9 +831,9 @@ def test_close_requires_reason(db, author):
 
 
 def test_close_transitions_to_closed(db, author):
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/close",
+        f"/api/v1/events/{request.id}/close",
         headers=login_as(client, author),
         json={"close_reason": "Footage turned out to be from 2014"},
     )
@@ -847,9 +847,9 @@ def test_close_transitions_to_closed(db, author):
 
 def test_close_rejected_on_terminal_state(db, author):
     """An already-closed request can't be re-closed (terminal state), 409."""
-    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/close",
+        f"/api/v1/events/{request.id}/close",
         headers=login_as(client, author),
         json={"close_reason": "again"},
     )
@@ -864,7 +864,7 @@ def test_close_rejected_on_terminal_state(db, author):
 # credited in ``event_geolocators``) while ``requested_by`` keeps the poster.
 
 
-def _geolocate_fulfilment(client, bounty_id, fulfiller, *tags, **overrides):
+def _geolocate_fulfilment(client, request_id, fulfiller, *tags, **overrides):
     """POST the geolocate form that fulfils a requested event. The request
     already carries a source media, so only the proof image is new."""
     data = {
@@ -879,7 +879,7 @@ def _geolocate_fulfilment(client, bounty_id, fulfiller, *tags, **overrides):
     }
     data.update(overrides)
     return client.post(
-        f"/api/v1/events/{bounty_id}/geolocate",
+        f"/api/v1/events/{request_id}/geolocate",
         headers=login_as(client, fulfiller),
         data=data,
         files=[proof_file_part()],
@@ -892,15 +892,15 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     """The end-to-end promise: another analyst answers an open request, the row
     transitions to ``geolocated`` in place, ``owner_id`` moves to the fulfiller
     (credited as a geolocator), and ``requested_by`` keeps the original poster."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
+    request = _make_request(db, author=author)
+    request_id = request.id
 
     response = _geolocate_fulfilment(
-        client, bounty_id, second_user, conflict_tag, capture_source_tag
+        client, request_id, second_user, conflict_tag, capture_source_tag
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["id"] == str(bounty_id)
+    assert body["id"] == str(request_id)
     assert body["status"] == "geolocated"
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
     assert body["geolocated_at"] is not None
@@ -910,12 +910,12 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     assert [g["username"] for g in body["geolocators"]] == [second_user.username]
 
     db.expire_all()
-    row = db.query(Event).filter(Event.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == request_id).one()
     assert row.status == STATUS_GEOLOCATED
     assert row.owner_id == second_user.id
     assert row.requested_by_id == author.id
     assert row.event_coords is not None
-    credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == bounty_id).all()
+    credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == request_id).all()
     assert [c.user_id for c in credit] == [second_user.id]
 
 
@@ -925,12 +925,12 @@ def test_geolocate_keeps_requesters_source_url(
     """A fulfiller cannot rewrite the requester's evidence anchor: geolocate()
     ignores the form ``source_url`` on a requested fulfilment and keeps the
     request's."""
-    bounty = _make_bounty(db, author=author, source_url="https://requester.example/evidence")
-    bounty_id = bounty.id
+    request = _make_request(db, author=author, source_url="https://requester.example/evidence")
+    request_id = request.id
 
     response = _geolocate_fulfilment(
         client,
-        bounty_id,
+        request_id,
         second_user,
         conflict_tag,
         capture_source_tag,
@@ -940,7 +940,7 @@ def test_geolocate_keeps_requesters_source_url(
     assert response.json()["source_url"] == "https://requester.example/evidence"
 
     db.expire_all()
-    row = db.query(Event).filter(Event.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == request_id).one()
     assert row.source_url == "https://requester.example/evidence"
 
 
@@ -949,20 +949,20 @@ def test_geolocate_fulfilled_event_leaves_requested_view(
 ):
     """Once fulfilled the row is ``geolocated``, so it drops off the requested
     surface and appears on the located view instead."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
+    request = _make_request(db, author=author)
+    request_id = request.id
 
     assert (
-        _geolocate_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
+        _geolocate_fulfilment(client, request_id, second_user, conflict_tag, capture_source_tag)
     ).status_code == 200
 
     # Gone from the requested-view list; present on the located one.
-    assert all(row["id"] != str(bounty_id) for row in client.get(_LIST).json())
-    located = client.get(f"/api/v1/events/{bounty_id}")
+    assert all(row["id"] != str(request_id) for row in client.get(_LIST).json())
+    located = client.get(f"/api/v1/events/{request_id}")
     assert located.status_code == 200
     assert located.json()["status"] == "geolocated"
     listed = {row["id"] for row in client.get("/api/v1/events").json()}
-    assert str(bounty_id) in listed
+    assert str(request_id) in listed
 
 
 def test_geolocate_fulfilment_reuses_existing_media(
@@ -971,18 +971,18 @@ def test_geolocate_fulfilment_reuses_existing_media(
     """Fulfilment keeps the request's source media on the same row (no
     transfer / churn): the one source survives the transition; the proof image
     lands alongside it as a ``proof`` row."""
-    bounty = _make_bounty(db, author=author)
-    bounty_id = bounty.id
-    media_id = db.query(Media.id).filter(Media.event_id == bounty_id).scalar()
+    request = _make_request(db, author=author)
+    request_id = request.id
+    media_id = db.query(Media.id).filter(Media.event_id == request_id).scalar()
 
     assert (
-        _geolocate_fulfilment(client, bounty_id, second_user, conflict_tag, capture_source_tag)
+        _geolocate_fulfilment(client, request_id, second_user, conflict_tag, capture_source_tag)
     ).status_code == 200
 
     db.expire_all()
-    sources = db.query(Media).filter(Media.event_id == bounty_id, Media.role == "source").all()
+    sources = db.query(Media).filter(Media.event_id == request_id, Media.role == "source").all()
     assert [m.id for m in sources] == [media_id]
-    assert db.query(Media).filter(Media.event_id == bounty_id, Media.role == "proof").count() == 1
+    assert db.query(Media).filter(Media.event_id == request_id, Media.role == "proof").count() == 1
 
 
 def test_geolocate_rejects_second_source_on_top_of_kept_one(
@@ -990,9 +990,9 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
 ):
     """An event carries a single source media: adding a file while keeping the
     request's existing one is rejected before any upload."""
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/geolocate",
+        f"/api/v1/events/{request.id}/geolocate",
         headers=login_as(client, second_user),
         data={
             "title": "x",
@@ -1016,12 +1016,12 @@ def test_geolocate_fulfilment_honors_analyst_title_and_tags(
     """The fulfilling analyst CAN refine the title and tags, they know more than
     the poster did (place name resolved, conflict tag added). The refined values
     land on the row; the required conflict + capture_source floor is enforced."""
-    bounty = _make_bounty(db, author=author, title="Original bounty title", tags=[free_tag])
-    bounty_id = bounty.id
+    request = _make_request(db, author=author, title="Original request title", tags=[free_tag])
+    request_id = request.id
 
     response = _geolocate_fulfilment(
         client,
-        bounty_id,
+        request_id,
         second_user,
         free_tag,
         conflict_tag,
@@ -1038,9 +1038,9 @@ def test_geolocate_fulfilment_honors_analyst_title_and_tags(
 def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_user):
     """The floor still applies to fulfilment: a requested row without the
     conflict + capture_source tags 400s (the request itself may be tagless)."""
-    bounty = _make_bounty(db, author=author)
+    request = _make_request(db, author=author)
     response = client.post(
-        f"/api/v1/events/{bounty.id}/geolocate",
+        f"/api/v1/events/{request.id}/geolocate",
         headers=login_as(client, second_user),
         data={
             "title": "x",
@@ -1063,9 +1063,9 @@ def test_geolocate_fulfilment_rejected_when_closed(
     """A withdrawn (``closed``) request is terminal, not answerable, geolocate
     409s with the invalid_state code (only ``requested`` / ``detected``
     transition)."""
-    bounty = _make_bounty(db, author=author, status=STATUS_CLOSED)
+    request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = _geolocate_fulfilment(
-        client, bounty.id, second_user, conflict_tag, capture_source_tag
+        client, request.id, second_user, conflict_tag, capture_source_tag
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"

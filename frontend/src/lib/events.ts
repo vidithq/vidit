@@ -10,7 +10,7 @@ import type {
 
 /** A required field a create/edit form is still missing. `key` drives the
  *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
- *  the geolocation + request (ex-bounty) validators so both feed the same
+ *  the geolocation + request (ex-request) validators so both feed the same
  *  notice + highlight plumbing. */
 export type MissingFieldKey =
   | "title"
@@ -59,7 +59,7 @@ export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string 
 }
 
 /** The two read views over the one `events` table: `located` (the catalogue,
- *  the map + default list) or `requested` (the open-call queue, ex `/bounties`).
+ *  the map + default list) or `requested` (the open-call queue, ex `/requests`).
  *  See `docs/data-model.md` → `events`. */
 export type EventView = "located" | "requested";
 
@@ -72,7 +72,7 @@ export interface EventListParams {
 }
 
 /** Build the `GET /events` query string for one lifecycle view. Defaults to
- *  `view=located`; the requested (ex-bounty) queue passes `view=requested`. */
+ *  `view=located`; the requested (ex-request) queue passes `view=requested`. */
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
@@ -251,7 +251,7 @@ export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
 }
 
 /**
- * Open a request (a `requested` event, yesterday's bounty): `POST
+ * Open a request (a `requested` event, yesterday's request): `POST
  * /events/requests` (multipart). An approximate coordinate guess is optional
  * (both `lat`/`lng` or neither); `event_date` is optional (often unknown at
  * request time); one source media file is required.
@@ -459,7 +459,7 @@ export function missingEventFields(
 }
 
 /**
- * Every still-unmet required field for a request (ex-bounty), as human labels
+ * Every still-unmet required field for a request (ex-request), as human labels
  * for `IncompleteFormNotice`. A request is an unfinished geolocation, so its
  * floor is a subset of the geolocation one (no coordinates, dates, proof, or
  * tags), just enough to be actionable: a title, the source, and the footage.

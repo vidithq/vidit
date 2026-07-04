@@ -128,9 +128,9 @@ export function wipeDemo(): Promise<WipeDemoResponse> {
   });
 }
 
-// ── Demo bounties ─────────────────────────────────────────────────────
+// ── Demo requests ─────────────────────────────────────────────────────
 
-export interface SeedDemoBountiesResponse {
+export interface SeedDemoRequestsResponse {
   created: number;
   templates: number;
   authors: number;
@@ -143,21 +143,21 @@ export interface SeedDemoBountiesResponse {
   closed: number;
 }
 
-export function seedDemoBounties(
+export function seedDemoRequests(
   count: number
-): Promise<SeedDemoBountiesResponse> {
-  return apiFetch<SeedDemoBountiesResponse>("/admin/seed-demo-bounties", {
+): Promise<SeedDemoRequestsResponse> {
+  return apiFetch<SeedDemoRequestsResponse>("/admin/seed-demo-requests", {
     method: "POST",
     body: JSON.stringify({ count }),
   });
 }
 
-export interface WipeDemoBountiesResponse {
-  deleted_bounties: number;
+export interface WipeDemoRequestsResponse {
+  deleted_requests: number;
 }
 
-export function wipeDemoBounties(): Promise<WipeDemoBountiesResponse> {
-  return apiFetch<WipeDemoBountiesResponse>("/admin/seed-demo-bounties", {
+export function wipeDemoRequests(): Promise<WipeDemoRequestsResponse> {
+  return apiFetch<WipeDemoRequestsResponse>("/admin/seed-demo-requests", {
     method: "DELETE",
   });
 }

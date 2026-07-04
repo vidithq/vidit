@@ -1,11 +1,11 @@
 """End-to-end tests for ``GET /search``.
 
 Scope: the search surface — three FTS-backed result groups (geolocations,
-bounties, users), the highlight-marker contract, the ``type`` filter,
+requests, users), the highlight-marker contract, the ``type`` filter,
 soft-delete invariants, auth, and the empty-query short-circuit.
 
-Since the bounty + geolocation merge the "bounties" group is a view over the
-one ``geolocations`` table: a bounty is a ``requested`` row (no location). The
+Since the request + geolocation merge the "requests" group is a view over the
+one ``geolocations`` table: a request is a ``requested`` row (no location). The
 located view (``geolocations`` group) filters ``location IS NOT NULL``; the
 requested view filters ``status = 'requested'``, so the two never overlap.
 
@@ -100,9 +100,9 @@ def test_empty_query_returns_empty_groups(caller):
     assert response.status_code == 200
     body = response.json()
     assert body["geolocations"] == []
-    assert body["bounties"] == []
+    assert body["requests"] == []
     assert body["users"] == []
-    assert body["total"] == {"geolocations": 0, "bounties": 0, "users": 0}
+    assert body["total"] == {"geolocations": 0, "requests": 0, "users": 0}
     assert body["query"] == ""
     assert body["type"] == "all"
 
@@ -110,7 +110,7 @@ def test_empty_query_returns_empty_groups(caller):
 def test_whitespace_only_query_returns_empty_groups(caller):
     response = client.get("/api/v1/search?q=%20%20%20", headers=login_as(client, caller))
     assert response.status_code == 200
-    assert all(response.json()[k] == [] for k in ("geolocations", "bounties", "users"))
+    assert all(response.json()[k] == [] for k in ("geolocations", "requests", "users"))
 
 
 def test_invalid_type_returns_422(caller):
@@ -222,75 +222,75 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
         db.commit()
 
 
-# ── Bounties ──────────────────────────────────────────────────────────────
+# ── Requests ──────────────────────────────────────────────────────────────
 
 
-def test_search_matches_bounty_by_title_with_claimer_count(db, caller):
+def test_search_matches_request_by_title_with_claimer_count(db, caller):
     token = _unique_token()
-    # A bounty is a ``requested`` event: no location (the requested-view search
+    # A request is a ``requested`` event: no location (the requested-view search
     # filter is ``status = 'requested'``).
-    bounty = Event(
+    request = Event(
         owner_id=caller.id,
-        title=f"Bounty {token} — please geolocate",
-        source_url="https://example.com/bounty-a",
+        title=f"Request {token} — please geolocate",
+        source_url="https://example.com/request-a",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
-    db.add(bounty)
+    db.add(request)
     db.flush()
     db.add(
         Media(
-            event_id=bounty.id,
+            event_id=request.id,
             role="source",
-            storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
+            storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             media_type="image",
         )
     )
     db.commit()
-    bounty_id = bounty.id
+    request_id = request.id
     try:
         response = client.get(
-            f"/api/v1/search?q={token}&type=bounty",
+            f"/api/v1/search?q={token}&type=request",
             headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
-        assert body["total"]["bounties"] == 1
-        hit = body["bounties"][0]
-        assert hit["id"] == str(bounty_id)
-        # Mirrors the BountyList aggregate so the search card can reuse
+        assert body["total"]["requests"] == 1
+        hit = body["requests"][0]
+        assert hit["id"] == str(request_id)
+        # Mirrors the RequestList aggregate so the search card can reuse
         # the same "N working" treatment.
         assert hit["claimer_count"] == 0
         assert hit["status"] == STATUS_REQUESTED
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:
-        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
         db.commit()
 
 
-def test_search_excludes_soft_deleted_bounties(db, caller):
+def test_search_excludes_soft_deleted_requests(db, caller):
     token = _unique_token()
-    bounty = Event(
+    request = Event(
         owner_id=caller.id,
-        title=f"Hidden bounty {token}",
-        source_url="https://example.com/bounty-b",
+        title=f"Hidden request {token}",
+        source_url="https://example.com/request-b",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),
     )
-    db.add(bounty)
+    db.add(request)
     db.commit()
-    bounty_id = bounty.id
+    request_id = request.id
     try:
         response = client.get(
-            f"/api/v1/search?q={token}&type=bounty",
+            f"/api/v1/search?q={token}&type=request",
             headers=login_as(client, caller),
         )
-        assert response.json()["bounties"] == []
+        assert response.json()["requests"] == []
     finally:
-        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -399,9 +399,9 @@ def test_search_type_all_returns_three_groups(db, caller):
         event_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
-    bounty = Event(
+    request = Event(
         owner_id=caller.id,
-        title=f"Bounty {token} unique-token row",
+        title=f"Request {token} unique-token row",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
@@ -412,18 +412,18 @@ def test_search_type_all_returns_three_groups(db, caller):
         email=f"all-{uuid.uuid4().hex}@example.com",
         password_hash=hash_password("p"),
     )
-    db.add_all([geo, bounty, user])
+    db.add_all([geo, request, user])
     db.flush()
     db.add(
         Media(
-            event_id=bounty.id,
+            event_id=request.id,
             role="source",
-            storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
+            storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             media_type="image",
         )
     )
     db.commit()
-    geo_id, bounty_id, user_id = geo.id, bounty.id, user.id
+    geo_id, request_id, user_id = geo.id, request.id, user.id
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=all",
@@ -434,14 +434,14 @@ def test_search_type_all_returns_three_groups(db, caller):
         # Each group has exactly the one row we planted — the unique
         # token isolates us from any neighbour rows in the dev DB.
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
-        assert [h["id"] for h in body["bounties"]] == [str(bounty_id)]
+        assert [h["id"] for h in body["requests"]] == [str(request_id)]
         assert [h["id"] for h in body["users"]] == [str(user_id)]
-        assert body["total"] == {"geolocations": 1, "bounties": 1, "users": 1}
+        assert body["total"] == {"geolocations": 1, "requests": 1, "users": 1}
         assert body["query"] == token
         assert body["type"] == "all"
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
-        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
         db.commit()
 
@@ -460,26 +460,26 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         event_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
-    bounty = Event(
+    request = Event(
         owner_id=caller.id,
-        title=f"Bounty also {token}",
+        title=f"Request also {token}",
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
-    db.add_all([geo, bounty])
+    db.add_all([geo, request])
     db.flush()
     db.add(
         Media(
-            event_id=bounty.id,
+            event_id=request.id,
             role="source",
-            storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
+            storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             media_type="image",
         )
     )
     db.commit()
-    geo_id, bounty_id = geo.id, bounty.id
+    geo_id, request_id = geo.id, request.id
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=geolocation",
@@ -489,57 +489,57 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
         # Other groups stay empty arrays — the shape doesn't depend on
         # the filter.
-        assert body["bounties"] == []
+        assert body["requests"] == []
         assert body["users"] == []
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
-        db.query(Event).filter(Event.id == bounty_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
         db.commit()
 
 
 def test_search_limit_caps_per_group(db, caller):
-    """Plant 4 matching bounties, ask for limit=2, expect 2 back —
+    """Plant 4 matching requests, ask for limit=2, expect 2 back —
     proves the LIMIT clause makes it through the rank-then-hydrate
     pipeline."""
     token = _unique_token()
-    bounties = []
+    requests = []
     for i in range(4):
         b = Event(
             owner_id=caller.id,
-            title=f"Bounty {token} number {i}",
+            title=f"Request {token} number {i}",
             source_url="https://example.com",
             source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
             status=STATUS_REQUESTED,
             requested_at=datetime.now(UTC),
         )
         db.add(b)
-        bounties.append(b)
+        requests.append(b)
     db.flush()
-    for b in bounties:
+    for b in requests:
         db.add(
             Media(
                 event_id=b.id,
                 role="source",
-                storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{b.id}/x.jpg"),
+                storage_url=(f"http://localhost:8000/local-storage/request_uploads/{b.id}/x.jpg"),
                 media_type="image",
             )
         )
     db.commit()
-    bounty_ids = [b.id for b in bounties]
+    request_ids = [b.id for b in requests]
     try:
         response = client.get(
-            f"/api/v1/search?q={token}&type=bounty&limit=2",
+            f"/api/v1/search?q={token}&type=request&limit=2",
             headers=login_as(client, caller),
         )
         assert response.status_code == 200
         body = response.json()
-        assert len(body["bounties"]) == 2
+        assert len(body["requests"]) == 2
         # ``total`` is the pre-LIMIT count from ``COUNT(*) OVER ()`` so
         # it must reflect all 4 matches, not just the 2 we returned.
         # Locks in the fix for the "total is len(arrays)" review finding.
-        assert body["total"]["bounties"] == 4
+        assert body["total"]["requests"] == 4
     finally:
-        for bid in bounty_ids:
+        for bid in request_ids:
             db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
         db.commit()
 
@@ -597,7 +597,7 @@ def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):
 
 
 def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
-    """Same defence applied to geolocation / bounty titles. Plant the
+    """Same defence applied to geolocation / request titles. Plant the
     sentinel bytes in a geo's title, search by an adjacent word, and
     expect the response to have balanced sentinel parity."""
     token = _unique_token()

@@ -7,7 +7,7 @@ fragment with sentinel delimiters the frontend renders as ``<mark>`` —
 XSS-safe by construction, no HTML across the wire. Soft-deleted rows are
 filtered at query time.
 
-Since the bounty + geolocation merge there is a single FTS query path over the
+Since the request + geolocation merge there is a single FTS query path over the
 one ``events`` table (:func:`_search_events`); the located and requested
 views differ only by a status/coords filter and the fields each surfaces. The
 TSVECTOR expressions here must match the migration's ``CREATE INDEX`` expressions
@@ -170,8 +170,8 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
     return out, total
 
 
-def search_bounties(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N requested events (bounties) matching ``query`` + the pre-LIMIT total.
+def search_requests(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+    """Top-N requested events (requests) matching ``query`` + the pre-LIMIT total.
 
     The requested view: ``status = 'requested'``. Same FTS path as the located
     view via :func:`_search_events`; carries ``claimer_count`` (investigator
@@ -323,7 +323,7 @@ def search_all(
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
-    ``types`` is a subset of ``{"geolocation", "bounty", "user"}`` (the
+    ``types`` is a subset of ``{"geolocation", "request", "user"}`` (the
     router expands ``type=all`` before calling). An empty / whitespace-only
     query short-circuits to empty, keeping index cost off "typed but didn't
     submit" hits.
@@ -335,7 +335,7 @@ def search_all(
     """
     result: dict[str, dict] = {
         "geolocations": {"hits": [], "total": 0},
-        "bounties": {"hits": [], "total": 0},
+        "requests": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
     }
     if not query.strip():
@@ -344,9 +344,9 @@ def search_all(
     if "geolocation" in types:
         hits, total = search_geolocations(db, query=query, limit=limit)
         result["geolocations"] = {"hits": hits, "total": total}
-    if "bounty" in types:
-        hits, total = search_bounties(db, query=query, limit=limit)
-        result["bounties"] = {"hits": hits, "total": total}
+    if "request" in types:
+        hits, total = search_requests(db, query=query, limit=limit)
+        result["requests"] = {"hits": hits, "total": total}
     if "user" in types:
         hits, total = search_users(db, query=query, limit=limit)
         result["users"] = {"hits": hits, "total": total}
@@ -355,7 +355,7 @@ def search_all(
 
 # Allowed ``type`` parameter values. Re-exported by the router for the 422
 # message so the spec stays in one place.
-ALLOWED_TYPES = {"all", "geolocation", "bounty", "user"}
+ALLOWED_TYPES = {"all", "geolocation", "request", "user"}
 
 
 def types_from_param(param: str) -> set[str]:
@@ -365,5 +365,5 @@ def types_from_param(param: str) -> set[str]:
     validates ``param in ALLOWED_TYPES`` first, so this trusts its input.
     """
     if param == "all":
-        return {"geolocation", "bounty", "user"}
+        return {"geolocation", "request", "user"}
     return {param}

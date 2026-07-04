@@ -20,14 +20,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Lifecycle status — the merged bounty + geolocation event lifecycle.
-#   ``requested``   an open call to geolocate (yesterday's bounty ``open``); may
+# Lifecycle status — the merged request + geolocation event lifecycle.
+#   ``requested``   an open call to geolocate (yesterday's request ``open``); may
 #                   carry an approximate coordinate guess.
 #   ``detected``    a machine draft (archive import / the bot); public on every
 #                   read surface but clearly marked, may or may not carry a
 #                   location (a coord-less draft is a media-only detection).
 #   ``geolocated``  a person vouched for it and froze it (yesterday's geolocation
-#                   ``submitted`` + a fulfilled bounty); always has a location.
+#                   ``submitted`` + a fulfilled request); always has a location.
 #   ``closed``      withdrawn (a ``requested`` event the owner dropped) or
 #                   rejected (a ``detected`` row the owner threw out);
 #                   ``before_closed_status`` records which.
@@ -128,7 +128,7 @@ class EventGeolocator(Base):
 
 
 class Event(Base):
-    """One event across the merged bounty + geolocation lifecycle.
+    """One event across the merged request + geolocation lifecycle.
 
     ``status`` (see ``EventStatus``) is the lifecycle. ``event_coords`` is an
     independent nullable axis: required for a ``geolocated`` row (a vouched
@@ -148,7 +148,7 @@ class Event(Base):
     # geolocators once ``geolocated`` (see ``EventGeolocator``).
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Who opened the request, preserved across fulfilment so the merge doesn't
-    # erase who posted the bounty. NULL for a directly-submitted geolocation.
+    # erase who posted the request. NULL for a directly-submitted geolocation.
     # ``ondelete=SET NULL``: a fulfilled event (owner transferred to the fulfiller)
     # legitimately outlives its requester, and hard-deleting a user (GDPR erasure)
     # nulls their attribution here rather than failing on the FK.
@@ -292,7 +292,7 @@ class Event(Base):
             name="ck_events_status_valid",
         ),
         # "Open requests / detections / geolocations, newest first" — the list,
-        # map and requested-view (ex-bounty) reads all filter on status.
+        # map and requested-view (ex-request) reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
         # Backs the assemble idempotency look-up (one per detection during a
         # backfill). Partial on the populated cohort — human rows are always NULL.

@@ -16,7 +16,7 @@ import { VideoChrome } from "./components/VideoChrome";
 //   1. Vidit intro (V mark + wordmark + tagline).
 //   2. ONE continuous recording of the platform: map → sidebar tour →
 //      submit flow (paste, import, tag, publish) → naturally lands on
-//      the just-published geolocation → glides to bounties. Captions
+//      the just-published geolocation → glides to requests. Captions
 //      change throughout, following the flow.
 //   3. Closing outro (CTA).
 //
@@ -88,8 +88,8 @@ const CHROME_TOP = 32;
 //   7–10s   click Submit → /geolocations/new + sidebar collapse
 //   10–25s  submit flow: paste → import → tag → publish
 //   25–31s  the just-published geolocation detail page
-//   31–42s  bounties list + click bounty + "I'm working on this"
-//   42–59s  Post bounty form: type title + paste URL + media + submit
+//   31–42s  requests list + click request + "I'm working on this"
+//   42–59s  Post request form: type title + paste URL + media + submit
 // Captions are anchored to the beat they describe — "Review" and
 // "Publish" live on their own beats (proof-edit, submit) instead of
 // being smuggled into the form-fill caption. The 5–10s sidebar-tour
@@ -125,17 +125,17 @@ const CAPTIONS: { from: number; frames: number; title: string; eyebrow?: string 
   },
   {
     from: 60 * 39,
-    frames: 60 * 11, // 39–50s — bounty browse + click + "I'm working
+    frames: 60 * 11, // 39–50s — request browse + click + "I'm working
                      // on this"
-    eyebrow: "Bounties",
+    eyebrow: "Requests",
     title: "See what other analysts are working on. Lend a hand.",
   },
   {
     from: 60 * 50,
-    frames: 60 * 16, // 50–66s — post-bounty form (title typed, URL
+    frames: 60 * 16, // 50–66s — post-request form (title typed, URL
                      // pasted, media attached, slow scroll, submit,
-                     // hold on the new bounty's detail page)
-    eyebrow: "Bounties",
+                     // hold on the new request's detail page)
+    eyebrow: "Requests",
     title: "Or post your own — the community picks it up.",
   },
 ];

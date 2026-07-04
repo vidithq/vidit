@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import {
   AtSign,
   Calendar,
+  Check,
+  Circle,
   Mail,
   MapPin,
   MessageCircle,
@@ -169,7 +171,7 @@ export default function PalettePage() {
   if (process.env.NODE_ENV !== "development") notFound();
 
   const [pillSel, setPillSel] = useState("Open");
-  const [segSel, setSegSel] = useState<"geolocation" | "bounty">("geolocation");
+  const [segSel, setSegSel] = useState<"single" | "bulk">("single");
   const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
   const [swOn, setSwOn] = useState(true);
   const [tpTags, setTpTags] = useState<Tag[]>([
@@ -247,7 +249,7 @@ export default function PalettePage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
-                <Button variant="danger">Delete this bounty</Button>
+                <Button variant="danger">Delete this request</Button>
                 <span className="text-neutral-600 self-center">→</span>
                 <Button variant="danger" className={DANGER_CONFIRM}>
                   Confirm delete
@@ -256,13 +258,14 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | neutral | danger | strong, mirroring the <Button> tones. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | strong, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
                 <Pill tone="accent" icon={<MapPin size={11} />}>
                   accent
                 </Pill>
+                <Pill tone="secondary">secondary</Pill>
                 <Pill tone="neutral">neutral</Pill>
                 <Pill tone="danger">danger</Pill>
                 <Pill tone="strong">strong</Pill>
@@ -280,16 +283,33 @@ export default function PalettePage() {
                 ))}
                 <span className="text-[11px] text-neutral-600 self-center">← click</span>
               </div>
+              {/* Readiness tick-list (submit): a met vs pending pair per tone, so
+                  the marked-state loudness can be compared side by side. */}
+              <div className="space-y-1.5">
+                {(["accent", "secondary", "neutral"] as const).map((t) => (
+                  <div key={t} className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-neutral-600 self-center w-12">
+                      {t}
+                    </span>
+                    <Pill tone={t} icon={<Check size={12} strokeWidth={2.5} />}>
+                      Coordinates
+                    </Pill>
+                    <Pill tone="neutral" icon={<Circle size={9} strokeWidth={2} />}>
+                      Proof image
+                    </Pill>
+                  </div>
+                ))}
+              </div>
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit type (geolocation / bounty), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
             <div className="space-y-3">
               <SegmentedControl
-                aria-label="Demo type"
+                aria-label="Demo mode"
                 options={[
-                  { value: "geolocation", label: "Geolocation" },
-                  { value: "bounty", label: "Bounty" },
+                  { value: "single", label: "Single" },
+                  { value: "bulk", label: "Bulk import" },
                 ]}
                 value={segSel}
                 onChange={setSegSel}
@@ -368,7 +388,7 @@ export default function PalettePage() {
             <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>
           </Item>
 
-          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / bounty)">
+          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request)">
             <div className="w-full max-w-sm">
               <IncompleteFormNotice missing={["Coordinates", "Conflict tag", "Proof"]} />
             </div>
@@ -437,7 +457,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + bounty detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here). The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here). The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
@@ -489,7 +509,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & bounty detail pages (label / value)">
+          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & request detail pages (label / value)">
             <div className="w-full max-w-md">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -501,17 +521,17 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ProofSection>" usage="Proof section on geoloc + bounty detail: eyebrow + bordered box">
+          <Item name="<ProofSection>" usage="Proof section on geoloc + request detail: eyebrow + bordered box">
             <div className="w-full max-w-xl">
               <ProofSection>
                 <div className="text-sm text-neutral-300 leading-relaxed">
-                  The proof body goes here (a rendered doc, or bounty notes).
+                  The proof body goes here (a rendered doc, or request notes).
                 </div>
               </ProofSection>
             </div>
           </Item>
 
-          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (bounties, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
+          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
             <div className="w-full max-w-md space-y-3">
               <Variant label='variant="boxed" (default)'>
                 <EmptyState>
@@ -599,11 +619,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: bounty" usage="/bounties + search results">
+          <Item name="<EntityCard variant=compact>: request" usage="/requests + search results">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/bounties/demo"
+                detailHref="/requests/demo"
                 title="Footage wanted near Bakhmut"
                 badge={<StatusBadge status="requested" />}
                 author={{ username: "analyst" }}

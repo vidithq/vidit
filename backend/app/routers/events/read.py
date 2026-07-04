@@ -50,7 +50,7 @@ _MEDIA_TYPES = frozenset({"image", "video"})
 
 # The two read views over the one table. ``located`` is the catalog: vouched +
 # machine rows, keeping a rejected detection visible (``closed`` off
-# ``detected``). ``requested`` is the open-call queue (ex ``/bounties``),
+# ``detected``). ``requested`` is the open-call queue (ex ``/requests``),
 # keeping a withdrawn request visible the same way.
 _VIEWS = frozenset({"located", "requested"})
 
@@ -457,7 +457,7 @@ def list_events(
     """Newest-first cards for one lifecycle view.
 
     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-    queue (ex ``/bounties``), whose cards additionally carry the investigator
+    queue (ex ``/requests``), whose cards additionally carry the investigator
     aggregates (count + a small newest-first sample). Two-step "ids then full
     rows" shape so eager-loads can't inflate the LIMIT count.
     """

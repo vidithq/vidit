@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
  * The one empty-state grammar. Three variants, one look per situation:
  *
  * - `boxed` (default): the muted bordered one-liner for empty list pages
- *   (search, bounties). `children` is the sentence, often with an inline
+ *   (search, requests). `children` is the sentence, often with an inline
  *   `TEXT_LINK` CTA.
  * - `plain`: the headline + hint + CTA stack inside an existing container
  *   (detections queue, profile recent submissions). No box of its own.

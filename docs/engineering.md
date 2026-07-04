@@ -113,7 +113,7 @@ vidit/
 │   │   │   ├── auth_event.py       # /auth/* audit log
 │   │   │   ├── auth_token.py       # Single-use password-reset tokens
 │   │   │   ├── follow.py           # Analyst → analyst follow edges
-│   │   │   ├── event.py            # Event + EventGeolocator + EventInvestigator (the merged bounty + geolocation + detection lifecycle)
+│   │   │   ├── event.py            # Event + EventGeolocator + EventInvestigator (the merged request + geolocation + detection lifecycle)
 │   │   │   ├── invite_code.py
 │   │   │   ├── media.py            # Media, role source | proof, one table for footage and inline proof images
 │   │   │   ├── pending_registration.py  # Pre-creation registration staging
@@ -155,7 +155,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/bounties)
+│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests)
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
@@ -167,7 +167,7 @@ vidit/
 │   │   │   ├── page.tsx            # Public landing page (storefront)
 │   │   │   ├── about/              # Public marketing / mission page
 │   │   │   ├── admin/              # Admin console (invites, demo seed, reapers)
-│   │   │   ├── bounties/           # Bounty (requested-view) index + detail + create
+│   │   │   ├── requests/           # Request (requested-view) index + detail + create
 │   │   │   ├── events/[id]/        # Event detail (any lifecycle state) + edit
 │   │   │   ├── geolocations/new/   # Legacy create-route redirect to /submit
 │   │   │   ├── map/                # Interactive map (the app home)
@@ -214,7 +214,7 @@ vidit/
 │
 ├── video/                          # "Promo as code" pipeline, see video/README.md
 │   ├── src/                        # Remotion composition (Demo.tsx) + components
-│   ├── seed-bounties.js            # Seeds bounty list from analyst tweets (idempotent)
+│   ├── seed-requests.js            # Seeds request list from analyst tweets (idempotent)
 │   ├── record-submit.js            # Playwright + DOM cursor overlay → recording-submit.mp4
 │   ├── package.json                # remotion + playwright deps
 │   └── README.md                   # Operator guide + brittleness notes

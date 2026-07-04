@@ -918,42 +918,42 @@ def test_create_unguarded_invite_code_route_is_gone(regular_user):
     assert response.status_code == 404
 
 
-def _seed_bounty(db, *, author_id: uuid.UUID) -> uuid.UUID:
-    """Cheap inline requested-event (bounty) fixture — parity with the
-    geolocation fixture pattern in this file. A bounty is a ``requested``
+def _seed_request(db, *, author_id: uuid.UUID) -> uuid.UUID:
+    """Cheap inline requested-event (request) fixture — parity with the
+    geolocation fixture pattern in this file. A request is a ``requested``
     ``Event`` (no location) since the merge. Returns the row id; the
     caller relies on cascade-on-delete-from-user to clean up the row + its
     media."""
-    bounty = Event(
+    request = Event(
         owner_id=author_id,
         requested_by_id=author_id,
-        title=f"Bounty {uuid.uuid4().hex[:8]}",
+        title=f"Request {uuid.uuid4().hex[:8]}",
         source_url="https://example.com/post",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
-    db.add(bounty)
+    db.add(request)
     db.flush()
     db.add(
         Media(
-            event_id=bounty.id,
+            event_id=request.id,
             role="source",
-            storage_url=(f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg"),
+            storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             media_type="image",
         )
     )
     db.commit()
-    return bounty.id
+    return request.id
 
 
 def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user, db):
-    """Banning a user must hide their requested events (bounties) from public
+    """Banning a user must hide their requested events (requests) from public
     reads the same way it hides their geolocations — leaving open requests on the
     queue for a banned author breaks the audit story (someone fulfils it, the
     trace points back to a user no one can see). Since the merge both are one
     table, so the single ``cascaded_geolocations`` count covers them."""
-    bounty_id = _seed_bounty(db, author_id=regular_user.id)
+    request_id = _seed_request(db, author_id=regular_user.id)
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
@@ -963,23 +963,23 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     body = response.json()
     assert body["mode"] == "soft"
     # One requested event flipped; the response no longer carries a separate
-    # bounty tally (one event cascade covers requested + located rows).
+    # request tally (one event cascade covers requested + located rows).
     assert body["cascaded_geolocations"] >= 1
-    assert "cascaded_bounties" not in body
+    assert "cascaded_requests" not in body
 
     db.expire_all()
-    cascaded = db.query(Event).filter(Event.id == bounty_id).one()
+    cascaded = db.query(Event).filter(Event.id == request_id).one()
     assert cascaded.deleted_at is not None
     # Public list excludes the soft-deleted request.
     listing = client.get("/api/v1/events?view=requested").json()
-    assert all(row["id"] != str(bounty_id) for row in listing)
+    assert all(row["id"] != str(request_id) for row in listing)
 
 
 def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, db):
     """Re-soft-deleting an already-soft-deleted user returns 0 cascades — the
     audit log captures only what *this* call actually flipped. The requested
     event counts in the same ``cascaded_geolocations`` tally as any located row."""
-    _seed_bounty(db, author_id=regular_user.id)
+    _seed_request(db, author_id=regular_user.id)
 
     first = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
@@ -995,11 +995,11 @@ def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, 
 
 
 def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
-    """GDPR erasure must take the requested events (bounties) with the user.
+    """GDPR erasure must take the requested events (requests) with the user.
     Media rows cascade via the event FK; the S3 sweep happens after commit and is
     counted in ``media_count``."""
-    bounty_id = _seed_bounty(db, author_id=regular_user.id)
-    media_id = db.query(Media.id).filter(Media.event_id == bounty_id).scalar()
+    request_id = _seed_request(db, author_id=regular_user.id)
+    media_id = db.query(Media.id).filter(Media.event_id == request_id).scalar()
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
@@ -1010,12 +1010,12 @@ def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
     assert body["mode"] == "hard"
     # The requested event is counted in the single geolocation cascade.
     assert body["cascaded_geolocations"] >= 1
-    assert "cascaded_bounties" not in body
+    assert "cascaded_requests" not in body
     # media_count includes the seeded request's media.
     assert body["media_count"] >= 1
 
     db.expire_all()
-    assert db.query(Event).filter(Event.id == bounty_id).first() is None
+    assert db.query(Event).filter(Event.id == request_id).first() is None
     assert db.query(Media).filter(Media.id == media_id).first() is None
 
 
@@ -1023,7 +1023,7 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
     """The audit row carries the cascade count so a future audit can answer "how
     many events did this ban take down?" without re-querying. Since the merge the
     requested events fold into ``cascaded_geolocations``."""
-    _seed_bounty(db, author_id=regular_user.id)
+    _seed_request(db, author_id=regular_user.id)
 
     client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
@@ -1040,4 +1040,4 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
     )
     assert event is not None
     assert event.target["cascaded_geolocations"] >= 1
-    assert "cascaded_bounties" not in event.target
+    assert "cascaded_requests" not in event.target
