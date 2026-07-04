@@ -1,4 +1,4 @@
-import { Bot, MapPin, User, X } from "lucide-react";
+import { Bot, MapPin, Megaphone, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { components } from "@/lib/api-types";
 import type { EventStatus } from "@/types";
@@ -11,17 +11,18 @@ type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_stat
 /**
  * The unified event lifecycle status as a coloured pill: one badge for all four
  * states, sharing the one `Pill` shape. Consolidates the former split between
- * this and `BountyStatusBadge` now that bounties and geolocations are one event.
+ * this and `RequestStatusBadge` now that requests and geolocations are one event.
  *
- * - `requested` (accent, a pin): an open call to geolocate (the requested /
- *   bounty view). Accent draws attention: it's the actionable, still-open state.
+ * - `requested` (accent, a megaphone): an open call to geolocate (the requested /
+ *   request view). Accent draws attention: it's the actionable, still-open state.
  * - `detected` (accent, a robot): a machine draft imported from a tweet, shown
  *   marked until the owner submits it. The mark that must stand out. Accent-
  *   tinted, so it follows the user's chosen palette.
- * - `geolocated` (neutral, a person): a person vouched for it (via the form, or
- *   by submitting a reviewed detection). The default located state. It does NOT
- *   claim independent verification, only that a person stands behind it; the
- *   neutral colour keeps the accent states the attention-drawing marks.
+ * - `geolocated` (neutral, a pin): the located state, a point on the map.
+ *   A person vouched for it (via the form, or by submitting a reviewed
+ *   detection); it does NOT claim independent verification, only that a person
+ *   stands behind it. The neutral colour keeps the accent states the
+ *   attention-drawing marks.
  * - `closed` (neutral, a cross): a terminal audit row. Its tooltip reflects
  *   ``before_closed_status`` when supplied (a withdrawn request vs a rejected
  *   detection) since the one badge covers both dismissal shapes.
@@ -39,7 +40,7 @@ interface StatusMeta {
 const STATUS: Record<EventStatus, StatusMeta> = {
   requested: {
     tone: "accent",
-    icon: <MapPin size={11} />,
+    icon: <Megaphone size={11} />,
     label: "Requested",
     title: "An open request to geolocate this footage",
   },
@@ -51,7 +52,7 @@ const STATUS: Record<EventStatus, StatusMeta> = {
   },
   geolocated: {
     tone: "neutral",
-    icon: <User size={11} />,
+    icon: <MapPin size={11} />,
     label: "Geolocated",
     title: "Geolocated by a person, not independently verified",
   },

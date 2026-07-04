@@ -96,7 +96,7 @@ describe("DuplicateProbe", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("never probes in bounty-fulfilment mode", () => {
+  it("never probes in request-fulfilment mode", () => {
     renderProbe({ skip: true });
     act(() => {
       vi.advanceTimersByTime(600);

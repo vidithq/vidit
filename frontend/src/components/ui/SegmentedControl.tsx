@@ -5,7 +5,7 @@ import { ACCENT_SURFACE } from "./styles";
 
 /**
  * Exclusive-choice bar: two or more options in one bordered track, the active
- * one painted. The submit page (geolocation vs bounty) and the admin delete
+ * one painted. The submit page (single vs bulk import) and the admin delete
  * panel (soft vs hard) each hand-rolled this shape; the track + option paints
  * live here once.
  *

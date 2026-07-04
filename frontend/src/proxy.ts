@@ -15,7 +15,7 @@ const CSRF_COOKIE = "vidit_csrf";
 // auth-flow pages must stay reachable to sign in or register. The invite
 // code gates registration only (at `POST /auth/register`) — no site-wide
 // gate cookie. When anonymous read opens, content routes (`/map`,
-// `/events/[id]`, `/profile/[username]`, `/bounties`) join this set.
+// `/events/[id]`, `/profile/[username]`, `/requests`) join this set.
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",

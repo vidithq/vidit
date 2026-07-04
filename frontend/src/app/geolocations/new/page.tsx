@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
 /**
- * Submit moved to `/submit` (it now hosts both geolocation and bounty
- * creation). This legacy route redirects, preserving the query so deep links
- * like `?bounty_id=…` (fulfilment) and `?type=bounty` keep working.
+ * Submit moved to `/submit` (one unified form: fill what you have, then publish
+ * a geolocation or post a request). This legacy route redirects, preserving the
+ * query so deep links like `?request_id=…` (fulfilment) and `?import=1` (the
+ * archive on-ramp) keep working.
  */
 export default async function LegacyNewGeolocationPage({
   searchParams,

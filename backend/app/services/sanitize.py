@@ -20,12 +20,6 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
-# The canonical empty proof document. ``events.proof`` is NOT NULL, so every
-# row carries a proof doc — so a submission with no proof body and the migration
-# that backfilled pre-existing NULLs both store this. It renders as "no proof"
-# through the proof renderer rather than a shape the frontend doesn't expect.
-EMPTY_TIPTAP_DOC: dict[str, Any] = {"type": "doc", "content": []}
-
 # Image src scheme the editor uses for a not-yet-uploaded proof image: the
 # node references the file riding in the same multipart request
 # (``placeholder://<filename>``). Evidence intake resolves each placeholder to
@@ -153,11 +147,10 @@ def sanitize_tiptap_doc(
     link marks with unsafe href. Raises ValueError if the root isn't a
     `type='doc'` object, or if the tree exceeds depth/size caps.
 
-    ``allow_images=False`` drops every image node. Request (bounty) proofs use
-    this: the request path carries no ``proof_files``, so a kept image node
-    would reference nothing. ``allow_placeholders=True`` admits the
-    ``placeholder://`` srcs the geolocate paths resolve at intake (see
-    ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
+    ``allow_images=False`` drops every image node, for a caller that has no way
+    to resolve image srcs. ``allow_placeholders=True`` admits the
+    ``placeholder://`` srcs the create paths (geolocation and request) resolve at
+    intake (see ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")
@@ -181,8 +174,8 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     One paragraph node per non-blank line; blank lines drop out. Used by the
     machine-detection assemble step to wrap a tweet / thread's cleaned text
     (from ``clean_proof_text``) into the JSONB proof shape every row carries.
-    Empty or all-blank input yields an empty document (same shape as
-    :data:`EMPTY_TIPTAP_DOC`).
+    Empty or all-blank input yields an empty document
+    (``{"type": "doc", "content": []}``).
     """
     paragraphs = [line for line in text.split("\n") if line.strip()]
     if not paragraphs:

@@ -154,7 +154,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/seed-demo-bounties": {
+    "/api/v1/admin/seed-demo-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -164,20 +164,20 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Seed Demo Bounties
-         * @description Generate ``count`` synthetic demo bounties attributed to the same
+         * Seed Demo Requests
+         * @description Generate ``count`` synthetic demo requests attributed to the same
          *     fixed pool of demo authors as the geolocation seeder. Reads templates
-         *     from the same ``demo-pool/`` S3 prefix — bounties only need media,
+         *     from the same ``demo-pool/`` S3 prefix — requests only need media,
          *     not coordinates, so the template imagery is reused unchanged.
          */
-        post: operations["seed_demo_bounties_api_v1_admin_seed_demo_bounties_post"];
+        post: operations["seed_demo_requests_api_v1_admin_seed_demo_requests_post"];
         /**
-         * Wipe Demo Bounties
-         * @description Drop every is_demo=True bounty. Demo users and demo geolocations
+         * Wipe Demo Requests
+         * @description Drop every is_demo=True request. Demo users and demo geolocations
          *     are NOT touched — they live behind the separate ``Demo data`` panel
          *     and an admin may want to keep one population while wiping the other.
          */
-        delete: operations["wipe_demo_bounties_api_v1_admin_seed_demo_bounties_delete"];
+        delete: operations["wipe_demo_requests_api_v1_admin_seed_demo_requests_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -473,7 +473,7 @@ export interface paths {
          * @description Newest-first cards for one lifecycle view.
          *
          *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-         *     queue (ex ``/bounties``), whose cards additionally carry the investigator
+         *     queue (ex ``/requests``), whose cards additionally carry the investigator
          *     aggregates (count + a small newest-first sample). Two-step "ids then full
          *     rows" shape so eager-loads can't inflate the LIMIT count.
          */
@@ -680,7 +680,7 @@ export interface paths {
         put?: never;
         /**
          * Create Event Request
-         * @description Open a request (a ``requested`` event, yesterday's bounty).
+         * @description Open a request (a ``requested`` event).
          *
          *     One source media file is required: the platform treats requests as
          *     "unfinished geolocations", so the evidence the poster has must be on the
@@ -1104,21 +1104,36 @@ export interface components {
             is_admin: boolean;
         };
         /**
-         * AdminSeedDemoBountiesRequest
-         * @description Body for ``POST /admin/seed-demo-bounties``.
+         * AdminSeedDemoRequest
+         * @description Body for `POST /admin/seed-demo`.
          *
-         *     Capped lower than the geolocation seeder — bounties are an inbox, not a
+         *     Capped at 50 000 per click. The seeder commits in batches so memory stays
+         *     bounded; large seeds take time (~1 min per 10 k locally) but don't blow up.
+         *     Re-running is additive on geos and idempotent on the demo authors.
+         */
+        AdminSeedDemoRequest: {
+            /**
+             * Count
+             * @default 100
+             */
+            count: number;
+        };
+        /**
+         * AdminSeedDemoRequestsRequest
+         * @description Body for ``POST /admin/seed-demo-requests``.
+         *
+         *     Capped lower than the geolocation seeder: requests are an inbox, not a
          *     catalog, and 5000 covers the queue UI.
          */
-        AdminSeedDemoBountiesRequest: {
+        AdminSeedDemoRequestsRequest: {
             /**
              * Count
              * @default 20
              */
             count: number;
         };
-        /** AdminSeedDemoBountiesResponse */
-        AdminSeedDemoBountiesResponse: {
+        /** AdminSeedDemoRequestsResponse */
+        AdminSeedDemoRequestsResponse: {
             /** Authors */
             authors: number;
             /** Closed */
@@ -1133,21 +1148,6 @@ export interface components {
             templates: number;
             /** With Claims */
             with_claims: number;
-        };
-        /**
-         * AdminSeedDemoRequest
-         * @description Body for `POST /admin/seed-demo`.
-         *
-         *     Capped at 50 000 per click. The seeder commits in batches so memory stays
-         *     bounded; large seeds take time (~1 min per 10 k locally) but don't blow up.
-         *     Re-running is additive on geos and idempotent on the demo authors.
-         */
-        AdminSeedDemoRequest: {
-            /**
-             * Count
-             * @default 100
-             */
-            count: number;
         };
         /** AdminSeedDemoResponse */
         AdminSeedDemoResponse: {
@@ -1236,10 +1236,10 @@ export interface components {
             /** Username */
             username: string;
         };
-        /** AdminWipeDemoBountiesResponse */
-        AdminWipeDemoBountiesResponse: {
-            /** Deleted Bounties */
-            deleted_bounties: number;
+        /** AdminWipeDemoRequestsResponse */
+        AdminWipeDemoRequestsResponse: {
+            /** Deleted Requests */
+            deleted_requests: number;
         };
         /** AdminWipeDemoResponse */
         AdminWipeDemoResponse: {
@@ -1272,7 +1272,7 @@ export interface components {
          * @description Compact author handle used wherever one payload references another.
          *
          *     The public ``User`` fields other schemas need for the byline + trust signal
-         *     (geolocation card, bounty claimers, search hit). ``from_attributes=True``
+         *     (geolocation card, request claimers, search hit). ``from_attributes=True``
          *     lets call sites assign a live SQLAlchemy row directly, no field-by-field build.
          */
         AuthorRef: {
@@ -1335,6 +1335,8 @@ export interface components {
             lng?: number | null;
             /** Proof */
             proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */
@@ -1732,8 +1734,36 @@ export interface components {
             /** Token */
             token: string;
         };
-        /** SearchBountyHit */
-        SearchBountyHit: {
+        /** SearchEventHit */
+        SearchEventHit: {
+            /** Event Date */
+            event_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Demo */
+            is_demo: boolean;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            owner: components["schemas"]["AuthorRef"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "detected" | "geolocated" | "closed";
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /** Title Highlight */
+            title_highlight: string;
+        };
+        /** SearchRequestHit */
+        SearchRequestHit: {
             /** Claimer Count */
             claimer_count: number;
             /**
@@ -1765,65 +1795,37 @@ export interface components {
             /** Title Highlight */
             title_highlight: string;
         };
-        /** SearchEventHit */
-        SearchEventHit: {
-            /** Event Date */
-            event_date: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Demo */
-            is_demo: boolean;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            owner: components["schemas"]["AuthorRef"];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-            /** Title Highlight */
-            title_highlight: string;
-        };
         /**
          * SearchResponse
          * @description Grouped result set. Empty arrays for groups the caller didn't request via
          *     ``type=`` — keeps the JSON shape stable so the frontend skips conditional access.
          */
         SearchResponse: {
-            /** Bounties */
-            bounties: components["schemas"]["SearchBountyHit"][];
             /** Geolocations */
             geolocations: components["schemas"]["SearchEventHit"][];
             /** Query */
             query: string;
+            /** Requests */
+            requests: components["schemas"]["SearchRequestHit"][];
             total: components["schemas"]["SearchTotals"];
             /**
              * Type
              * @enum {string}
              */
-            type: "all" | "geolocation" | "bounty" | "user";
+            type: "all" | "geolocation" | "request" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };
         /**
          * SearchTotals
          * @description Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
-         *     bounties, 1 analyst" without re-summing the (LIMIT-capped) hit lists.
+         *     requests, 1 analyst" without re-summing the (LIMIT-capped) hit lists.
          */
         SearchTotals: {
-            /** Bounties */
-            bounties: number;
             /** Geolocations */
             geolocations: number;
+            /** Requests */
+            requests: number;
             /** Users */
             users: number;
         };
@@ -2372,7 +2374,7 @@ export interface operations {
             };
         };
     };
-    seed_demo_bounties_api_v1_admin_seed_demo_bounties_post: {
+    seed_demo_requests_api_v1_admin_seed_demo_requests_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2383,7 +2385,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdminSeedDemoBountiesRequest"];
+                "application/json": components["schemas"]["AdminSeedDemoRequestsRequest"];
             };
         };
         responses: {
@@ -2393,7 +2395,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminSeedDemoBountiesResponse"];
+                    "application/json": components["schemas"]["AdminSeedDemoRequestsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2407,7 +2409,7 @@ export interface operations {
             };
         };
     };
-    wipe_demo_bounties_api_v1_admin_seed_demo_bounties_delete: {
+    wipe_demo_requests_api_v1_admin_seed_demo_requests_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -2424,7 +2426,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminWipeDemoBountiesResponse"];
+                    "application/json": components["schemas"]["AdminWipeDemoRequestsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3377,7 +3379,7 @@ export interface operations {
             query?: {
                 /** @description Free-text query (empty returns an empty result set) */
                 q?: string;
-                /** @description One of 'all', 'geolocation', 'bounty', 'user' */
+                /** @description One of 'all', 'geolocation', 'request', 'user' */
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;

@@ -65,7 +65,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 describe("EventDetailBody", () => {
-  it("panel variant: thumbnail media, section headings, no bounty/author rows", () => {
+  it("panel variant: thumbnail media, section headings, no request/author rows", () => {
     const geo = geoFixture();
     render(<EventDetailBody geo={geo} variant="panel" />);
     const img = screen.getByRole("img");
@@ -74,7 +74,7 @@ describe("EventDetailBody", () => {
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(geo.media[0]).thumbnail
     );
-    expect(screen.queryByText("Bounty")).not.toBeInTheDocument();
+    expect(screen.queryByText("Request")).not.toBeInTheDocument();
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
     // Not just the row label — the author's username must not appear
     // anywhere in the panel body (it lives in the panel header).
@@ -300,5 +300,35 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Source posted")).toBeInTheDocument();
     expect(screen.getByText("3 May 2026, 09:15 UTC")).toBeInTheDocument();
+  });
+
+  it("puts the event time on its own row, date-only in Event date", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({ event_date: "2026-06-01", event_time: "14:30:00" })}
+        variant="page"
+      />
+    );
+    // The time is a separate row, not folded into the date value.
+    expect(screen.getByText("Event time")).toBeInTheDocument();
+    expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
+    expect(screen.getByText("1 Jun 2026")).toBeInTheDocument();
+  });
+
+  it("surfaces a standalone event time even when the date is unknown", () => {
+    // The relaxed request path: an approximate hour (sun position) with no day.
+    render(
+      <EventDetailBody
+        geo={geoFixture({ event_date: null, event_time: "14:30:00" })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Event time")).toBeInTheDocument();
+    expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
+  });
+
+  it("omits the Event time row when no time is set", () => {
+    render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
+    expect(screen.queryByText("Event time")).not.toBeInTheDocument();
   });
 });

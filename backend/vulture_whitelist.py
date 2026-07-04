@@ -41,10 +41,10 @@ deleted_geos  # schemas/admin.py
 with_claims  # schemas/admin.py
 fulfilled  # schemas/admin.py
 closed  # schemas/admin.py
-deleted_bounties  # schemas/admin.py
+deleted_requests  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
-bounties  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
-claimer_count  # schemas/search.py SearchBountyHit
+requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
+claimer_count  # schemas/search.py SearchRequestHit
 investigator_count  # schemas/event.py EventRead + EventList
 investigators_sample  # schemas/event.py EventList
 discord  # schemas/user.py UserRead

@@ -817,17 +817,17 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
     return ids
 
 
-# ── Requested-view (bounty) seeder ─────────────────────────────────────────
+# ── Requested-view (request) seeder ─────────────────────────────────────────
 
 # Generic title for every demo request — same rationale as DEMO_TITLE;
 # specific copy would imply factual claims about non-existent events.
 # Phrased as an unplaced request ("I saw this, can't place it").
-DEMO_BOUNTY_TITLE = "Demo bounty — unplaced footage"
-DEMO_BOUNTY_SOURCE_URL = "https://vidit.app/demo-data"
+DEMO_REQUEST_TITLE = "Demo request: unplaced footage"
+DEMO_REQUEST_SOURCE_URL = "https://vidit.app/demo-data"
 
 # Probability a demo request gets ≥1 synthetic investigator, giving the "N
 # working" badge something to render so the multi-analyst UI surfaces.
-DEMO_BOUNTY_CLAIM_PROBABILITY = 0.55
+DEMO_REQUEST_CLAIM_PROBABILITY = 0.55
 
 # Free-text close reason on withdrawn demo requests, so the transparency
 # surface (the reason chip on a closed row) has something to render.
@@ -837,37 +837,37 @@ DEMO_CLOSE_REASON = "Withdrawn by the poster (synthetic demo row)."
 # "open queue" view feels populated; ``geolocated`` is the fulfilled case (a
 # located event with the original poster preserved on ``requested_by_id``), and
 # ``closed`` is a withdrawn request. Weights sum to 1.0; sampled per-row.
-DEMO_BOUNTY_STATUS_WEIGHTS: tuple[tuple[EventStatus, float], ...] = (
+DEMO_REQUEST_STATUS_WEIGHTS: tuple[tuple[EventStatus, float], ...] = (
     (STATUS_REQUESTED, 0.70),
     (STATUS_GEOLOCATED, 0.15),
     (STATUS_CLOSED, 0.15),
 )
 
 
-def _pick_demo_bounty_status() -> EventStatus:
-    """Weighted draw from ``DEMO_BOUNTY_STATUS_WEIGHTS``.
+def _pick_demo_request_status() -> EventStatus:
+    """Weighted draw from ``DEMO_REQUEST_STATUS_WEIGHTS``.
 
     Explicit loop rather than ``random.choices`` so the weights stay
     readable as percentages.
     """
     roll = random.random()
     cumulative = 0.0
-    for status, weight in DEMO_BOUNTY_STATUS_WEIGHTS:
+    for status, weight in DEMO_REQUEST_STATUS_WEIGHTS:
         cumulative += weight
         if roll < cumulative:
             return status
     return STATUS_REQUESTED  # rounding fallback
 
 
-def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
+def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
     """Generate ``count`` demo requested-view events with a representative mix.
 
     Reuses the demo-author pool and the ``demo-pool/`` prefix. Each event gets a
-    random subset of one template's ``media/`` files. Since the bounty +
+    random subset of one template's ``media/`` files. Since the request +
     geolocation merge these are all rows on the one ``events`` table:
 
     * ``requested``: an open call, no location, ``requested_by_id`` = poster,
-      may get 1-3 synthetic investigators (``DEMO_BOUNTY_CLAIM_PROBABILITY``).
+      may get 1-3 synthetic investigators (``DEMO_REQUEST_CLAIM_PROBABILITY``).
     * ``geolocated``: the fulfilled case, a located row whose ``owner_id`` is a
       *different* demo analyst (the fulfiller, also credited in
       ``event_geolocators``) while ``requested_by_id`` keeps the original
@@ -875,7 +875,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     * ``closed``: a withdrawn request, no location, ``closed_at`` +
       ``before_closed_status='requested'`` + a demo ``close_reason``.
 
-    Status mix from ``DEMO_BOUNTY_STATUS_WEIGHTS`` so the status-filter chips +
+    Status mix from ``DEMO_REQUEST_STATUS_WEIGHTS`` so the status-filter chips +
     the requested_by banner UIs have data. Idempotent on demo authors / tags;
     commits at the end.
     """
@@ -921,7 +921,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         # from this region's bbox.
         region = _pick_region()
 
-        status = _pick_demo_bounty_status()
+        status = _pick_demo_request_status()
         counts[status] += 1
 
         geo_id = uuid.uuid4()
@@ -940,7 +940,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                 requested_by_id=author_id,
                 title=DEMO_TITLE,
                 event_coords=from_shape(Point(lon, lat), srid=4326),
-                source_url=DEMO_BOUNTY_SOURCE_URL,
+                source_url=DEMO_REQUEST_SOURCE_URL,
                 event_date=event_date,
                 source_posted_at=_random_source_posted_at(event_date),
                 status=STATUS_GEOLOCATED,
@@ -960,8 +960,8 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
                 id=geo_id,
                 owner_id=author_id,
                 requested_by_id=author_id,
-                title=DEMO_BOUNTY_TITLE,
-                source_url=DEMO_BOUNTY_SOURCE_URL,
+                title=DEMO_REQUEST_TITLE,
+                source_url=DEMO_REQUEST_SOURCE_URL,
                 event_date=event_date,
                 source_posted_at=_random_source_posted_at(event_date),
                 status=status,
@@ -991,7 +991,7 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
         # Investigators only make sense on the open queue, not closed / geolocated
         # events don't accept new signals, and stale backfilled ones would
         # mislead the UI.
-        if status == STATUS_REQUESTED and random.random() < DEMO_BOUNTY_CLAIM_PROBABILITY:
+        if status == STATUS_REQUESTED and random.random() < DEMO_REQUEST_CLAIM_PROBABILITY:
             other_authors = [aid for aid in author_ids if aid != author_id]
             if other_authors:
                 signal_count = random.randint(1, min(3, len(other_authors)))
@@ -1028,11 +1028,11 @@ def seed_demo_bounties(db: Session, *, count: int) -> dict[str, int]:
     }
 
 
-def wipe_demo_bounties(db: Session) -> dict[str, int]:
+def wipe_demo_requests(db: Session) -> dict[str, int]:
     """Delete every ``is_demo=True`` requested-view event.
 
     Scoped to the requested view (``requested`` / ``closed``) so the "Demo
-    bounties" panel stays independent of the "Demo data" panel: a fulfilled demo
+    requests" panel stays independent of the "Demo data" panel: a fulfilled demo
     event is now ``geolocated`` (a located row) and is swept by ``wipe_demo``
     instead. Bulk Core DELETE for the same reasons as ``wipe_demo`` (speed +
     avoiding ORM cascade fighting the DB ``ON DELETE CASCADE``). The
@@ -1047,7 +1047,7 @@ def wipe_demo_bounties(db: Session) -> dict[str, int]:
         .delete(synchronize_session=False)
     )
     db.commit()
-    return {"deleted_bounties": deleted or 0}
+    return {"deleted_requests": deleted or 0}
 
 
 def wipe_demo(db: Session) -> dict[str, int]:

@@ -307,7 +307,7 @@ def soft_delete_user(
     (``deleted_at IS NULL``) events flipped in this call. Idempotent on an
     already-deleted user (same timestamp, no fresh audit row, count zero).
 
-    Since the bounty + geolocation merge, requests and geolocations are one
+    Since the request + geolocation merge, requests and geolocations are one
     table, so a single cascade covers both: a banned author shouldn't leave open
     requests on the index, and historical events shouldn't surface the banned
     account in their author slot.

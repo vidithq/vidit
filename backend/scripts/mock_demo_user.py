@@ -1,15 +1,15 @@
 """Create (or refresh) the three non-admin users the promo-video pipeline needs.
 
 The promo records a community analyst clicking "I'm working on this" on a
-bounty, which only renders when the viewer is NOT the bounty's author — hence
+request, which only renders when the viewer is NOT the request's author — hence
 three distinct identities:
 
 - ``analyst@vidit.app`` — the recording viewer, so the recorded sidebar /
   profile shows a community handle, not the admin badge.
-- ``demo-analyst@vidit.app`` — the bounty author, so the viewer sees the
+- ``demo-analyst@vidit.app`` — the request author, so the viewer sees the
   participant view.
 - ``analyst-helper@vidit.app`` — pre-seeds the "1 working" social proof on one
-  list-view bounty; never the recording viewer (that would surface "You're
+  list-view request; never the recording viewer (that would surface "You're
   working on this" instead of the "I'm working on this" beat).
 
 Each gets a stable email + password the JS scripts authenticate with.
@@ -33,14 +33,14 @@ from app.services.auth import hash_password
 RECORDER_X_HANDLE = "geo27752"
 
 USERS = [
-    # Recording viewer. Must be neither the bounty author nor the pre-seeded
+    # Recording viewer. Must be neither the request author nor the pre-seeded
     # claimer, or the "I'm working on this" beat collapses.
     ("analyst@vidit.app", "analyst", "analyst", {"x": RECORDER_X_HANDLE}),
-    # Bounty author — owning the bounties keeps the viewer in the participant
+    # Request author — owning the requests keeps the viewer in the participant
     # view ("I'm working on this") on the detail page.
     ("demo-analyst@vidit.app", "demo-analyst", "demo-analyst", {}),
     # Second analyst whose claim pre-seeds the "1 working" indicator on one
-    # list-view bounty. `demo-analyst-1..5` already exist (seed-demo geolocation
+    # list-view request. `demo-analyst-1..5` already exist (seed-demo geolocation
     # flow), so this username stays outside that namespace.
     ("analyst-helper@vidit.app", "analyst-helper", "analyst-helper", {}),
 ]

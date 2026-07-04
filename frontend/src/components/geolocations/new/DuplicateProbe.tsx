@@ -18,8 +18,8 @@ interface DuplicateProbeProps {
   lng: string;
   sourceUrl: string;
   eventDate: string;
-  /** Bounty-fulfilment mode skips the probe: the source URL is locked to
-   *  the bounty's, so the host leg would re-surface the bounty itself. */
+  /** Request-fulfilment mode skips the probe: the source URL is locked to
+   *  the request's, so the host leg would re-surface the request itself. */
   skip: boolean;
 }
 

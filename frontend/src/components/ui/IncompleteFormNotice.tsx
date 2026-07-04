@@ -10,7 +10,7 @@ interface IncompleteFormNoticeProps {
 
 /**
  * The one "this form isn't complete yet" message, shared by every create/edit
- * flow (geolocation submit, geolocation review-validate, bounty). It lists *all*
+ * flow (geolocation submit, geolocation review-validate, request). It lists *all*
  * unmet requirements at once — not just the first — so the analyst fixes the
  * form in a single pass instead of playing whack-a-mole with one error at a time.
  *

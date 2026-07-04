@@ -4,7 +4,7 @@ import type { MissingField, MissingFieldKey } from "@/lib/events";
 
 /**
  * The state behind `IncompleteFormNotice` + the in-form red outlines, shared by
- * every create/edit form (geolocation submit, bounty submit, review-validate) so
+ * every create/edit form (geolocation submit, request submit, review-validate) so
  * the wiring can't drift. Holds the current misses, exposes the `key` set the
  * fields highlight off, and a `validationAttempt` counter that re-keys the notice
  * so a repeat blocked click replays its entrance.

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import type { EventDetail } from "@/types";
-import { formatDate, formatEventDate, formatInstant } from "@/lib/format";
+import { formatDate, formatInstant } from "@/lib/format";
 import { sourceIsSynthetic } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -30,15 +30,15 @@ interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
    * ``panel`` — map's 380px overlay: stacked ``thumbnail`` media, bare rows,
-   * no bounty-trace/author rows (the author sits in the panel header).
+   * no request-trace/author rows (the author sits in the panel header).
    * ``page`` — full detail page: 2-up ``hero`` media grid, card-chrome rows
-   * plus bounty-trace + author rows, section headings.
+   * plus request-trace + author rows, section headings.
    */
   variant: "panel" | "page";
   /** Rendered between the media block and the key-value rows — the
    *  full page slots its Location map here. */
   children?: ReactNode;
-  /** Extra DetailRows appended to the Details section, where the bounty view
+  /** Extra DetailRows appended to the Details section, where the request view
    *  slots its "Working on" and "Closed" rows. */
   detailExtras?: ReactNode;
 }
@@ -140,10 +140,20 @@ function DetailRows({
         label="Event date"
         concept="event_date"
         compact={compact}
-        value={
-          geo.event_date ? formatEventDate(geo.event_date, geo.event_time) : "—"
-        }
+        value={geo.event_date ? formatDate(geo.event_date) : "—"}
       />
+      {/* Time-of-day gets its own row, not folded into Event date: it can be
+          known without the day (an approximate hour from sun position or
+          shadows on a request), so it must surface even when the date is "—".
+          Shown only when set, matching the other optional rows. */}
+      {geo.event_time && (
+        <DetailRow
+          label="Event time"
+          concept="event_time"
+          compact={compact}
+          value={`${geo.event_time.slice(0, 5)} UTC`}
+        />
+      )}
       <DetailRow
         label="Source posted"
         concept="source_posted_at"
@@ -189,7 +199,7 @@ function DetailRows({
       {/* Compact panel omits requested-by + author rows: the author is in
           the panel header, the trace belongs to the full page. Since the merge,
           fulfilment is a lifecycle move on this same row, so the trace is who
-          opened the request (``requested_by``), not a link to a separate bounty. */}
+          opened the request (``requested_by``), not a link to a separate request. */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" compact={compact}>
           <Link

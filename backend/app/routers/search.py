@@ -1,4 +1,4 @@
-"""``GET /search`` — full-text search across geolocations, bounties, users.
+"""``GET /search``: full-text search across geolocations, requests, users.
 
 Single endpoint, single query box, grouped response. See
 ``services/search.py`` for the FTS plumbing. Auth matches the rest of the
@@ -31,7 +31,7 @@ def search(
     q: str = Query("", description="Free-text query (empty returns an empty result set)"),
     type: str = Query(
         "all",
-        description="One of 'all', 'geolocation', 'bounty', 'user'",
+        description="One of 'all', 'geolocation', 'request', 'user'",
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
     db: Session = Depends(get_db),
@@ -58,11 +58,11 @@ def search(
     # truthfully ("3 of 142", not "3 of 3").
     return SearchResponse(
         geolocations=grouped["geolocations"]["hits"],
-        bounties=grouped["bounties"]["hits"],
+        requests=grouped["requests"]["hits"],
         users=grouped["users"]["hits"],
         total=SearchTotals(
             geolocations=grouped["geolocations"]["total"],
-            bounties=grouped["bounties"]["total"],
+            requests=grouped["requests"]["total"],
             users=grouped["users"]["total"],
         ),
         query=q,

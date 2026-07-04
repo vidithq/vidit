@@ -12,15 +12,6 @@ export function formatDate(input: string): string {
 }
 
 /**
- * Format an event date with an optional time-of-day: "28 Mar 2026" or
- * "28 Mar 2026, 14:30". `time` is a UTC "HH:MM[:SS]" string or null.
- */
-export function formatEventDate(date: string, time?: string | null): string {
-  const base = formatDate(date);
-  return time ? `${base}, ${time.slice(0, 5)}` : base;
-}
-
-/**
  * Format a UTC instant (ISO datetime) as "28 Mar 2026, 14:30 UTC".
  */
 export function formatInstant(iso: string): string {

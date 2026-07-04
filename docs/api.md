@@ -32,7 +32,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
 | **Events** | | | |
-| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/bounties`) |
+| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
 | GET | `/events/points` | 🌐 | Compact map-points tuples (cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
@@ -40,7 +40,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/import-archive` | 🔒 | Backfill your profile from your X data archive (zip) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
-| POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /bounties`) |
+| POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/{id}/close` | 🔒 | Owner withdraws a request or rejects a detection (→ `closed`) |
@@ -48,7 +48,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
 | **Search** | | | |
-| GET | `/search` | 🔒 | Free-text search across geolocations / bounties / users |
+| GET | `/search` | 🔒 | Free-text search across geolocations / requests / users |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
@@ -67,7 +67,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/trust` | 🛡️ | Grant / revoke `is_trusted` + `trust_reason` |
-| POST/DELETE | `/admin/seed-demo[-bounties]` | 🛡️ | Generate / drop demo geos + users / bounties |
+| POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 
 ---
@@ -107,7 +107,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST`/`DELETE /admin/seed-demo[-bounties]` | 10/hour |
+| `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/users`, `/admin/invite-codes` list) carry no limit.
@@ -321,7 +321,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/bounties`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
+| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
 | `status` | string | Narrows within the view, e.g. `?view=requested&status=closed`. |
 | `conflict` | string (repeatable) | Filter by conflict tag name. Repeat the param to OR within the conflict bucket (`?conflict=Ukraine&conflict=Gaza`). Matching tags must additionally carry `category == "conflict"`, so a free tag with the same name doesn't poison the result. |
 | `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
@@ -711,7 +711,7 @@ A detection carries no location it was promoted from; `requested_by` is always `
 
 ### `POST /events/requests` 🔒
 
-Open a request: creates a `requested` event with no coordinates yet (ex `POST /bounties`). One source file is required, since the platform treats a request as an "unfinished geolocation"; coordinates, the camera point, tags, and the event date are all optional (an approximate guess is allowed, both-or-neither on each coordinate pair). The caller is recorded as both `owner` and `requested_by`; `requested_by` survives the later `geolocate`.
+Open a request: creates a `requested` event with no coordinates yet (ex `POST /requests`). One source file is required, since the platform treats a request as an "unfinished geolocation"; coordinates, the camera point, tags, and the event date are all optional (an approximate guess is allowed, both-or-neither on each coordinate pair). The caller is recorded as both `owner` and `requested_by`; `requested_by` survives the later `geolocate`.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Required | Description |
@@ -827,24 +827,24 @@ Caller leaves the working set. Idempotent (204 even if the caller wasn't signall
 
 ---
 
-## Bounties, geolocations, and detections are `/events` views
+## Requests, geolocations, and detections are `/events` views
 
-There is no `/bounties` router. A **bounty** is a `requested` event, a **geolocation** is a `geolocated` event, and a **detection** is a `detected` event, all rows on the one `events` table, distinguished only by `status`. Every read and write above already covers all three:
+There is no `/requests` router. A **request** is a `requested` event, a **geolocation** is a `geolocated` event, and a **detection** is a `detected` event, all rows on the one `events` table, distinguished only by `status`. Every read and write above already covers all three:
 
-- **List / detail**: [`GET /events`](#get-events) (`view=requested` is the bounty queue, `view=located` the geolocation catalog, both carry `detected` rows too) and [`GET /events/{id}`](#get-eventsid) (any status).
-- **Open a bounty**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
-- **Fulfil a bounty, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
-- **Withdraw a bounty, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
-- **"I'm working on this"** on a bounty: [`POST`](#post-eventsidinvestigate) / [`DELETE /events/{id}/investigate`](#delete-eventsidinvestigate).
+- **List / detail**: [`GET /events`](#get-events) (`view=requested` is the request queue, `view=located` the geolocation catalog, both carry `detected` rows too) and [`GET /events/{id}`](#get-eventsid) (any status).
+- **Open a request**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
+- **Fulfil a request, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
+- **Withdraw a request, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
+- **"I'm working on this"** on a request: [`POST`](#post-eventsidinvestigate) / [`DELETE /events/{id}/investigate`](#delete-eventsidinvestigate).
 - **Remove**: [`DELETE /events/{id}`](#delete-eventsid) (owner hard delete) or `DELETE /admin/events/{id}` (admin soft/hard delete).
 
-`GET /events?view=requested` cards additionally carry `investigator_count` / `investigators_sample`; `GET /events/{id}` always carries the full `investigators` list and `geolocators`. `Search` groups a hit under `bounties` when its `status` is `requested`, see below.
+`GET /events?view=requested` cards additionally carry `investigator_count` / `investigators_sample`; `GET /events/{id}` always carries the full `investigators` list and `geolocators`. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
 
 ---
 
 ## Search
 
-Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). One FTS query path over the single `events` table; the located (`geolocations`) and requested (`bounties`) groups run the same `title` index with different `WHERE`s (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
+Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). One FTS query path over the single `events` table; the located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE`s (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
 
 **Out of scope for slice 1:** searching `source_url`, JSONB-content search (`events.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
 
@@ -854,7 +854,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups. |
-| `type` | enum | `all` (default), `geolocation`, `bounty`, or `user`. Anything else → 422. |
+| `type` | enum | `all` (default), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
@@ -879,7 +879,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
     }
   ],
-  "bounties": [
+  "requests": [
     {
       "id": "uuid",
       "title": "Footage from Kharkiv area, can someone place it?",
@@ -906,7 +906,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "avatar_url": null
     }
   ],
-  "total": { "geolocations": 1, "bounties": 1, "users": 1 },
+  "total": { "geolocations": 1, "requests": 1, "users": 1 },
   "query": "kharkiv",
   "type": "all"
 }
@@ -914,7 +914,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 
 `bio_highlight` is `null` when only the username matched, the UI uses this to hide the snippet block instead of rendering an un-highlighted bio. Groups the caller didn't request via `type=` come back as empty arrays.
 
-`total` is a fixed-key object (`geolocations`, `bounties`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `geolocation`, `bounty`, `user`.
+`total` is a fixed-key object (`geolocations`, `requests`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `geolocation`, `request`, `user`.
 
 **Errors:**
 | Code | Case |
@@ -1276,9 +1276,9 @@ Grant or revoke `is_trusted`. Granting requires a non-empty `trust_reason` (reje
 
 **Response 404:** unknown user id.
 
-### `POST /admin/seed-demo-bounties` 🛡️
+### `POST /admin/seed-demo-requests` 🛡️
 
-Generate `count` synthetic demo bounties attributed to the same fixed pool of demo authors as `POST /admin/seed-demo`. Reads templates from the shared `demo-pool/` storage prefix; if the prefix is empty or missing the expected layout, returns 422 so the admin can populate the pool before retrying. A fraction of bounties get 1-3 random demo-author claims attached. Audited as `demo_bounties_seeded`.
+Generate `count` synthetic demo requests attributed to the same fixed pool of demo authors as `POST /admin/seed-demo`. Reads templates from the shared `demo-pool/` storage prefix; if the prefix is empty or missing the expected layout, returns 422 so the admin can populate the pool before retrying. A fraction of requests get 1-3 random demo-author claims attached. Audited as `demo_requests_seeded`.
 
 **Request body:**
 ```json
@@ -1299,17 +1299,17 @@ Capped at 5000 per click.
 }
 ```
 
-`open` / `fulfilled` / `closed` are the per-status breakdown across the generated batch (`requested` / `geolocated` / `closed` under the hood), proving the status-filter chips have data to render. `with_claims` counts bounties that got 1-3 random demo-analyst `event_investigators` rows attached (the field name predates the claim → investigate rename; the wire shape is unchanged).
+`open` / `fulfilled` / `closed` are the per-status breakdown across the generated batch (`requested` / `geolocated` / `closed` under the hood), proving the status-filter chips have data to render. `with_claims` counts requests that got 1-3 random demo-analyst `event_investigators` rows attached (the field name predates the claim → investigate rename; the wire shape is unchanged).
 
 ---
 
-### `DELETE /admin/seed-demo-bounties` 🛡️
+### `DELETE /admin/seed-demo-requests` 🛡️
 
-Drop every `is_demo=true` bounty in one bulk DELETE. Demo users and demo geolocations are NOT touched; those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_bounties_wiped`.
+Drop every `is_demo=true` request in one bulk DELETE. Demo users and demo geolocations are NOT touched; those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_requests_wiped`.
 
 **Response 200:**
 ```json
-{ "deleted_bounties": 20 }
+{ "deleted_requests": 20 }
 ```
 
 ---

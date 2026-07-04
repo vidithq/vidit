@@ -85,9 +85,9 @@ class AdminUserDeleteResponse(BaseModel):
     username: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
-    # A bounty is a ``requested`` event since the merge, so a single event
+    # A request is a ``requested`` event since the merge, so a single event
     # cascade covers both located and requested rows — one count, no separate
-    # bounty tally. ``media_count`` covers every file (source and proof roles).
+    # request tally. ``media_count`` covers every file (source and proof roles).
     cascaded_geolocations: int = 0
     media_count: int = 0
 
@@ -150,17 +150,17 @@ class AdminWipeDemoResponse(BaseModel):
     deleted_users: int
 
 
-class AdminSeedDemoBountiesRequest(BaseModel):
-    """Body for ``POST /admin/seed-demo-bounties``.
+class AdminSeedDemoRequestsRequest(BaseModel):
+    """Body for ``POST /admin/seed-demo-requests``.
 
-    Capped lower than the geolocation seeder — bounties are an inbox, not a
+    Capped lower than the geolocation seeder: requests are an inbox, not a
     catalog, and 5000 covers the queue UI.
     """
 
     count: int = Field(default=20, ge=1, le=5000)
 
 
-class AdminSeedDemoBountiesResponse(BaseModel):
+class AdminSeedDemoRequestsResponse(BaseModel):
     created: int
     templates: int
     authors: int
@@ -172,8 +172,8 @@ class AdminSeedDemoBountiesResponse(BaseModel):
     closed: int
 
 
-class AdminWipeDemoBountiesResponse(BaseModel):
-    deleted_bounties: int
+class AdminWipeDemoRequestsResponse(BaseModel):
+    deleted_requests: int
 
 
 class AdminMaintenanceResponse(BaseModel):

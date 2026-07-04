@@ -1,6 +1,6 @@
 import type { components } from "@/lib/api-types";
 
-/** Public author summary on an event / bounty / search hit. */
+/** Public author summary on an event / request / search hit. */
 type Author = components["schemas"]["AuthorRef"];
 
 /**
@@ -35,7 +35,7 @@ export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
 export type Tag = components["schemas"]["TagRead"];
 
 /** The unified 4-value event lifecycle: ``requested`` (an open call to
- *  geolocate, the requested/bounty view) → ``detected`` (machine output,
+ *  geolocate, the requested/request view) → ``detected`` (machine output,
  *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
  *  person vouched for it: via the form, or by submitting a reviewed detection;
  *  not an independent-verification claim, frozen) → ``closed`` (a withdrawn
@@ -133,14 +133,14 @@ export type Media = components["schemas"]["MediaRead"];
  *  Adds the source URL, the proof body, the full media list, provenance
  *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
  *  trace on top of the compact ``EventList`` card fields. Covers every
- *  lifecycle state: a ``requested`` row (the ex-bounty view) reads through
+ *  lifecycle state: a ``requested`` row (the requested view) reads through
  *  this same shape, with ``event_coords`` null unless the poster attached a
  *  guess. */
 export type EventDetail = components["schemas"]["EventRead"];
 
 /** Compact event card (`GET /events`). ``investigator_count`` /
  *  ``investigators_sample`` are populated only on the requested view (the
- *  ex-bounty queue); null on the located catalogue. */
+ *  requested queue); null on the located catalogue. */
 export type EventListItem = components["schemas"]["EventList"];
 
 /** The ``type=`` filter values, echoed back on the response. */
@@ -156,10 +156,10 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
  */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view (bounty) search hit: an event card plus the
+/** A requested-view search hit: an event card plus the
  *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
  *  renders the same "N working" badge. */
-export type SearchBountyHit = components["schemas"]["SearchBountyHit"];
+export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
 
 /** An analyst search hit. ``bio_highlight`` is populated only when the bio
  *  matched (the backend nulls the unmarked case) so the UI can hide the

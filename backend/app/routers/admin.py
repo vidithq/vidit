@@ -15,14 +15,14 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
     AdminMeResponse,
-    AdminSeedDemoBountiesRequest,
-    AdminSeedDemoBountiesResponse,
     AdminSeedDemoRequest,
+    AdminSeedDemoRequestsRequest,
+    AdminSeedDemoRequestsResponse,
     AdminSeedDemoResponse,
     AdminTrustUpdate,
     AdminUserDeleteResponse,
     AdminUserRead,
-    AdminWipeDemoBountiesResponse,
+    AdminWipeDemoRequestsResponse,
     AdminWipeDemoResponse,
 )
 from app.services import admin as admin_service
@@ -268,53 +268,53 @@ def wipe_demo(
     return AdminWipeDemoResponse(**result)
 
 
-@router.post("/seed-demo-bounties", response_model=AdminSeedDemoBountiesResponse)
+@router.post("/seed-demo-requests", response_model=AdminSeedDemoRequestsResponse)
 @limiter.limit("10/hour")
-def seed_demo_bounties(
+def seed_demo_requests(
     request: Request,
-    body: AdminSeedDemoBountiesRequest,
+    body: AdminSeedDemoRequestsRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> AdminSeedDemoBountiesResponse:
-    """Generate ``count`` synthetic demo bounties attributed to the same
+) -> AdminSeedDemoRequestsResponse:
+    """Generate ``count`` synthetic demo requests attributed to the same
     fixed pool of demo authors as the geolocation seeder. Reads templates
-    from the same ``demo-pool/`` S3 prefix — bounties only need media,
+    from the same ``demo-pool/`` S3 prefix — requests only need media,
     not coordinates, so the template imagery is reused unchanged.
     """
     try:
-        result = seed_service.seed_demo_bounties(db, count=body.count)
+        result = seed_service.seed_demo_requests(db, count=body.count)
     except seed_service.NoTemplatesError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     admin_service.log_admin_event(
         db,
         actor_id=current_user.id,
-        action="demo_bounties_seeded",
+        action="demo_requests_seeded",
         target={"count": result["created"], "templates": result["templates"]},
     )
     db.commit()
-    return AdminSeedDemoBountiesResponse(**result)
+    return AdminSeedDemoRequestsResponse(**result)
 
 
-@router.delete("/seed-demo-bounties", response_model=AdminWipeDemoBountiesResponse)
+@router.delete("/seed-demo-requests", response_model=AdminWipeDemoRequestsResponse)
 @limiter.limit("10/hour")
-def wipe_demo_bounties(
+def wipe_demo_requests(
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> AdminWipeDemoBountiesResponse:
-    """Drop every is_demo=True bounty. Demo users and demo geolocations
+) -> AdminWipeDemoRequestsResponse:
+    """Drop every is_demo=True request. Demo users and demo geolocations
     are NOT touched — they live behind the separate ``Demo data`` panel
     and an admin may want to keep one population while wiping the other.
     """
-    result = seed_service.wipe_demo_bounties(db)
+    result = seed_service.wipe_demo_requests(db)
     admin_service.log_admin_event(
         db,
         actor_id=current_user.id,
-        action="demo_bounties_wiped",
-        target={"deleted_bounties": result["deleted_bounties"]},
+        action="demo_requests_wiped",
+        target={"deleted_requests": result["deleted_requests"]},
     )
     db.commit()
-    return AdminWipeDemoBountiesResponse(**result)
+    return AdminWipeDemoRequestsResponse(**result)
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────

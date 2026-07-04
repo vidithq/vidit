@@ -31,25 +31,25 @@ const FRAMES_DIR = "./out/rec-frames";
 // `-framerate 60` below.
 const FPS = 60;
 const TWEET_URL = "https://x.com/geo27752/status/2060086984513626223";
-// For the live "Post a bounty" beat in the recording:
+// For the live "Post a request" beat in the recording:
 //   - The form's Source URL field gets a Telegram link — the realistic
 //     case where an analyst sees footage on a Telegram channel they
 //     can't geolocate and posts it for the community.
 //   - The uploaded media is a video clip (the actual unplaced
 //     footage), downloaded ahead of time from the analyst's tweet.
-const BOUNTY_TWEET_URL = "https://x.com/geo27752/status/2053493295465078958";
-const BOUNTY_SOURCE_URL = "https://t.me/intel_slava_z/14528";
+const REQUEST_TWEET_URL = "https://x.com/geo27752/status/2053493295465078958";
+const REQUEST_SOURCE_URL = "https://t.me/intel_slava_z/14528";
 
-// Cache path is computed PER FETCHED URL — `prepareBountyUpload` may
-// fall back from `BOUNTY_TWEET_URL` to a sibling tweet if the primary's
+// Cache path is computed PER FETCHED URL — `prepareRequestUpload` may
+// fall back from `REQUEST_TWEET_URL` to a sibling tweet if the primary's
 // video proxy 502s, and we want the cache name to reflect whichever
 // URL actually produced the bytes. Using a single global path keyed off
-// `BOUNTY_TWEET_URL` would let one run's fallback contaminate every
+// `REQUEST_TWEET_URL` would let one run's fallback contaminate every
 // later run.
-const bountyUploadCachePath = (url) =>
+const requestUploadCachePath = (url) =>
   path.join(
     os.tmpdir(),
-    `vidit-bounty-upload-${crypto
+    `vidit-request-upload-${crypto
       .createHash("sha1")
       .update(url)
       .digest("hex")
@@ -228,23 +228,23 @@ async function slowScrollToBottom(page, durationMs = 2200) {
 // Pre-fetch a VIDEO file from one of the analyst's tweets via the
 // import-from-tweet media proxy, saved to `os.tmpdir()` so the
 // recording's `setInputFiles` call is instant. Tries the dedicated
-// bounty tweet first; falls back to a sibling tweet (`TWEET_URL`) if
+// request tweet first; falls back to a sibling tweet (`TWEET_URL`) if
 // the primary's video proxy 502s — X CDN behaviour is unreliable.
 //
 // Returns the on-disk path the caller should upload, or null if no
 // candidate produced a usable video. The cache filename embeds the
 // hash of the URL the bytes actually came from, so a fallback fetch
-// from `TWEET_URL` doesn't poison the cache slot of `BOUNTY_TWEET_URL`
+// from `TWEET_URL` doesn't poison the cache slot of `REQUEST_TWEET_URL`
 // for the next run.
-async function prepareBountyUpload(auth) {
-  // Candidate tweets: the dedicated bounty tweet first, then the
+async function prepareRequestUpload(auth) {
+  // Candidate tweets: the dedicated request tweet first, then the
   // Hezbollah/Iron Dome tweet from the geolocation submit flow (we
   // know that one's video proxy works).
-  const candidates = [BOUNTY_TWEET_URL, TWEET_URL];
+  const candidates = [REQUEST_TWEET_URL, TWEET_URL];
   for (const url of candidates) {
-    const cachePath = bountyUploadCachePath(url);
+    const cachePath = requestUploadCachePath(url);
     if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 10000) {
-      console.log(`✓ reusing cached bounty video at ${cachePath} (from ${url})`);
+      console.log(`✓ reusing cached request video at ${cachePath} (from ${url})`);
       return cachePath;
     }
     try {
@@ -270,29 +270,29 @@ async function prepareBountyUpload(auth) {
       if (buf.length < 10000) continue;
       fs.writeFileSync(cachePath, buf);
       console.log(
-        `✓ cached bounty video at ${cachePath} (${(buf.length / 1024).toFixed(0)} KB) from ${url}`
+        `✓ cached request video at ${cachePath} (${(buf.length / 1024).toFixed(0)} KB) from ${url}`
       );
       return cachePath;
     } catch (e) {
-      console.warn(`  prepareBountyUpload: ${url}: ${e.message}`);
+      console.warn(`  prepareRequestUpload: ${url}: ${e.message}`);
     }
   }
   console.warn(
-    "  no video could be downloaded; bounty form will have no media preview"
+    "  no video could be downloaded; request form will have no media preview"
   );
   return null;
 }
 
 (async () => {
   const auth = await mintCookies();
-  // `seed-bounties.js` already wiped tweet-coords duplicates under an
+  // `seed-requests.js` already wiped tweet-coords duplicates under an
   // admin cookie before we got here, so the submit form starts clean
   // — no extra login needed in this script for that cleanup step.
 
-  // Pre-fetch the bounty video so the upload during the recording is
+  // Pre-fetch the request video so the upload during the recording is
   // instant. Returns the on-disk path to upload (per-URL cache), or
   // null if no candidate produced a usable video.
-  const bountyUploadPath = await prepareBountyUpload(auth);
+  const requestUploadPath = await prepareRequestUpload(auth);
 
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({
@@ -485,9 +485,9 @@ async function prepareBountyUpload(auth) {
   await glideAndClick(page, expandBtn, { steps: 45, settle: 400 });
   await wait(900); // expand animation + labels fade in
 
-  console.log("→ sidebar tour (Bounties → Timeline)");
+  console.log("→ sidebar tour (Requests → Timeline)");
   for (const sel of [
-    'a[href="/bounties"]',
+    'a[href="/requests"]',
     'a[href="/timeline"]',
   ]) {
     const box = await page.locator(sel).first().boundingBox();
@@ -662,7 +662,7 @@ async function prepareBountyUpload(auth) {
   await wait(3000);
 
   // Iteration shortcut — flip to `true` to truncate the recording
-  // right after the geolocation submit (no bounty browse, no bounty
+  // right after the geolocation submit (no request browse, no request
   // post). Useful when tuning the form-fill / proof-edit beats; the
   // full flow adds ~40s of capture + render time.
   const STOP_AFTER_SUBMIT = false;
@@ -714,19 +714,19 @@ async function prepareBountyUpload(auth) {
     return;
   }
 
-  console.log("→ glide → click Bounties (in sidebar)");
-  const bountiesNav = page.locator('a[href="/bounties"]').first();
-  await glideAndClick(page, bountiesNav, { steps: 50, settle: 400 });
-  await page.waitForURL(/\/bounties(\?|$)/i, { timeout: 10000 });
-  await page.waitForSelector('a[href^="/bounties/"]', { timeout: 10000 });
+  console.log("→ glide → click Requests (in sidebar)");
+  const requestsNav = page.locator('a[href="/requests"]').first();
+  await glideAndClick(page, requestsNav, { steps: 50, settle: 400 });
+  await page.waitForURL(/\/requests(\?|$)/i, { timeout: 10000 });
+  await page.waitForSelector('a[href^="/requests/"]', { timeout: 10000 });
   await wait(1600); // scan the list
 
-  console.log("→ click first bounty (view detail)");
-  const firstBountyCard = page
-    .locator('a[href^="/bounties/"]:not([href$="/new"])')
+  console.log("→ click first request (view detail)");
+  const firstRequestCard = page
+    .locator('a[href^="/requests/"]:not([href$="/new"])')
     .first();
-  await glideAndClick(page, firstBountyCard, { steps: 50, settle: 400 });
-  await page.waitForURL(/\/bounties\/[0-9a-f-]+(?:$|\?)/i, { timeout: 10000 });
+  await glideAndClick(page, firstRequestCard, { steps: 50, settle: 400 });
+  await page.waitForURL(/\/requests\/[0-9a-f-]+(?:$|\?)/i, { timeout: 10000 });
   await wait(1800); // beat on detail to read it
 
   console.log("→ click 'I'm working on this' (signal participation)");
@@ -746,22 +746,22 @@ async function prepareBountyUpload(auth) {
   await glideAndClick(page, workingBtn, { steps: 45, settle: 400 });
   await wait(1600); // hold so the new "Stop signaling" + worker count are visible
 
-  console.log("→ click ← back arrow → /bounties");
+  console.log("→ click ← back arrow → /requests");
   // Use the visible back arrow (PageShell's aria-label="Back") instead
   // of page.goBack(), so the cursor visibly travels to it and the
   // navigation reads as a deliberate user action.
   const backBtn = page.locator('button[aria-label="Back"]').first();
   await glideAndClick(page, backBtn, { steps: 45, settle: 400 });
-  await page.waitForURL(/\/bounties(\?|$)/i, { timeout: 10000 });
+  await page.waitForURL(/\/requests(\?|$)/i, { timeout: 10000 });
   await wait(900);
   const postBtn = page
-    .getByRole("link", { name: /^post bounty$/i })
+    .getByRole("link", { name: /^post request$/i })
     .first();
   await glideAndClick(page, postBtn, { steps: 45, settle: 400 });
-  await page.waitForURL(/\/bounties\/new/i, { timeout: 10000 });
+  await page.waitForURL(/\/requests\/new/i, { timeout: 10000 });
   await wait(900);
 
-  console.log("→ fill bounty form (type title, paste source URL, attach media)");
+  console.log("→ fill request form (type title, paste source URL, attach media)");
   const titleInput = page.locator("#title").first();
   await glideAndClick(page, titleInput, { steps: 50, settle: 400 });
   // The title is an analyst's question, not a paste — type it
@@ -780,12 +780,12 @@ async function prepareBountyUpload(auth) {
   await glideAndClick(page, srcInput, { steps: 50, settle: 500 });
   await wait(350); // cursor visibly on the field before the paste
   // Telegram link — the realistic shape of a "source I can't place"
-  // that ends up posted as a bounty (footage from a Telegram channel
+  // that ends up posted as a request (footage from a Telegram channel
   // rather than a tweet the analyst already has context on).
-  await srcInput.fill(BOUNTY_SOURCE_URL);
+  await srcInput.fill(REQUEST_SOURCE_URL);
   await wait(1400); // URL stays on screen for the viewer to read it
 
-  if (bountyUploadPath && fs.existsSync(bountyUploadPath)) {
+  if (requestUploadPath && fs.existsSync(requestUploadPath)) {
     // Glide the cursor to the "Choose Files" button + fire a synthetic
     // mousedown for the click ripple, WITHOUT actually clicking the
     // native file input (that would open a real file-chooser dialog
@@ -815,27 +815,27 @@ async function prepareBountyUpload(auth) {
       );
       await wait(450);
     }
-    await fileBtn.setInputFiles(bountyUploadPath);
+    await fileBtn.setInputFiles(requestUploadPath);
     await wait(1400); // preview thumbnail renders
   }
 
-  console.log("→ glide → click Post the bounty");
-  const submitBountyBtn = page
+  console.log("→ glide → click Post the request");
+  const submitRequestBtn = page
     .locator('button[type="submit"]')
-    .filter({ hasText: /post bounty/i })
+    .filter({ hasText: /post request/i })
     .first();
   // Slow human scroll to the submit button instead of the snappy
   // scrollIntoViewIfNeeded (matches the rest of the recording).
-  const submitY = await submitBountyBtn.evaluate((el) => {
+  const submitY = await submitRequestBtn.evaluate((el) => {
     const r = el.getBoundingClientRect();
     return Math.max(0, window.scrollY + r.top - window.innerHeight / 2);
   });
   await slowScrollToY(page, submitY, 1600);
   await wait(500);
-  await glideAndClick(page, submitBountyBtn, { steps: 55, settle: 450 });
+  await glideAndClick(page, submitRequestBtn, { steps: 55, settle: 450 });
   try {
-    await page.waitForURL(/\/bounties\/[0-9a-f-]+(?:$|\?)/i, { timeout: 15000 });
-    // Post-submit hold so the analyst's just-created bounty is on
+    await page.waitForURL(/\/requests\/[0-9a-f-]+(?:$|\?)/i, { timeout: 15000 });
+    // Post-submit hold so the analyst's just-created request is on
     // screen for a real beat before the outro cut. ~2.5s of recording
     // here pairs with `SCENES.video.frames = 3840` in `src/Demo.tsx`
     // (64s comp Sequence) — the comp covers the submit click + this
@@ -854,14 +854,14 @@ async function prepareBountyUpload(auth) {
       .textContent()
       .catch(() => "n/a");
     console.error(
-      `\n✗ bounty submit didn't redirect (url=${page.url()})\n  error visible: ${errBanner}`
+      `\n✗ request submit didn't redirect (url=${page.url()})\n  error visible: ${errBanner}`
     );
-    await page.screenshot({ path: "out/debug-bounty-fail.png" });
+    await page.screenshot({ path: "out/debug-request-fail.png" });
     stopped = true;
     await grabber.catch(() => {});
     await browser.close().catch(() => {});
     throw new Error(
-      "bounty submit failed — debug screenshot at out/debug-bounty-fail.png"
+      "request submit failed — debug screenshot at out/debug-request-fail.png"
     );
   }
 

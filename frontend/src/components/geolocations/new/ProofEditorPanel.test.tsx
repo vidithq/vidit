@@ -20,7 +20,7 @@ const base = {
 };
 
 describe("ProofEditorPanel", () => {
-  it("marks the section optional when optional is set (bounty mode)", () => {
+  it("marks the section optional when optional is set (request mode)", () => {
     render(<ProofEditorPanel {...base} optional />);
     expect(screen.getByRole("heading", { name: /Proof/ })).toBeInTheDocument();
     expect(screen.getByText("optional")).toBeInTheDocument();

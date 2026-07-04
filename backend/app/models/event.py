@@ -20,14 +20,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Lifecycle status — the merged bounty + geolocation event lifecycle.
-#   ``requested``   an open call to geolocate (yesterday's bounty ``open``); may
+# Lifecycle status — the merged request + geolocation event lifecycle.
+#   ``requested``   an open call to geolocate (a request for help); may
 #                   carry an approximate coordinate guess.
 #   ``detected``    a machine draft (archive import / the bot); public on every
 #                   read surface but clearly marked, may or may not carry a
 #                   location (a coord-less draft is a media-only detection).
 #   ``geolocated``  a person vouched for it and froze it (yesterday's geolocation
-#                   ``submitted`` + a fulfilled bounty); always has a location.
+#                   ``submitted`` + a fulfilled request); always has a location.
 #   ``closed``      withdrawn (a ``requested`` event the owner dropped) or
 #                   rejected (a ``detected`` row the owner threw out);
 #                   ``before_closed_status`` records which.
@@ -128,7 +128,7 @@ class EventGeolocator(Base):
 
 
 class Event(Base):
-    """One event across the merged bounty + geolocation lifecycle.
+    """One event across the merged request + geolocation lifecycle.
 
     ``status`` (see ``EventStatus``) is the lifecycle. ``event_coords`` is an
     independent nullable axis: required for a ``geolocated`` row (a vouched
@@ -148,7 +148,7 @@ class Event(Base):
     # geolocators once ``geolocated`` (see ``EventGeolocator``).
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Who opened the request, preserved across fulfilment so the merge doesn't
-    # erase who posted the bounty. NULL for a directly-submitted geolocation.
+    # erase who posted the request. NULL for a directly-submitted geolocation.
     # ``ondelete=SET NULL``: a fulfilled event (owner transferred to the fulfiller)
     # legitimately outlives its requester, and hard-deleting a user (GDPR erasure)
     # nulls their attribution here rather than failing on the FK.
@@ -169,14 +169,15 @@ class Event(Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     # NOT NULL: every row carries a proof document. The empty-doc default catches
     # ORM constructions that omit proof; the create flow and machine path pass a
-    # real doc. Inline rather than importing ``EMPTY_TIPTAP_DOC`` (models must not
-    # depend on services).
+    # real doc. Inlined here (a fresh dict per row) rather than importing a shared
+    # constant from services, which the models layer must not depend on.
     proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
     # Nullable: often unknown for a ``requested`` event; the geolocate floor
     # requires it at the ``geolocated`` transition (as with the curated tags).
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # Optional time-of-day for ``event_date``, in UTC. NULL when the hour is
-    # unknown, as the event date is often inferred from context or footage.
+    # Optional time-of-day, in UTC. May stand alone: an approximate hour (sun
+    # position, shadows) can be known before the day is, so it does not require
+    # ``event_date``. NULL when the hour is unknown.
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # When the original source (a Telegram channel, an X account, …) posted the
     # media. A real post instant, hence a full UTC timestamp and NOT NULL.
@@ -292,7 +293,7 @@ class Event(Base):
             name="ck_events_status_valid",
         ),
         # "Open requests / detections / geolocations, newest first" — the list,
-        # map and requested-view (ex-bounty) reads all filter on status.
+        # map and requested-view reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
         # Backs the assemble idempotency look-up (one per detection during a
         # backfill). Partial on the populated cohort — human rows are always NULL.

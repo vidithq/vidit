@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 
 /**
  * The "by @user + trust badge" assembly: profile link plus `TrustBadge`,
- * previously hand-built on the geolocation and bounty detail subtitles, the
+ * previously hand-built on the geolocation and request detail subtitles, the
  * map side panel header, and the detail body's Author row, with wrapper drift
  * between them. Text size and colour stay at the call site (a PageShell
  * subtitle already sets both); `size` scales the gap + badge for the dense

@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
 
 /**
- * Bounty creation merged into the unified submit page — a bounty is an
- * unfinished geolocation, and the two forms shared most of their fields. This
- * route now redirects to the submit page in bounty mode so existing links and
- * bookmarks keep working.
+ * Legacy redirect: request creation lives on the unified submit page. Kept so
+ * old `/bounties/new` links keep working.
  */
-export default function NewBountyPage() {
-  redirect("/submit?type=bounty");
+export default function LegacyNewBountyRedirect() {
+  redirect("/submit");
 }

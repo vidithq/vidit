@@ -10,7 +10,7 @@ import type {
 
 /** A required field a create/edit form is still missing. `key` drives the
  *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
- *  the geolocation + request (ex-bounty) validators so both feed the same
+ *  the geolocation + request validators so both feed the same
  *  notice + highlight plumbing. */
 export type MissingFieldKey =
   | "title"
@@ -28,6 +28,22 @@ export interface MissingField {
   key: MissingFieldKey;
   label: string;
 }
+
+/** The one human label per field key: the single source both the validators
+ *  (their `MissingField.label`) and the submit readiness tick-list read from, so
+ *  a rename can't desync the two. */
+export const FIELD_LABELS: Record<MissingFieldKey, string> = {
+  title: "Title",
+  coordinates: "Coordinates",
+  source_url: "Source URL",
+  event_date: "Event date",
+  source_posted_at: "Source post time",
+  proof: "Proof",
+  proof_image: "Proof image",
+  source_media: "Source media",
+  conflict_tag: "Conflict tag",
+  capture_source_tag: "Capture source tag",
+};
 
 /** Whether a row's source renders as the inert "synthetic" placeholder instead
  *  of its real link. Demo rows carry a non-resolving `source_url`, so it's
@@ -59,7 +75,7 @@ export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string 
 }
 
 /** The two read views over the one `events` table: `located` (the catalogue,
- *  the map + default list) or `requested` (the open-call queue, ex `/bounties`).
+ *  the map + default list) or `requested` (the open-call queue, ex `/requests`).
  *  See `docs/data-model.md` → `events`. */
 export type EventView = "located" | "requested";
 
@@ -72,7 +88,7 @@ export interface EventListParams {
 }
 
 /** Build the `GET /events` query string for one lifecycle view. Defaults to
- *  `view=located`; the requested (ex-bounty) queue passes `view=requested`. */
+ *  `view=located`; the requested queue passes `view=requested`. */
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
@@ -98,11 +114,25 @@ export function parseCaptureCoords(
   return { capture_source_lat: lat, capture_source_lng: lng };
 }
 
+/** The optional subject-coordinate guess a request may carry, ready to spread
+ *  into the input. Same both-or-neither rule and strict parse as the camera
+ *  point (`parseCaptureCoords`), so the two coordinate pairs on the submit form
+ *  can't drift onto different validity rules. */
+export function parseGuessCoords(
+  latStr: string,
+  lngStr: string
+): { lat: number; lng: number } | Record<string, never> {
+  const lat = cleanNumber(latStr);
+  const lng = cleanNumber(lngStr);
+  if (lat === null || lng === null) return {};
+  return { lat, lng };
+}
+
 /** Parse a whole string as a finite number, or `null`. Unlike `parseFloat`,
  *  this rejects partially-numeric input (`"50.1abc"`), so a malformed pair
- *  clears the camera coords rather than storing a truncated value. Blank /
+ *  clears the coordinates rather than storing a truncated value. Blank /
  *  whitespace-only reads as absent (`null`), preserving both-or-neither. */
-function cleanNumber(value: string): number | null {
+export function cleanNumber(value: string): number | null {
   if (value.trim() === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -251,7 +281,7 @@ export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
 }
 
 /**
- * Open a request (a `requested` event, yesterday's bounty): `POST
+ * Open a request (a `requested` event): `POST
  * /events/requests` (multipart). An approximate coordinate guess is optional
  * (both `lat`/`lng` or neither); `event_date` is optional (often unknown at
  * request time); one source media file is required.
@@ -276,14 +306,18 @@ export interface EventRequestInput {
   source_posted_at: string;
   tag_ids?: string[];
   files: File[];
+  /** The proof body's inline images, held locally while typing and uploaded
+   *  here at publish (matched to the doc's `placeholder://` srcs). Optional on a
+   *  request: it may be work started but not finished, or a blank call. */
+  proof_files: File[];
 }
 
 export function createEventRequest(input: EventRequestInput): Promise<EventDetail> {
   const fd = new FormData();
   // Shared metadata + camera point + tags. A request's deltas from a
   // geolocation: the subject point is optional (each half guarded, not
-  // both-or-neither), `event_date` is optional, the source rides under the
-  // singular `file` key, and there are no `proof_files`.
+  // both-or-neither), `event_date` is optional, and the source rides under the
+  // singular `file` key. Proof images are optional (no image floor).
   appendSharedEventFields(fd, input);
   if (input.lat !== undefined) fd.append("lat", String(input.lat));
   if (input.lng !== undefined) fd.append("lng", String(input.lng));
@@ -292,6 +326,9 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
   }
   for (const file of input.files) {
     fd.append("file", file);
+  }
+  for (const file of input.proof_files) {
+    fd.append("proof_files", file);
   }
   return apiFetch<EventDetail>("/events/requests", {
     method: "POST",
@@ -421,45 +458,48 @@ export function missingEventFields(
   s: EventFieldsState,
   { requireMedia = true, requireTags = true }: EventFieldsOptions = {}
 ): MissingField[] {
-  const lat = parseFloat(s.lat);
-  const lng = parseFloat(s.lng);
+  // Same strict parse as the camera point (`cleanNumber`): a partially numeric
+  // coordinate (`"48.85abc"`) reads as missing rather than silently truncating
+  // to 48.85 at publish, so the readiness gate matches what actually posts.
+  const lat = cleanNumber(s.lat);
+  const lng = cleanNumber(s.lng);
   const coordsValid =
-    !isNaN(lat) &&
+    lat !== null &&
     lat >= LAT_MIN &&
     lat <= LAT_MAX &&
-    !isNaN(lng) &&
+    lng !== null &&
     lng >= LNG_MIN &&
     lng <= LNG_MAX;
 
   const missing: MissingField[] = [];
-  if (!s.title.trim()) missing.push({ key: "title", label: "Title" });
-  if (!coordsValid) missing.push({ key: "coordinates", label: "Coordinates" });
-  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
-  if (!s.eventDate) missing.push({ key: "event_date", label: "Event date" });
+  if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
+  if (!coordsValid) missing.push({ key: "coordinates", label: FIELD_LABELS.coordinates });
+  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
+  if (!s.eventDate) missing.push({ key: "event_date", label: FIELD_LABELS.event_date });
   if (!s.sourcePostedAt) {
-    missing.push({ key: "source_posted_at", label: "Source post time" });
+    missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }
   // Proof must exist *and* contain an image. "Proof" (none at all) and "Proof
   // image" (text-only) are distinct misses so the notice says which.
   if (!s.proof) {
-    missing.push({ key: "proof", label: "Proof" });
+    missing.push({ key: "proof", label: FIELD_LABELS.proof });
   } else if (!proofHasImage(s.proof)) {
-    missing.push({ key: "proof_image", label: "Proof image" });
+    missing.push({ key: "proof_image", label: FIELD_LABELS.proof_image });
   }
   if (requireMedia && s.mediaCount === 0) {
-    missing.push({ key: "source_media", label: "Source media" });
+    missing.push({ key: "source_media", label: FIELD_LABELS.source_media });
   }
   if (requireTags && !s.hasConflictTag) {
-    missing.push({ key: "conflict_tag", label: "Conflict tag" });
+    missing.push({ key: "conflict_tag", label: FIELD_LABELS.conflict_tag });
   }
   if (requireTags && !s.hasCaptureSourceTag) {
-    missing.push({ key: "capture_source_tag", label: "Capture source tag" });
+    missing.push({ key: "capture_source_tag", label: FIELD_LABELS.capture_source_tag });
   }
   return missing;
 }
 
 /**
- * Every still-unmet required field for a request (ex-bounty), as human labels
+ * Every still-unmet required field for a request, as human labels
  * for `IncompleteFormNotice`. A request is an unfinished geolocation, so its
  * floor is a subset of the geolocation one (no coordinates, dates, proof, or
  * tags), just enough to be actionable: a title, the source, and the footage.
@@ -472,11 +512,13 @@ export function missingEventRequestFields(s: {
   mediaCount: number;
 }): MissingField[] {
   const missing: MissingField[] = [];
-  if (!s.title.trim()) missing.push({ key: "title", label: "Title" });
-  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: "Source URL" });
+  if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
+  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
   if (!s.sourcePostedAt) {
-    missing.push({ key: "source_posted_at", label: "Source post time" });
+    missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }
-  if (s.mediaCount === 0) missing.push({ key: "source_media", label: "Source media" });
+  if (s.mediaCount === 0) {
+    missing.push({ key: "source_media", label: FIELD_LABELS.source_media });
+  }
   return missing;
 }

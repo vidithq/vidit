@@ -1,4 +1,4 @@
-"""Multipart form-field parsers shared by the geolocation + bounty create routers.
+"""Multipart form-field parsers shared by the geolocation + request create routers.
 
 Both create endpoints take the same loose ``str`` form fields (a JSON ``proof``
 document, a JSON array of ``tag_ids``, and ISO dates / times) and parse them

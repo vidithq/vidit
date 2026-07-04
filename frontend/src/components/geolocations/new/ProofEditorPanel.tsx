@@ -19,9 +19,9 @@ interface ProofEditorPanelProps {
   proof: Record<string, unknown> | null;
   onChange: (proof: Record<string, unknown> | null) => void;
   /** The inline proof images the editor is holding locally; the form uploads
-   *  them as `proof_files[]` at publish. Omitted in bounty mode (image-free). */
+   *  them as `proof_files[]` at publish. Omitted in request mode (image-free). */
   onProofFilesChange?: (files: File[]) => void;
-  /** Bounty mode: a bounty's proof is in-progress (else it'd be a
+  /** Request mode: a request's proof is in-progress (else it'd be a
    *  geolocation), so it's optional and image-free — see ProofEditor. */
   allowImages?: boolean;
   optional?: boolean;

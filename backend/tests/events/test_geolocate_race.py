@@ -44,7 +44,7 @@ from tests.events._helpers import proof_file_part, proof_form_field
 def third_user(db):
     """A second potential fulfiller, alongside ``second_user``.
 
-    Unlike ``test_bounties.py``'s same-named fixture (where ``third_user`` is
+    Unlike ``test_requests.py``'s same-named fixture (where ``third_user`` is
     only ever an investigator, never an owner), either racer here can win the
     fulfilment and become the event's ``owner_id``, so teardown needs the
     fuller ``owner_id`` / ``requested_by_id`` sweep ``conftest.py``'s
@@ -75,7 +75,7 @@ def third_user(db):
 
 def _make_requested_with_media(db, *, author):
     """A ``requested`` event with its one source media, mirroring
-    ``test_bounties.py::_make_bounty`` (kept local: this suite only needs the
+    ``test_requests.py::_make_request`` (kept local: this suite only needs the
     happy-path shape, not the withdrawn / tagged variants that module
     supports)."""
     from datetime import UTC, datetime
@@ -83,7 +83,7 @@ def _make_requested_with_media(db, *, author):
     from app.models.media import Media
 
     now = datetime.now(UTC)
-    bounty = Event(
+    request = Event(
         owner_id=author.id,
         requested_by_id=author.id,
         title="Race target",
@@ -92,19 +92,19 @@ def _make_requested_with_media(db, *, author):
         status=STATUS_REQUESTED,
         requested_at=now,
     )
-    db.add(bounty)
+    db.add(request)
     db.flush()
     db.add(
         Media(
-            event_id=bounty.id,
+            event_id=request.id,
             role="source",
-            storage_url=f"http://localhost:8000/local-storage/bounty_uploads/{bounty.id}/x.jpg",
+            storage_url=f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg",
             media_type="image",
         )
     )
     db.commit()
-    db.refresh(bounty)
-    return bounty
+    db.refresh(request)
+    return request
 
 
 def _fulfilment_form(conflict_tag, capture_source_tag, *, title: str) -> dict[str, str]:
@@ -132,8 +132,8 @@ def test_concurrent_geolocate_exactly_one_wins(
     geolocator) while the other sees a clean ``409 invalid_state``, never a 500,
     and never two winners.
     """
-    bounty = _make_requested_with_media(db, author=author)
-    bounty_id = bounty.id
+    request = _make_requested_with_media(db, author=author)
+    request_id = request.id
 
     statuses: list[int] = []
     bodies: list[dict] = []
@@ -145,7 +145,7 @@ def test_concurrent_geolocate_exactly_one_wins(
         data = _fulfilment_form(conflict_tag, capture_source_tag, title=title)
         barrier.wait(timeout=2)
         response = c.post(
-            f"/api/v1/events/{bounty_id}/geolocate",
+            f"/api/v1/events/{request_id}/geolocate",
             headers=headers,
             data=data,
             files=[proof_file_part()],
@@ -172,13 +172,13 @@ def test_concurrent_geolocate_exactly_one_wins(
     # The row moved exactly once: geolocated, owned by whichever fulfiller won
     # (not left ``requested``, not double-flipped).
     db.expire_all()
-    row = db.query(Event).filter(Event.id == bounty_id).one()
+    row = db.query(Event).filter(Event.id == request_id).one()
     assert row.status == STATUS_GEOLOCATED
     assert row.owner_id in (second_user.id, third_user.id)
     assert row.requested_by_id == author.id  # the original poster, untouched
 
     # Exactly one durable geolocator credit row: the loser's attempt left no
     # trace in the credit table.
-    credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == bounty_id).all()
+    credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == request_id).all()
     assert len(credit) == 1
     assert credit[0].user_id == row.owner_id

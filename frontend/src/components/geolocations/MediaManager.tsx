@@ -9,7 +9,7 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
 interface MediaManagerProps {
-  /** Persisted media (the detection edit form, or a bounty's locked media).
+  /** Persisted media (the detection edit form, or a request's locked media).
    *  Empty for a fresh submit. */
   existing?: Media[];
   /** Ids of existing media the owner marked for removal — hidden from the grid,
@@ -21,7 +21,7 @@ interface MediaManagerProps {
   staged: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveStaged?: (index: number) => void;
-  /** Read-only (bounty fulfilment): show existing media, no add / remove. */
+  /** Read-only (request fulfilment): show existing media, no add / remove. */
   locked?: boolean;
 }
 

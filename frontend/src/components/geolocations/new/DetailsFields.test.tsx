@@ -55,7 +55,7 @@ describe("DetailsFields", () => {
     );
   });
 
-  it("locks the source URL in bounty-fulfilment mode", () => {
+  it("locks the source URL in request-fulfilment mode", () => {
     render(
       <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
     );
@@ -64,7 +64,7 @@ describe("DetailsFields", () => {
     );
   });
 
-  it("marks the event date optional too when eventDateRequired is false (bounty)", () => {
+  it("marks the event date optional too when eventDateRequired is false (request)", () => {
     render(<DetailsFields {...baseProps} eventDateRequired={false} />);
     // Both the event date and the event time now carry the optional marker.
     expect(screen.getAllByText("optional")).toHaveLength(2);

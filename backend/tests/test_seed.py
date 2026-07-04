@@ -29,9 +29,9 @@ from app.services import seed as seed_service
 from app.services.auth import hash_password
 from tests.conftest import login_as
 
-# Requested-view statuses: a "bounty" is a ``requested`` event (an open call) or
+# Requested-view statuses: a "request" is a ``requested`` event (an open call) or
 # a ``closed`` one (withdrawn). A fulfilled request is now a ``geolocated`` row,
-# no longer a bounty.
+# no longer a request.
 _REQUESTED_VIEW = (STATUS_REQUESTED, STATUS_CLOSED)
 
 client = TestClient(app)
@@ -107,10 +107,10 @@ def _wipe_demo_around_each(db):
     # leftover demo rows from a previous (interrupted) seed and the
     # count assertions break. Symmetric pre/post keeps tests isolated
     # under any ordering.
-    seed_service.wipe_demo_bounties(db)
+    seed_service.wipe_demo_requests(db)
     seed_service.wipe_demo(db)
     yield
-    seed_service.wipe_demo_bounties(db)
+    seed_service.wipe_demo_requests(db)
     seed_service.wipe_demo(db)
 
 
@@ -428,16 +428,16 @@ def test_wipe_demo_endpoint_for_admin(admin_user, demo_pool, db):
     assert body["deleted_users"] == 5
 
 
-# ── Bounty seeder ────────────────────────────────────────────────────────
+# ── Request seeder ────────────────────────────────────────────────────────
 
 
-def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
-    result = seed_service.seed_demo_bounties(db, count=4)
+def test_seed_demo_requests_creates_events_with_media(db, demo_pool):
+    result = seed_service.seed_demo_requests(db, count=4)
     assert result["created"] == 4
     assert result["templates"] == 2
     assert result["authors"] == 5
     # Per-status breakdown sums to the requested count (sanity-check the
-    # weighted sampler — see ``DEMO_BOUNTY_STATUS_WEIGHTS``). ``open`` /
+    # weighted sampler — see ``DEMO_REQUEST_STATUS_WEIGHTS``). ``open`` /
     # ``fulfilled`` / ``closed`` map to requested / geolocated / closed.
     assert result["open"] + result["fulfilled"] + result["closed"] == 4
 
@@ -473,32 +473,32 @@ def test_seed_demo_bounties_creates_events_with_media(db, demo_pool):
         assert e.requested_by_id != e.owner_id
 
 
-def test_seed_demo_bounties_attaches_some_claims(db, demo_pool):
+def test_seed_demo_requests_attaches_some_claims(db, demo_pool):
     """The seeder optionally attaches investigator signals so the
     multi-analyst UI has something to render. With a large enough count the
     probability of at least one requested event getting a signal is
     overwhelming."""
-    seed_service.seed_demo_bounties(db, count=20)
+    seed_service.seed_demo_requests(db, count=20)
     signal_count = db.query(EventInvestigator).count()
     assert signal_count > 0
 
 
-def test_wipe_demo_bounties_only_drops_requested_view_rows(db, demo_pool, admin_user):
-    """The bounty wipe must NOT touch demo users or located demo events — they're
+def test_wipe_demo_requests_only_drops_requested_view_rows(db, demo_pool, admin_user):
+    """The request wipe must NOT touch demo users or located demo events — they're
     behind the separate panel and an admin may want to keep one population while
-    wiping the other. Since the merge a fulfilled bounty is a ``geolocated`` row
-    (in the located view), so it survives the bounty wipe; only the requested /
-    closed rows are dropped. ``deleted_bounties`` counts just those.
+    wiping the other. Since the merge a fulfilled request is a ``geolocated`` row
+    (in the located view), so it survives the request wipe; only the requested /
+    closed rows are dropped. ``deleted_requests`` counts just those.
     """
     seed_service.seed_demo(db, count=3)  # creates demo authors + 3 demo geos
-    bounty_result = seed_service.seed_demo_bounties(db, count=4)
-    # seed_demo's 3 located geos + the fulfilled (geolocated) bounties survive the
+    request_result = seed_service.seed_demo_requests(db, count=4)
+    # seed_demo's 3 located geos + the fulfilled (geolocated) requests survive the
     # requested-view wipe; the requested + closed rows are removed.
-    requested_view_count = bounty_result["open"] + bounty_result["closed"]
-    expected_surviving_geos = 3 + bounty_result["fulfilled"]
+    requested_view_count = request_result["open"] + request_result["closed"]
+    expected_surviving_geos = 3 + request_result["fulfilled"]
 
-    result = seed_service.wipe_demo_bounties(db)
-    assert result["deleted_bounties"] == requested_view_count
+    result = seed_service.wipe_demo_requests(db)
+    assert result["deleted_requests"] == requested_view_count
     db.expire_all()
     # No requested-view demo rows left; located demo events + demo authors intact.
     assert (
@@ -509,9 +509,9 @@ def test_wipe_demo_bounties_only_drops_requested_view_rows(db, demo_pool, admin_
     assert db.query(User).filter(User.is_demo.is_(True)).count() == 5
 
 
-def test_seed_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
+def test_seed_demo_requests_endpoint_for_admin(admin_user, demo_pool, db):
     response = client.post(
-        "/api/v1/admin/seed-demo-bounties",
+        "/api/v1/admin/seed-demo-requests",
         json={"count": 3},
         headers=login_as(client, admin_user),
     )
@@ -524,7 +524,7 @@ def test_seed_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
         db.query(AdminEvent)
         .filter(
             AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "demo_bounties_seeded",
+            AdminEvent.action == "demo_requests_seeded",
         )
         .order_by(AdminEvent.created_at.desc())
         .first()
@@ -533,7 +533,7 @@ def test_seed_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
     assert event.target == {"count": 3, "templates": 2}
 
 
-def test_seed_demo_bounties_endpoint_403_for_regular_user(db, demo_pool):
+def test_seed_demo_requests_endpoint_403_for_regular_user(db, demo_pool):
     user = User(
         username=f"u{uuid.uuid4().hex[:8]}",
         email=f"u-{uuid.uuid4().hex}@example.com",
@@ -543,7 +543,7 @@ def test_seed_demo_bounties_endpoint_403_for_regular_user(db, demo_pool):
     db.commit()
     try:
         response = client.post(
-            "/api/v1/admin/seed-demo-bounties",
+            "/api/v1/admin/seed-demo-requests",
             json={"count": 1},
             headers=login_as(client, user),
         )
@@ -553,11 +553,11 @@ def test_seed_demo_bounties_endpoint_403_for_regular_user(db, demo_pool):
         db.commit()
 
 
-def test_seed_demo_bounties_endpoint_422_when_pool_empty(admin_user, monkeypatch, tmp_path):
+def test_seed_demo_requests_endpoint_422_when_pool_empty(admin_user, monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "storage_backend", "local")
     monkeypatch.setattr(settings, "local_storage_dir", str(tmp_path))
     response = client.post(
-        "/api/v1/admin/seed-demo-bounties",
+        "/api/v1/admin/seed-demo-requests",
         json={"count": 1},
         headers=login_as(client, admin_user),
     )
@@ -565,15 +565,15 @@ def test_seed_demo_bounties_endpoint_422_when_pool_empty(admin_user, monkeypatch
     assert "demo-pool" in response.json()["detail"].lower()
 
 
-def test_wipe_demo_bounties_endpoint_for_admin(admin_user, demo_pool, db):
+def test_wipe_demo_requests_endpoint_for_admin(admin_user, demo_pool, db):
     # The wipe drops only requested-view rows (requested + closed); a fulfilled
-    # bounty is now a ``geolocated`` located row that survives, so assert against
+    # request is now a ``geolocated`` located row that survives, so assert against
     # the requested-view slice of the seed rather than the raw count.
-    seed_result = seed_service.seed_demo_bounties(db, count=2)
+    seed_result = seed_service.seed_demo_requests(db, count=2)
     requested_view_count = seed_result["open"] + seed_result["closed"]
     response = client.delete(
-        "/api/v1/admin/seed-demo-bounties",
+        "/api/v1/admin/seed-demo-requests",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
-    assert response.json()["deleted_bounties"] == requested_view_count
+    assert response.json()["deleted_requests"] == requested_view_count

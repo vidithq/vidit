@@ -10,7 +10,7 @@ import { MONTSERRAT } from "../fonts";
 
 // Closing CTA — wordmark + features-not-shown list + beta pill.
 //
-// The promo only walks the import-publish + bounty story; the list of
+// The promo only walks the import-publish + request story; the list of
 // features here makes clear there's more to the platform than what was
 // just demoed, without burning recording time on each.
 const ALSO_IN_VIDIT = ["Timeline", "Search", "Filters", "Profiles"];

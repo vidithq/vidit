@@ -1,28 +1,28 @@
-// Seed bounties from a list of tweet URLs.
+// Seed requests from a list of tweet URLs.
 //
 // For each tweet:
 //   1. import-from-tweet → gets author, text, parsed media URLs
 //   2. fetch each media URL via the import-from-tweet/media proxy
 //      (X CDN doesn't set CORS; the proxy is the path the real form
 //      uses too)
-//   3. POST /bounties multipart: title (from tweet text), source_url
+//   3. POST /requests multipart: title (from tweet text), source_url
 //      (canonical tweet URL), tags, files (the downloaded media)
 //
-// Idempotent: deletes the bounty author's and the recording viewer's
-// prior "seeded bounty" rows before re-seeding so re-runs converge to
+// Idempotent: deletes the request author's and the recording viewer's
+// prior "seeded request" rows before re-seeding so re-runs converge to
 // the same state.
 
 const { Blob } = require("node:buffer");
 
 const API = "http://localhost:8000/api/v1";
 
-// Bounties are seeded from the same analyst's tweets — the framing in
-// the promo is "this analyst's bounties", a community-of-one demo.
-// Tweets are ordered oldest-first; the bounty list sorts newest-first,
+// Requests are seeded from the same analyst's tweets — the framing in
+// the promo is "this analyst's requests", a community-of-one demo.
+// Tweets are ordered oldest-first; the request list sorts newest-first,
 // so the LAST entry here lands at the top of the list and is what the
 // recording clicks into. Both tweets here have known-good video media
 // (the third candidate, 2058666432729170060, had a flaky video proxy
-// and got dropped — the recording would otherwise click a bounty with
+// and got dropped — the recording would otherwise click a request with
 // image-only fallback, contradicting the "source footage" premise).
 const TWEETS = [
   "https://x.com/geo27752/status/2059262323152286110",
@@ -75,9 +75,9 @@ async function fetchMediaViaProxy(auth, remoteUrl) {
 }
 
 function titleFromTweetText(text, fallback) {
-  // Build a clean bounty title from the analyst's tweet text:
+  // Build a clean request title from the analyst's tweet text:
   //   - strip t.co URLs (visible as garbage in the title)
-  //   - strip "Geolocation: <coords>" — bounties are unplaced events;
+  //   - strip "Geolocation: <coords>" — requests are unplaced events;
   //     having coordinates in the title contradicts the premise
   //   - strip "[mm:ss-mm:ss]" timestamps (they reference the source
   //     video segment, not useful in a list view)
@@ -110,7 +110,7 @@ async function getTagIds(auth, names) {
   }).then((r) => r.json());
   const byName = new Map(tags.map((t) => [t.name, t.id]));
   // Warn loudly when a requested tag is missing — silently dropping it
-  // would let bounties post with the wrong (or empty) tag set, and the
+  // would let requests post with the wrong (or empty) tag set, and the
   // recording's later submit flow would then click chips by the same
   // names and miss. Better to surface the rotation up front so the
   // operator either fixes the tag names here or the seeder for the
@@ -120,13 +120,13 @@ async function getTagIds(auth, names) {
     console.warn(
       `  WARN: curated tags not found, skipping: ${missing.join(", ")} ` +
         `(make sure 'make seed' has run; if the curated taxonomy was ` +
-        `renamed, update the tag names in seed-bounties.js)`
+        `renamed, update the tag names in seed-requests.js)`
     );
   }
   return names.map((n) => byName.get(n)).filter(Boolean);
 }
 
-async function createBounty(auth, { title, sourceUrl, tagIds, mediaFiles }) {
+async function createRequest(auth, { title, sourceUrl, tagIds, mediaFiles }) {
   const fd = new FormData();
   fd.append("title", title);
   fd.append("source_url", sourceUrl);
@@ -141,34 +141,34 @@ async function createBounty(auth, { title, sourceUrl, tagIds, mediaFiles }) {
       : "bin";
     fd.append("files", new Blob([buf], { type }), `media-${i}.${ext}`);
   }
-  const res = await fetch(`${API}/bounties`, {
+  const res = await fetch(`${API}/requests`, {
     method: "POST",
     headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
     body: fd,
   });
-  if (!res.ok) throw new Error(`bounty ${title}: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`request ${title}: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-// Cleanup helpers. The public `DELETE /bounties/{id}` and
+// Cleanup helpers. The public `DELETE /requests/{id}` and
 // `DELETE /geolocations/{id}` enforce author-only access (admins can
 // not delete other users' rows through the public endpoints), so
 // per-user wipes still need that user's own auth. Only the
 // cross-author tweet-duplicate wipe routes through the admin-only
 // `DELETE /admin/geolocations/{id}`, which bypasses `ensure_author`.
 
-async function wipeUserBounties(auth) {
+async function wipeUserRequests(auth) {
   const me = await fetch(`${API}/auth/me`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
-  const all = await fetch(`${API}/bounties`, {
+  const all = await fetch(`${API}/requests`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
   const mine = all.filter(
     (b) => b.author?.id === me.id || b.author?.username === me.username
   );
   for (const b of mine) {
-    const res = await fetch(`${API}/bounties/${b.id}`, {
+    const res = await fetch(`${API}/requests/${b.id}`, {
       method: "DELETE",
       headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
     });
@@ -177,7 +177,7 @@ async function wipeUserBounties(auth) {
     }
   }
   if (mine.length) {
-    console.log(`✓ wiped ${mine.length} prior bounty/bounties for ${me.username}`);
+    console.log(`✓ wiped ${mine.length} prior request/requests for ${me.username}`);
   }
 }
 
@@ -270,22 +270,22 @@ const RECORDING_TWEET_URL =
   const admin = await mintAuth("admin@vidit.app", "admin");
   await wipeTweetDuplicatesAs(admin, RECORDING_TWEET_URL);
 
-  // The bounty author has to be someone OTHER than the recording
-  // viewer — the bounty detail page only shows "I'm working on this"
-  // when the viewer is NOT the bounty's author. The recording logs in
-  // as `analyst`, so `demo-analyst` owns the seeded bounties.
+  // The request author has to be someone OTHER than the recording
+  // viewer — the request detail page only shows "I'm working on this"
+  // when the viewer is NOT the request's author. The recording logs in
+  // as `analyst`, so `demo-analyst` owns the seeded requests.
   const author = await mintAuth("demo-analyst@vidit.app", "demo-analyst");
-  await wipeUserBounties(author);
+  await wipeUserRequests(author);
 
-  // The recording's `analyst` also posts a bounty + a geolocation
-  // during the live "Post bounty" / "Submit geolocation" beats. Wipe
+  // The recording's `analyst` also posts a request + a geolocation
+  // during the live "Post request" / "Submit geolocation" beats. Wipe
   // any prior copies from earlier recordings so they don't linger.
   const recorder = await mintAuth("analyst@vidit.app", "analyst");
-  await wipeUserBounties(recorder);
+  await wipeUserRequests(recorder);
   await wipeUserGeolocations(recorder);
 
   const auth = author; // reuse the rest of this script unchanged
-  // Conflict + capture-source — every bounty needs both for the
+  // Conflict + capture-source — every request needs both for the
   // downstream geolocation. Israel Gaza + Drone fit the source material.
   const tagIds = await getTagIds(auth, ["Israel Gaza", "Drone"]);
 
@@ -296,7 +296,7 @@ const RECORDING_TWEET_URL =
     console.log(`  title: ${title.slice(0, 60)}${title.length > 60 ? "…" : ""}`);
     console.log(`  media: ${tweet.media?.length || 0}`);
 
-    // Prefer the tweet's VIDEOS for the bounty media — a bounty is the
+    // Prefer the tweet's VIDEOS for the request media — a request is the
     // analyst's source footage that nobody's placed yet; the images
     // attached to the tweet are usually the geolocator's annotated
     // satellite stills, which contradict the "unplaced footage"
@@ -314,7 +314,7 @@ const RECORDING_TWEET_URL =
       }
     }
     // If video fetch failed and we have images on the same tweet, fall
-    // back to them rather than dropping the bounty entirely.
+    // back to them rather than dropping the request entirely.
     if (!mediaFiles.length && videos.length && allMedia.length > videos.length) {
       console.warn("  video fetch failed; falling back to images");
       for (const m of allMedia.filter((m) => m.kind === "image")) {
@@ -327,33 +327,33 @@ const RECORDING_TWEET_URL =
       }
     }
     if (!mediaFiles.length) {
-      console.warn("  no media fetched, skipping bounty");
+      console.warn("  no media fetched, skipping request");
       continue;
     }
 
-    const bounty = await createBounty(auth, {
+    const request = await createRequest(auth, {
       title,
       sourceUrl: tweet.original_tweet_url || url,
       tagIds,
       mediaFiles,
     });
-    console.log(`  ✓ ${bounty.id}`);
+    console.log(`  ✓ ${request.id}`);
   }
 
   // Pre-seed a single "I'm working on this" claim from analyst-helper
   // (a separate non-admin user) so the list visibly shows "1 working"
-  // on one bounty when the recording viewer opens the page. The
+  // on one request when the recording viewer opens the page. The
   // recording then clicks "I'm working on this" on a *different*
-  // bounty to demonstrate the action live.
+  // request to demonstrate the action live.
   const helper = await mintAuth("analyst-helper@vidit.app", "analyst-helper");
-  const all = await fetch(`${API}/bounties`, {
+  const all = await fetch(`${API}/requests`, {
     headers: { cookie: helper.cookieHeader },
   }).then((r) => r.json());
   // Pick the second-newest so the newest still reads as "fresh" (and
   // gets the recording's live click).
   if (all.length >= 2) {
     const target = all[1];
-    const res = await fetch(`${API}/bounties/${target.id}/claim`, {
+    const res = await fetch(`${API}/requests/${target.id}/claim`, {
       method: "POST",
       headers: { cookie: helper.cookieHeader, "X-CSRF-Token": helper.csrf },
     });
