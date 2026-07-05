@@ -1,0 +1,12 @@
+{
+  "id_str": "8900000000000000001",
+  "created_at": "2026-03-09T09:00:00.000Z",
+  "user": { "screen_name": "quiet_teal" },
+  "text": "Just some commentary on the situation, nothing to pin down here",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP9.jpg"
+    }
+  ]
+}

@@ -91,15 +91,17 @@ export interface DetectedGeolocPreview {
   title: string;
   proof_text: string;
   detected_from_url: string;
-  event_date: string;
+  /** Null when the tweet's timestamp is unusable. */
+  event_date: string | null;
   media: TweetImportMedia[];
 }
 
 export interface TweetImportResponse {
-  /** SOURCE URL — the quoted tweet's URL when the OP quote-retweets,
-   *  otherwise the OP's own URL. The form binds this directly to its
-   *  ``Source URL`` field. */
-  source_url: string;
+  /** SOURCE URL — the quoted tweet's URL when the OP quote-retweets, an
+   *  off-platform footage link when the OP declares one, otherwise null (no
+   *  fallback to the OP's own URL). The form binds this directly to its
+   *  ``Source URL`` field, starting empty when null. */
+  source_url: string | null;
   /** The OP's URL, kept separately so the proof body can still credit
    *  the analyst even when ``source_url`` points at the quoted tweet. */
   original_tweet_url: string;
@@ -122,6 +124,7 @@ export interface TweetImportResponse {
  * One candidate from the submit-form duplicate probe
  * (GET /events/possible-duplicates). Soft-warning shape, just enough
  * to recognise the same event and decide whether to abandon the submission.
+ * ``source_url`` is null on a sourceless ``detected`` candidate.
  */
 export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
 
@@ -135,7 +138,9 @@ export type Media = components["schemas"]["MediaRead"];
  *  trace on top of the compact ``EventList`` card fields. Covers every
  *  lifecycle state: a ``requested`` row (the requested view) reads through
  *  this same shape, with ``event_coords`` null unless the poster attached a
- *  guess. */
+ *  guess. ``source_url`` and ``source_posted_at`` are null on a ``detected``
+ *  row with no declared source; every ``requested`` / ``geolocated`` row
+ *  carries a ``source_url``. */
 export type EventDetail = components["schemas"]["EventRead"];
 
 /** Compact event card (`GET /events`). ``investigator_count`` /
@@ -158,7 +163,9 @@ export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
 /** A requested-view search hit: an event card plus the
  *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
- *  renders the same "N working" badge. */
+ *  renders the same "N working" badge. ``source_url`` is required-nullable
+ *  (a ``requested`` hit always carries one today, per
+ *  ``ck_events_source_url_status``). */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
 
 /** An analyst search hit. ``bio_highlight`` is populated only when the bio

@@ -78,7 +78,9 @@ interface EntityCardBaseProps {
   author: { username: string };
   date?: string;
   coords?: { lat: number; lng: number } | null;
-  source?: { url: string; isDemo: boolean };
+  /** ``url`` is null on a sourceless machine draft; `SourceLabel` renders the
+   *  muted "To confirm" label for it. */
+  source?: { url: string | null; isDemo: boolean };
   working?: number;
   tags?: { id: string; name: string }[];
   variant?: "feed" | "compact";

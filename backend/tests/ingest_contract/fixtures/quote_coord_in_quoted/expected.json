@@ -1,0 +1,10 @@
+{
+  "description": "The OP carries no coordinate; it lives in the quoted tweet's text. resolve_coords falls back to the quoted text. Source is still the quote (url + date + media); the OP photo is proof.",
+  "coords": [[50.4501, 30.5234]],
+  "source_url": "https://x.com/raw_feed/status/8200000000000000002",
+  "source_posted_at": "2026-03-01T20:05:00+00:00",
+  "event_date": "2026-03-02",
+  "title": "Geolocated the clip below, see the pinned spot",
+  "source_media": [["image", "quote"]],
+  "proof_media": [["image", "op"]]
+}

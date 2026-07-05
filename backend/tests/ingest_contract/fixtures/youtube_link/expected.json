@@ -1,0 +1,10 @@
+{
+  "description": "Coordinate plus a YouTube footage link and one annotation photo, no quote. The link is the source url; its date is unknown (null); the footage is off-platform (no source media). The OP photo is proof.",
+  "coords": [[47.2221, 39.7187]],
+  "source_url": "https://www.youtube.com/watch?v=FAKEVIDEO01",
+  "source_posted_at": null,
+  "event_date": "2026-03-06",
+  "title": "Location confirmed riverside",
+  "source_media": [],
+  "proof_media": [["image", "op"]]
+}

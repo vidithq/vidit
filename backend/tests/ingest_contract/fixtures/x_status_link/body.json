@@ -1,0 +1,20 @@
+{
+  "id_str": "8500000000000000001",
+  "created_at": "2026-03-05T16:05:00.000Z",
+  "user": { "screen_name": "trace_heron" },
+  "text": "Geolocated 49.988100, 36.232500 industrial zone\nSource: https://t.co/fakeXLINK",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP5.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeXLINK",
+        "expanded_url": "https://x.com/source_gull/status/8500000000000000002"
+      }
+    ]
+  }
+}

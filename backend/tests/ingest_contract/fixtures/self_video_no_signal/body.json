@@ -1,0 +1,24 @@
+{
+  "id_str": "8800000000000000001",
+  "created_at": "2026-03-08T14:25:00.000Z",
+  "user": { "screen_name": "field_lark" },
+  "text": "Filmed this myself, geolocated 48.921700, 24.708600 near the depot gate",
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "variants": [
+          {
+            "content_type": "application/x-mpegURL",
+            "url": "https://video.twimg.com/ext_tw_video/88/pl/FAKEPL.m3u8"
+          },
+          {
+            "bitrate": "632000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/88/vid/360x640/FAKESELF.mp4?tag=10"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "description": "Archive-only typology: a self-thread the analyst posted. The head tweet carries the footage video; the reply carries the coordinate. stitch rejoins them on the reply edge, resolve_thread finds the coord in the reply and keeps the head video as proof (no source declared). Represented as raw X-export tweet entries (not a syndication body) because this shape only exists in an archive.",
+  "thread": [
+    {
+      "id_str": "9200000000000000001",
+      "created_at": "Mon Mar 09 08:00:00 +0000 2026",
+      "full_text": "Footage I filmed at the front this morning",
+      "extended_entities": {
+        "media": [
+          {
+            "type": "video",
+            "media_url_https": "https://pbs.twimg.com/ext_tw_video_thumb/92/img/FAKETHUMB.jpg",
+            "video_info": {
+              "variants": [
+                {
+                  "content_type": "application/x-mpegURL",
+                  "url": "https://video.twimg.com/ext_tw_video/92/pl/FAKEPL.m3u8"
+                },
+                {
+                  "bitrate": "2176000",
+                  "content_type": "video/mp4",
+                  "url": "https://video.twimg.com/ext_tw_video/92/vid/720x1280/FAKETHREADVID.mp4?tag=12"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id_str": "9200000000000000002",
+      "created_at": "Mon Mar 09 08:05:00 +0000 2026",
+      "in_reply_to_status_id_str": "9200000000000000001",
+      "in_reply_to_user_id_str": "9200000000000000009",
+      "full_text": "Geolocated it: 49.842900, 24.031100 by the warehouse",
+      "extended_entities": {
+        "media": [
+          {
+            "type": "photo",
+            "media_url_https": "https://pbs.twimg.com/media/FAKETHREADPIC.jpg"
+          }
+        ]
+      }
+    }
+  ]
+}

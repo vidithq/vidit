@@ -70,7 +70,9 @@ export function EventEditForm({
   const [captureLng, setCaptureLng] = useState(
     geo.capture_source_coords ? String(geo.capture_source_coords.lng) : ""
   );
-  const [sourceUrl, setSourceUrl] = useState(geo.source_url);
+  // A ``detected`` draft may be born with no declared source, so the field
+  // starts empty (not `String(null)`) rather than showing a fabricated value.
+  const [sourceUrl, setSourceUrl] = useState(geo.source_url ?? "");
   const [eventDate, setEventDate] = useState(geo.event_date ?? "");
   const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
   const [sourcePostedAt, setSourcePostedAt] = useState(

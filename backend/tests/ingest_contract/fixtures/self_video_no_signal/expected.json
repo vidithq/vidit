@@ -1,0 +1,10 @@
+{
+  "description": "The analyst's own video plus a coordinate, no quote and no footage link. The brick never promotes the analyst's own media to source: url null, no source media, the video is proof.",
+  "coords": [[48.9217, 24.7086]],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-08",
+  "title": "Filmed this myself, geolocated near the depot gate",
+  "source_media": [],
+  "proof_media": [["video", "op"]]
+}

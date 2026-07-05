@@ -1,0 +1,10 @@
+{
+  "description": "A reply-style post whose text is prefixed with @mentions, as real threaded posts are. The coordinate is parsed and the detection is referenceless (source null). The derivation keeps the leading @mentions verbatim in the title and proof; it strips coordinates, hashtags, urls and list markers, not mentions.",
+  "coords": [[55.7512, 37.6176]],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-11",
+  "title": "@alpha_scout @bravo_watch Geolocated city centre",
+  "source_media": [],
+  "proof_media": [["image", "op"]]
+}

@@ -1,0 +1,17 @@
+{
+  "description": "An X status link written as Source:, no quote in the syndication body. Unit path (no chase): the link is the source url with no date and no source media; the OP photo is proof. The archive path chases the linked status: chased_8500000000000000002.json then fills the source media (video) and the source url becomes the chased tweet's canonical url.",
+  "coords": [[49.9881, 36.2325]],
+  "source_url": "https://x.com/source_gull/status/8500000000000000002",
+  "source_posted_at": null,
+  "event_date": "2026-03-05",
+  "title": "Geolocated industrial zone",
+  "source_media": [],
+  "proof_media": [["image", "op"]],
+  "chase": {
+    "linked_status_id": "8500000000000000002",
+    "source_url": "https://x.com/source_gull/status/8500000000000000002",
+    "source_posted_at": "2026-03-04T21:30:00+00:00",
+    "source_media": [["video", "quote"]],
+    "proof_media": [["image", "op"]]
+  }
+}

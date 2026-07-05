@@ -10,7 +10,9 @@ import { TEXT_LINK } from "@/components/ui/styles";
  */
 type SourceLabelProps = {
   isDemo: boolean;
-  url: string;
+  /** Null on a machine ``detected`` draft whose tweet declared no source:
+   *  renders the muted "To confirm" label instead of a link. */
+  url: string | null;
   /** Appended Tailwind classes. The atom sets palette + affordance; the caller
    *  owns text size, margin, and layout. */
   className?: string;
@@ -31,18 +33,24 @@ type SourceLabelProps = {
 );
 
 /**
- * Source-URL display that handles the demo sentinel uniformly. Demo rows carry
- * a synthetic ``source_url`` that doesn't resolve, so linking it would 404 the
- * tester — render an italic "synthetic" label instead. One edit point for the
- * rendering, which had already drifted (``text-neutral-500`` vs ``-600``).
+ * Source-URL display that handles the demo sentinel and the sourceless draft
+ * uniformly. Demo rows carry a synthetic ``source_url`` that doesn't resolve,
+ * so linking it would 404 the tester: render an italic "synthetic" label
+ * instead. A null ``url`` (a machine ``detected`` draft whose tweet declared
+ * no source) renders an italic "To confirm" label the same way, since neither
+ * case has a real link to offer. One edit point for the rendering, which had
+ * already drifted (``text-neutral-500`` vs ``-600``).
  */
 export function SourceLabel(props: SourceLabelProps) {
   const { isDemo, url, className } = props;
+  if (url === null) {
+    return <span className={cn("italic text-neutral-500", className)}>To confirm</span>;
+  }
   if (isDemo) {
     return <span className={cn("italic text-neutral-500", className)}>synthetic</span>;
   }
   const hostname = safeHostname(url);
-  // The DB column is non-nullable, so this only fires on corrupt data —
+  // A non-null, non-demo url can still fail to parse on corrupt data:
   // surface a readable label rather than an empty anchor / span.
   if (!hostname) {
     return <span className={cn("italic text-neutral-500", className)}>no source</span>;

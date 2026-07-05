@@ -6,6 +6,7 @@ Technical reference for [Vidit](https://vidit.app), an OSINT/GEOINT geolocation 
 
 - [**API**](api.md): REST contracts, auth model, audit log.
 - [**Data model**](data-model.md): entities, relationships, lifecycle.
+- [**Ingestion**](ingestion.md): the tweet-to-event contract, recognized signals, bot and archive formats.
 - [**Engineering**](engineering.md): stack, repo layout, local environment, deployment, operational particularities.
 - [**Design**](design.md): UI principles, theme, design decisions.
 - [**Backups**](backups.md): backup pipeline, restore drill, recovery posture.

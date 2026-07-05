@@ -291,7 +291,7 @@ describe("EventDetailBody", () => {
     expect(screen.queryByText("Reason")).not.toBeInTheDocument();
   });
 
-  it("always shows the Source posted row (a post always has a time)", () => {
+  it("always shows the Source posted row", () => {
     render(
       <EventDetailBody
         geo={geoFixture({ source_posted_at: "2026-05-03T09:15:00Z" })}
@@ -300,6 +300,34 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Source posted")).toBeInTheDocument();
     expect(screen.getByText("3 May 2026, 09:15 UTC")).toBeInTheDocument();
+  });
+
+  it("shows a dash on the Source posted row when the instant is unknown", () => {
+    // A machine `detected` draft whose source is an undated footage link
+    // (or has no source at all) leaves source_posted_at null.
+    render(
+      <EventDetailBody
+        geo={geoFixture({ source_posted_at: null })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Source posted")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows the muted 'To confirm' label on the Source row when no source is declared", () => {
+    // A machine `detected` draft is partial by definition: its tweet may
+    // declare no source at all.
+    render(
+      <EventDetailBody
+        geo={geoFixture({ status: "detected", source_url: null })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("To confirm")).toBeInTheDocument();
+    // Muted, not a link: no anchor renders for the sourceless row.
+    expect(screen.queryByRole("link", { name: "To confirm" })).not.toBeInTheDocument();
   });
 
   it("puts the event time on its own row, date-only in Event date", () => {
