@@ -27,6 +27,9 @@ from app.models.auth_event import AuthEvent
 logger = logging.getLogger(__name__)
 
 
+# CodeQL raises py/clear-text-logging-sensitive-data on the logger call below:
+# known false positive (only an event-name constant and a UUID are logged). See
+# docs/engineering.md, Particularities, before chasing or "fixing" it.
 def log_auth_event(
     db: Session,
     *,
