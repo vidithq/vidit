@@ -22,7 +22,17 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 
 1. **Fork + branch.** Name the branch after the work, not the issue number — `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-request-claim`.
 2. **One coherent change per PR.** A bug fix shouldn't drag in surrounding cleanup; "while I was there" refactors land in their own PR.
-3. **Write the tests that lock in the change.** Backend: `pytest` next to whatever you touched. Frontend: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`.
+3. **Write the tests that lock in the change, and reproduce CI locally before pushing.** Backend, from `backend/` (CI's lint job stops at the first failing step, so a red `ruff` masks a `mypy` or `vulture` failure behind it: run all four, then the tests):
+
+   ```bash
+   uv run ruff check .
+   uv run ruff format --check .   # catches line-wrap issues `ruff check` doesn't
+   uv run mypy app                # checks app/ only; scripts/ and tests/ aren't covered
+   uv run vulture                 # dead code: removing a helper's last caller orphans it here
+   uv run pytest                  # needs the docker-compose Postgres up + `uv run alembic upgrade head`
+   ```
+
+   Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`. `make hygiene` runs the cross-cutting gates (jscpd, knip, palette-coverage).
 4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below — the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
 6. **CI must be green.** The `ci` workflow (backend lint + backend tests + frontend + `docs-pairing` jobs), the PR-title workflow, and the `DCO` status check (Probot app) all need to pass.
@@ -68,6 +78,8 @@ git rebase --signoff main
 ```
 
 The check is posted by the [DCO App](https://github.com/apps/dco) (Probot, installed on the org) as a status named `DCO`. It walks every commit on the PR and fails on the first one without the trailer.
+
+An amend + force-push to fix a missing sign-off often re-triggers only the DCO check: the Actions workflows (`ci`, PR title) may not re-run on the new head, leaving the PR blocked on missing required checks even though it shows as mergeable. Close and reopen the PR (`gh pr close <n> && gh pr reopen <n>`) to re-fire them against the current head.
 
 ## Doc-sync rule
 
