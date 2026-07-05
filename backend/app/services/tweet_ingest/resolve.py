@@ -4,7 +4,11 @@ A "thread" is a list of ``TweetRecord`` (``stitch``'s output). ``resolve_thread`
 is the single core both consumers run: the human ``parse`` path (a single-record
 thread) and the machine ``detect`` path (a real self-thread) map its output into
 their own shape, so they can't drift on coordinates, source, dates, or media.
-``resolve_tweet(tweet_id)`` is the single-tweet convenience (fetch → resolve).
+``resolve_tweet(tweet_id)`` is the single-tweet convenience (fetch, then resolve).
+
+Every derived field follows one contract: filled only on an explicit signal in
+the tweet (a quote, a footage link, a coordinate), otherwise empty. No
+deduction: no self-source fallback, no fabricated dates.
 
 The small ``resolve_coords`` / ``resolve_source`` / ``split_media`` helpers are
 the pieces; ``resolve_thread`` composes them plus the title / proof / date
@@ -21,10 +25,6 @@ import httpx
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import ParsedMedia
-
-# Stand-in for an unparseable timestamp on the NOT-NULL ``source_posted_at``: a
-# visibly-wrong instant the owner corrects at submit, never a silent "now".
-_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 # External links whose target is footage (a tweet, a channel, a video), unlike a
 # coordinate link (Google Maps) or an article. Their presence means the analyst
@@ -59,18 +59,19 @@ def resolve_coords(thread: list[TweetRecord]) -> list[ParsedCoord]:
     return extract_coords(quoted_text) if quoted_text else []
 
 
-def resolve_source(thread: list[TweetRecord]) -> tuple[str, str | None]:
-    """The footage source URL and its post date (ISO 8601, or ``None``).
+def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
+    """The footage source URL and its post date (ISO 8601), either may be ``None``.
 
     Priority, matching how OSINT posts attribute a source:
 
     1. the first quoted tweet (the analyst quote-tweeted the footage, date known);
     2. the first external footage link (X status / Telegram / YouTube) the analyst
-       put in the text as ``Source: <url>``;
-    3. the thread head — a self-source tweet that carries its own footage.
+       put in the text as ``Source: <url>`` (date unknown).
 
-    A coordinate link (Google Maps) or an article (host ``other``) is not a
-    footage source and never wins the source slot.
+    No other signal counts. A thread that neither quotes nor links footage has
+    declared no source, so both halves are ``None``; the thread head's permalink
+    is provenance (``detected_from_url``), never the source. A coordinate link
+    (Google Maps) or an article (host ``other``) is not a footage source either.
     """
     for record in thread:
         if record.quoted is not None:
@@ -82,32 +83,23 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str, str | None]:
     link = _source_link(thread)
     if link is not None:
         return link.url, None
-    head = thread[0]
-    return head.permalink, (head.created_at or None)
+    return None, None
 
 
 def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[ParsedMedia]]:
     """``(source_media, proof_media)``.
 
-    Footage (``source``) vs the analyst's annotation (``proof``):
-
-    * a quoted tweet's media is the footage → source; the thread's own media is
-      annotation → proof;
-    * else if the analyst references an external footage source (a link to X /
-      Telegram / YouTube), their own media is annotation → proof, and the source
-      footage lives in the referenced tweet, absent here unless chased;
-    * else the thread is self-source: its own media is the footage → source, with
-      no separate proof.
+    Footage (``source``) vs the analyst's annotation (``proof``): a quoted
+    tweet's media is the footage, so it is the only media that lands in the
+    source slot. The thread's own media is always annotation (proof), even when
+    the thread declares no source at all: without an explicit signal the brick
+    never promotes the analyst's own attachment to footage.
     """
     quoted_media = [
         media for record in thread if record.quoted is not None for media in record.quoted.media
     ]
     own_media = [media for record in thread for media in record.media]
-    if quoted_media:
-        return quoted_media, own_media
-    if _source_link(thread) is not None:
-        return [], own_media
-    return own_media, []
+    return quoted_media, own_media
 
 
 @dataclass(frozen=True)
@@ -132,10 +124,16 @@ class ResolvedTweet:
     coords: list[ParsedCoord]
     title: str
     proof_text: str
-    source_url: str
-    source_posted_at: datetime  # resolved source's date, NOT-NULL (epoch fallback)
+    # The declared footage source; None when the thread neither quotes nor
+    # links footage (no self-source deduction).
+    source_url: str | None
+    # The source's post instant, only when actually known (a dated quote);
+    # never a fallback onto the geoloc tweet's own date.
+    source_posted_at: datetime | None
     detected_post_at: datetime | None  # the geoloc tweet's date
-    event_date: date
+    # Provisional proxy from the geoloc tweet's post date; None when the
+    # timestamp is unusable (no epoch fabrication).
+    event_date: date | None
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
 
@@ -164,9 +162,7 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
         title=derive_title(own_text),
         proof_text=clean_proof_text(own_text),
         source_url=source_url,
-        # The resolved source's date, or the geoloc tweet's when the source is
-        # off-platform / undatable (``source_posted_at`` is NOT NULL).
-        source_posted_at=source_posted_at or detected_post_at or _EPOCH,
+        source_posted_at=source_posted_at,
         detected_post_at=detected_post_at,
         event_date=_event_date(head.created_at, detected_post_at),
         source_media=source_media,
@@ -188,9 +184,8 @@ def resolve_tweet(url: str, *, client: httpx.Client | None = None) -> ResolvedTw
 def _posted_at(created_at: str) -> datetime | None:
     """Aware UTC datetime from an ISO 8601 timestamp, or None when it doesn't parse.
 
-    Acquire adapters normalize ``created_at`` to ISO 8601. The caller maps None
-    onto the ``source_posted_at`` epoch sentinel and a NULL ``detected_post_at``,
-    and recovers ``event_date`` from the date prefix.
+    Acquire adapters normalize ``created_at`` to ISO 8601. A None maps onto a
+    NULL ``detected_post_at``; ``_event_date`` still recovers the date prefix.
     """
     try:
         parsed = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
@@ -199,18 +194,18 @@ def _posted_at(created_at: str) -> datetime | None:
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
-def _event_date(created_at: str, posted_at: datetime | None) -> date:
+def _event_date(created_at: str, posted_at: datetime | None) -> date | None:
     """The ``event_date``: the geoloc tweet's post date (a provisional proxy the
     owner corrects at submit).
 
     When the full timestamp parsed, its date. When only the time-of-day is
     malformed but the ``YYYY-MM-DD`` prefix is valid, recover the date so a
-    garbled time doesn't discard it too. A fully unparseable value falls back to
-    the epoch date.
+    garbled time doesn't discard it too. A fully unparseable value yields None:
+    an unknown date stays unknown, never a fabricated epoch.
     """
     if posted_at is not None:
         return posted_at.date()
     try:
         return date.fromisoformat(created_at[:10])
     except ValueError:
-        return _EPOCH.date()
+        return None

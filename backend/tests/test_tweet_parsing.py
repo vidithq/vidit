@@ -484,9 +484,10 @@ def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
     assert parsed.quoted_tweet is None
 
 
-def test_parse_tweet_source_url_falls_back_to_op(monkeypatch):
-    """No quote and no external URL → ``source_url`` equals the OP URL.
-    The analyst is expected to override the form field manually."""
+def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
+    """No quote and no footage link: the tweet declared no source, so
+    ``source_url`` is None and the form field starts empty. The OP's own URL is
+    provenance (``original_tweet_url``), never a deduced source."""
     _stub_syndication(
         monkeypatch,
         {
@@ -498,8 +499,8 @@ def test_parse_tweet_source_url_falls_back_to_op(monkeypatch):
         },
     )
     parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/alice/status/1234567890"
-    assert parsed.original_tweet_url == parsed.source_url
+    assert parsed.source_url is None
+    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
 
 
 def test_parse_tweet_merges_op_and_quote_media_with_origin_tags(monkeypatch):

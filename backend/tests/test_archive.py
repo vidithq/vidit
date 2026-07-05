@@ -43,10 +43,13 @@ def test_stitch_and_detect_over_archive():
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
     # + 6001 multi-coord(2) = 6.
     assert len(detections) == 6
-    # The self-thread detection carries the head's media + the head permalink,
-    # even though the coordinate lived in the reply.
+    # The self-thread detection carries the head's media (as proof: the thread
+    # declares no source) + the head permalink, even though the coordinate
+    # lived in the reply.
     thread_det = next(d for d in detections if d.detected_from_url.endswith("/2001"))
-    assert [m.remote_url for m in thread_det.source_media] == ["tweets_media/2001-BBB2.jpg"]
+    assert thread_det.source_url is None
+    assert thread_det.source_media == []
+    assert [m.remote_url for m in thread_det.proof_media] == ["tweets_media/2001-BBB2.jpg"]
 
 
 async def test_archive_media_fetcher_reads_present_and_misses_absent():
@@ -64,6 +67,71 @@ async def test_archive_media_fetcher_reads_present_and_misses_absent():
         kind="image", remote_url="tweets_media/nope.jpg", content_type="image/jpeg"
     )
     assert await fetch(absent) is None
+
+
+def test_read_tweets_maps_video_media(tmp_path):
+    """A ``video`` / ``animated_gif`` entry maps to the mp4 the export saved:
+    ``tweets_media/<tweet_id>-<basename>``, basename from the highest-bitrate
+    mp4 variant (query string stripped). An entry with no usable mp4 variant is
+    dropped, not crashed on."""
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "7001",
+                "full_text": "clip",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "video",
+                            "media_url_https": "https://pbs.twimg.com/ext_tw_video_thumb/7/img/T.jpg",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "content_type": "application/x-mpegURL",
+                                        "url": "https://video.twimg.com/ext_tw_video/7/pl/PLAYLIST.m3u8",
+                                    },
+                                    {
+                                        "bitrate": "632000",
+                                        "content_type": "video/mp4",
+                                        "url": "https://video.twimg.com/ext_tw_video/7/vid/320x568/LOW.mp4?tag=12",
+                                    },
+                                    {
+                                        "bitrate": "2176000",
+                                        "content_type": "video/mp4",
+                                        "url": "https://video.twimg.com/ext_tw_video/7/vid/720x1280/HIGH.mp4?tag=12",
+                                    },
+                                ]
+                            },
+                        },
+                        {
+                            "type": "animated_gif",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "bitrate": 0,
+                                        "content_type": "video/mp4",
+                                        "url": "https://video.twimg.com/tweet_video/GIF.mp4",
+                                    }
+                                ]
+                            },
+                        },
+                        {"type": "video", "video_info": {"variants": []}},
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+    [record] = read_tweets(archive, handle="ana")
+    assert [(m.kind, m.remote_url, m.content_type) for m in record.media] == [
+        ("video", "tweets_media/7001-HIGH.mp4", "video/mp4"),
+        ("video", "tweets_media/7001-GIF.mp4", "video/mp4"),
+    ]
 
 
 def test_read_tweets_skips_non_numeric_id(tmp_path):

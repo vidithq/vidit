@@ -4,7 +4,9 @@ The event model refactor (migration ``h0j2l4n6p8r0``) pins several invariants
 at the database, not only in the app-layer ``Literal`` / service checks:
 ``ck_events_status_valid``, ``ck_events_coords_status``,
 ``ck_events_before_closed_status``, and the per-state stamp CHECKs
-(``ck_events_closed_stamp`` / ``ck_events_geolocated_stamp``). Mirrors
+(``ck_events_closed_stamp`` / ``ck_events_geolocated_stamp``); the source
+contract (migration ``i1k3m5o7q9s1``) adds ``ck_events_source_url_status``
+(``requested`` / ``geolocated`` imply a source URL). Mirrors
 ``test_social.py::test_check_constraint_blocks_self_follow`` (the existing
 direct-``IntegrityError`` idiom in this suite): construct a row that violates
 one CHECK, assert the commit raises, and roll back so the fixture teardown
@@ -95,6 +97,61 @@ def test_coords_status_check_allows_requested_without_coords(db, author):
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
         event_coords=None,
+    )
+    db.add(ok)
+    db.commit()  # must not raise
+    db.delete(ok)
+    db.commit()
+
+
+# ── ck_events_source_url_status ───────────────────────────────────────────
+
+
+def test_source_url_status_check_rejects_geolocated_without_source_url(db, author):
+    """A ``geolocated`` row always carries its footage source; inserting one
+    with ``source_url IS NULL`` is rejected at the database, the backstop
+    behind the app-layer promotion gate in ``services/events.geolocate``."""
+    bad = _bare_event(
+        db,
+        author=author,
+        status=STATUS_GEOLOCATED,
+        geolocated_at=datetime.now(UTC),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url=None,
+    )
+    db.add(bad)
+    with pytest.raises(IntegrityError, match="ck_events_source_url_status"):
+        db.commit()
+    db.rollback()
+
+
+def test_source_url_status_check_rejects_requested_without_source_url(db, author):
+    """Same for ``requested``: a request is a call to geolocate someone's
+    footage, so the source URL is on the row from the start."""
+    bad = _bare_event(
+        db,
+        author=author,
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+        source_url=None,
+    )
+    db.add(bad)
+    with pytest.raises(IntegrityError, match="ck_events_source_url_status"):
+        db.commit()
+    db.rollback()
+
+
+def test_source_url_status_check_allows_detected_without_source_url(db, author):
+    """The positive case the contract exists for: a machine ``detected`` draft
+    whose imported tweet declared no source persists with a NULL ``source_url``
+    (and a NULL ``source_posted_at``), partial by definition."""
+    ok = _bare_event(
+        db,
+        author=author,
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+        source_url=None,
+        source_posted_at=None,
     )
     db.add(ok)
     db.commit()  # must not raise

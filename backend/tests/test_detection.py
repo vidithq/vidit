@@ -72,16 +72,21 @@ def _dto(
     url: str = "https://x.com/own/status/1",
     media: list[ParsedMedia] | None = None,
     proof_media: list[ParsedMedia] | None = None,
+    source_url: str | None = None,
+    source_posted_at: datetime | None = None,
 ) -> DetectedGeoloc:
+    """A detection DTO. Source-less by default, matching the resolve contract:
+    a tweet that neither quotes nor links footage declares no source. Sourced
+    tests pass ``source_url`` / ``source_posted_at`` explicitly."""
     return DetectedGeoloc(
         coordinate=ParsedCoord(lat=lat, lng=lng),
         title="Strike at Bakhmut",
         proof_text="Strike at Bakhmut\nGeolocated by analyst",
-        source_url=url,
+        source_url=source_url,
         detected_from_url=url,
         owner_handle="own",
         event_date=date(2025, 11, 12),
-        source_posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+        source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         source_media=media or [],
         proof_media=proof_media or [],
@@ -112,8 +117,15 @@ async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
 
 
 async def test_assemble_persists_detected_row(db, owner):
+    # A sourced detection (the quote typology): the declared source URL + date
+    # and the quote's media land on the row, the media in the source slot.
+    sourced = _dto(
+        media=[_img()],
+        source_url="https://x.com/src/status/9",
+        source_posted_at=datetime(2025, 11, 11, 9, 0, tzinfo=UTC),
+    )
     outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=_image_fetcher
+        db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
     )
     assert len(outcome.created) == 1
     assert outcome.skipped == 0 and outcome.recreated == 0
@@ -121,25 +133,30 @@ async def test_assemble_persists_detected_row(db, owner):
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
     assert geo.detected_from_url == "https://x.com/own/status/1"
-    assert geo.source_url == "https://x.com/own/status/1"
+    assert geo.source_url == "https://x.com/src/status/9"
+    assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
     assert geo.event_date == date(2025, 11, 12)
     # proof is the wrapped tweet text, never NULL.
     assert geo.proof and geo.proof["type"] == "doc" and geo.proof["content"]
 
     media = db.query(Media).filter(Media.event_id == geo.id).all()
     assert len(media) == 1
+    assert media[0].role == "source"
     assert media[0].media_type == "image"
     assert media[0].sha256 and len(media[0].sha256) == 64
 
 
 async def test_media_less_detection_persists(db, owner):
-    # A detected row may be media-incomplete; the owner completes it before
-    # submitting. No media required, unlike a human submit.
+    # A detected row may be media-incomplete and source-less; the owner
+    # completes it before submitting. Unlike a human submit, no media, no
+    # source URL, no source date required, and none is fabricated.
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert len(outcome.created) == 1
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert geo.source_url is None
+    assert geo.source_posted_at is None
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
@@ -218,16 +235,22 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     assert all(g.status == STATUS_DETECTED for g in geos)
     assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
     assert all(g.proof and g.proof["content"] for g in geos)
+    # No tweet in the synthetic archive quotes or links footage: every row is
+    # honestly source-less, nothing deduced from the tweets' own permalinks.
+    assert all(g.source_url is None for g in geos)
+    assert all(g.source_posted_at is None for g in geos)
 
     # Only the two photo-bearing tweets (1001 + the 2001/2002 thread head)
-    # ingested media; the coord-only tweets persist media-incomplete.
-    media_count = (
+    # ingested media, and their own photos are annotation (role=proof), never
+    # promoted to source; the coord-only tweets persist media-incomplete.
+    media_rows = (
         db.query(Media)
         .join(Event, Media.event_id == Event.id)
         .filter(Event.owner_id == owner.id)
-        .count()
+        .all()
     )
-    assert media_count == 2
+    assert len(media_rows) == 2
+    assert all(m.role == "proof" for m in media_rows)
 
     # Re-running the same archive is a no-op (idempotent on the permalink+coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)

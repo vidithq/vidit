@@ -63,13 +63,50 @@ def _strip_ytd_prefix(text: str) -> Any:
     return json.loads(_YTD_PREFIX_RE.sub("", text, count=1))
 
 
+def _variant_bitrate(variant: dict[str, Any]) -> int:
+    """A variant's bitrate as an int (the export serialises it as a string)."""
+    try:
+        return int(variant.get("bitrate") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _video_basename(entry: dict[str, Any]) -> str | None:
+    """The local-file basename for a ``video`` / ``animated_gif`` entry.
+
+    The export downloads one mp4 per video into ``tweets_media/``, named
+    ``<tweet_id>-<basename>`` after the ``video_info`` mp4 variant it saved (the
+    highest-bitrate one, the same pick the syndication extractor makes). The
+    basename is the variant URL's last path segment, query string stripped.
+    ``None`` when no usable mp4 variant exists; a wrong pick degrades to a
+    missing file the fetcher skips, never a failure.
+    """
+    info = entry.get("video_info")
+    variants = info.get("variants") if isinstance(info, dict) else None
+    if not isinstance(variants, list):
+        return None
+    best: dict[str, Any] | None = None
+    for variant in variants:
+        if not isinstance(variant, dict) or variant.get("content_type") != "video/mp4":
+            continue
+        if not isinstance(variant.get("url"), str) or not variant["url"]:
+            continue
+        if best is None or _variant_bitrate(variant) > _variant_bitrate(best):
+            best = variant
+    if best is None:
+        return None
+    basename = best["url"].rsplit("/", 1)[-1].split("?", 1)[0]
+    return basename or None
+
+
 def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     """Map a tweet's inline media to archive-relative ``ParsedMedia``.
 
     ``remote_url`` carries the archive-relative path, not a URL: the export
     names a tweet's media file ``tweets_media/<tweet_id>-<basename>``, and the
-    archive media fetcher reads it from disk. Images only for now — the export's
-    video layout (separate mp4, thumbnail in ``media_url_https``) is a follow-up.
+    archive media fetcher reads it from disk. Photos take the basename of
+    ``media_url_https``; videos and animated gifs take the basename of the mp4
+    variant the export saved (see :func:`_video_basename`).
     """
     container = tweet.get("extended_entities") or tweet.get("entities") or {}
     entries = container.get("media") if isinstance(container, dict) else None
@@ -77,22 +114,35 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
         return []
     out: list[ParsedMedia] = []
     for entry in entries:
-        if not isinstance(entry, dict) or entry.get("type") != "photo":
+        if not isinstance(entry, dict):
             continue
-        url = entry.get("media_url_https")
-        if not isinstance(url, str) or not url:
-            continue
-        basename = url.rsplit("/", 1)[-1]
-        content_type = _IMAGE_CONTENT_TYPE.get(Path(basename).suffix.lower())
-        if content_type is None:
-            continue
-        out.append(
-            ParsedMedia(
-                kind="image",
-                remote_url=f"tweets_media/{tweet_id}-{basename}",
-                content_type=content_type,
+        etype = entry.get("type")
+        if etype == "photo":
+            url = entry.get("media_url_https")
+            if not isinstance(url, str) or not url:
+                continue
+            basename = url.rsplit("/", 1)[-1]
+            content_type = _IMAGE_CONTENT_TYPE.get(Path(basename).suffix.lower())
+            if content_type is None:
+                continue
+            out.append(
+                ParsedMedia(
+                    kind="image",
+                    remote_url=f"tweets_media/{tweet_id}-{basename}",
+                    content_type=content_type,
+                )
             )
-        )
+        elif etype in ("video", "animated_gif"):
+            video_basename = _video_basename(entry)
+            if video_basename is None:
+                continue
+            out.append(
+                ParsedMedia(
+                    kind="video",
+                    remote_url=f"tweets_media/{tweet_id}-{video_basename}",
+                    content_type="video/mp4",
+                )
+            )
     return out
 
 

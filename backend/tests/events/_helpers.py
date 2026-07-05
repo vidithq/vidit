@@ -46,7 +46,9 @@ def _make_geo(
     tags: list[Tag] | None = None,
     status: str | None = None,
     detected_from_url: str | None = None,
-    source_url: str = "https://example.com/source",
+    # None models a source-less machine draft; only valid with status
+    # ``detected`` (``ck_events_source_url_status``).
+    source_url: str | None = "https://example.com/source",
     with_media: bool = False,
 ) -> Event:
     now = datetime.now(UTC)

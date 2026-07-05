@@ -74,10 +74,12 @@ def test_source_uses_first_external_footage_link():
 
 
 def test_source_ignores_non_footage_link():
-    # A coordinate / article link (host "other") is not a footage source → self.
+    # A coordinate / article link (host "other") is not a footage source, so the
+    # thread has declared no source at all.
     record = _rec(external_sources=[SourceLink(url="https://maps.app.goo.gl/x", host="other")])
-    url, _ = resolve_source([record])
-    assert url == "https://x.com/op/status/1"
+    url, posted = resolve_source([record])
+    assert url is None
+    assert posted is None
 
 
 def test_split_media_external_source_makes_op_media_proof():
@@ -92,10 +94,12 @@ def test_split_media_external_source_makes_op_media_proof():
     assert [m.kind for m in proof] == ["image"]
 
 
-def test_source_self_when_no_quote_no_external():
+def test_source_none_when_no_quote_no_external():
+    # No quote and no footage link: the source stays empty. The head's permalink
+    # is provenance (detected_from_url), never a deduced self-source.
     url, posted = resolve_source([_rec()])
-    assert url == "https://x.com/op/status/1"
-    assert posted == "2025-01-01T00:00:00Z"
+    assert url is None
+    assert posted is None
 
 
 def test_split_media_quoted_is_source_op_is_proof():
@@ -107,7 +111,9 @@ def test_split_media_quoted_is_source_op_is_proof():
     assert [m.kind for m in proof] == ["image"]
 
 
-def test_split_media_self_source_has_no_proof():
+def test_split_media_own_media_is_proof_without_quote():
+    # No quote: the thread's own media is annotation (proof), never promoted to
+    # footage. The source slot stays empty.
     source, proof = split_media([_rec(media=[_media("image", "op")])])
-    assert [m.kind for m in source] == ["image"]
-    assert proof == []
+    assert source == []
+    assert [m.kind for m in proof] == ["image"]

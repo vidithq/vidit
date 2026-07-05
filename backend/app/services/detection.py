@@ -186,9 +186,10 @@ async def _persist_one(
             owner_id=owner.id,
             title=dto.title,
             event_coords=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
-            # The resolved footage source (the quoted tweet, an off-platform
-            # link, or the geoloc tweet itself), distinct from the
-            # ``detected_from_url`` provenance link. ``source_url`` is immutable.
+            # The declared footage source (the quoted tweet or an off-platform
+            # link), distinct from the ``detected_from_url`` provenance link.
+            # NULL when the tweet declared none: a ``detected`` draft is partial
+            # by definition; the geolocate promotion requires the source.
             source_url=dto.source_url,
             proof=tiptap_doc_from_text(dto.proof_text),
             event_date=dto.event_date,

@@ -65,7 +65,9 @@ class SearchRequestHit(BaseModel):
     id: uuid.UUID
     title: str
     title_highlight: str
-    source_url: str
+    # Mirrors the nullable column (required-nullable, key always serialised).
+    # A ``requested`` hit always carries one today (``ck_events_source_url_status``).
+    source_url: str | None
     # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
     status: EventStatus
     created_at: datetime

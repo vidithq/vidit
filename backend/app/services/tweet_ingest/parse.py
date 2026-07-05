@@ -21,11 +21,11 @@ from .syndication import ParsedMedia, ParsedQuotedTweet
 
 @dataclass(frozen=True)
 class ParsedTweet:
-    # The SOURCE: the quoted tweet's URL when the OP quote-retweets, else
-    # the OP's own. The OP is rarely the real source in OSINT (messenger,
-    # not footage source), so the frontend uses this as the ``source_url``
-    # form field.
-    source_url: str
+    # The SOURCE: the quoted tweet's URL when the OP quote-retweets, else the
+    # first footage link in the text. None when the tweet declares neither (the
+    # OP is a messenger, not the footage source, so its own URL never fills
+    # this): the ``source_url`` form field then starts empty.
+    source_url: str | None
     # The OP's URL, kept so the frontend can cite the analyst in the proof
     # body even when ``source_url`` points at the quoted source.
     original_tweet_url: str

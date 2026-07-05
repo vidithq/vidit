@@ -27,9 +27,10 @@ class DetectedGeoloc:
     # Plain-text proof body (coords / shortlinks / list markers stripped). The
     # caller wraps it into the model's JSONB proof document.
     proof_text: str
-    # The footage source URL, resolved (the quoted tweet, an off-platform link,
-    # or the geoloc tweet itself), distinct from ``detected_from_url``.
-    source_url: str
+    # The declared footage source (the quoted tweet or an off-platform link),
+    # distinct from ``detected_from_url``. None when the geoloc tweet neither
+    # quotes nor links footage: a ``detected`` draft may have no source.
+    source_url: str | None
     # The post this detection was imported from (the geoloc tweet), the
     # idempotency anchor and the provenance link.
     detected_from_url: str
@@ -37,10 +38,11 @@ class DetectedGeoloc:
     # backfiller it was given, not to this field.
     owner_handle: str
     # Provisional event date = the geoloc tweet's post date; the owner corrects
-    # it at submit (the true event usually predates the post).
-    event_date: date
-    # The resolved source's post instant (UTC) → the NOT-NULL ``source_posted_at``.
-    source_posted_at: datetime
+    # it at submit (the true event usually predates the post). None when the
+    # tweet's timestamp is unusable.
+    event_date: date | None
+    # The source's post instant (UTC), only when actually known (a dated quote).
+    source_posted_at: datetime | None
     # When the analyst posted THIS geolocation (the geoloc tweet) → the nullable
     # ``detected_post_at``.
     detected_post_at: datetime | None

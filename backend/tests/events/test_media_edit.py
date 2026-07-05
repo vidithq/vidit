@@ -31,12 +31,13 @@ from tests.events._helpers import (
 
 
 def _detected(db, author, **kwargs):
+    # Sourced by default; pass ``source_url=None`` for a source-less draft.
+    kwargs.setdefault("source_url", "https://x.com/a/status/1")
     return _make_geo(
         db,
         author=author,
         status=STATUS_DETECTED,
         detected_from_url="https://x.com/a/status/1",
-        source_url="https://x.com/a/status/1",
         **kwargs,
     )
 
@@ -162,6 +163,26 @@ def test_geolocate_unknown_remove_id_is_ignored(db, author, conflict_tag, captur
     )
     assert response.status_code == 200
     assert len(response.json()["media"]) == 1  # untouched
+
+
+def test_geolocate_rejects_blank_source_url(db, author, conflict_tag, capture_source_tag):
+    """The source floor at promotion: a ``detected`` draft may be born
+    source-less, but geolocating it with a blank ``source_url`` form value is
+    refused (400 ``source_url_required``) before any S3 work. The row stays a
+    source-less detection."""
+    geo = _detected(db, author, source_url=None)
+    response = _geolocate(
+        geo.id,
+        author,
+        data=_form(conflict_tag, capture_source_tag, source_url="   "),
+        files=[_source_part(), proof_file_part()],
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "source_url_required"
+    db.expire_all()
+    refreshed = db.get(Event, geo.id)
+    assert refreshed.status == STATUS_DETECTED
+    assert refreshed.source_url is None
 
 
 def test_geolocate_rejects_second_source(db, author):

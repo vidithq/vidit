@@ -6,7 +6,7 @@ but at the thread → DTO boundary.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
 
@@ -48,6 +48,10 @@ def test_single_coordinate_emits_one_detection():
     assert d.owner_handle == "analyst"
     assert d.detected_from_url == "https://x.com/analyst/status/1"
     assert d.event_date == date(2025, 11, 12)
+    # A referenceless annotation declares no source: both slots stay empty
+    # rather than deducing the tweet's own permalink / date.
+    assert d.source_url is None
+    assert d.source_posted_at is None
 
 
 def test_multiple_coordinates_emit_one_detection_each():
@@ -55,9 +59,10 @@ def test_multiple_coordinates_emit_one_detection_each():
     assert len(out) == 2
 
 
-def test_coordinate_in_reply_pairs_with_head_media():
-    # Head carries the footage, the reply carries the coordinate — one detection
-    # with the head's media and the head's permalink as provenance.
+def test_coordinate_in_reply_keeps_head_media_as_proof():
+    # Head carries the video, the reply carries the coordinate: one detection
+    # with the head's permalink as provenance. The thread declares no source, so
+    # the video is annotation (proof), not a deduced self-source.
     head = _rec(
         "1",
         "Footage from Bakhmut",
@@ -71,7 +76,9 @@ def test_coordinate_in_reply_pairs_with_head_media():
     out = detect([head, reply])
     assert len(out) == 1
     assert out[0].detected_from_url == "https://x.com/analyst/status/1"
-    assert [m.remote_url for m in out[0].source_media] == ["https://video.twimg.com/x.mp4"]
+    assert out[0].source_url is None
+    assert out[0].source_media == []
+    assert [m.remote_url for m in out[0].proof_media] == ["https://video.twimg.com/x.mp4"]
 
 
 def test_proof_text_strips_coordinates_and_shortlinks():
@@ -92,20 +99,21 @@ def test_title_is_never_a_bare_coordinate():
 
 def test_malformed_time_recovers_date_and_nulls_detected_post_at():
     # A valid date with a garbled time-of-day: event_date is recovered from the
-    # date prefix, posted_at falls back to the epoch sentinel (it maps to the
-    # NOT-NULL source_posted_at), and detected_post_at is NULL, not a false 1970.
+    # date prefix; detected_post_at is NULL, not a false 1970, and the source
+    # slots stay empty (no source declared, no fabricated date).
     out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")])
     assert len(out) == 1
     d = out[0]
     assert d.event_date == date(2025, 11, 12)
-    assert d.source_posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.source_posted_at is None
     assert d.detected_post_at is None
 
 
-def test_fully_unparseable_timestamp_falls_back_to_epoch_date():
+def test_fully_unparseable_timestamp_yields_no_dates():
+    # Nothing recoverable: every date stays NULL rather than a fabricated epoch.
     out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
     assert len(out) == 1
     d = out[0]
-    assert d.event_date == date(1970, 1, 1)
-    assert d.source_posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.event_date is None
+    assert d.source_posted_at is None
     assert d.detected_post_at is None
