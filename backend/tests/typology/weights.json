@@ -1,0 +1,130 @@
+{
+  "corpus": "ukraine-sample",
+  "sample_size": 480,
+  "totals": {
+    "n": 480,
+    "recovered": 406,
+    "matched": 405,
+    "coverage": 0.8458,
+    "match_of_recovered": 0.9975,
+    "recall": 0.8438
+  },
+  "by_format": {
+    "decimal": {
+      "n": 400,
+      "recovered": 400,
+      "matched": 399,
+      "coverage": 1.0,
+      "match_of_recovered": 0.9975,
+      "recall": 0.9975
+    },
+    "dms": {
+      "n": 4,
+      "recovered": 4,
+      "matched": 4,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    },
+    "hemisphere": {
+      "n": 2,
+      "recovered": 2,
+      "matched": 2,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    },
+    "none": {
+      "n": 74,
+      "recovered": 0,
+      "matched": 0,
+      "coverage": 0.0,
+      "match_of_recovered": 0.0,
+      "recall": 0.0
+    }
+  },
+  "by_location": {
+    "image_only": {
+      "n": 74,
+      "recovered": 0,
+      "matched": 0,
+      "coverage": 0.0,
+      "match_of_recovered": 0.0,
+      "recall": 0.0
+    },
+    "op": {
+      "n": 405,
+      "recovered": 405,
+      "matched": 404,
+      "coverage": 1.0,
+      "match_of_recovered": 0.9975,
+      "recall": 0.9975
+    },
+    "quoted": {
+      "n": 1,
+      "recovered": 1,
+      "matched": 1,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    }
+  },
+  "by_typology": {
+    "decimal|op|single": {
+      "n": 331,
+      "recovered": 331,
+      "matched": 330,
+      "coverage": 1.0,
+      "match_of_recovered": 0.997,
+      "recall": 0.997
+    },
+    "none|image_only|single": {
+      "n": 72,
+      "recovered": 0,
+      "matched": 0,
+      "coverage": 0.0,
+      "match_of_recovered": 0.0,
+      "recall": 0.0
+    },
+    "decimal|op|quote": {
+      "n": 68,
+      "recovered": 68,
+      "matched": 68,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    },
+    "dms|op|single": {
+      "n": 4,
+      "recovered": 4,
+      "matched": 4,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    },
+    "none|image_only|quote": {
+      "n": 2,
+      "recovered": 0,
+      "matched": 0,
+      "coverage": 0.0,
+      "match_of_recovered": 0.0,
+      "recall": 0.0
+    },
+    "hemisphere|op|single": {
+      "n": 2,
+      "recovered": 2,
+      "matched": 2,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    },
+    "decimal|quoted|quote": {
+      "n": 1,
+      "recovered": 1,
+      "matched": 1,
+      "coverage": 1.0,
+      "match_of_recovered": 1.0,
+      "recall": 1.0
+    }
+  }
+}

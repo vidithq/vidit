@@ -1,0 +1,120 @@
+[
+  {
+    "typology": "decimal|op|quote",
+    "op_text": "text text.\n\ntext text text - text text text text text text text text text.\n\n57.595478, 18.281888\ntext6text+8text text, text text, text\n\ntext text @user \n\ntext: https://example.invalid/x\n\ntext: https://example.invalid/x\n\ntext:",
+    "quoted_text": "@user @user https://example.invalid/x",
+    "has_quote": true,
+    "expected_coord": {
+      "lat": 57.595478,
+      "lng": 18.281888
+    }
+  },
+  {
+    "typology": "decimal|op|quote",
+    "op_text": "text @user @user \n\ntext: 74.982437, 08.632968 https://example.invalid/x",
+    "quoted_text": "text text, text text text text \"text text\", text text text text text text text text text text text text text text text. text text text text text text 3 text text \"text\" text 🚀\n\ntext - text text text text text https://example.invalid/x",
+    "has_quote": true,
+    "expected_coord": {
+      "lat": 74.982437,
+      "lng": 8.632968
+    }
+  },
+  {
+    "typology": "decimal|op|single",
+    "op_text": "text text: 02text25 text ~01:45\ntext, text: text text text text text text text text text text text. text text, text text text text text text text text.\n\n82.63636, 84.27152\n\n@user @user https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 82.63636,
+      "lng": 84.27152
+    }
+  },
+  {
+    "typology": "decimal|op|single",
+    "op_text": "text text text text text text text. \n\ntext: text text, text text, text 67.886040, 56.900357\n\n@user\n@user https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 67.88604,
+      "lng": 56.900357
+    }
+  },
+  {
+    "typology": "decimal|quoted|quote",
+    "op_text": "@user @user @user @user text text text text text text https://example.invalid/x https://example.invalid/x",
+    "quoted_text": "text text text text text text text text text. \ntext: 01.392179, 08.818657\ntext: https://example.invalid/x\n@user @user https://example.invalid/x",
+    "has_quote": true,
+    "expected_coord": {
+      "lat": 1.392179,
+      "lng": 8.818657
+    }
+  },
+  {
+    "typology": "dms|op|single",
+    "op_text": "🇺🇦🇷🇺 - text / text\n\n🔹text text text text text text text text text-text text text (0:16)\n\n🔹textétext textétext : 48°32'49\"N 35°07'12\"E\n@user https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 48.546944,
+      "lng": 35.12
+    }
+  },
+  {
+    "typology": "dms|op|single",
+    "op_text": "text text-2 text text text text text text text text 36°11'33\"N 1°29'06\"E text text 50text text text text text text text text text.\n\ntext text text text-135 text text text text text text text text text. https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 36.1925,
+      "lng": 1.485
+    }
+  },
+  {
+    "typology": "hemisphere|op|single",
+    "op_text": "text text text-text-text text text text text text text 1text text text text text 57text text text text text (text text)\ntext: https://example.invalid/x\ntext: 54.4370816 N, 12.7705644 E\ntext: 0:00 https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 54.437082,
+      "lng": 12.770564
+    }
+  },
+  {
+    "typology": "hemisphere|op|single",
+    "op_text": "text text text text text 88.689325°N 46.102748°E text text text text. text text text text.\ntext 26.778019°N 55.207963°E\n\ntext text https://example.invalid/x\n\n@user @user https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": {
+      "lat": 88.689325,
+      "lng": 46.102748
+    }
+  },
+  {
+    "typology": "none|image_only|quote",
+    "op_text": "text text.\n\ntext text text text text text text text, text text text text text \"text\", text text text text text (!), text text text text text text text text text text.\n\ntext:\ntext text text text text text text text. \ntext",
+    "quoted_text": "text text text text text text text / text text text text text text text text text text text text text text. text text text text text text text text text text text, text text text.\nhttps://example.invalid/x https://example.invalid/x",
+    "has_quote": true,
+    "expected_coord": null
+  },
+  {
+    "typology": "none|image_only|quote",
+    "op_text": "text text.\n\ntext-/text.\ntext text text text text text text text text text text text text: \ntext text text-25 text text text text.\ntext text text text text text.\n(text text text text) \n\n0:05-0:07 - text text text text text",
+    "quoted_text": "https://example.invalid/x",
+    "has_quote": true,
+    "expected_coord": null
+  },
+  {
+    "typology": "none|image_only|single",
+    "op_text": "@user https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": null
+  },
+  {
+    "typology": "none|image_only|single",
+    "op_text": "text: https://example.invalid/x",
+    "quoted_text": "",
+    "has_quote": false,
+    "expected_coord": null
+  }
+]
