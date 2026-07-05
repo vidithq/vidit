@@ -125,7 +125,7 @@ def import_from_tweet(
                         content_type=m.content_type,
                         origin=m.origin,
                     )
-                    for m in d.media
+                    for m in [*d.source_media, *d.proof_media]
                 ],
             )
             for d in detections

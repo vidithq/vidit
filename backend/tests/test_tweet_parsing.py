@@ -11,6 +11,7 @@ import pytest
 
 from app.services.tweet_ingest import (
     InvalidTweetUrl,
+    acquire,
     clean_proof_text,
     derive_title,
     extract_coords,
@@ -19,7 +20,6 @@ from app.services.tweet_ingest import (
     parse_tweet,
     syndication,
 )
-from app.services.tweet_ingest.syndication import _extract_external_source_url
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -392,68 +392,6 @@ def test_is_trusted_media_url(url, expected):
     assert is_trusted_media_url(url) is expected
 
 
-# ── External source-URL extraction ────────────────────────────────────────
-
-
-def _entities_with_urls(urls: list[dict]) -> dict:
-    return {"entities": {"urls": urls}}
-
-
-def test_extract_external_source_url_returns_telegram_link():
-    body = _entities_with_urls(
-        [
-            {
-                "expanded_url": "https://t.me/somechannel/18880",
-                "url": "https://t.co/abc123",
-            }
-        ]
-    )
-    assert _extract_external_source_url(body) == "https://t.me/somechannel/18880"
-
-
-def test_extract_external_source_url_skips_x_self_references():
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://x.com/foo/status/123"},
-            {"expanded_url": "https://twitter.com/bar/status/456"},
-            {"expanded_url": "https://www.x.com/baz"},
-            {"expanded_url": "https://t.me/realsource/9"},
-        ]
-    )
-    # x.com / twitter.com / www.x.com all skipped → first non-X wins.
-    assert _extract_external_source_url(body) == "https://t.me/realsource/9"
-
-
-def test_extract_external_source_url_skips_bare_tco():
-    # Raw t.co (unexpanded) is the wrapped shortlink, not the source.
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://t.co/xyz789"},
-            {"expanded_url": "https://www.facebook.com/reel/123"},
-        ]
-    )
-    assert _extract_external_source_url(body) == "https://www.facebook.com/reel/123"
-
-
-def test_extract_external_source_url_returns_none_when_only_x_links():
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://x.com/foo/status/123"},
-            {"expanded_url": "https://twitter.com/bar/status/456"},
-        ]
-    )
-    assert _extract_external_source_url(body) is None
-
-
-def test_extract_external_source_url_tolerates_missing_or_malformed_entities():
-    # Defensive against schema drift — anything unexpected returns None.
-    assert _extract_external_source_url({}) is None
-    assert _extract_external_source_url({"entities": None}) is None
-    assert _extract_external_source_url({"entities": {"urls": None}}) is None
-    assert _extract_external_source_url({"entities": {"urls": [{}]}}) is None
-    assert _extract_external_source_url({"entities": {"urls": [{"expanded_url": ""}]}}) is None
-
-
 # ── parse_tweet end-to-end ────────────────────────────────────────────────
 
 
@@ -463,7 +401,15 @@ def _stub_syndication(monkeypatch, body: dict) -> None:
     The real ``fetch_syndication`` makes a network call; these tests
     exercise everything *around* the fetch so we keep them hermetic.
     """
-    monkeypatch.setattr(syndication, "fetch_syndication", lambda tweet_id, client=None: body)
+
+    def _stub(tweet_id: str, client: object | None = None) -> dict:
+        return body
+
+    monkeypatch.setattr(syndication, "fetch_syndication", _stub)
+    # ``acquire`` binds ``fetch_syndication`` at import (``from .syndication
+    # import ...``), and both parse + the machine path fetch through it, so the
+    # module-level patch above doesn't reach that call site: patch it too.
+    monkeypatch.setattr(acquire, "fetch_syndication", _stub)
 
 
 def _user_block(handle: str) -> dict:

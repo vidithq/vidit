@@ -46,7 +46,7 @@ def test_stitch_and_detect_over_archive():
     # The self-thread detection carries the head's media + the head permalink,
     # even though the coordinate lived in the reply.
     thread_det = next(d for d in detections if d.detected_from_url.endswith("/2001"))
-    assert [m.remote_url for m in thread_det.media] == ["tweets_media/2001-BBB2.jpg"]
+    assert [m.remote_url for m in thread_det.source_media] == ["tweets_media/2001-BBB2.jpg"]
 
 
 async def test_archive_media_fetcher_reads_present_and_misses_absent():

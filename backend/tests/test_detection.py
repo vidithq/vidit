@@ -71,17 +71,20 @@ def _dto(
     lng: float = 34.5,
     url: str = "https://x.com/own/status/1",
     media: list[ParsedMedia] | None = None,
+    proof_media: list[ParsedMedia] | None = None,
 ) -> DetectedGeoloc:
     return DetectedGeoloc(
         coordinate=ParsedCoord(lat=lat, lng=lng),
         title="Strike at Bakhmut",
         proof_text="Strike at Bakhmut\nGeolocated by analyst",
+        source_url=url,
         detected_from_url=url,
         owner_handle="own",
         event_date=date(2025, 11, 12),
-        posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+        source_posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
-        media=media or [],
+        source_media=media or [],
+        proof_media=proof_media or [],
     )
 
 
@@ -89,6 +92,23 @@ def _img() -> ParsedMedia:
     return ParsedMedia(
         kind="image", remote_url="https://pbs.twimg.com/media/x.jpg", content_type="image/jpeg"
     )
+
+
+async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
+    # Proof media persist as role=proof rows AND land as image nodes in the proof
+    # JSON; that is how the read surfaces proof images (source travels in ``media``).
+    from app.models.media import Media as MediaRow
+
+    dto = _dto(proof_media=[_img(), _img()])
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[dto], fetch_media=_image_fetcher
+    )
+    geo = outcome.created[0]
+    image_nodes = [n for n in geo.proof["content"] if n.get("type") == "image"]
+    assert len(image_nodes) == 2
+    assert all(str(n["attrs"]["src"]).startswith("http") for n in image_nodes)
+    proof_rows = db.query(MediaRow).filter(MediaRow.event_id == geo.id, MediaRow.role == "proof")
+    assert proof_rows.count() == 2
 
 
 async def test_assemble_persists_detected_row(db, owner):

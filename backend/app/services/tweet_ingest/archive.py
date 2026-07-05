@@ -16,8 +16,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .records import TweetRecord
-from .syndication import ParsedMedia
+import httpx
+
+from .errors import TweetFetchFailed, TweetNotAccessible
+from .records import QuotedTweet, SourceLink, TweetRecord
+from .syndication import (
+    ParsedMedia,
+    _extract_media,
+    extract_source_links,
+    fetch_syndication,
+    is_trusted_media_url,
+)
 
 # Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]`` — strip
 # the assignment prefix, then it's plain JSON.
@@ -87,31 +96,113 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     return out
 
 
-def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
-    """Parse ``tweets.js`` under ``archive_dir`` into ``TweetRecord``s.
+def _quoted_from_syndication(quoted_id: str) -> QuotedTweet | None:
+    """Chase a third-party quoted tweet (not in the archive) via syndication.
 
-    ``handle`` is the verified owner handle — the export is the owner's own
-    tweets, so every record is stamped with it and the permalink derives from
-    it. Records carry the inline reply edges, so ``stitch`` rebuilds real
-    self-threads (unlike the single-tweet syndication path).
+    Fail-soft: a fetch error degrades to "no quote" and never fails the backfill.
+    """
+    try:
+        body = fetch_syndication(quoted_id)
+    except (TweetFetchFailed, TweetNotAccessible):
+        return None
+    user = body.get("user")
+    handle = user.get("screen_name") if isinstance(user, dict) else None
+    if not isinstance(handle, str) or not handle:
+        return None
+    text = body.get("text")
+    created_at = body.get("created_at")
+    return QuotedTweet(
+        tweet_id=quoted_id,
+        handle=handle,
+        text=text if isinstance(text, str) else "",
+        created_at=created_at if isinstance(created_at, str) else "",
+        media=list(_extract_media(body, origin="quote")),
+    )
+
+
+_X_STATUS_RE = re.compile(r"(?:x|twitter)\.com/\w+/status/(\d+)", re.IGNORECASE)
+
+
+def _first_linked_x_status(tweet: dict[str, Any]) -> str | None:
+    """The id of the first X status the tweet links (``entities.urls``).
+
+    OSINT posts often write ``Source: https://x.com/<author>/status/<id>`` for
+    the footage they geolocated; that status is the source tweet.
+    """
+    urls = (tweet.get("entities") or {}).get("urls")
+    if not isinstance(urls, list):
+        return None
+    for entry in urls:
+        if isinstance(entry, dict):
+            expanded = entry.get("expanded_url")
+            if isinstance(expanded, str):
+                match = _X_STATUS_RE.search(expanded)
+                if match is not None:
+                    return match.group(1)
+    return None
+
+
+def _archive_quoted(
+    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str, chase: bool
+) -> QuotedTweet | None:
+    """Resolve a tweet's footage source tweet.
+
+    A literal quote first (in-archive join, or a syndication chase of a
+    third-party quote); else, when ``chase`` is on, the first linked X status
+    (``Source: https://x.com/.../status/...``) chased via syndication. ``None``
+    when nothing resolves. Held in the record's ``quoted`` field, but it is "the
+    source tweet" whether it came from a quote or a link.
+    """
+    quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
+    if quoted_id is not None:
+        src = by_id.get(quoted_id)
+        if src is not None:
+            text = src.get("full_text") or src.get("text") or ""
+            created_at = src.get("created_at")
+            return QuotedTweet(
+                tweet_id=quoted_id,
+                handle=handle,  # an in-archive quote is the owner's own tweet
+                text=text if isinstance(text, str) else "",
+                created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
+                media=_archive_media(src, quoted_id),
+            )
+        return _quoted_from_syndication(quoted_id) if chase else None
+    if chase:
+        linked = _first_linked_x_status(tweet)
+        if linked is not None:
+            return _quoted_from_syndication(linked)
+    return None
+
+
+def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[TweetRecord]:
+    """Parse ``tweets.js`` under ``archive_dir`` into enriched ``TweetRecord``s.
+
+    ``handle`` is the verified owner handle; the export is the owner's own
+    tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
+    real self-threads), the OP media, the host-classified source links
+    (``entities.urls``), and the resolved quoted tweet: an in-archive join, or a
+    syndication chase of a third-party quote when ``chase`` is on (``chase``
+    stays off by default so the read is pure-disk).
     """
     raw = (archive_dir / "tweets.js").read_text(encoding="utf-8")
     entries = _strip_ytd_prefix(raw)
     if not isinstance(entries, list):
         return []
 
+    tweets = [
+        entry["tweet"]
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("tweet"), dict)
+    ]
+    # For the in-archive quote join (the owner quote-tweeting their own post).
+    by_id = {t["id_str"]: t for t in tweets if isinstance(t.get("id_str"), str)}
+
     records: list[TweetRecord] = []
-    for entry in entries:
-        tweet = entry.get("tweet") if isinstance(entry, dict) else None
-        if not isinstance(tweet, dict):
-            continue
+    for tweet in tweets:
         tweet_id = tweet.get("id_str")
-        # ``id_str`` is woven into a filesystem path below
-        # (``tweets_media/<id>-...``) and the export is attacker-controlled, so
-        # reject anything that isn't digits-only before it can carry ``..`` or a
-        # separator into the media path. Looser on length than syndication's
-        # ``_TWEET_ID_PATTERN`` (``^\d{5,25}$``): an export holds the owner's own
-        # historical ids, of any vintage.
+        # ``id_str`` is woven into a filesystem path (``tweets_media/<id>-...``)
+        # and the export is attacker-controlled, so reject anything that isn't
+        # digits-only before it can carry ``..`` or a separator into the path.
         if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
         text = tweet.get("full_text") or tweet.get("text") or ""
@@ -126,29 +217,54 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
                 media=_archive_media(tweet, tweet_id),
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
+                quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
+                external_sources=[
+                    SourceLink(url=u, host=h) for u, h in extract_source_links(tweet)
+                ],
             )
         )
     return records
 
 
+async def _fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
+    """Fetch a chased source media from the X CDN (``pbs`` / ``video.twimg.com``).
+
+    Chased source tweets carry absolute CDN URLs in ``remote_url`` (unlike the
+    archive's own media, which are ``tweets_media/`` disk paths). SSRF-guarded by
+    the same host allowlist the media proxy uses.
+    """
+    if not is_trusted_media_url(parsed.remote_url):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(parsed.remote_url)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code == 200 and resp.content:
+        return resp.content, parsed.content_type
+    return None
+
+
 def archive_media_fetcher(
     archive_dir: Path,
 ) -> Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]:
-    """A media fetcher reading a record's media from ``tweets_media/`` on disk.
+    """A media fetcher for a backfill: the archive's own media from
+    ``tweets_media/`` on disk, chased source media from the X CDN.
 
-    Matches the assemble step's ``MediaFetcher`` signature. ``ParsedMedia.
-    remote_url`` is the archive-relative path. Returns ``None`` for a missing
-    file (the export referenced media it didn't include), so the detection
-    persists media-incomplete rather than failing the whole backfill.
+    Matches the assemble step's ``MediaFetcher`` signature and dispatches on
+    ``remote_url``: an absolute URL is a chased source media (CDN); anything else
+    is the archive-relative disk path. Returns ``None`` for a missing / untrusted
+    media, so the detection persists media-incomplete rather than failing the
+    whole backfill.
     """
 
     base = archive_dir.resolve()
 
     async def fetch(parsed: ParsedMedia) -> tuple[bytes, str] | None:
+        if parsed.remote_url.startswith("http"):
+            return await _fetch_cdn_media(parsed)
         # Defence in depth behind ``read_tweets``' id check: never read outside
-        # the extraction dir, whatever ``remote_url`` resolves to (so a crafted
-        # record can't turn this into an arbitrary-file read, the way zip-slip is
-        # already blocked on the extract side).
+        # the extraction dir, whatever ``remote_url`` resolves to.
         target = (base / parsed.remote_url).resolve()
         if not target.is_relative_to(base):
             return None

@@ -387,67 +387,52 @@ class ParsedQuotedTweet:
 
 _TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
 _T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
+_YOUTUBE_HOST_RE = re.compile(r"^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$", re.IGNORECASE)
+_TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 
 
-def _extract_external_source_url(syndication: dict[str, Any]) -> str | None:
-    """First non-X URL from ``entities.urls``, when present.
+def classify_source_host(url: str) -> str:
+    """Coarse host class for a source URL: ``x`` / ``telegram`` / ``youtube`` /
+    ``other``. Drives whether the footage is retrievable (X, chaseable) or
+    off-platform (Telegram / YouTube, link only)."""
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return "other"
+    if _TWITTER_URL_HOST_RE.match(host):
+        return "x"
+    if _TELEGRAM_HOST_RE.match(host):
+        return "telegram"
+    if _YOUTUBE_HOST_RE.match(host):
+        return "youtube"
+    return "other"
 
-    OSINT posts commonly put the *real* source as a body link
-    (``Source: https://t.me/...``, YouTube / Telegram / Mastodon). We trust
-    the embed serialiser's ``expanded_url`` over the wrapped ``t.co``
-    shortlink, skipping ``x.com`` / ``twitter.com`` / ``t.co`` so a tagged
-    profile or self-reference can't masquerade as a source.
 
-    Returns the first off-platform URL, or ``None`` if all stay on X.
-    'First' matches the "Source: <link>" convention.
+def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str]]:
+    """Every expanded, host-classified source URL from ``entities.urls``.
+
+    The analyst's ``Source: <url>`` links. Skips the ``t.co`` wrapper (we trust
+    ``expanded_url``) and de-dupes, preserving order. Keeps X links (a status is
+    a chaseable source).
     """
     entities = syndication.get("entities")
-    if not isinstance(entities, dict):
-        return None
-    urls = entities.get("urls")
+    urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
-        return None
+        return []
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
             continue
         expanded = entry.get("expanded_url")
-        if not isinstance(expanded, str) or not expanded:
+        if not isinstance(expanded, str) or not expanded or expanded in seen:
             continue
         try:
-            parsed = urlparse(expanded)
+            host = (urlparse(expanded).hostname or "").lower()
         except ValueError:
             continue
-        host = (parsed.hostname or "").lower()
-        if not host:
+        if _T_CO_HOST_RE.match(host):
             continue
-        if _TWITTER_URL_HOST_RE.match(host) or _T_CO_HOST_RE.match(host):
-            continue
-        return expanded
-    return None
-
-
-def _extract_quoted_tweet(syndication: dict[str, Any]) -> ParsedQuotedTweet | None:
-    """Pull out the quoted-tweet attribution, when the OP quote-retweets.
-
-    Returns ``None`` for a top-level tweet or any unrecognised shape —
-    never raises. Defensive against schema drift on the unofficial
-    endpoint: anything upstream stops emitting degrades to "no quote" and
-    the form falls back to the OP URL.
-    """
-    qt = syndication.get("quoted_tweet")
-    if not isinstance(qt, dict):
-        return None
-    tweet_id = qt.get("id_str")
-    user = qt.get("user")
-    if not isinstance(tweet_id, str) or not isinstance(user, dict):
-        return None
-    handle = user.get("screen_name")
-    if not isinstance(handle, str) or not handle:
-        return None
-    raw_text = qt.get("text")
-    text: str = raw_text if isinstance(raw_text, str) else ""
-    return ParsedQuotedTweet(
-        source_url=f"https://x.com/{handle}/status/{tweet_id}",
-        author_handle=handle,
-        tweet_text=text,
-    )
+        seen.add(expanded)
+        out.append((expanded, classify_source_host(expanded)))
+    return out

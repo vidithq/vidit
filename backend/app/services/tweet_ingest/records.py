@@ -14,6 +14,35 @@ from .syndication import ParsedMedia
 
 
 @dataclass(frozen=True)
+class QuotedTweet:
+    """The tweet quoted by the OP, resolved to a full sub-record.
+
+    In OSINT the analyst quote-tweets the footage and adds the coordinate, so
+    the quoted tweet is usually the real source: its media is the footage and
+    its ``created_at`` is the true source post time. Carried on the record so
+    ``detect`` / ``parse`` attribute the source without a second fetch.
+    """
+
+    tweet_id: str
+    handle: str
+    text: str
+    created_at: str  # ISO 8601 UTC
+    media: list[ParsedMedia] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SourceLink:
+    """A source URL the OP links (``entities.urls``) plus its host class.
+
+    ``host``: ``x`` (a status, chaseable for its media / date), ``telegram`` /
+    ``youtube`` (off-platform, media not retrievable), or ``other``.
+    """
+
+    url: str
+    host: str
+
+
+@dataclass(frozen=True)
 class TweetRecord:
     tweet_id: str
     # Author handle, normalized: lowercase, no leading ``@``. The detection is
@@ -30,3 +59,8 @@ class TweetRecord:
     # (one fetch returns one tweet without its chain). ``stitch`` unions on them.
     in_reply_to_status_id: str | None = None
     in_reply_to_user_id: str | None = None
+    # The quoted tweet, resolved inline (syndication) or joined / chased
+    # (archive). The footage source in the common OSINT quote pattern.
+    quoted: QuotedTweet | None = None
+    # Source URLs the OP links in its text (``entities.urls``), host-classified.
+    external_sources: list[SourceLink] = field(default_factory=list)

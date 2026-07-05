@@ -71,7 +71,7 @@ def test_coordinate_in_reply_pairs_with_head_media():
     out = detect([head, reply])
     assert len(out) == 1
     assert out[0].detected_from_url == "https://x.com/analyst/status/1"
-    assert [m.remote_url for m in out[0].media] == ["https://video.twimg.com/x.mp4"]
+    assert [m.remote_url for m in out[0].source_media] == ["https://video.twimg.com/x.mp4"]
 
 
 def test_proof_text_strips_coordinates_and_shortlinks():
@@ -98,7 +98,7 @@ def test_malformed_time_recovers_date_and_nulls_detected_post_at():
     assert len(out) == 1
     d = out[0]
     assert d.event_date == date(2025, 11, 12)
-    assert d.posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.source_posted_at == datetime(1970, 1, 1, tzinfo=UTC)
     assert d.detected_post_at is None
 
 
@@ -107,5 +107,5 @@ def test_fully_unparseable_timestamp_falls_back_to_epoch_date():
     assert len(out) == 1
     d = out[0]
     assert d.event_date == date(1970, 1, 1)
-    assert d.posted_at == datetime(1970, 1, 1, tzinfo=UTC)
+    assert d.source_posted_at == datetime(1970, 1, 1, tzinfo=UTC)
     assert d.detected_post_at is None
