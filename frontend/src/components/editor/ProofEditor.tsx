@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -18,21 +18,86 @@ interface ProofEditorProps {
   // Tiptap reads it once at construction — pair with a ``key`` on the parent to
   // re-seed after mount.
   initialContent?: Record<string, unknown> | null;
+  /** Files already matched, by name, to the ``placeholder://<filename>`` image
+   *  nodes in `initialContent` (the tweet-import flow downloads them before
+   *  this component mounts, since the download is async and Tiptap reads
+   *  `initialContent` synchronously at construction). Hydrated into the same
+   *  local staging the "+ Image" control uses: a live preview plus a
+   *  `proof_files[]` entry, so publish uploads them exactly once. */
+  initialProofFiles?: File[];
   // Drops the Image extension + upload button. A request's proof maps to
   // the same `events.proof` column, in progress (else it'd be a
   // geolocation), so it stays text + formatting only there.
   allowImages?: boolean;
 }
 
-type ImageEntry = { blobUrl: string; placeholder: string; file: File };
+// `previewUrl` is a `blob:` URL for a manually picked "+ Image" file, or a
+// `data:` URL for an import-hydrated one (see `fileToDataUrl` below);
+// `emit`'s src rewrite just matches the string, so it doesn't care which.
+type ImageEntry = { previewUrl: string; placeholder: string; file: File };
+
+type ImageNode = { attrs: Record<string, unknown>; content?: unknown[] };
+
+/**
+ * Depth-first walk calling `visit` on every Tiptap image node (a node with
+ * `type: "image"` and a string `attrs.src`). Shared by `matchInitialProofFiles`
+ * and `emit` below, the doc's only two places that inspect image srcs, so the
+ * tree-walking itself has one home.
+ */
+function walkImageNodes(node: unknown, visit: (n: ImageNode) => void): void {
+  if (typeof node !== "object" || node === null) return;
+  const n = node as { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
+  if (n.type === "image" && n.attrs && typeof n.attrs.src === "string") {
+    visit(n as ImageNode);
+  }
+  if (Array.isArray(n.content)) n.content.forEach((c) => walkImageNodes(c, visit));
+}
+
+type MatchedProofFile = { placeholder: string; file: File };
+
+/**
+ * Pure name-match between the `placeholder://<filename>` image nodes in `doc`
+ * and `files`: no browser resource created here, so it's safe to run at
+ * construction (see `matchedProofFiles` below).
+ */
+function matchInitialProofFiles(
+  doc: Record<string, unknown> | null | undefined,
+  files: File[]
+): MatchedProofFile[] {
+  if (!doc || files.length === 0) return [];
+  const byName = new Map(files.map((f) => [f.name, f]));
+  const matched: MatchedProofFile[] = [];
+  walkImageNodes(doc, (n) => {
+    const src = n.attrs.src as string;
+    if (!src.startsWith(PROOF_PLACEHOLDER_PREFIX)) return;
+    const file = byName.get(src.slice(PROOF_PLACEHOLDER_PREFIX.length));
+    if (file) matched.push({ placeholder: src, file });
+  });
+  return matched;
+}
+
+/** Read `file` as a `data:` URL. Used (instead of `URL.createObjectURL`) for
+ *  the import-hydration preview below, which needs no matching "revoke": a
+ *  data URL is just a string, not an entry in the browser's Blob URL
+ *  registry, so nothing about it can go stale or needs disposing. */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(file);
+  });
+}
 
 /**
  * The Tiptap proof editor with proof-at-publish image handling. "+ Image" holds
  * a picked file locally: it inserts an image node with a blob-URL src for a live
- * preview, and remembers the file under a `placeholder://<filename>` key. On
- * every edit the emitted JSON rewrites those blob srcs back to their
+ * preview, and remembers the file under a `placeholder://<filename>` key. The
+ * tweet-import flow stages files the same way, through `initialProofFiles`: this
+ * component resolves those to a preview once mounted (see the effect below).
+ * On every edit the emitted JSON rewrites live-preview srcs back to their
  * `placeholder://` form, so the document handed up (and eventually stored) never
- * carries a blob URL. Nothing touches S3 until the parent submits: it reads the
+ * carries one. Nothing touches S3 until the parent submits: it reads the
  * still-referenced files via `onProofFilesChange` and posts them as
  * `proof_files[]` on create / geolocate, where the server matches each file to
  * its placeholder by filename and rewrites the src to the stored URL (see
@@ -42,47 +107,50 @@ export default function ProofEditor({
   onChange,
   onProofFilesChange,
   initialContent,
+  initialProofFiles,
   allowImages = true,
 }: ProofEditorProps) {
+  // Computed once at construction (the lazy `useState` initializer): pure
+  // name-matching, no blob URLs yet, so nothing here needs cleanup and a
+  // Strict-Mode double-render can't leak anything.
+  const [matchedProofFiles] = useState(() =>
+    matchInitialProofFiles(initialContent, initialProofFiles ?? []),
+  );
+
   // Files staged locally, keyed by blob URL. A ref (not state) so the Tiptap
   // `onUpdate` closure always sees the live map without re-creating the editor.
   const entriesRef = useRef<ImageEntry[]>([]);
   // Filenames already claimed this session, so two picks of `IMG.jpg` don't
   // collide on one placeholder (the server rejects a duplicate proof filename).
-  const usedNamesRef = useRef<Set<string>>(new Set());
+  // Pre-seeded with the matched import names for the same reason.
+  const usedNamesRef = useRef<Set<string>>(
+    new Set(
+      matchedProofFiles.map((m) => m.placeholder.slice(PROOF_PLACEHOLDER_PREFIX.length)),
+    ),
+  );
 
   // Rewrite blob srcs → their `placeholder://` form in a copy of the emitted
   // doc, then report the copy plus the files it still references. Kept in a ref
   // so the editor's `onUpdate` callback stays stable.
   const emit = useCallback(
     (json: Record<string, unknown>) => {
-      const byBlob = new Map(entriesRef.current.map((e) => [e.blobUrl, e]));
+      const byPreviewUrl = new Map(entriesRef.current.map((e) => [e.previewUrl, e]));
       const referenced = new Set<string>();
-
-      const walk = (node: unknown): void => {
-        if (typeof node !== "object" || node === null) return;
-        const n = node as {
-          type?: string;
-          attrs?: Record<string, unknown>;
-          content?: unknown[];
-        };
-        if (n.type === "image" && n.attrs && typeof n.attrs.src === "string") {
-          const entry = byBlob.get(n.attrs.src);
-          if (entry) {
-            n.attrs.src = entry.placeholder;
-            referenced.add(entry.placeholder);
-          } else if (n.attrs.src.startsWith(PROOF_PLACEHOLDER_PREFIX)) {
-            referenced.add(n.attrs.src);
-          }
-        }
-        if (Array.isArray(n.content)) n.content.forEach(walk);
-      };
 
       // Deep-clone first: mutating Tiptap's own JSON in place corrupts its
       // document state. `structuredClone` is available in every runtime this
       // ships to (modern browsers + the test env).
       const doc = structuredClone(json);
-      walk(doc);
+      walkImageNodes(doc, (n) => {
+        const src = n.attrs.src as string;
+        const entry = byPreviewUrl.get(src);
+        if (entry) {
+          n.attrs.src = entry.placeholder;
+          referenced.add(entry.placeholder);
+        } else if (src.startsWith(PROOF_PLACEHOLDER_PREFIX)) {
+          referenced.add(src);
+        }
+      });
       onChange(doc);
 
       // Surface only the files the doc still references (a deleted image node
@@ -111,14 +179,69 @@ export default function ProofEditor({
     },
   });
 
-  // Revoke every staged blob URL on unmount so a compose → navigate cycle
-  // doesn't leak object URLs. `entriesRef.current` is a stable array (only ever
-  // pushed to, never reassigned), so capturing it here still sees every image
-  // added later, and satisfies the ref-in-cleanup lint rule.
+  // Resolve the import-matched placeholders into live previews once the
+  // editor exists (Tiptap's initial `content` still carries the raw
+  // `placeholder://` src, which the browser can't render on its own). Reads
+  // each file as a `data:` URL rather than `URL.createObjectURL`: React's
+  // dev-mode Strict Mode mounts, cleans up, and re-mounts every effect once
+  // right after the initial commit, and a `blob:` URL revoked by that
+  // practice cleanup would leave the already-painted `<img>` pointing at a
+  // dead reference with nothing to recreate it (the doc's placeholder src
+  // is gone the moment the first pass rewrites it, so a second pass has
+  // nothing left to match). A `data:` URL sidesteps this: it isn't tracked
+  // in a revocable registry, so the standard "ignore a stale async result"
+  // guard (`cancelled`) is all the safety this needs, same as any other
+  // async effect.
+  useEffect(() => {
+    if (!editor || matchedProofFiles.length === 0) return;
+    let cancelled = false;
+
+    (async () => {
+      const resolved = await Promise.all(
+        matchedProofFiles.map(async ({ placeholder, file }) => ({
+          placeholder,
+          file,
+          previewUrl: await fileToDataUrl(file),
+        })),
+      );
+      if (cancelled) return;
+
+      entriesRef.current.push(...resolved);
+
+      // Rewrite each placeholder image node's src to its resolved preview via
+      // a transaction dispatched straight on the view: this also fires
+      // Tiptap's `onUpdate` (see the `onUpdate` callback above), so `emit`
+      // immediately reports these files up through the normal
+      // `onProofFilesChange` path, the same one a manually picked "+ Image"
+      // file goes through.
+      const byPlaceholder = new Map(resolved.map((e) => [e.placeholder, e.previewUrl]));
+      const { tr } = editor.state;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "image" && typeof node.attrs.src === "string") {
+          const previewUrl = byPlaceholder.get(node.attrs.src);
+          if (previewUrl) tr.setNodeAttribute(pos, "src", previewUrl);
+        }
+      });
+      if (tr.docChanged) editor.view.dispatch(tr);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // `matchedProofFiles` is stable for the life of this instance (a new
+    // import remounts the editor via its `key`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+
+  // Revoke every "+ Image"-staged blob URL on unmount so a compose → navigate
+  // cycle doesn't leak object URLs. Import-hydrated entries use `data:` URLs
+  // (see above), for which `revokeObjectURL` is a harmless no-op, so this
+  // stays scoped to whatever ends up in `entriesRef.current` without needing
+  // to distinguish the two sources.
   useEffect(() => {
     const entries = entriesRef.current;
     return () => {
-      for (const e of entries) URL.revokeObjectURL(e.blobUrl);
+      for (const e of entries) URL.revokeObjectURL(e.previewUrl);
     };
   }, []);
 
@@ -135,7 +258,7 @@ export default function ProofEditor({
       file.name === name ? file : new File([file], name, { type: file.type });
     const blobUrl = URL.createObjectURL(staged);
     entriesRef.current.push({
-      blobUrl,
+      previewUrl: blobUrl,
       placeholder: `${PROOF_PLACEHOLDER_PREFIX}${name}`,
       file: staged,
     });

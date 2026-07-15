@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildSeedProof, makeFile, splitMedia } from "./tweetImport";
+import { buildSeedProof, fetchProofFiles, makeFile, splitMedia } from "./tweetImport";
+import { PROOF_PLACEHOLDER_PREFIX } from "./proofImages";
 import type { TweetImportMedia, TweetImportResponse } from "@/types";
 
 function media(overrides: Partial<TweetImportMedia> = {}): TweetImportMedia {
@@ -103,11 +104,10 @@ describe("makeFile", () => {
 });
 
 describe("buildSeedProof", () => {
-  it("credits the OP and embeds each proof image", () => {
-    const doc = buildSeedProof(parsedTweet(), [
-      "https://cdn/a.png",
-      "https://cdn/b.png",
-    ]);
+  it("credits the OP and embeds each proof image as a placeholder node", () => {
+    const a = new File(["x"], "tweet-1-0.jpg", { type: "image/jpeg" });
+    const b = new File(["y"], "tweet-1-1.jpg", { type: "image/jpeg" });
+    const doc = buildSeedProof(parsedTweet(), [a, b]);
     expect(doc).toEqual({
       type: "doc",
       content: [
@@ -116,12 +116,18 @@ describe("buildSeedProof", () => {
           content: [
             {
               type: "text",
-              text: "Geolocation by @analyst — Geolocated the strike.",
+              text: "Geolocation by @analyst: Geolocated the strike.",
             },
           ],
         },
-        { type: "image", attrs: { src: "https://cdn/a.png" } },
-        { type: "image", attrs: { src: "https://cdn/b.png" } },
+        {
+          type: "image",
+          attrs: { src: `${PROOF_PLACEHOLDER_PREFIX}tweet-1-0.jpg` },
+        },
+        {
+          type: "image",
+          attrs: { src: `${PROOF_PLACEHOLDER_PREFIX}tweet-1-1.jpg` },
+        },
       ],
     });
   });
@@ -140,7 +146,80 @@ describe("buildSeedProof", () => {
     expect(doc.content).toHaveLength(2);
     expect(doc.content[1]).toEqual({
       type: "paragraph",
-      content: [{ type: "text", text: "Source: @src — original footage" }],
+      content: [{ type: "text", text: "Source: @src: original footage" }],
     });
+  });
+});
+
+describe("fetchProofFiles", () => {
+  function fakeResponse(body: string, contentType: string) {
+    return {
+      ok: true,
+      headers: { get: () => contentType },
+      blob: () => Promise.resolve(new Blob([body], { type: contentType })),
+    };
+  }
+
+  it("downloads each proof image and names it like a manually picked file", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse("a", "image/jpeg"))
+      .mockResolvedValueOnce(fakeResponse("b", "image/png"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mediaItems: TweetImportMedia[] = [
+      media({ remote_url: "https://pbs.twimg.com/media/a.jpg" }),
+      media({ remote_url: "https://pbs.twimg.com/media/b.png" }),
+    ];
+    const files = await fetchProofFiles(mediaItems, "42", new AbortController().signal);
+
+    expect(files.map((f) => f.name)).toEqual(["tweet-42-0.jpg", "tweet-42-1.png"]);
+    expect(files.map((f) => f.type)).toEqual(["image/jpeg", "image/png"]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("drops an item whose download fails, keeping the rest", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce(fakeResponse("b", "image/png"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mediaItems: TweetImportMedia[] = [
+      media({ remote_url: "https://pbs.twimg.com/media/a.jpg" }),
+      media({ remote_url: "https://pbs.twimg.com/media/b.png" }),
+    ];
+    const files = await fetchProofFiles(mediaItems, "42", new AbortController().signal);
+
+    expect(files.map((f) => f.name)).toEqual(["tweet-42-1.png"]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("seeds a doc whose placeholder nodes match the downloaded files by name", async () => {
+    // The end-to-end contract: `fetchProofFiles` names each file, and
+    // `buildSeedProof` must reference those exact names so the publish-time
+    // intake (matching `placeholder://<filename>` to `proof_files[]` by
+    // `safe_original_filename`) pairs every image up.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse("a", "image/jpeg"))
+      .mockResolvedValueOnce(fakeResponse("b", "image/png"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mediaItems: TweetImportMedia[] = [
+      media({ remote_url: "https://pbs.twimg.com/media/a.jpg" }),
+      media({ remote_url: "https://pbs.twimg.com/media/b.png" }),
+    ];
+    const files = await fetchProofFiles(mediaItems, "7", new AbortController().signal);
+    const doc = buildSeedProof(parsedTweet(), files);
+
+    const imageSrcs = doc.content
+      .filter((n) => n.type === "image")
+      .map((n) => (n.attrs as { src: string }).src);
+    expect(imageSrcs).toEqual(files.map((f) => `${PROOF_PLACEHOLDER_PREFIX}${f.name}`));
+
+    vi.unstubAllGlobals();
   });
 });

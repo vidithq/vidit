@@ -199,6 +199,7 @@ function SubmitForm() {
     importedFrom,
     importGen,
     extraCoordCandidates,
+    importedProofFiles,
     applyTweetImport,
     clearImportedTweet,
     swapCoordCandidate,
@@ -642,6 +643,7 @@ function SubmitForm() {
           proof={proof}
           onChange={setProof}
           onProofFilesChange={setProofFiles}
+          initialProofFiles={importedProofFiles}
           optional
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
