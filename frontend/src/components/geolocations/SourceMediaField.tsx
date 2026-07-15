@@ -44,6 +44,7 @@ export function SourceMediaField({
         title="Source media"
         concept="source_media"
         trailing={media.locked ? <LockedHint /> : undefined}
+        invalid={invalid}
       />
       <MediaManager {...media} />
       {children}

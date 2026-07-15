@@ -46,7 +46,12 @@ export function ProofEditorPanel({
       as="section"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
-      <SectionHeading title="Proof" concept="section_proof" optional={optional} />
+      <SectionHeading
+        title="Proof"
+        concept="section_proof"
+        optional={optional}
+        invalid={invalid}
+      />
 
       {/* Re-mount the editor on every import. ``importGen`` changes even
           on same-author re-import, where the handle alone would leave the

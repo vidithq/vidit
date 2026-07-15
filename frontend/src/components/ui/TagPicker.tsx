@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 
@@ -83,7 +83,7 @@ export function TagPicker({
 
       {conflictTags.length > 0 && (
         <div className="space-y-2">
-          <span className={`${FORM_LABEL}${conflictInvalid ? " !text-red-400" : ""}`}>
+          <span className={`${FORM_LABEL}${conflictInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
             Conflict <FieldHelp concept="conflict" />{" "}
             {!requireConflict && <OptionalHint />}
           </span>
@@ -103,7 +103,9 @@ export function TagPicker({
 
       {captureSourceTags.length > 0 && (
         <div className="space-y-2">
-          <span className={`${FORM_LABEL}${captureSourceInvalid ? " !text-red-400" : ""}`}>
+          <span
+            className={`${FORM_LABEL}${captureSourceInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+          >
             Capture source{" "}
             <FieldHelp concept="capture_source" />{" "}
             {!requireCaptureSource && <OptionalHint />}

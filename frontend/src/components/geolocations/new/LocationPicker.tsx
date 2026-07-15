@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
-import { LABEL_TEXT } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
 
 interface LocationPickerProps {
   lat: string;
@@ -49,7 +49,11 @@ export function LocationPicker({
       <SectionHeading title="Location" concept="section_location" />
 
       <div className="space-y-1.5">
-        <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
+        <span
+          className={`${LABEL_TEXT} inline-flex items-center gap-1${
+            invalid ? ` ${FORM_INVALID_LABEL}` : ""
+          }`}
+        >
           Subject <FieldHelp concept="coordinates" />
         </span>
         <CoordinateInputs

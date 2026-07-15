@@ -1,6 +1,6 @@
 "use client";
 
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 
@@ -16,7 +16,10 @@ interface TitleFieldProps {
 export function TitleField({ value, onChange, invalid = false }: TitleFieldProps) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor="title" className={FORM_LABEL}>
+      <label
+        htmlFor="title"
+        className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+      >
         Title <FieldHelp concept="title" />
       </label>
       <Input

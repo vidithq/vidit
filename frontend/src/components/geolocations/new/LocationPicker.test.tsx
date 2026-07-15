@@ -48,6 +48,20 @@ describe("LocationPicker", () => {
     expect(setCaptureLat).toHaveBeenCalledWith("50.1");
   });
 
+  it("flags the Subject label red when the coordinates are missing", () => {
+    render(<LocationPicker {...baseProps} invalid />);
+    // Same treatment as the field-block outline already on the lat/lng
+    // inputs (via CoordinateInputs' `invalid` prop): the section's own label
+    // turns red too, not just the inputs.
+    expect(screen.getByText("Subject").closest("span")).toHaveClass(
+      "!text-red-400"
+    );
+    // The optional camera position never gets flagged.
+    expect(screen.getByText("Camera position").closest("span")).not.toHaveClass(
+      "!text-red-400"
+    );
+  });
+
   it("offers detected swap candidates and reports the pick", () => {
     const onSwap = vi.fn();
     render(

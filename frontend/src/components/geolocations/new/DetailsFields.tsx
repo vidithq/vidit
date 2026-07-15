@@ -1,6 +1,6 @@
 "use client";
 
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
@@ -65,7 +65,10 @@ export function DetailsFields({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label htmlFor="event_date" className={FORM_LABEL}>
+          <label
+            htmlFor="event_date"
+            className={`${FORM_LABEL}${eventDateInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+          >
             Event date <FieldHelp concept="event_date" />{" "}
             {!eventDateRequired && <OptionalHint />}
           </label>
@@ -94,7 +97,10 @@ export function DetailsFields({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="source_posted_at" className={FORM_LABEL}>
+        <label
+          htmlFor="source_posted_at"
+          className={`${FORM_LABEL}${sourcePostedAtInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
           Source posted (UTC) <FieldHelp concept="source_posted_at" />
         </label>
         <Input
@@ -109,7 +115,10 @@ export function DetailsFields({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="source_url" className={FORM_LABEL}>
+        <label
+          htmlFor="source_url"
+          className={`${FORM_LABEL}${sourceUrlInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
           Source URL <FieldHelp concept="source_url" />{" "}
           {sourceUrlLocked && <LockedHint />}
         </label>
