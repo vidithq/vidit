@@ -22,7 +22,7 @@ from .syndication import ParsedMedia, ParsedQuotedTweet
 @dataclass(frozen=True)
 class ParsedTweet:
     # The SOURCE: the quoted tweet's URL when the OP quote-retweets, else the
-    # first footage link in the text. None when the tweet declares neither (the
+    # sole footage link in the text. None when the tweet declares neither (the
     # OP is a messenger, not the footage source, so its own URL never fills
     # this): the ``source_url`` form field then starts empty.
     source_url: str | None

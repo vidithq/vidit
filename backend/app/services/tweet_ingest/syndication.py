@@ -393,7 +393,8 @@ _TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 # A tweet status path: ``/<handle>/status/<id>`` or the handle-less
 # ``/i/web/status/<id>``. Single source of truth for "this X link is footage":
 # a profile link (no ``/status/``) is not chaseable footage, only a status is.
-# ``archive._first_linked_x_status`` reuses this same pattern to extract the id.
+# ``archive._sole_linked_x_status`` reuses this same pattern to extract the id,
+# and ``resolve._status_link_handle`` reuses it to extract the handle.
 _X_STATUS_URL_RE = re.compile(
     r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
 )

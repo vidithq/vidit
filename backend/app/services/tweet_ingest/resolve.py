@@ -19,12 +19,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from urllib.parse import urlparse
 
 import httpx
 
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
 from .records import QuotedTweet, SourceLink, TweetRecord
-from .syndication import ParsedMedia
+from .syndication import _X_STATUS_URL_RE, ParsedMedia
 
 # External links whose target is footage (a tweet, a channel, a video), unlike a
 # coordinate link (Google Maps) or an article. Their presence means the analyst
@@ -33,12 +34,64 @@ from .syndication import ParsedMedia
 _FOOTAGE_SOURCE_HOSTS = frozenset({"x", "telegram", "youtube"})
 
 
+def _status_link_handle(url: str) -> str | None:
+    """The handle segment of an X status link, or ``None`` when ``url`` isn't
+    a status link (``_X_STATUS_URL_RE`` doesn't match) or is the handle-less
+    ``i/web/status`` form.
+
+    Reuses ``_X_STATUS_URL_RE``, the single source of truth for "this X link is
+    a status" (also used by ``classify_source_host`` and the archive chase),
+    then reads the handle straight off the URL path.
+    """
+    if _X_STATUS_URL_RE.search(url) is None:
+        return None
+    try:
+        parts = [p for p in urlparse(url).path.split("/") if p]
+    except ValueError:
+        return None
+    if len(parts) >= 3 and parts[1] == "status":
+        return parts[0]
+    return None
+
+
+def _is_own_status_link(url: str, owner_handle: str) -> bool:
+    """Whether ``url`` is a status link back to ``owner_handle``'s own post.
+
+    A link to the analyst's own earlier post is a cross-reference, never
+    third-party footage: the OSINT convention this brick reads for a source is
+    "the analyst points at someone else's footage", not their own thread.
+    """
+    handle = _status_link_handle(url)
+    return handle is not None and handle.lower() == owner_handle.lower()
+
+
 def _source_link(thread: list[TweetRecord]) -> SourceLink | None:
-    """The first external link that points at footage (X / Telegram / YouTube)."""
+    """The only external link that points at footage (X / Telegram / YouTube),
+    or ``None`` when there is none or several.
+
+    An X status link back to the thread owner's own post is a cross-reference,
+    never footage, so it is skipped first (only the X host carries a handle to
+    compare against the owner; Telegram / YouTube links have no such
+    self-reference case). Among the remaining footage links, deduped by URL
+    (the same link repeated is one candidate), a sole candidate is the declared
+    source; several distinct candidates are ambiguous, so no link is picked and
+    the source stays empty for review.
+    """
+    owner_handle = thread[0].handle if thread else ""
+    candidates: list[SourceLink] = []
+    seen_urls: set[str] = set()
     for record in thread:
         for link in record.external_sources:
-            if link.host in _FOOTAGE_SOURCE_HOSTS:
-                return link
+            if link.host not in _FOOTAGE_SOURCE_HOSTS:
+                continue
+            if link.host == "x" and _is_own_status_link(link.url, owner_handle):
+                continue
+            if link.url in seen_urls:
+                continue
+            seen_urls.add(link.url)
+            candidates.append(link)
+    if len(candidates) == 1:
+        return candidates[0]
     return None
 
 
@@ -65,8 +118,9 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
     Priority, matching how OSINT posts attribute a source:
 
     1. the first quoted tweet (the analyst quote-tweeted the footage, date known);
-    2. the first external footage link (X status / Telegram / YouTube) the analyst
-       put in the text as ``Source: <url>`` (date unknown).
+    2. the sole external footage link (X status / Telegram / YouTube) the analyst
+       put in the text as ``Source: <url>`` (date unknown); several distinct
+       footage links are ambiguous and fill nothing (see :func:`_source_link`).
 
     No other signal counts. A thread that neither quotes nor links footage has
     declared no source, so both halves are ``None``; the thread head's permalink

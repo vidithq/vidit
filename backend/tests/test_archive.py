@@ -150,6 +150,147 @@ def test_read_tweets_skips_non_numeric_id(tmp_path):
     assert [r.tweet_id for r in records] == ["12345"]
 
 
+def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, monkeypatch):
+    """Regression (the "previous geolocation" tower tweets): the geoloc tweet's
+    entities.urls carries, in order, the analyst's own earlier status (a
+    cross-reference, in the archive itself), a profile link (no ``/status/``),
+    then the third-party status that is the actual quote. The own-status id is
+    excluded via ``by_id`` (the archive's own tweets); among what's left, the
+    single remaining status candidate is chased as the source, not the
+    self-reference."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "111",
+                "created_at": "Wed Nov 12 10:00:00 +0000 2025",
+                "full_text": "Previous geolocation here",
+            }
+        },
+        {
+            "tweet": {
+                "id_str": "222",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": (
+                    "Seems the same site was struck again. Previous geolocation "
+                    "here: https://x.com/analyst/status/111 | C: 26.564389, "
+                    "57.087644 | S: https://x.com/CENTCOM "
+                    "https://x.com/CENTCOM/status/999"
+                ),
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/prev",
+                            "expanded_url": "https://x.com/analyst/status/111",
+                        },
+                        {"url": "https://t.co/profile", "expanded_url": "https://x.com/CENTCOM"},
+                        {
+                            "url": "https://t.co/status",
+                            "expanded_url": "https://x.com/CENTCOM/status/999",
+                        },
+                    ]
+                },
+            }
+        },
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    def fake_fetch(tweet_id, *, client=None):
+        assert tweet_id == "999"  # never chases the self-reference (111)
+        return {
+            "user": {"screen_name": "CENTCOM"},
+            "text": "footage",
+            "created_at": "2025-11-12T09:00:00.000Z",
+        }
+
+    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    records = read_tweets(archive, handle="analyst", chase=True)
+    geoloc = next(r for r in records if r.tweet_id == "222")
+    assert geoloc.quoted is not None
+    assert geoloc.quoted.tweet_id == "999"
+    assert geoloc.quoted.handle == "CENTCOM"
+
+
+def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monkeypatch):
+    """Two distinct third-party status links, neither in the archive: the source
+    is ambiguous, so nothing is chased and the record carries no source tweet
+    (the source stays empty for review); the same id linked twice remains one
+    candidate and is chased."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": (
+                    "See also https://x.com/other/status/777 Source: https://x.com/other/status/888"
+                ),
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/a",
+                            "expanded_url": "https://x.com/other/status/777",
+                        },
+                        {
+                            "url": "https://t.co/b",
+                            "expanded_url": "https://x.com/other/status/888",
+                        },
+                    ]
+                },
+            }
+        },
+        {
+            "tweet": {
+                "id_str": "2",
+                "created_at": "Wed Nov 12 15:00:00 +0000 2025",
+                "full_text": "Source: https://x.com/other/status/888 (again: same link)",
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/c",
+                            "expanded_url": "https://x.com/other/status/888",
+                        },
+                        {
+                            "url": "https://t.co/d",
+                            "expanded_url": "https://x.com/other/status/888",
+                        },
+                    ]
+                },
+            }
+        },
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    seen_ids: list[str] = []
+
+    def fake_fetch(tweet_id, *, client=None):
+        seen_ids.append(tweet_id)
+        return {
+            "user": {"screen_name": "other"},
+            "text": "footage",
+            "created_at": "2025-11-12T09:00:00.000Z",
+        }
+
+    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    records = read_tweets(archive, handle="ana", chase=True)
+    ambiguous = next(r for r in records if r.tweet_id == "1")
+    assert ambiguous.quoted is None
+    deduped = next(r for r in records if r.tweet_id == "2")
+    assert deduped.quoted is not None
+    assert deduped.quoted.tweet_id == "888"
+    assert seen_ids == ["888"]  # only the deduped sole candidate was chased
+
+
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
     """The fetcher never reads outside the extraction dir, even when a record's
     ``remote_url`` resolves to a real sibling file (defeats arbitrary-file read)."""

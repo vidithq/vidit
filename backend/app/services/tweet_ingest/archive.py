@@ -171,24 +171,39 @@ def _quoted_from_syndication(quoted_id: str) -> QuotedTweet | None:
     )
 
 
-def _first_linked_x_status(tweet: dict[str, Any]) -> str | None:
-    """The id of the first X status the tweet links (``entities.urls``).
+def _sole_linked_x_status(tweet: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> str | None:
+    """The id of the only third-party X status the tweet links
+    (``entities.urls``), or ``None`` when there is none or several.
 
     OSINT posts often write ``Source: https://x.com/<author>/status/<id>`` for
-    the footage they geolocated; that status is the source tweet. A profile
-    link (no ``/status/``) doesn't match, same rule ``classify_source_host``
-    applies (``_X_STATUS_URL_RE``, the single source of truth for both).
+    the footage they geolocated; that status is the source tweet. ``by_id`` is
+    the archive's own tweets: a linked id that is in there is the analyst's own
+    post (a cross-reference), never third-party footage, so it is excluded
+    first. When several distinct candidates remain the source is ambiguous, so
+    none is chased and the source stays empty for review; the same id linked
+    twice is one candidate. A profile link (no ``/status/``) doesn't match,
+    same rule ``classify_source_host`` applies (``_X_STATUS_URL_RE``, the
+    single source of truth for both).
     """
     urls = (tweet.get("entities") or {}).get("urls")
     if not isinstance(urls, list):
         return None
+    candidates: set[str] = set()
     for entry in urls:
-        if isinstance(entry, dict):
-            expanded = entry.get("expanded_url")
-            if isinstance(expanded, str):
-                match = _X_STATUS_URL_RE.search(expanded)
-                if match is not None:
-                    return match.group(1)
+        if not isinstance(entry, dict):
+            continue
+        expanded = entry.get("expanded_url")
+        if not isinstance(expanded, str):
+            continue
+        match = _X_STATUS_URL_RE.search(expanded)
+        if match is None:
+            continue
+        status_id = match.group(1)
+        if status_id in by_id:
+            continue
+        candidates.add(status_id)
+    if len(candidates) == 1:
+        return next(iter(candidates))
     return None
 
 
@@ -198,10 +213,10 @@ def _archive_quoted(
     """Resolve a tweet's footage source tweet.
 
     A literal quote first (in-archive join, or a syndication chase of a
-    third-party quote); else, when ``chase`` is on, the first linked X status
-    (``Source: https://x.com/.../status/...``) chased via syndication. ``None``
-    when nothing resolves. Held in the record's ``quoted`` field, but it is "the
-    source tweet" whether it came from a quote or a link.
+    third-party quote); else, when ``chase`` is on, the sole third-party linked
+    X status (``Source: https://x.com/.../status/...``) chased via syndication.
+    ``None`` when nothing resolves. Held in the record's ``quoted`` field, but
+    it is "the source tweet" whether it came from a quote or a link.
     """
     quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
     if quoted_id is not None:
@@ -218,7 +233,7 @@ def _archive_quoted(
             )
         return _quoted_from_syndication(quoted_id) if chase else None
     if chase:
-        linked = _first_linked_x_status(tweet)
+        linked = _sole_linked_x_status(tweet, by_id)
         if linked is not None:
             return _quoted_from_syndication(linked)
     return None

@@ -60,14 +60,33 @@ def test_source_is_quoted_tweet_with_its_date():
     assert posted == "2024-12-31T09:00:00Z"
 
 
-def test_source_uses_first_external_footage_link():
-    # An X status link is a footage source now (no longer skipped); first wins.
+def test_source_uses_sole_external_footage_link():
+    # A single footage link (an X status here) is the declared source.
+    record = _rec(external_sources=[SourceLink(url="https://x.com/a/status/9", host="x")])
+    url, posted = resolve_source([record])
+    assert url == "https://x.com/a/status/9"
+    assert posted is None
+
+
+def test_source_none_when_several_distinct_footage_links():
+    # Two distinct footage candidates across hosts (an X status + a Telegram
+    # link): ambiguous, no heuristic picks one, the source stays empty for
+    # review.
     record = _rec(
         external_sources=[
             SourceLink(url="https://x.com/a/status/9", host="x"),
             SourceLink(url="https://t.me/c/1", host="telegram"),
         ]
     )
+    url, posted = resolve_source([record])
+    assert url is None
+    assert posted is None
+
+
+def test_source_same_footage_link_repeated_is_one_candidate():
+    # The same URL linked twice dedupes to one candidate, not an ambiguity.
+    link = SourceLink(url="https://x.com/a/status/9", host="x")
+    record = _rec(external_sources=[link, link])
     url, posted = resolve_source([record])
     assert url == "https://x.com/a/status/9"
     assert posted is None
@@ -86,6 +105,38 @@ def test_source_skips_leading_profile_link_status_link_wins():
     )
     url, posted = resolve_source([record])
     assert url == "https://x.com/osinttechnical/status/2028478401154084878"
+    assert posted is None
+
+
+def test_source_skips_own_status_link_sole_third_party_status_wins():
+    # Regression: the "previous geolocation" self-reference tweets. entities.urls
+    # carries the analyst's own earlier status first (host "x", same handle as
+    # the record), then a profile link (host "other"), then the third-party
+    # status that is the actual footage. The own-status link is a
+    # cross-reference, not footage, so it is skipped, leaving exactly one
+    # footage candidate: the third-party status.
+    record = _rec(
+        handle="analyst",
+        external_sources=[
+            SourceLink(url="https://x.com/analyst/status/111", host="x"),
+            SourceLink(url="https://x.com/CENTCOM", host="other"),
+            SourceLink(url="https://x.com/CENTCOM/status/222", host="x"),
+        ],
+    )
+    url, posted = resolve_source([record])
+    assert url == "https://x.com/CENTCOM/status/222"
+    assert posted is None
+
+
+def test_source_skips_own_status_link_case_insensitive():
+    # The handle comparison is case-insensitive: X status URLs don't lowercase
+    # the handle segment.
+    record = _rec(
+        handle="analyst",
+        external_sources=[SourceLink(url="https://x.com/Analyst/status/111", host="x")],
+    )
+    url, posted = resolve_source([record])
+    assert url is None
     assert posted is None
 
 

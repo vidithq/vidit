@@ -146,6 +146,31 @@ async def test_assemble_persists_detected_row(db, owner):
     assert media[0].sha256 and len(media[0].sha256) == 64
 
 
+async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner):
+    # A quoted tweet can carry both a photo and a video (both fetchable);
+    # uq_media_source_per_event allows at most one role=source row per event, so
+    # the source-media loop must stop after the first that fetches + prepares
+    # cleanly, not attempt a second insert that would raise IntegrityError.
+    async def _both_fetcher(parsed: ParsedMedia) -> tuple[bytes, str]:
+        if parsed.content_type.startswith("video/"):
+            return b"\x00\x00\x00\x18ftypmp42fake", "video/mp4"
+        return TINY_JPEG, "image/jpeg"
+
+    video = ParsedMedia(
+        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
+    )
+    sourced = _dto(media=[_img(), video], source_url="https://x.com/src/status/9")
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[sourced], fetch_media=_both_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.failed == 0
+
+    geo = outcome.created[0]
+    source_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").all()
+    assert len(source_rows) == 1
+    assert source_rows[0].media_type == "image"  # the first entry (photo) wins
+
+
 async def test_media_less_detection_persists(db, owner):
     # A detected row may be media-incomplete and source-less; the owner
     # completes it before submitting. Unlike a human submit, no media, no
