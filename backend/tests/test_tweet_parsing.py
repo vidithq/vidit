@@ -386,6 +386,17 @@ def test_clean_proof_empty_input():
         ("https://evil.com/media/foo.jpg", False),
         ("https://pbs.twimg.com.evil.com/media/foo.jpg", False),
         ("not a url at all", False),
+        # Telegram CDN: apex + shard subdomains + telesco.pe, https only.
+        ("https://cdn-telegram.org/file/x.jpg", True),
+        ("https://cdn4.cdn-telegram.org/file/x.jpg", True),
+        ("https://CDN4.CDN-TELEGRAM.ORG/file/x.jpg", True),  # case-insensitive
+        ("https://telesco.pe/file/x.mp4", True),
+        ("http://cdn4.cdn-telegram.org/file/x.jpg", False),  # http rejected
+        # Suffix look-alikes that a naive substring check would admit.
+        ("https://evil-cdn-telegram.org/file/x.jpg", False),
+        ("https://cdn-telegram.org.evil.com/file/x.jpg", False),
+        ("https://telesco.pe.evil.com/file/x.mp4", False),
+        ("https://nottelesco.pe/file/x.mp4", False),
     ],
 )
 def test_is_trusted_media_url(url, expected):

@@ -14,7 +14,7 @@ plus supplies synthetic bytes for the CDN media, so no request leaves the box.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import pytest
@@ -262,6 +262,92 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     proof_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
     assert len(proof_media) == 1
     assert proof_media[0].media_type == "image"
+
+
+async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: Any) -> Event:
+    """Backfill the ``telegram_link`` fixture as a one-tweet archive with the
+    Telegram chase stubbed to ``embed``, and return the single created row.
+
+    Offline: ``archive.fetch_telegram_embed`` is replaced with a constant, and
+    any source-media CDN GET is served synthetic bytes, so nothing leaves the
+    box.
+    """
+    import app.services.tweet_ingest.archive as archive_mod
+
+    body = loader.load_body("telegram_link")
+    archive = tmp_path / "tg_archive"
+    (archive / "tweets_media").mkdir(parents=True)
+    entry, files = loader.archive_tweet_from_body(body)
+    loader.write_archive_js(archive, [entry])
+    for media_file in files:
+        (archive / media_file.relative_path).write_bytes(media_file.data)
+
+    def fake_embed(url: str, *, client: Any = None) -> Any:
+        assert url == "https://t.me/somechannel/12345"
+        return embed
+
+    async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
+        return loader.TINY_MP4, parsed.content_type
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    monkeypatch.setattr(archive_mod, "_fetch_cdn_media", fake_cdn)
+
+    records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
+    detections = [d for thread in stitch(records) for d in detect(thread)]
+    assert len(detections) == 1
+
+    outcome = await assemble_detections(
+        db,
+        owner=owner,
+        detections=detections,
+        fetch_media=archive_media_fetcher(archive),
+        is_demo=True,
+    )
+    assert len(outcome.created) == 1 and outcome.failed == 0
+    [row] = db.query(Event).filter(Event.owner_id == owner.id).all()
+    return row
+
+
+async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, monkeypatch):
+    """A t.me footage link, chased: the embed's date fills ``source_posted_at``
+    and its video lands as the source media, while the OP photos stay proof."""
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    embed = TelegramEmbed(
+        posted_at="2026-03-04T09:00:00+00:00",
+        media=[
+            ParsedMedia(
+                kind="video",
+                remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
+                content_type="video/mp4",
+                origin="quote",
+            )
+        ],
+    )
+    row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
+
+    assert row.source_url == "https://t.me/somechannel/12345"
+    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
+    assert len(source) == 1 and source[0].media_type == "video"
+    proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
+    assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
+
+
+async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
+    """A sensitive t.me post: the embed serves the date but no media. The date
+    fills, no source media is stored, and the backfill does not fail."""
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    embed = TelegramEmbed(posted_at="2026-03-04T09:00:00+00:00", media=[])
+    row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
+
+    assert row.source_url == "https://t.me/somechannel/12345"
+    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
+    assert len(source) == 0
+    proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
+    assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
 
 
 # ── Small DB-shape helpers ─────────────────────────────────────────────────

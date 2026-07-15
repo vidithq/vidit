@@ -552,7 +552,7 @@ Backfill the caller's profile from their official X "Download your data" export.
 
 Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
 
-A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication; an unreachable status still lands the tweet, just source-less.
+A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication; an unreachable status still lands the tweet, just source-less. A tweet whose footage is a Telegram post (`Source: t.me/<channel>/<id>`) has that post's public embed chased for its date and, when the embed serves it, its media; a sensitive post degrades to link + date.
 
 **Request:** `multipart/form-data` with a single `file` (the `.zip`).
 

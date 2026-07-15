@@ -31,6 +31,23 @@ class QuotedTweet:
 
 
 @dataclass(frozen=True)
+class TelegramFootage:
+    """An off-platform Telegram footage source, chased from its public embed.
+
+    Parallel to ``quoted`` but deliberately not a ``QuotedTweet``: a t.me post is
+    not a tweet (no handle / text we model), only a post date and, when the embed
+    serves it, the footage media. Carried on the record so ``resolve_source`` /
+    ``split_media`` attribute the date + media without a second fetch. ``url`` is
+    the footage link the source resolved to; it must equal the resolved
+    ``SourceLink.url`` for the resolution to pick this footage up.
+    """
+
+    url: str
+    posted_at: str | None  # ISO 8601 UTC, None when the embed omitted the date
+    media: list[ParsedMedia] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class SourceLink:
     """A source URL the OP links (``entities.urls``) plus its host class.
 
@@ -62,5 +79,9 @@ class TweetRecord:
     # The quoted tweet, resolved inline (syndication) or joined / chased
     # (archive). The footage source in the common OSINT quote pattern.
     quoted: QuotedTweet | None = None
+    # A chased Telegram footage source (date + maybe media), parallel to
+    # ``quoted``. Populated by the archive chase when the OP's sole footage link
+    # is a t.me post; ``None`` on every non-chasing path.
+    telegram: TelegramFootage | None = None
     # Source URLs the OP links in its text (``entities.urls``), host-classified.
     external_sources: list[SourceLink] = field(default_factory=list)

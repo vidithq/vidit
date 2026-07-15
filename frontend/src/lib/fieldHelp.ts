@@ -46,7 +46,7 @@ export const FIELD_HELP = {
     label: "What is the event time?",
   },
   source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC), when known. Left blank on a machine detection with no quoted source. Not when the event happened, nor when you submitted it here.",
+    text: "When the source posted the media (the Telegram / X post date and time, UTC), when known. Left blank when the source's post time is unknown. Not when the event happened, nor when you submitted it here.",
     label: "What is the source post time?",
   },
   added: {

@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
-from .records import QuotedTweet, SourceLink, TweetRecord
+from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
 from .syndication import _X_STATUS_URL_RE, ParsedMedia
 
 # External links whose target is footage (a tweet, a channel, a video), unlike a
@@ -95,6 +95,27 @@ def _source_link(thread: list[TweetRecord]) -> SourceLink | None:
     return None
 
 
+def _telegram_footage(thread: list[TweetRecord], link: SourceLink) -> TelegramFootage | None:
+    """The chased Telegram embed backing the resolved footage ``link``, or ``None``.
+
+    Only when the resolved source link is a Telegram post whose embed was chased
+    onto some record (matched by URL). ``None`` for any non-Telegram link or when
+    the chase did not run / found nothing, so the source degrades to link-only
+    (url, no date, no media). Callers reach this only after the quote branch has
+    been ruled out, so a quote always takes precedence over a link.
+    """
+    if link.host != "telegram":
+        return None
+    return next(
+        (
+            record.telegram
+            for record in thread
+            if record.telegram is not None and record.telegram.url == link.url
+        ),
+        None,
+    )
+
+
 def resolve_coords(thread: list[TweetRecord]) -> list[ParsedCoord]:
     """Coordinates from the thread's own text, falling back to any quoted tweet.
 
@@ -122,6 +143,10 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
        put in the text as ``Source: <url>`` (date unknown); several distinct
        footage links are ambiguous and fill nothing (see :func:`_source_link`).
 
+    A Telegram footage link whose public embed was chased (archive path) carries
+    the post date, so the second case fills the date from that embed instead of
+    leaving it ``None``.
+
     No other signal counts. A thread that neither quotes nor links footage has
     declared no source, so both halves are ``None``; the thread head's permalink
     is provenance (``detected_from_url``), never the source. A coordinate link
@@ -136,7 +161,8 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
             )
     link = _source_link(thread)
     if link is not None:
-        return link.url, None
+        footage = _telegram_footage(thread, link)
+        return link.url, (footage.posted_at if footage is not None else None)
     return None, None
 
 
@@ -145,15 +171,27 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
     Footage (``source``) vs the analyst's annotation (``proof``): a quoted
     tweet's media is the footage, so it is the only media that lands in the
-    source slot. The thread's own media is always annotation (proof), even when
-    the thread declares no source at all: without an explicit signal the brick
-    never promotes the analyst's own attachment to footage.
+    source slot. When there is no quote but the resolved source is a chased
+    Telegram post whose embed served footage, that footage is the source media
+    instead (a sensitive post serves none, leaving the slot empty). The thread's
+    own media is always annotation (proof), even when the thread declares no
+    source at all: without an explicit signal the brick never promotes the
+    analyst's own attachment to footage.
     """
-    quoted_media = [
-        media for record in thread if record.quoted is not None for media in record.quoted.media
-    ]
     own_media = [media for record in thread for media in record.media]
-    return quoted_media, own_media
+    if any(record.quoted is not None for record in thread):
+        # A quote takes precedence as the source (even when it carried no media),
+        # so its media is the only footage; a Telegram link is never consulted.
+        quoted_media = [
+            media for record in thread if record.quoted is not None for media in record.quoted.media
+        ]
+        return quoted_media, own_media
+    link = _source_link(thread)
+    if link is not None:
+        footage = _telegram_footage(thread, link)
+        if footage is not None:
+            return list(footage.media), own_media
+    return [], own_media
 
 
 @dataclass(frozen=True)

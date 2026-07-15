@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from .errors import TweetFetchFailed, TweetNotAccessible
-from .records import QuotedTweet, SourceLink, TweetRecord
+from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
 from .syndication import (
     _X_STATUS_URL_RE,
     ParsedMedia,
@@ -28,6 +28,7 @@ from .syndication import (
     fetch_syndication,
     is_trusted_media_url,
 )
+from .telegram import fetch_telegram_embed
 
 # Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]`` — strip
 # the assignment prefix, then it's plain JSON.
@@ -239,15 +240,40 @@ def _archive_quoted(
     return None
 
 
+def _archive_telegram(tweet: dict[str, Any], *, chase: bool) -> TelegramFootage | None:
+    """Chase the tweet's sole Telegram footage link via its public embed.
+
+    OSINT posts write ``Source: https://t.me/<channel>/<id>`` for off-platform
+    footage. When ``chase`` is on and the tweet links exactly one Telegram post,
+    fetch its embed for the post date and (when the embed serves it) the footage
+    media. Several distinct Telegram links leave the footage source ambiguous at
+    resolve, so none is chased. Fail-soft: ``fetch_telegram_embed`` returns
+    ``None`` on any error, and the record then keeps the link with no date,
+    exactly as before the chase existed.
+    """
+    if not chase:
+        return None
+    telegram_urls = {url for url, host in extract_source_links(tweet) if host == "telegram"}
+    if len(telegram_urls) != 1:
+        return None
+    url = next(iter(telegram_urls))
+    embed = fetch_telegram_embed(url)
+    if embed is None:
+        return None
+    return TelegramFootage(url=url, posted_at=embed.posted_at, media=list(embed.media))
+
+
 def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[TweetRecord]:
     """Parse ``tweets.js`` under ``archive_dir`` into enriched ``TweetRecord``s.
 
     ``handle`` is the verified owner handle; the export is the owner's own
     tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
     real self-threads), the OP media, the host-classified source links
-    (``entities.urls``), and the resolved quoted tweet: an in-archive join, or a
-    syndication chase of a third-party quote when ``chase`` is on (``chase``
-    stays off by default so the read is pure-disk).
+    (``entities.urls``), the resolved quoted tweet (an in-archive join, or a
+    syndication chase of a third-party quote when ``chase`` is on), and, when
+    ``chase`` is on and the OP links a sole Telegram post, that post's chased
+    footage (date + maybe media). ``chase`` stays off by default so the read is
+    pure-disk.
     """
     raw = (archive_dir / "tweets.js").read_text(encoding="utf-8")
     entries = _strip_ytd_prefix(raw)
@@ -283,6 +309,7 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
                 quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
+                telegram=_archive_telegram(tweet, chase=chase),
                 external_sources=[
                     SourceLink(url=u, host=h) for u, h in extract_source_links(tweet)
                 ],

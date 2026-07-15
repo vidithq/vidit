@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 
 from app.services.tweet_ingest import detect, stitch
+from app.services.tweet_ingest.records import SourceLink, TelegramFootage, TweetRecord
 from app.services.tweet_ingest.resolve import ResolvedTweet, resolve_thread
+from app.services.tweet_ingest.syndication import ParsedMedia
 
 from . import loader
 
@@ -127,6 +129,81 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
     assert resolved.source_posted_at == datetime.fromisoformat(chase["source_posted_at"])
     assert _roles(resolved.source_media) == [list(pair) for pair in chase["source_media"]]
     assert _roles(resolved.proof_media) == [list(pair) for pair in chase["proof_media"]]
+
+
+_TG_URL = "https://t.me/somechannel/12345"
+
+
+def _telegram_record(
+    telegram: TelegramFootage | None, *, extra_links: list[SourceLink] | None = None
+) -> TweetRecord:
+    """A geoloc tweet linking a t.me post, with an optional chased footage.
+
+    One OP photo (annotation) and a Telegram footage link. ``telegram`` is the
+    chased embed (or ``None`` for the no-chase path); ``extra_links`` adds more
+    footage links to exercise the ambiguity rule.
+    """
+    return TweetRecord(
+        tweet_id="8400000000000000001",
+        handle="osint_stork",
+        text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nSource: {_TG_URL}",
+        created_at="2026-03-04T13:20:00+00:00",
+        permalink="https://x.com/osint_stork/status/8400000000000000001",
+        media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "image/jpeg", "op")],
+        external_sources=[SourceLink(_TG_URL, "telegram"), *(extra_links or [])],
+        telegram=telegram,
+    )
+
+
+def test_chased_telegram_fills_source_date_and_media() -> None:
+    footage = TelegramFootage(
+        url=_TG_URL,
+        posted_at="2026-03-04T09:00:00+00:00",
+        media=[
+            ParsedMedia("video", "https://cdn4.cdn-telegram.org/file/v.mp4", "video/mp4", "quote")
+        ],
+    )
+    resolved = resolve_thread([_telegram_record(footage)])
+    assert resolved is not None
+    assert resolved.source_url == _TG_URL
+    assert resolved.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    assert _roles(resolved.source_media) == [["video", "quote"]]
+    assert _roles(resolved.proof_media) == [["image", "op"]]
+
+
+def test_chased_telegram_sensitive_is_date_only() -> None:
+    footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
+    resolved = resolve_thread([_telegram_record(footage)])
+    assert resolved is not None
+    assert resolved.source_url == _TG_URL
+    assert resolved.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    assert resolved.source_media == []
+    assert _roles(resolved.proof_media) == [["image", "op"]]
+
+
+def test_unchased_telegram_link_is_link_only() -> None:
+    """The no-chase path (record carries no footage) is unchanged: link source,
+    no date, no source media — the ``telegram_link`` contract."""
+    resolved = resolve_thread([_telegram_record(None)])
+    assert resolved is not None
+    assert resolved.source_url == _TG_URL
+    assert resolved.source_posted_at is None
+    assert resolved.source_media == []
+
+
+def test_ambiguous_footage_links_ignore_chased_telegram() -> None:
+    """A second footage link makes the source ambiguous; even a chased Telegram
+    footage is dropped and the source stays empty for review."""
+    footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
+    record = _telegram_record(
+        footage,
+        extra_links=[SourceLink("https://www.youtube.com/watch?v=FAKEVIDEO01", "youtube")],
+    )
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url is None
+    assert resolved.source_posted_at is None
+    assert resolved.source_media == []
 
 
 def test_every_typology_has_both_fixture_files() -> None:

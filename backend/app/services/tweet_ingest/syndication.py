@@ -264,6 +264,23 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
 # request (SSRF).
 TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 
+# Registrable bases Telegram serves footage from: its own CDN (the apex
+# ``cdn-telegram.org`` plus its ``cdnN.cdn-telegram.org`` shards) and
+# ``telesco.pe``. Matched by strict dot-boundary suffix (see
+# :func:`_host_matches_base`), never a substring, so a look-alike like
+# ``evil-cdn-telegram.org`` is rejected.
+TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
+
+
+def _host_matches_base(host: str, base: str) -> bool:
+    """Whether ``host`` is ``base`` itself or a subdomain of it.
+
+    A dot-boundary suffix test, not a substring: ``cdn4.cdn-telegram.org``
+    matches ``cdn-telegram.org`` while ``evil-cdn-telegram.org`` (shares the
+    trailing string but not the ``.`` boundary) does not.
+    """
+    return host == base or host.endswith("." + base)
+
 
 @dataclass(frozen=True)
 class ParsedMedia:
@@ -281,10 +298,13 @@ class ParsedMedia:
 def is_trusted_media_url(url: str) -> bool:
     """Allowlist check used by both the response builder and the proxy.
 
-    Single source of truth — ``parse_tweet`` (filtering what we advertise)
-    and the media-proxy route (validating ``u=`` before opening a socket)
-    both call this. Drift would silently drop legitimate media or open the
-    proxy to SSRF.
+    Single source of truth — ``parse_tweet`` (filtering what we advertise), the
+    archive / Telegram chases (before fetching a CDN media), and the media-proxy
+    route (validating ``u=`` before opening a socket) all call this. Drift would
+    silently drop legitimate media or open the proxy to SSRF. Admits the X CDN
+    (``TWITTER_MEDIA_HOSTS``, exact) and the Telegram CDN
+    (``TELEGRAM_MEDIA_BASE_HOSTS``, strict dot-boundary suffix so a look-alike
+    host can't slip through), ``https`` only.
     """
     try:
         parsed = urlparse(url)
@@ -292,7 +312,10 @@ def is_trusted_media_url(url: str) -> bool:
         return False
     if parsed.scheme != "https":
         return False
-    return (parsed.hostname or "").lower() in TWITTER_MEDIA_HOSTS
+    host = (parsed.hostname or "").lower()
+    if host in TWITTER_MEDIA_HOSTS:
+        return True
+    return any(_host_matches_base(host, base) for base in TELEGRAM_MEDIA_BASE_HOSTS)
 
 
 def _extract_media(

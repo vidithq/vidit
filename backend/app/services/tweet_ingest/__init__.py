@@ -6,6 +6,8 @@ Single-responsibility bricks behind one import surface:
   every path.
 * ``syndication`` — X I/O (URL normalisation, fetch + token + cache, schema
   mappers).
+* ``telegram`` — off-platform footage chase: a t.me post's public embed →
+  post date (+ media when served). Used by the archive chase.
 * ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
 * ``stitch`` — recombine records into threads (union-find on reply edges).
 * ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.

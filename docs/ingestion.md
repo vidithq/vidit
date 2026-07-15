@@ -37,6 +37,7 @@ An X "Download your data" export additionally exposes the analyst's own reply ed
 - **Self-threads**: reply chains stitched back together via the reply-to edges. The export contains only the analyst's own tweets, so every record the stitch draws on already shares the analyst's own authorship; a self-thread's combined text is searched for a coordinate exactly like a single tweet's text.
 - **Quotes of the analyst's own tweets**: resolved by an in-archive join (both tweets are in the same export).
 - **Third-party quotes and footage links**: resolved by chasing the referenced tweet id through syndication, when chasing is enabled for the import.
+- **Telegram footage links**: chased through the post's public embed (`t.me/<channel>/<id>?embed=1`) for the post date and, when the embed serves it, the footage media. A sensitive-content post serves neither, so it degrades to link + date. Only public `t.me/<channel>/<id>` posts are fetched; several distinct footage links leave the source ambiguous and nothing is chased.
 - **Photos and videos**: video capture takes the highest-bitrate mp4 variant the export saved.
 
 ## See also
