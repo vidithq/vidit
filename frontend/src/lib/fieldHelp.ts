@@ -22,11 +22,11 @@ export const FIELD_HELP = {
     label: "What is the capture source?",
   },
   coordinates: {
-    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). Where the footage was filmed, not where it was posted.",
+    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the camera was or where it was posted.",
     label: "What are the coordinates?",
   },
   capture_source_coords: {
-    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when it's a different spot from the subject: e.g. a drone or a rooftop looking at the strike. Leave blank when the camera is at the subject or the vantage point is unknown.",
+    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the camera was at the subject, or the vantage point is unknown.",
     label: "What is the camera position?",
   },
   source_url: {
@@ -46,7 +46,7 @@ export const FIELD_HELP = {
     label: "What is the event time?",
   },
   source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC). A post always has a time. Not when the event happened, nor when you submitted it here.",
+    text: "When the source posted the media (the Telegram / X post date and time, UTC), when known. Left blank on a machine detection with no quoted source. Not when the event happened, nor when you submitted it here.",
     label: "What is the source post time?",
   },
   added: {
@@ -54,7 +54,7 @@ export const FIELD_HELP = {
     label: "What is the added date?",
   },
   status: {
-    text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the author withdrew the request.",
+    text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, or the detection was rejected.",
     label: "What does the status mean?",
   },
   request_status: {
@@ -67,7 +67,7 @@ export const FIELD_HELP = {
   },
   // Section-level concepts (the `?` next to a section heading).
   section_location: {
-    text: "The footage being located, and the coordinates where it was filmed. A request has just the footage; whoever picks it up adds the coordinates.",
+    text: "The footage being located, and the coordinates of the subject it shows. A request has just the footage; whoever picks it up adds the coordinates.",
     label: "What goes in Location?",
   },
   section_import: {
