@@ -13,10 +13,17 @@ from app.services.tweet_ingest.syndication import classify_source_host, extract_
 def test_classify_source_host():
     assert classify_source_host("https://x.com/a/status/1") == "x"
     assert classify_source_host("https://twitter.com/a/status/1") == "x"
+    assert classify_source_host("https://x.com/i/web/status/1") == "x"
     assert classify_source_host("https://t.me/chan/42") == "telegram"
     assert classify_source_host("https://youtu.be/xyz") == "youtube"
     assert classify_source_host("https://www.youtube.com/watch?v=x") == "youtube"
     assert classify_source_host("https://example.org/x") == "other"
+
+
+def test_classify_source_host_profile_link_is_not_footage():
+    # A bare profile link (no /status/) is not footage, unlike a status link.
+    assert classify_source_host("https://x.com/a") == "other"
+    assert classify_source_host("https://twitter.com/a/") == "other"
 
 
 def test_extract_source_links_classifies_dedupes_skips_tco():
@@ -35,6 +42,25 @@ def test_extract_source_links_classifies_dedupes_skips_tco():
         ("https://t.me/foo/123", "telegram"),
         ("https://x.com/bar/status/456", "x"),
         ("https://youtu.be/xyz", "youtube"),
+    ]
+
+
+def test_extract_source_links_profile_link_is_not_footage():
+    # Regression: entities.urls carries the profile link before the status
+    # link, the order X returns them in for a tweet linking its own author's
+    # profile page then the actual status. The profile classifies as "other";
+    # the status link still classifies as "x".
+    body = {
+        "entities": {
+            "urls": [
+                {"expanded_url": "https://x.com/Osinttechnical"},
+                {"expanded_url": "https://x.com/Osinttechnical/status/2028478401154084878"},
+            ]
+        }
+    }
+    assert extract_source_links(body) == [
+        ("https://x.com/Osinttechnical", "other"),
+        ("https://x.com/Osinttechnical/status/2028478401154084878", "x"),
     ]
 
 

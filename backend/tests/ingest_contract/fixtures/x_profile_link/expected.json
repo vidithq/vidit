@@ -1,0 +1,10 @@
+{
+  "description": "An X profile link (no /status/) written as Source:, no quote. A profile is not footage: classify_source_host classifies it as host \"other\", so the thread has declared no source (source_url and source_posted_at both null), same as referenceless_annotation. The OP photo stays proof.",
+  "coords": [[47.1133, 38.9022]],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-09",
+  "title": "Geolocated rail yard",
+  "source_media": [],
+  "proof_media": [["image", "op"]]
+}

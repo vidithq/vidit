@@ -21,6 +21,7 @@ import httpx
 from .errors import TweetFetchFailed, TweetNotAccessible
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import (
+    _X_STATUS_URL_RE,
     ParsedMedia,
     _extract_media,
     extract_source_links,
@@ -170,14 +171,13 @@ def _quoted_from_syndication(quoted_id: str) -> QuotedTweet | None:
     )
 
 
-_X_STATUS_RE = re.compile(r"(?:x|twitter)\.com/\w+/status/(\d+)", re.IGNORECASE)
-
-
 def _first_linked_x_status(tweet: dict[str, Any]) -> str | None:
     """The id of the first X status the tweet links (``entities.urls``).
 
     OSINT posts often write ``Source: https://x.com/<author>/status/<id>`` for
-    the footage they geolocated; that status is the source tweet.
+    the footage they geolocated; that status is the source tweet. A profile
+    link (no ``/status/``) doesn't match, same rule ``classify_source_host``
+    applies (``_X_STATUS_URL_RE``, the single source of truth for both).
     """
     urls = (tweet.get("entities") or {}).get("urls")
     if not isinstance(urls, list):
@@ -186,7 +186,7 @@ def _first_linked_x_status(tweet: dict[str, Any]) -> str | None:
         if isinstance(entry, dict):
             expanded = entry.get("expanded_url")
             if isinstance(expanded, str):
-                match = _X_STATUS_RE.search(expanded)
+                match = _X_STATUS_URL_RE.search(expanded)
                 if match is not None:
                     return match.group(1)
     return None

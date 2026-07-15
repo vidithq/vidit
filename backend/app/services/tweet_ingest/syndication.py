@@ -390,17 +390,30 @@ _T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
 _YOUTUBE_HOST_RE = re.compile(r"^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$", re.IGNORECASE)
 _TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 
+# A tweet status path: ``/<handle>/status/<id>`` or the handle-less
+# ``/i/web/status/<id>``. Single source of truth for "this X link is footage":
+# a profile link (no ``/status/``) is not chaseable footage, only a status is.
+# ``archive._first_linked_x_status`` reuses this same pattern to extract the id.
+_X_STATUS_URL_RE = re.compile(
+    r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
+)
+
 
 def classify_source_host(url: str) -> str:
     """Coarse host class for a source URL: ``x`` / ``telegram`` / ``youtube`` /
     ``other``. Drives whether the footage is retrievable (X, chaseable) or
-    off-platform (Telegram / YouTube, link only)."""
+    off-platform (Telegram / YouTube, link only).
+
+    An X host only classifies as ``x`` when the path is a status
+    (``_X_STATUS_URL_RE``): a bare profile link is not footage, so it falls
+    through to ``other`` like any unrelated link.
+    """
     try:
         host = (urlparse(url).hostname or "").lower()
     except ValueError:
         return "other"
     if _TWITTER_URL_HOST_RE.match(host):
-        return "x"
+        return "x" if _X_STATUS_URL_RE.search(url) else "other"
     if _TELEGRAM_HOST_RE.match(host):
         return "telegram"
     if _YOUTUBE_HOST_RE.match(host):
@@ -412,8 +425,8 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str]]:
     """Every expanded, host-classified source URL from ``entities.urls``.
 
     The analyst's ``Source: <url>`` links. Skips the ``t.co`` wrapper (we trust
-    ``expanded_url``) and de-dupes, preserving order. Keeps X links (a status is
-    a chaseable source).
+    ``expanded_url``) and de-dupes, preserving order. Keeps X status links (a
+    status is a chaseable source; a bare profile link is not).
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None

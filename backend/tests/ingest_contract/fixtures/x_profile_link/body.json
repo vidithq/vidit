@@ -1,0 +1,20 @@
+{
+  "id_str": "8900000000000000001",
+  "created_at": "2026-03-09T10:15:00.000Z",
+  "user": { "screen_name": "trace_osprey" },
+  "text": "Geolocated 47.113300, 38.902200 rail yard\nSource: https://t.co/fakeXPROFILE",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP9.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeXPROFILE",
+        "expanded_url": "https://x.com/Osinttechnical"
+      }
+    ]
+  }
+}

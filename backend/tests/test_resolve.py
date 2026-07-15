@@ -73,6 +73,22 @@ def test_source_uses_first_external_footage_link():
     assert posted is None
 
 
+def test_source_skips_leading_profile_link_status_link_wins():
+    # Regression: entities.urls carries the profile link before the status link
+    # (the order X returns them in). classify_source_host now demotes the
+    # profile to host "other", so the status link (the actual footage) wins the
+    # source slot instead of the profile.
+    record = _rec(
+        external_sources=[
+            SourceLink(url="https://x.com/osinttechnical", host="other"),
+            SourceLink(url="https://x.com/osinttechnical/status/2028478401154084878", host="x"),
+        ]
+    )
+    url, posted = resolve_source([record])
+    assert url == "https://x.com/osinttechnical/status/2028478401154084878"
+    assert posted is None
+
+
 def test_source_ignores_non_footage_link():
     # A coordinate / article link (host "other") is not a footage source, so the
     # thread has declared no source at all.

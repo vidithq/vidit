@@ -9,7 +9,7 @@ Every derived field is either correct or empty. No field is a guess dressed as d
 A field fills only on an explicit signal in the tweet or its quote:
 
 - **Quote**: the OP quote-tweets another post. The quoted tweet is the footage source.
-- **Footage link**: the OP's text carries a link to X, Telegram, or YouTube (the OSINT convention `Source: <url>`). That link is the footage source.
+- **Footage link**: the OP's text carries a link to X, Telegram, or YouTube (the OSINT convention `Source: <url>`). That link is the footage source. For X, only a status link counts (`x.com/<handle>/status/<id>`); a profile link is not footage.
 - **Coordinate**: a parseable coordinate in the OP's own text, or, when the OP's text yields none, in the quoted tweet's text.
 
 Nothing is deduced beyond these three signals:
