@@ -550,7 +550,7 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 | `id` | `UUID` | PK, default `uuid4()` |
 | `mention_tweet_id` | `VARCHAR(25)` | UNIQUE, NOT NULL. The tagged tweet's id (X snowflake, numeric string). |
 | `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized (lowercase, no leading `@`). Forensics, not a FK; the assembled profile lives in `users.x_handle`. |
-| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'skipped'`, or `'failed'`. A `failed` row retries only when an operator deletes it. |
+| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
 | `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply; NULL when nothing was created, reply credentials are absent, or the post failed (the detection stays durable either way). |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |

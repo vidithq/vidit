@@ -431,7 +431,7 @@ def _cdn_client_factory(handler):
     return make_client
 
 
-async def testfetch_cdn_media_caps_oversized_stream(monkeypatch):
+async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
     """A CDN response larger than the shared byte cap is dropped fail-soft
     (media-incomplete), not buffered unbounded into memory."""
     import app.services.tweet_ingest.archive as archive_mod
@@ -448,7 +448,7 @@ async def testfetch_cdn_media_caps_oversized_stream(monkeypatch):
     assert await archive_mod.fetch_cdn_media(parsed) is None
 
 
-async def testfetch_cdn_media_returns_within_cap(monkeypatch):
+async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
     """A CDN response within the cap streams back intact."""
     import app.services.tweet_ingest.archive as archive_mod
 

@@ -305,8 +305,9 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
 def resolve_tweet(url: str, *, client: httpx.Client | None = None) -> ResolvedTweet | None:
     """The single-tweet entry: fetch ``url`` via syndication and resolve it.
 
-    ``resolve_thread([record_from_syndication(url)])``. Used by the human import
-    and the bot; the archive passes a stitched thread to ``resolve_thread``.
+    ``resolve_thread([record_from_syndication(url)])``. Used by the human
+    import; the archive and the bot pass a stitched thread to
+    ``resolve_thread`` (via ``detect``).
     """
     from .acquire import record_from_syndication
 

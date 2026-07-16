@@ -11,9 +11,11 @@ from app.database import Base
 # ``detected`` row landed; ``no_detection`` — the thread yielded no coordinate
 # (recorded silently, no reply, so a courtesy reply to the bot can't loop it
 # into answering itself); ``skipped`` — every detection deduped against an
-# existing row; ``failed`` — processing raised (captured to Sentry; delete the
-# row to retry that mention on the next run).
-BotMentionOutcome = Literal["created", "no_detection", "skipped", "failed"]
+# existing row; ``self`` — the bot's own post surfaced in its mentions
+# timeline (recorded so the ``since_id`` cursor advances past it instead of
+# re-billing it every pull); ``failed`` — processing raised (captured to
+# Sentry; delete the row to retry that mention on the next run).
+BotMentionOutcome = Literal["created", "no_detection", "skipped", "self", "failed"]
 
 
 class BotMention(Base):

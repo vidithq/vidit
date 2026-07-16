@@ -212,6 +212,32 @@ async def test_coordinate_less_mention_records_silently(db):
     assert ledger.reply_tweet_id is None
 
 
+async def test_self_mention_is_ledgered_so_cursor_advances(db):
+    # The bot's own posts surface in its mentions timeline. They must not be
+    # processed, but they MUST land in the ledger: since_id is the ledger max,
+    # so an unledgered self-mention would be re-fetched (re-billed) every run.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": BARE_ID, "author_id": BOT_USER_ID, "text": "own reply"}],
+                "includes": {"users": [{"id": BOT_USER_ID, "username": "viditbot"}]},
+                "meta": {},
+            },
+        )
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as read,
+        _syndication_client() as syn,
+    ):
+        outcome = await run_bot_once(db, syndication_client=syn, x_read_client=read)
+
+    assert outcome.events_created == 0
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
+    assert ledger.outcome == "self"
+    assert ledger.reply_tweet_id is None
+
+
 async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
     monkeypatch.setattr(settings, "x_bot_bearer_token", "")
     with pytest.raises(BotNotConfigured):

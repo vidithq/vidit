@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from dataclasses import dataclass
@@ -29,11 +30,17 @@ from urllib.parse import quote
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 _API_BASE = "https://api.x.com/2"
 _HTTP_TIMEOUT_S = 15.0
 _USER_AGENT = "vidit-bot/1.0"
 # One mentions pull is bounded: 100 mentions per page, pages capped so a
 # runaway backlog (or an API pagination bug) can't loop a paid call forever.
+# The timeline pages newest-first, so a backlog past the cap drops its OLDEST
+# overflow — and once this pass records the newest mentions, the caller's
+# ``since_id`` advances past the dropped ones for good. Needs 1000+ new
+# mentions in one pass; logged below when it happens.
 _MENTIONS_PAGE_SIZE = 100
 _MENTIONS_MAX_PAGES = 10
 
@@ -131,10 +138,24 @@ def fetch_mentions(
                 tweet_id = tweet.get("id")
                 author_id = tweet.get("author_id")
                 text = tweet.get("text")
-                if not isinstance(tweet_id, str) or not isinstance(author_id, str):
+                # A dropped mention leaves no ledger trace and the caller's
+                # cursor will pass it, so schema surprises are logged loudly
+                # rather than lost silently. Non-numeric ids would also break
+                # the sort below and the caller's cursor cast.
+                if (
+                    not isinstance(tweet_id, str)
+                    or not tweet_id.isdigit()
+                    or not isinstance(author_id, str)
+                ):
+                    logger.warning("Dropping malformed mention entry: %r", tweet)
                     continue
                 handle = handle_by_id.get(author_id)
                 if handle is None:
+                    logger.warning(
+                        "Dropping mention %s: author %s missing from includes",
+                        tweet_id,
+                        author_id,
+                    )
                     continue
                 mentions.append(
                     Mention(
@@ -149,6 +170,12 @@ def fetch_mentions(
         if not isinstance(next_token, str) or not next_token:
             break
         pagination_token = next_token
+    else:
+        logger.warning(
+            "Mentions backlog exceeded %d pages; oldest overflow will be lost "
+            "once the cursor advances",
+            _MENTIONS_MAX_PAGES,
+        )
 
     mentions.sort(key=lambda m: int(m.tweet_id))
     return mentions

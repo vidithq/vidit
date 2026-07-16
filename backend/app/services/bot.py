@@ -58,8 +58,20 @@ logger = logging.getLogger(__name__)
 _MAX_PARENT_WALK = 10
 
 # X's classic post length. Replies are composed under it and hard-truncated
-# as a belt: an over-long reply would 403 the (billed) create call.
+# as a belt: an over-long reply would 403 the (billed) create call. The cap
+# counts Python code points while X counts weighted characters (the ⚠ glyph
+# weighs 2), so composed text must stay well under it — today's worst case is
+# ~210 code points / ~215 weighted.
 _REPLY_MAX_CHARS = 280
+
+# Billed-spend ceilings on the write side. The mention surface is public: any
+# stranger can tag the bot on a coordinate tweet, and each created draft costs
+# one billed reply. A pass posts at most this many replies in total and per
+# author; past a ceiling the draft still lands (detection is unbilled) but the
+# reply is skipped and logged — a flood burns nothing but its own posting
+# effort.
+_MAX_REPLIES_PER_PASS = 20
+_MAX_REPLIES_PER_AUTHOR_PER_PASS = 3
 
 
 class BotNotConfigured(RuntimeError):
@@ -111,15 +123,19 @@ def _self_thread_records(
         except TweetImportError:
             break
         if parent.handle.lower() != author:
+            # Also covers the degraded case where the syndication body carried
+            # no screen_name (handle stays the "i" URL sentinel): the author
+            # is never "i", so the walk stops rather than fold in a record it
+            # can't attribute.
             break
-        if parent.handle != "i":
-            # The /i/web/ acquire canonicalised a handle-less permalink; the
-            # response carried the real handle, so rebuild the canonical form —
-            # the head's permalink anchors ``detected_from_url``.
-            parent = dataclasses.replace(
-                parent,
-                permalink=f"https://x.com/{parent.handle}/status/{parent.tweet_id}",
-            )
+        # The /i/web/ acquire canonicalised a handle-less permalink; the
+        # response carried the real handle (it passed the author check), so
+        # rebuild the canonical form — the head's permalink anchors
+        # ``detected_from_url``.
+        parent = dataclasses.replace(
+            parent,
+            permalink=f"https://x.com/{parent.handle}/status/{parent.tweet_id}",
+        )
         records.append(parent)
         current = parent
     return records
@@ -251,6 +267,7 @@ async def _process_mention(
     *,
     syndication_client: httpx.Client | None,
     x_write_client: httpx.Client | None,
+    reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None]:
     records = _self_thread_records(mention, client=syndication_client)
     detections = [d for thread in stitch(records) for d in detect(thread)]
@@ -261,13 +278,24 @@ async def _process_mention(
         db, owner=owner, detections=detections, fetch_media=fetch_cdn_media
     )
     if not assembled.created:
-        return "skipped", 0, None
-    reply = compose_reply(
-        [str(event.id) for event in assembled.created],
-        missing_source=any(event.source_url is None for event in assembled.created),
-        duplicate_media=_has_duplicate_media(db, assembled.created),
-    )
-    reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
+        # ``skipped`` is the dedup verdict; a persist that raised on every
+        # detection is a transient failure, and ``failed`` keeps it on the
+        # operator's retry path (delete the ledger row) instead of burying it
+        # as an already-imported tweet.
+        return ("failed" if assembled.failed else "skipped"), 0, None
+    reply_id: str | None = None
+    if reply_allowed:
+        reply = compose_reply(
+            [str(event.id) for event in assembled.created],
+            missing_source=any(event.source_url is None for event in assembled.created),
+            duplicate_media=_has_duplicate_media(db, assembled.created),
+        )
+        reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
+    else:
+        logger.warning(
+            "Reply budget reached; draft created without reply for mention %s",
+            mention.tweet_id,
+        )
     return "created", len(assembled.created), reply_id
 
 
@@ -303,23 +331,33 @@ async def run_bot_once(
         client=x_read_client,
     )
     outcome.mentions_seen = len(mentions)
+    author_replies: dict[str, int] = {}
     for mention in mentions:
-        # The bot's own posts can surface in its mentions timeline (a reply in
-        # a conversation it participates in mentions it); never self-process.
-        if mention.author_id == settings.x_bot_user_id:
-            continue
         exists = (
             db.query(BotMention.id).filter(BotMention.mention_tweet_id == mention.tweet_id).first()
         )
         if exists is not None:
             outcome.already_handled += 1
             continue
+        # The bot's own posts can surface in its mentions timeline (a reply in
+        # a conversation it participates in mentions it); never self-process —
+        # but ledger it, or the ``since_id`` cursor stalls below it and every
+        # subsequent pull re-reads (re-bills) it until a newer analyst mention
+        # lands.
+        if mention.author_id == settings.x_bot_user_id:
+            _record(db, mention, outcome="self")
+            continue
+        reply_allowed = (
+            outcome.replies_posted < _MAX_REPLIES_PER_PASS
+            and author_replies.get(mention.author_handle, 0) < _MAX_REPLIES_PER_AUTHOR_PER_PASS
+        )
         try:
             verdict, created, reply_id = await _process_mention(
                 db,
                 mention,
                 syndication_client=syndication_client,
                 x_write_client=x_write_client,
+                reply_allowed=reply_allowed,
             )
         except Exception as exc:
             db.rollback()
@@ -338,8 +376,11 @@ async def run_bot_once(
         outcome.events_created += created
         if reply_id is not None:
             outcome.replies_posted += 1
+            author_replies[mention.author_handle] = author_replies.get(mention.author_handle, 0) + 1
         if verdict == "no_detection":
             outcome.no_detection += 1
         elif verdict == "skipped":
             outcome.skipped += 1
+        elif verdict == "failed":
+            outcome.failed += 1
     return outcome
