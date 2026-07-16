@@ -12,7 +12,6 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Megaphone, Search as SearchIcon, Users } from "lucide-react";
-import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
@@ -55,7 +54,6 @@ export default function SearchPage() {
 }
 
 function SearchPageBody() {
-  const { user, loading: authLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -93,7 +91,6 @@ function SearchPageBody() {
 
   // Issue the API call whenever the committed query / type changes.
   useEffect(() => {
-    if (!user) return;
     const q = activeQuery.trim();
     if (!q) {
       setResults(null);
@@ -117,7 +114,7 @@ function SearchPageBody() {
         setError(err.message);
         setLoading(false);
       });
-  }, [activeQuery, typeFilter, user]);
+  }, [activeQuery, typeFilter]);
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -129,10 +126,6 @@ function SearchPageBody() {
   const onChipClick = useCallback((t: SearchType) => {
     setTypeFilter(t);
   }, []);
-
-  if (authLoading || !user) {
-    return <PageLoading />;
-  }
 
   const showGroup = (group: SearchType): boolean =>
     typeFilter === "all" || typeFilter === group;

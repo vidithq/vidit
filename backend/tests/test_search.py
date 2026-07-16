@@ -59,9 +59,11 @@ def db():
 
 @pytest.fixture
 def caller(db):
-    """Authenticated request originator for the search endpoint (auth-required).
+    """Authenticated request originator for the search endpoint.
 
-    Unique username so it doesn't accidentally show up as a result.
+    The endpoint is anonymous; most tests still call it signed-in so the
+    seeded rows have an owner. Unique username so it doesn't accidentally
+    show up as a result.
     """
     user = User(
         username=f"caller{uuid.uuid4().hex[:8]}",
@@ -90,9 +92,10 @@ def _unique_token() -> str:
 # ── Empty + validation ────────────────────────────────────────────────────
 
 
-def test_search_requires_auth():
+def test_search_is_anonymous():
+    """Search is part of the public read surface — no session required."""
     response = client.get("/api/v1/search?q=anything")
-    assert response.status_code == 401
+    assert response.status_code == 200
 
 
 def test_empty_query_returns_empty_groups(caller):

@@ -48,7 +48,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
 | **Search** | | | |
-| GET | `/search` | 🔒 | Free-text search across geolocations / requests / users |
+| GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
@@ -863,7 +863,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 
 **Out of scope for slice 1:** searching `source_url`, JSONB-content search (`events.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
 
-### `GET /search` 🔒
+### `GET /search` 🌐
 
 **Query params:**
 | Param | Type | Description |
