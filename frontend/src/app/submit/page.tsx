@@ -23,7 +23,7 @@ import {
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import type { EventDetail, Tag } from "@/types";
+import type { Conflict, EventDetail, Tag } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TweetImportBanner } from "@/components/event/TweetImportBanner";
 import { TagPicker } from "@/components/ui/TagPicker";
@@ -188,6 +188,16 @@ function SubmitForm() {
   // render), so the readiness memos below don't recompute on unrelated renders.
   const curatedTags = useMemo(() => curatedTagsData ?? [], [curatedTagsData]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  // The conflicts referential, fetched whole once (~800 rows) and filtered
+  // client-side by the picker's typeahead. Same recoverable-error treatment as
+  // the curated tags: a failed load blocks publish with a retryable banner.
+  const {
+    data: conflictsData,
+    error: conflictsError,
+    refetch: reloadConflicts,
+  } = useApiResource<Conflict[]>("/conflicts");
+  const conflicts = useMemo(() => conflictsData ?? [], [conflictsData]);
+  const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>([]);
 
   // In-form red outlines: set when a publish action is clicked while its floor
   // is short, so the analyst sees which fields to fix (the tick-list says what,
@@ -252,6 +262,7 @@ function SubmitForm() {
         setSourcePostedAt(toDatetimeLocalUTC(b.source_posted_at));
         setProof(b.proof ?? null);
         setSelectedTagIds(b.tags.map((t) => t.id));
+        setSelectedConflictIds(b.conflicts.map((c) => c.id));
       })
       .catch((err: Error) => setRequestError(err.message));
   }, [requestIdParam]);
@@ -277,6 +288,7 @@ function SubmitForm() {
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
         tag_ids: selectedTagIds,
+        conflict_ids: selectedConflictIds,
         files,
         proof_files: proofFiles,
       }),
@@ -310,6 +322,7 @@ function SubmitForm() {
           source_posted_at: sourcePostedAt,
           proof,
           tag_ids: selectedTagIds,
+          conflict_ids: selectedConflictIds,
           remove_media_ids: [],
           files: [],
           proof_files: proofFiles,
@@ -326,6 +339,7 @@ function SubmitForm() {
         source_posted_at: sourcePostedAt,
         proof,
         tag_ids: selectedTagIds,
+        conflict_ids: selectedConflictIds,
         files,
         proof_files: proofFiles,
       });
@@ -355,9 +369,7 @@ function SubmitForm() {
           sourcePostedAt,
           proof,
           mediaCount: files.length,
-          hasConflictTag: curatedTags.some(
-            (t) => t.category === "conflict" && selectedTagIds.includes(t.id)
-          ),
+          hasConflictTag: selectedConflictIds.length > 0,
           hasCaptureSourceTag: curatedTags.some(
             (t) => t.category === "capture_source" && selectedTagIds.includes(t.id)
           ),
@@ -375,6 +387,7 @@ function SubmitForm() {
       files.length,
       curatedTags,
       selectedTagIds,
+      selectedConflictIds,
       lockedFromRequest,
     ]
   );
@@ -399,7 +412,8 @@ function SubmitForm() {
   // Readiness drives the button emphasis: full strength when the floor is met,
   // dimmed while short. The button stays clickable so a click still flags the
   // gaps red; the dim is the at-a-glance "not ready yet" cue.
-  const geoReady = geoMissing.length === 0 && curatedTags.length > 0;
+  const geoReady =
+    geoMissing.length === 0 && curatedTags.length > 0 && conflicts.length > 0;
   const reqReady = reqMissing.length === 0;
 
   // Both publish handlers clear the shared error banner (the two mutations share
@@ -412,13 +426,14 @@ function SubmitForm() {
 
   const publishGeolocation = async () => {
     resetActions();
-    // A pending / failed curated-tags load is a recoverable state, not a missing
-    // field: surface it in the banner (Retry lives above) instead of the outlines.
-    if (curatedTags.length === 0) {
+    // A pending / failed curated-tags or conflicts load is a recoverable state,
+    // not a missing field: surface it in the banner (Retry lives above) instead
+    // of the outlines.
+    if (curatedTags.length === 0 || conflicts.length === 0) {
       geolocationMutation.setError(
-        curatedTagsError
+        curatedTagsError || conflictsError
           ? "Couldn’t load the required Conflict and Capture source options. Use Retry above, or reload the page."
-          : "Still loading the required tag options. Give it a moment and try again."
+          : "Still loading the required Conflict and Capture source options. Give it a moment and try again."
       );
       return;
     }
@@ -621,13 +636,27 @@ function SubmitForm() {
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 
-        {curatedTagsError && <CuratedTagsError onRetry={reloadCuratedTags} />}
+        {curatedTagsError && (
+          <CuratedTagsError
+            onRetry={reloadCuratedTags}
+            message="Couldn't load the Capture source options."
+          />
+        )}
+        {conflictsError && (
+          <CuratedTagsError
+            onRetry={reloadConflicts}
+            message="Couldn't load the Conflict options."
+          />
+        )}
         <TagPicker
           tags={tags}
           setTags={setTags}
           curatedTags={curatedTags}
           selectedTagIds={selectedTagIds}
           setSelectedTagIds={setSelectedTagIds}
+          conflicts={conflicts}
+          selectedConflictIds={selectedConflictIds}
+          setSelectedConflictIds={setSelectedConflictIds}
           requireConflict={false}
           requireCaptureSource={false}
           conflictInvalid={invalidKeys.has("conflict_tag")}

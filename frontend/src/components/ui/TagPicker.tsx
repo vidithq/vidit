@@ -1,12 +1,18 @@
 "use client";
 
 import { useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
-import type { Tag } from "@/types";
+import type { Conflict, Tag } from "@/types";
+import {
+  CONFLICT_OTHER_NAME,
+  conflictLabel,
+  sortConflicts,
+} from "@/lib/conflicts";
 import { useMutation } from "@/hooks/useMutation";
 import { ApiError, apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
+import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
@@ -18,11 +24,16 @@ interface TagPickerProps {
    *  and the create-new dedup list. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
-  /** Full curated taxonomy (`conflict` + `capture_source`), including
-   *  zero-usage rows — fetched with `?curated=true`. */
+  /** Full curated taxonomy (`capture_source`), including zero-usage rows
+   *  (fetched with `?curated=true`). */
   curatedTags: Tag[];
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
+  /** The full conflicts referential (`GET /conflicts`, ~800 rows), filtered
+   *  client-side by the typeahead. */
+  conflicts: Conflict[];
+  selectedConflictIds: string[];
+  setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
   /** Required-by-default: when false, the group shows an "optional" marker.
    *  Hint only — enforcement lives in the parent's submit handler. */
   requireConflict?: boolean;
@@ -36,10 +47,11 @@ interface TagPickerProps {
 /**
  * Shared tag-selection section for the geolocation + request submit forms.
  * Both render *this* so they can't drift apart — only `subtitle` and the
- * `require*` flags differ. Conflict is multi-select, capture source single-
- * select (one lens per piece of media); both come from the curated taxonomy,
- * free tags from the live list. The capture-source group doesn't render when
- * no `capture_source` tags are passed.
+ * `require*` flags differ. Conflict is a multi-select typeahead over the
+ * conflicts referential (not a tag category); capture source is single-select
+ * (one lens per piece of media) from the curated taxonomy, free tags from the
+ * live list. The capture-source group doesn't render when no `capture_source`
+ * tags are passed.
  */
 export function TagPicker({
   tags,
@@ -47,6 +59,9 @@ export function TagPicker({
   curatedTags,
   selectedTagIds,
   setSelectedTagIds,
+  conflicts,
+  selectedConflictIds,
+  setSelectedConflictIds,
   requireConflict = false,
   requireCaptureSource = false,
   conflictInvalid = false,
@@ -54,7 +69,6 @@ export function TagPicker({
 }: TagPickerProps) {
   // Red label + ring around the chips when the group blocked a submit/validate.
   const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
-  const conflictTags = curatedTags.filter((t) => t.category === "conflict");
   const captureSourceTags = curatedTags.filter(
     (t) => t.category === "capture_source"
   );
@@ -79,24 +93,20 @@ export function TagPicker({
 
   return (
     <Card as="section">
-      <SectionHeading title="Tags" concept="section_tags" />
+      <SectionHeading title="Classification" concept="section_classification" />
 
-      {conflictTags.length > 0 && (
+      {conflicts.length > 0 && (
         <div className="space-y-2">
           <span className={`${FORM_LABEL}${conflictInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
             Conflict <FieldHelp concept="conflict" />{" "}
             {!requireConflict && <OptionalHint />}
           </span>
-          <div className={`flex flex-wrap gap-2${conflictInvalid ? ` ${invalidChips}` : ""}`}>
-            {conflictTags.map((tag) => (
-              <Pill
-                key={tag.id}
-                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
-                onClick={() => toggleTag(tag.id)}
-              >
-                {tag.name}
-              </Pill>
-            ))}
+          <div className={conflictInvalid ? invalidChips : undefined}>
+            <ConflictTypeahead
+              conflicts={conflicts}
+              selectedIds={selectedConflictIds}
+              setSelectedIds={setSelectedConflictIds}
+            />
           </div>
         </div>
       )}
@@ -157,8 +167,130 @@ export function TagPicker({
   );
 }
 
+// Cap on the visible conflict result list: search over the ~800-row
+// referential ("Include ended") shows the first slice plus a "type to narrow"
+// hint. The empty-input default (major ongoing conflicts + Other) sits far
+// under it.
+const CONFLICTS_PREVIEW = 30;
+
+// Multi-select typeahead over the conflicts referential, filtering client-side
+// (the full list is fetched once, so no debounce is needed). With the input
+// empty only the major-tier ongoing conflicts show, with the "Other" escape
+// row pinned last; a hint counts the rest of the searchable set. Searching
+// covers all ongoing conflicts, and the "Include ended conflicts" switch
+// extends it to ended ones. Results sort by tier then name (see
+// `sortConflicts`). Selected conflicts render as accent pills above the input,
+// deselectable, and drop out of the result list. Private to the TagPicker,
+// its only consumer.
+function ConflictTypeahead({
+  conflicts,
+  selectedIds,
+  setSelectedIds,
+}: {
+  conflicts: Conflict[];
+  selectedIds: string[];
+  setSelectedIds: Dispatch<SetStateAction<string[]>>;
+}) {
+  const [query, setQuery] = useState("");
+  const [includeEnded, setIncludeEnded] = useState(false);
+
+  const toggle = (id: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  // A selection survives the filters: an ended pick stays visible (and
+  // deselectable) even with the switch off or a non-matching query.
+  const selected = conflicts.filter((c) => selectedIds.includes(c.id));
+
+  const q = query.trim().toLowerCase();
+  // What a search can reach under the current switch state.
+  const searchable = conflicts.filter(
+    (c) => !selectedIds.includes(c.id) && (includeEnded || c.ongoing)
+  );
+  // Empty input: only the major ongoing conflicts plus the "Other" escape row
+  // (regardless of the switch, which only widens the searchable set). The
+  // escape row is matched by name alone, no ongoing gate: it must always be
+  // offered even if a future backend change flips its flag.
+  const matches = sortConflicts(
+    q === ""
+      ? conflicts.filter(
+          (c) =>
+            !selectedIds.includes(c.id) &&
+            (c.name === CONFLICT_OTHER_NAME || (c.ongoing && c.tier === "major"))
+        )
+      : searchable.filter((c) => c.name.toLowerCase().includes(q))
+  );
+  const visible = matches.slice(0, CONFLICTS_PREVIEW);
+  const overflow = matches.length - visible.length;
+  // Empty input: count what typing can reach beyond the default pills, so the
+  // switch has a visible effect before any keystroke.
+  const searchableBeyondDefault = searchable.length - matches.length;
+
+  return (
+    <div className="space-y-2">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selected.map((c) => (
+            <Pill key={c.id} tone="accent" onClick={() => toggle(c.id)}>
+              {conflictLabel(c)}
+            </Pill>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search conflicts"
+          aria-label="Search conflicts"
+          className="flex-1 min-w-40 max-w-xs"
+        />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={includeEnded}
+          onClick={() => setIncludeEnded((v) => !v)}
+          className="flex items-center gap-2 text-xs text-neutral-400 hover:text-neutral-300 transition-colors"
+        >
+          <Switch as="span" size="sm" on={includeEnded} />
+          Include ended conflicts
+        </button>
+      </div>
+      {visible.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {visible.map((c) => (
+            <Pill key={c.id} tone="neutral" onClick={() => toggle(c.id)}>
+              {conflictLabel(c)}
+            </Pill>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          No conflicts match
+          {includeEnded ? "." : "; try including ended conflicts."}
+        </p>
+      )}
+      {overflow > 0 && (
+        <p className="text-xs text-neutral-500">
+          {overflow} more. Type to narrow the list.
+        </p>
+      )}
+      {/* Only under a non-empty list: the hint must not co-render with the
+          empty-state message above. */}
+      {q === "" && visible.length > 0 && searchableBeyondDefault > 0 && (
+        <p className="text-xs text-neutral-500">
+          {searchableBeyondDefault} more{includeEnded ? "" : " ongoing"}{" "}
+          conflict{searchableBeyondDefault === 1 ? "" : "s"}, type to search.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Inline "create a free tag" affordance. `free` is the only category an
-// analyst can create — `conflict` is admin-curated (see
+// analyst can create; `capture_source` is admin-curated (see
 // `backend/app/routers/tags.py::USER_CREATABLE_CATEGORIES`). Private to the
 // TagPicker, its only consumer.
 //

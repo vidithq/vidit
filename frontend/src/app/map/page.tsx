@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import type { MapPoint, EventDetail, Tag } from "@/types";
+import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
@@ -38,6 +38,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const { data: tagsData } = useApiResource<Tag[]>("/tags");
   const tags = tagsData ?? [];
+  // Only conflicts carried by >=1 live event: the filter offers what the map
+  // can actually show, not the whole ~800-row referential.
+  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const conflicts = conflictsData ?? [];
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -163,6 +167,7 @@ export default function HomePage() {
 
       <FilterPanel
         tags={tags}
+        conflicts={conflicts}
         points={points}
         pointCount={visiblePoints.length}
         loading={loading}

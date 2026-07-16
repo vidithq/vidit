@@ -57,16 +57,17 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
     assert body["items"][0]["status"] == "detected"
 
 
-def test_detections_includes_media_and_tags(db, author, conflict_tag, capture_source_tag):
+def test_detections_includes_media_and_tags(db, author, conflict, capture_source_tag):
     """The queue needs media (to judge) and tags (to compute readiness) inline,
     plus the provenance link the card points back to."""
-    _detected(db, author, tags=[conflict_tag, capture_source_tag], with_media=True)
+    _detected(db, author, tags=[capture_source_tag], conflicts=[conflict], with_media=True)
 
     response = client.get(_URL, headers=login_as(client, author))
     item = response.json()["items"][0]
     assert len(item["media"]) == 1
     assert item["media"][0]["media_type"] == "image"
-    assert {t["category"] for t in item["tags"]} == {"conflict", "capture_source"}
+    assert {t["category"] for t in item["tags"]} == {"capture_source"}
+    assert [c["name"] for c in item["conflicts"]] == [conflict.name]
     assert item["detected_from_url"] == "https://x.com/a/status/1"
 
 

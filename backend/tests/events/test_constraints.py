@@ -261,7 +261,7 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
 
 
 def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
-    db, author, conflict_tag, capture_source_tag
+    db, author, conflict, capture_source_tag
 ):
     """``lat`` / ``lng`` are required ``Form(...)`` fields on the geolocate
     endpoint (mirroring create): omitting them 422s before the service (and
@@ -277,7 +277,8 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
             "source_url": "https://example.com/post",
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
-            "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            "tag_ids": json.dumps([str(capture_source_tag.id)]),
+            "conflict_ids": json.dumps([str(conflict.id)]),
             "proof": proof_form_field(),
         },
         files=[proof_file_part()],

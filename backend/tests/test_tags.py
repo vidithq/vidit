@@ -142,7 +142,7 @@ def test_create_free_tag_clashing_category_returns_409(authed_user, db):
     name = f"clash-{uuid.uuid4().hex[:8]}"
     # Seed a curated row directly (the public API only lets analysts
     # create `free` tags, so the clash setup needs DB access).
-    db.add(Tag(name=name, category="conflict"))
+    db.add(Tag(name=name, category="capture_source"))
     db.commit()
     try:
         r = client.post(
@@ -158,6 +158,8 @@ def test_create_free_tag_clashing_category_returns_409(authed_user, db):
 
 
 def test_create_conflict_tag_forbidden(authed_user):
+    """Conflicts live in their own referential now; the retired ``conflict``
+    tag category behaves like any other non-creatable category."""
     _, headers = authed_user
     response = client.post(
         "/api/v1/tags",
@@ -227,37 +229,34 @@ def test_list_tags_filters_orphans(authed_user, db):
 
 
 def test_list_tags_curated_returns_unused_curated_tags(db):
-    """`?curated=true` returns the conflict + capture_source taxonomy
-    regardless of live usage.
+    """`?curated=true` returns the capture_source taxonomy regardless of
+    live usage.
 
-    The submit form's two required selectors need every option up front,
-    including ones no live geolocation references yet — the opposite of
+    The submit form's required selector needs every option up front,
+    including ones no live geolocation references yet, the opposite of
     the default view's orphan-hiding behaviour. Free tags are never part
-    of the curated set.
+    of the curated set (and conflicts are not tags at all).
     """
-    conflict = Tag(name=f"cf-{uuid.uuid4().hex[:8]}", category="conflict")
     capture = Tag(name=f"cs-{uuid.uuid4().hex[:8]}", category="capture_source")
     free = Tag(name=f"fr-{uuid.uuid4().hex[:8]}", category="free")
-    db.add_all([conflict, capture, free])
+    db.add_all([capture, free])
     db.commit()
 
     try:
-        # Default view hides all three — none is referenced by a live geo.
+        # Default view hides both: neither is referenced by a live geo.
         default = client.get("/api/v1/tags")
         default_names = {row["name"] for row in default.json()}
-        assert conflict.name not in default_names
         assert capture.name not in default_names
 
         curated = client.get("/api/v1/tags?curated=true")
         assert curated.status_code == 200
         rows = curated.json()
         names = {row["name"] for row in rows}
-        assert conflict.name in names
         assert capture.name in names
         assert free.name not in names
-        assert {row["category"] for row in rows} <= {"conflict", "capture_source"}
+        assert {row["category"] for row in rows} <= {"capture_source"}
     finally:
-        for tag in (conflict, capture, free):
+        for tag in (capture, free):
             db.execute(Tag.__table__.delete().where(Tag.id == tag.id))
         db.commit()
 

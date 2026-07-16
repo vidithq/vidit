@@ -34,6 +34,11 @@ export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
 
 export type Tag = components["schemas"]["TagRead"];
 
+/** One row of the conflicts referential (`GET /conflicts`). `ongoing` drives
+ *  the picker's default list; `start_year` / `end_year` disambiguate ended
+ *  entries. */
+export type Conflict = components["schemas"]["ConflictRead"];
+
 /** The unified 4-value event lifecycle: ``requested`` (an open call to
  *  geolocate, the requested/request view) → ``detected`` (machine output,
  *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a

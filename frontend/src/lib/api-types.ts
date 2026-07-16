@@ -484,6 +484,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conflicts
+         * @description Return the conflicts referential, ongoing first then by name.
+         *
+         *     The default returns every row: the submit picker needs the full
+         *     referential up front (ongoing conflicts plus the ended ones behind its
+         *     "include ended" toggle) so an analyst geolocating archival footage can
+         *     tag it. The referential is server-managed (Wikipedia sync + Wikidata
+         *     seed + operator rows); there is no create endpoint.
+         *
+         *     ``used=true`` flips to the map-filter view: only conflicts carried by at
+         *     least one live event, so the filter UI never surfaces a chip that matches
+         *     zero results. Mirrors the orphan filter on ``GET /tags``.
+         */
+        get: operations["list_conflicts_api_v1_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -790,7 +820,7 @@ export interface paths {
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
          *     Blocked until the evidence floor is met (one source media, a proof image,
-         *     and the ``conflict`` + ``capture_source`` tags, 400 otherwise). Off
+         *     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
@@ -872,10 +902,10 @@ export interface paths {
          *     once every geo using it is removed.
          *
          *     ``curated=true`` flips the default: it returns the full curated
-         *     taxonomy (``conflict`` + ``capture_source``) regardless of live usage.
-         *     The submit form needs *every* option in these two required buckets up
-         *     front so the analyst can pick the right one even when they're first to
-         *     tag it — the usage filter that's right for the map is wrong here.
+         *     ``capture_source`` taxonomy regardless of live usage. The submit form
+         *     needs *every* option in this required bucket up front so the analyst can
+         *     pick the right one even when they're first to tag it; the usage filter
+         *     that's right for the map is wrong here.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
@@ -1369,6 +1399,8 @@ export interface components {
             capture_source_lat?: number | null;
             /** Capture Source Lng */
             capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1398,6 +1430,8 @@ export interface components {
             capture_source_lat?: number | null;
             /** Capture Source Lng */
             capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
             /** Event Date */
             event_date?: string | null;
             /** Event Time */
@@ -1427,6 +1461,8 @@ export interface components {
             capture_source_lat?: number | null;
             /** Capture Source Lng */
             capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
             /** Event Date */
             event_date: string;
             /** Event Time */
@@ -1483,6 +1519,36 @@ export interface components {
             token: string;
         };
         /**
+         * ConflictRead
+         * @description One row of the conflicts referential on the wire.
+         *
+         *     ``last_seen_at`` and ``source`` stay off the wire: they are sync-machinery
+         *     internals, not product facts. ``ongoing`` drives the picker's default
+         *     (ongoing first, ended behind a toggle); ``start_year`` / ``end_year``
+         *     disambiguate same-named historical entries in the typeahead; ``tier``
+         *     (Wikipedia death-toll tier, NULL when unknown) lets the picker rank
+         *     ongoing conflicts by severity.
+         */
+        ConflictRead: {
+            /** End Year */
+            end_year: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Ongoing */
+            ongoing: boolean;
+            /** Start Year */
+            start_year: number | null;
+            /** Tier */
+            tier: ("major" | "minor" | "conflict") | null;
+            /** Wikidata Id */
+            wikidata_id: string | null;
+        };
+        /**
          * CoordsRead
          * @description One WGS84 point on the wire. Nesting (instead of flat ``lat`` / ``lng``
          *     pairs) lets a payload carry two independent points, the subject and the
@@ -1533,6 +1599,8 @@ export interface components {
         EventList: {
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected") | null;
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictRead"][];
             event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;
@@ -1568,6 +1636,8 @@ export interface components {
             close_reason: string | null;
             /** Closed At */
             closed_at: string | null;
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictRead"][];
             /**
              * Created At
              * Format: date-time
@@ -1699,9 +1769,9 @@ export interface components {
          *
          *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
          *     (media + tags + provenance) rather than the lightweight ``EventList``
-         *     card: the Detections queue needs the media to judge a detection and the tags
-         *     to compute submit-readiness (source media + a ``conflict`` + a
-         *     ``capture_source`` tag) without a per-row round-trip.
+         *     card: the Detections queue needs the media to judge a detection and the
+         *     tags + conflicts to compute submit-readiness (source media + a conflict +
+         *     a ``capture_source`` tag) without a per-row round-trip.
          */
         PaginatedEventDetails: {
             /** Items */
@@ -1934,7 +2004,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "conflict" | "capture_source" | "free";
+            category: "capture_source" | "free";
             /**
              * Id
              * Format: uuid
@@ -2946,6 +3016,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conflicts_api_v1_conflicts_get: {
+        parameters: {
+            query?: {
+                used?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictRead"][];
+                };
             };
             /** @description Validation Error */
             422: {

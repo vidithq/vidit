@@ -40,7 +40,30 @@ An X "Download your data" export additionally exposes the analyst's own reply ed
 - **Telegram footage links**: chased through the post's public embed (`t.me/<channel>/<id>?embed=1`) for the post date and, when the embed serves it, the footage media. A sensitive-content post serves neither, so it degrades to link + date. Only public `t.me/<channel>/<id>` posts are fetched; several distinct footage links leave the source ambiguous and nothing is chased.
 - **Photos and videos**: video capture takes the highest-bitrate mp4 variant the export saved.
 
+## Conflict referential sync
+
+The conflicts an event can be tagged with are not user-created: they live in the [`conflicts`](data-model.md#conflicts) table, fed from two external sources by [`conflict_sync.py`](../backend/app/services/conflict_sync.py) and [`seed_conflicts.py`](../backend/scripts/seed_conflicts.py).
+
+**Source.** The daily sync parses Wikipedia's "List of ongoing armed conflicts" via the MediaWiki API: the top-level rows of the three top tiers (major wars, minor wars, conflicts), skirmishes excluded as high-churn editorial noise. The page's presence boundary (a conflict is listed iff editors judge it ongoing) is exactly the product's `ongoing` flag, so syncing it externalises both the list and the "is it still ongoing" judgement.
+
+**QID identity.** Each row's article resolves to its Wikidata QID, and the sync upserts by QID, not by name: the page renames conflicts constantly (24 of 35 month transitions over 2023-2026 changed at least one name, almost all editorial renames of the same conflict), and the QID survives every rename. A rename updates `conflicts.name` in place; a same-name row without a QID is adopted; a name collision is skipped and logged.
+
+**Tier capture.** Each row's tier table becomes `conflicts.tier` (`major`, `minor`, or `conflict`: the page's death-toll bands, 10,000+ combat deaths in the current or previous year, 1,000-9,999, 100-999). A conflict that moves to another tier table gets `tier` updated on the next pass; rows the sync has never seen keep `tier` NULL.
+
+**start_year fill.** The sync parses each row's start-of-conflict year from the page and writes `start_year` only where it is NULL; an existing value (the Wikidata seed's years) is never overwritten.
+
+**Grace period, never delete.** Disappearance from the page is ambiguous (ended, renamed, or slid below a tier threshold), so a row flips `ongoing=false` only after 14 consecutive days of absence (`last_seen_at`), and rows are never deleted. Rows the sync has never seen (`last_seen_at IS NULL`: the manual `Other`, unseen seed rows) are never touched.
+
+**Strict-parse abort.** If the page structure stops matching (tier tables missing) or the row count falls outside [15, 80], the sync raises and writes nothing, leaving the referential as it was; the runner exits non-zero.
+
+**The two scripts:**
+
+- `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**: a Wikidata SPARQL pull of historical conflicts since 1914 (~700-850 rows, a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies and the relevant margins; battles / operations / coup attempts excluded). Missing QIDs insert as `source='seed'`, `ongoing=false`; existing rows are never modified (the sync owns them). Idempotent, safe to re-run.
+- `uv run python scripts/sync_conflicts.py` runs **daily via a Railway cron service**: one pass of the Wikipedia sync described above. Also runnable by hand.
+
+**Scheduler config.** Mirrors the [`backend-backup`](backups.md) pattern: a dedicated Railway service built from the backend image (root `Dockerfile`), cron schedule `0 6 * * *`, start command `uv run python scripts/sync_conflicts.py`, env `DATABASE_URL=${{backend.DATABASE_URL}}` (reference `backend.DATABASE_URL`, not the DB service). The process makes one pass and exits; a non-zero exit shows on the service's deployment view and, when `SENTRY_DSN` is set, a strict-parse abort is captured to Sentry. A missed run is harmless: the sync is idempotent and the 14-day grace period absorbs multi-day gaps.
+
 ## See also
 
-- [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts.
-- [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
+- [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts, and [`GET /conflicts`](api.md#get-conflicts) for the referential on the wire.
+- [`data-model.md`](data-model.md#conflicts) for the `conflicts` / `event_conflicts` columns, and [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.

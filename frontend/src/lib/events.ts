@@ -41,7 +41,7 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   proof: "Proof",
   proof_image: "Proof image",
   source_media: "Source media",
-  conflict_tag: "Conflict tag",
+  conflict_tag: "Conflict",
   capture_source_tag: "Capture source tag",
 };
 
@@ -174,6 +174,9 @@ export interface EventEditInput {
   proof?: Record<string, unknown> | null;
   /** Replaces the tag set wholesale. */
   tag_ids: string[];
+  /** Replaces the conflict set wholesale (the conflicts referential, separate
+   *  from tags). */
+  conflict_ids: string[];
   /** Ids of existing media to drop. */
   remove_media_ids: string[];
   /** New source media to upload. */
@@ -202,6 +205,7 @@ function appendSharedEventFields(
     capture_source_lng?: number;
     event_time?: string;
     tag_ids?: string[];
+    conflict_ids?: string[];
   }
 ): void {
   fd.append("title", input.title);
@@ -217,6 +221,9 @@ function appendSharedEventFields(
   if (input.proof) fd.append("proof", JSON.stringify(input.proof));
   if (input.tag_ids && input.tag_ids.length > 0) {
     fd.append("tag_ids", JSON.stringify(input.tag_ids));
+  }
+  if (input.conflict_ids && input.conflict_ids.length > 0) {
+    fd.append("conflict_ids", JSON.stringify(input.conflict_ids));
   }
 }
 
@@ -306,6 +313,7 @@ export interface EventRequestInput {
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
   source_posted_at: string;
   tag_ids?: string[];
+  conflict_ids?: string[];
   files: File[];
   /** The proof body's inline images, held locally while typing and uploaded
    *  here at publish (matched to the doc's `placeholder://` srcs). Optional on a
@@ -387,8 +395,8 @@ export interface SubmitReadiness {
  * it. Delegates to `missingEventFields` (requireMedia + requireTags), the
  * same check the Submit button makes, so the readiness line can never drift from
  * what submitting actually enforces. (The backend floor is the narrower media +
- * `conflict` + `capture_source` tags; the form adds the core fields and a proof
- * image on top, see `missingEventFields`.)
+ * one conflict + a `capture_source` tag; the form adds the core fields and a
+ * proof image on top, see `missingEventFields`.)
  */
 export function submitReadiness(geo: {
   title: string;
@@ -400,6 +408,7 @@ export function submitReadiness(geo: {
   proof: Record<string, unknown> | null;
   media: readonly unknown[];
   tags: readonly { category: TagCategory }[];
+  conflicts: readonly unknown[];
 }): SubmitReadiness {
   const missing = missingEventFields(
     {
@@ -411,7 +420,7 @@ export function submitReadiness(geo: {
       sourcePostedAt: geo.source_posted_at,
       proof: geo.proof,
       mediaCount: geo.media.length,
-      hasConflictTag: geo.tags.some((t) => t.category === "conflict"),
+      hasConflictTag: geo.conflicts.length > 0,
       hasCaptureSourceTag: geo.tags.some((t) => t.category === "capture_source"),
     },
     { requireMedia: true, requireTags: true }

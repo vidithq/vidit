@@ -107,7 +107,7 @@ def _make_requested_with_media(db, *, author):
     return request
 
 
-def _fulfilment_form(conflict_tag, capture_source_tag, *, title: str) -> dict[str, str]:
+def _fulfilment_form(conflict, capture_source_tag, *, title: str) -> dict[str, str]:
     return {
         "title": title,
         "lat": "48.5",
@@ -115,13 +115,14 @@ def _fulfilment_form(conflict_tag, capture_source_tag, *, title: str) -> dict[st
         "source_url": "https://example.com/post",
         "event_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
-        "tag_ids": json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+        "tag_ids": json.dumps([str(capture_source_tag.id)]),
+        "conflict_ids": json.dumps([str(conflict.id)]),
         "proof": proof_form_field(),
     }
 
 
 def test_concurrent_geolocate_exactly_one_wins(
-    db, author, second_user, third_user, conflict_tag, capture_source_tag
+    db, author, second_user, third_user, conflict, capture_source_tag
 ):
     """Two different analysts both try to fulfil the same open request at once.
 
@@ -142,7 +143,7 @@ def test_concurrent_geolocate_exactly_one_wins(
     def worker(fulfiller, title: str) -> None:
         c = TestClient(app)
         headers = login_as(c, fulfiller)
-        data = _fulfilment_form(conflict_tag, capture_source_tag, title=title)
+        data = _fulfilment_form(conflict, capture_source_tag, title=title)
         barrier.wait(timeout=2)
         response = c.post(
             f"/api/v1/events/{request_id}/geolocate",

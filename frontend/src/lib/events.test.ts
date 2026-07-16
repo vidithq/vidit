@@ -56,7 +56,7 @@ describe("missingEventFields", () => {
       "Source post time",
       "Proof",
       "Source media",
-      "Conflict tag",
+      "Conflict",
       "Capture source tag",
     ]);
   });
@@ -122,10 +122,8 @@ describe("submitReadiness", () => {
       content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
     },
     media: [{}, {}],
-    tags: [
-      { category: "conflict" as const },
-      { category: "capture_source" as const },
-    ],
+    tags: [{ category: "capture_source" as const }],
+    conflicts: [{}],
   };
 
   it("is ready when the full submit floor is met", () => {
@@ -138,12 +136,13 @@ describe("submitReadiness", () => {
       proof: { type: "doc", content: [{ type: "paragraph" }] },
       media: [],
       tags: [],
+      conflicts: [],
     });
     expect(r.isReady).toBe(false);
     expect(r.missing).toEqual([
       "Proof image",
       "Source media",
-      "Conflict tag",
+      "Conflict",
       "Capture source tag",
     ]);
   });

@@ -14,7 +14,7 @@ export const FIELD_HELP = {
     label: "What makes a good title?",
   },
   conflict: {
-    text: "Which armed conflict this event belongs to.",
+    text: "Which armed conflict this event belongs to. The list mirrors Wikipedia's list of ongoing armed conflicts (synced daily; the default suggestions are its major wars), and historical conflicts since 1914 are available via “Include ended conflicts”. Pick “Other” for anything not listed.",
     label: "What is the conflict?",
   },
   capture_source: {
@@ -78,9 +78,9 @@ export const FIELD_HELP = {
     text: "When the event happened, when the source posted the media, and where it was first published.",
     label: "What goes in Details?",
   },
-  section_tags: {
+  section_classification: {
     text: "Conflict and capture source classify the event; add free tags so others can find it.",
-    label: "What goes in Tags?",
+    label: "What goes in Classification?",
   },
   section_proof: {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",

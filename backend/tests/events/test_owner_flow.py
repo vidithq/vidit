@@ -127,11 +127,12 @@ def _geolocate_form(**overrides):
     return form
 
 
-def _floor_form(conflict_tag, capture_source_tag, **overrides):
-    """A geolocate form that meets the tag + proof-image floor. Pair with a
+def _floor_form(conflict, capture_source_tag, **overrides):
+    """A geolocate form that meets the conflict + tag + proof-image floor. Pair with a
     ``with_media=True`` row (and ``files=_floor_files()``) to clear it all."""
     return _geolocate_form(
-        tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+        tag_ids=json.dumps([str(capture_source_tag.id)]),
+        conflict_ids=json.dumps([str(conflict.id)]),
         proof=proof_form_field(),
         **overrides,
     )
@@ -188,13 +189,13 @@ def test_geolocate_rejects_geolocated_row(db, author):
     assert response.json()["detail"]["code"] == "invalid_state"
 
 
-def test_geolocate_writes_fields_and_freezes(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_source_tag):
     """Geolocate writes the whole form and flips the row to ``geolocated``."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         data=_floor_form(
-            conflict_tag,
+            conflict,
             capture_source_tag,
             title="Completed title",
             lat="50.25",
@@ -214,7 +215,8 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict_tag, capture_s
     assert body["capture_source_coords"] == {"lat": 50.3, "lng": 30.6}
     assert body["event_date"] == "2026-07-01"
     assert body["source_posted_at"].startswith("2026-06-30T07:45")
-    assert {t["id"] for t in body["tags"]} == {str(conflict_tag.id), str(capture_source_tag.id)}
+    assert {t["id"] for t in body["tags"]} == {str(capture_source_tag.id)}
+    assert {c["id"] for c in body["conflicts"]} == {str(conflict.id)}
     # Geolocate freezes it: a detected row becomes geolocated, stamped, and
     # the owner lands in the durable credit table.
     assert body["status"] == "geolocated"
@@ -228,7 +230,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict_tag, capture_s
 
 
 def test_geolocate_applies_source_url_but_ignores_provenance_and_state(
-    db, author, conflict_tag, capture_source_tag
+    db, author, conflict, capture_source_tag
 ):
     """The owner curates the form: ``source_url`` is editable. Only
     ``detected_from_url`` (provenance) and ``status`` have no field, so sending
@@ -237,7 +239,7 @@ def test_geolocate_applies_source_url_but_ignores_provenance_and_state(
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         data=_floor_form(
-            conflict_tag,
+            conflict,
             capture_source_tag,
             source_url="https://example.com/new-source",
             detected_from_url="https://evil.example/swap",  # ignored, no field
@@ -253,13 +255,13 @@ def test_geolocate_applies_source_url_but_ignores_provenance_and_state(
     assert body["status"] == "geolocated"  # set by the verb, not the ignored field
 
 
-def test_geolocate_source_posted_at_round_trips(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_source_posted_at_round_trips(db, author, conflict, capture_source_tag):
     """source_posted_at is part of the full form and round-trips; it's required
     (a post always has a time)."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict_tag, capture_source_tag, source_posted_at="2026-06-30T13:20"),
+        data=_floor_form(conflict, capture_source_tag, source_posted_at="2026-06-30T13:20"),
         files=_floor_files(),
         headers=login_as(client, author),
     )
@@ -280,13 +282,13 @@ def test_geolocate_rejects_out_of_range_coordinate(db, author):
     assert response.json()["detail"]["code"] == "invalid_coordinates"
 
 
-def test_geolocate_blocked_without_media(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_blocked_without_media(db, author, conflict, capture_source_tag):
     """The evidence floor is enforced at the transition: no source media
     (kept + new) 400s."""
     geo = _detected(db, author, with_media=False)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict_tag, capture_source_tag),
+        data=_floor_form(conflict, capture_source_tag),
         files=_floor_files(),
         headers=login_as(client, author),
     )
@@ -294,14 +296,15 @@ def test_geolocate_blocked_without_media(db, author, conflict_tag, capture_sourc
     assert response.json()["detail"]["code"] == "media_required"
 
 
-def test_geolocate_blocked_without_proof_image(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_blocked_without_proof_image(db, author, conflict, capture_source_tag):
     """A proof body with no inline image fails the floor: a vouched location
     needs a visual argument."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         data=_geolocate_form(
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)])
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         headers=login_as(client, author),
     )
@@ -323,12 +326,12 @@ def test_geolocate_blocked_without_required_tags(db, author):
     assert response.json()["detail"]["code"] == "tag_requirements_not_met"
 
 
-def test_geolocate_blocked_with_partial_tags(db, author, conflict_tag):
-    """conflict alone isn't enough; capture_source is still required."""
+def test_geolocate_blocked_with_partial_tags(db, author, conflict):
+    """A conflict alone isn't enough; capture_source is still required."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_geolocate_form(tag_ids=json.dumps([str(conflict_tag.id)]), proof=proof_form_field()),
+        data=_geolocate_form(conflict_ids=json.dumps([str(conflict.id)]), proof=proof_form_field()),
         files=_floor_files(),
         headers=login_as(client, author),
     )
@@ -336,12 +339,12 @@ def test_geolocate_blocked_with_partial_tags(db, author, conflict_tag):
     assert response.json()["detail"]["code"] == "tag_requirements_not_met"
 
 
-def test_geolocate_freezes_against_resubmit(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_freezes_against_resubmit(db, author, conflict, capture_source_tag):
     """After the transition the row is ``geolocated``; a follow-up geolocate 409s."""
     geo = _detected(db, author, with_media=True)
     ok = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict_tag, capture_source_tag),
+        data=_floor_form(conflict, capture_source_tag),
         files=_floor_files(),
         headers=login_as(client, author),
     )
@@ -350,7 +353,7 @@ def test_geolocate_freezes_against_resubmit(db, author, conflict_tag, capture_so
 
     frozen = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict_tag, capture_source_tag),
+        data=_floor_form(conflict, capture_source_tag),
         files=_floor_files(),
         headers=login_as(client, author),
     )
@@ -358,13 +361,13 @@ def test_geolocate_freezes_against_resubmit(db, author, conflict_tag, capture_so
     assert frozen.json()["detail"]["code"] == "invalid_state"
 
 
-def test_geolocate_invalidates_points_cache(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_invalidates_points_cache(db, author, conflict, capture_source_tag):
     geo = _detected(db, author, with_media=True)
     assert client.get("/api/v1/events/points").headers.get("x-cache") == "MISS"
     assert client.get("/api/v1/events/points").headers.get("x-cache") == "HIT"
     client.post(
         f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict_tag, capture_source_tag),
+        data=_floor_form(conflict, capture_source_tag),
         files=_floor_files(),
         headers=login_as(client, author),
     )

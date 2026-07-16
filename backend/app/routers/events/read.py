@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
+from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -179,13 +180,14 @@ def _apply_filters(
     a ``requested`` event may carry an approximate guess now, and it must not
     leak into the located catalog because of it.
 
-    Tag semantics: ``conflict``, ``capture_source`` and ``tag`` each take a
-    list of names. Within a list, **any-match (OR)**; across the lists,
-    **all-match (AND)**. ``conflict`` / ``capture_source`` also pin the
-    matched tag's category to their own bucket so a same-named free tag
-    can't poison either curated filter; ``tag`` matches any category so a
-    caller can filter by a name without knowing its bucket (back-compat
-    with the pre-multi-select API).
+    Filter semantics: ``conflict``, ``capture_source`` and ``tag`` each take
+    a list of names. Within a list, **any-match (OR)**; across the lists,
+    **all-match (AND)**. ``conflict`` matches the ``conflicts`` referential
+    (its own join, so a same-named free tag can't poison it);
+    ``capture_source`` pins the matched tag's category to its bucket for the
+    same reason; ``tag`` matches any tag category so a caller can filter by
+    a name without knowing its bucket (back-compat with the pre-multi-select
+    API).
     """
     query = query.filter(Event.deleted_at.is_(None), _view_predicate(view))
 
@@ -193,11 +195,9 @@ def _apply_filters(
         query = query.filter(Event.status == status_filter)
 
     if conflict:
-        # ``.tags.any(...)`` lowers to EXISTS so a second tag filter
-        # doesn't row-multiply the way a plain JOIN would.
-        query = query.filter(
-            Event.tags.any(and_(Tag.name.in_(conflict), Tag.category == "conflict"))
-        )
+        # ``.conflicts.any(...)`` lowers to EXISTS so a second relationship
+        # filter doesn't row-multiply the way a plain JOIN would.
+        query = query.filter(Event.conflicts.any(Conflict.name.in_(conflict)))
     if capture_source:
         query = query.filter(
             Event.tags.any(and_(Tag.name.in_(capture_source), Tag.category == "capture_source"))
@@ -499,6 +499,7 @@ def list_events(
         .options(
             subqueryload(Event.owner),
             subqueryload(Event.tags),
+            subqueryload(Event.conflicts),
             subqueryload(Event.media.and_(Media.role == "source")),
         )
         .filter(Event.id.in_(ids))
@@ -525,6 +526,7 @@ def list_events(
             owner=geo.owner,
             media=source_media(geo),
             tags=geo.tags,
+            conflicts=geo.conflicts,
             investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
             investigators_sample=sample.get(geo.id, []) if view == "requested" else None,
         )
@@ -582,6 +584,7 @@ def list_detections(
             joinedload(Event.owner),
             joinedload(Event.requested_by),
             selectinload(Event.tags),
+            selectinload(Event.conflicts),
             selectinload(Event.media.and_(Media.role == "source")),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),

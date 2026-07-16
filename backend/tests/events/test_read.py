@@ -15,6 +15,7 @@ import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
+from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, Event
 from app.models.tag import Tag
 from app.models.user import User
@@ -49,7 +50,7 @@ def test_list_excludes_soft_deleted_rows(db, author):
     assert str(dead.id) not in ids
 
 
-def test_list_filters_by_free_tag(db, author, free_tag, conflict_tag):
+def test_list_filters_by_free_tag(db, author, free_tag):
     with_tag = _make_geo(db, author=author, tags=[free_tag])
     without_tag = _make_geo(db, author=author)
 
@@ -60,11 +61,11 @@ def test_list_filters_by_free_tag(db, author, free_tag, conflict_tag):
     assert str(without_tag.id) not in ids
 
 
-def test_list_filters_by_conflict(db, author, conflict_tag):
-    with_conflict = _make_geo(db, author=author, tags=[conflict_tag])
+def test_list_filters_by_conflict(db, author, conflict):
+    with_conflict = _make_geo(db, author=author, conflicts=[conflict])
     other = _make_geo(db, author=author)
 
-    response = client.get(f"/api/v1/events?conflict={conflict_tag.name}")
+    response = client.get(f"/api/v1/events?conflict={conflict.name}")
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
     assert str(with_conflict.id) in ids
@@ -72,10 +73,10 @@ def test_list_filters_by_conflict(db, author, conflict_tag):
 
 
 def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
-    """A free tag named the same as a conflict tag must not match `?conflict=`.
+    """A free tag named like a conflict must not match `?conflict=`.
 
-    Conflict filtering keys on `Tag.category == "conflict"`. If that
-    constraint regresses, a `free` tag with a clashing name (e.g.
+    Conflict filtering joins the `conflicts` referential, never the tags
+    table. If that regresses, a `free` tag with a clashing name (e.g.
     someone tags a geo with the free string "Ukraine") would leak into
     the conflict filter and inflate counts.
     """
@@ -508,18 +509,18 @@ def test_points_or_within_free_tag_list(db, author):
 def test_points_or_within_conflict_list(db, author):
     """Multiple ``?conflict=`` values match geos in ANY listed conflict.
 
-    Same OR-within story as free tags. Conflict matching additionally
-    requires the matched tag's ``category == "conflict"`` so a free
-    tag named "Ukraine" can't poison the result.
+    Same OR-within story as free tags. Conflict matching joins the
+    ``conflicts`` referential, so a free tag named like a conflict can't
+    poison the result.
     """
-    conflict_a = Tag(name=f"ca-{uuid.uuid4().hex[:8]}", category="conflict")
-    conflict_b = Tag(name=f"cb-{uuid.uuid4().hex[:8]}", category="conflict")
+    conflict_a = Conflict(name=f"ca-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    conflict_b = Conflict(name=f"cb-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
     free_same_name = Tag(name=conflict_a.name + "-free", category="free")
     db.add_all([conflict_a, conflict_b, free_same_name])
     db.commit()
 
-    geo_a = _make_geo(db, author=author, tags=[conflict_a])
-    geo_b = _make_geo(db, author=author, tags=[conflict_b])
+    geo_a = _make_geo(db, author=author, conflicts=[conflict_a])
+    geo_b = _make_geo(db, author=author, conflicts=[conflict_b])
     geo_none = _make_geo(db, author=author, tags=[free_same_name])
 
     try:
@@ -533,28 +534,27 @@ def test_points_or_within_conflict_list(db, author):
         assert str(geo_none.id) not in ids
     finally:
         db.execute(
-            Tag.__table__.delete().where(
-                Tag.id.in_([conflict_a.id, conflict_b.id, free_same_name.id])
-            )
+            Conflict.__table__.delete().where(Conflict.id.in_([conflict_a.id, conflict_b.id]))
         )
+        db.execute(Tag.__table__.delete().where(Tag.id == free_same_name.id))
         db.commit()
 
 
 def test_points_and_across_conflict_and_tag(db, author):
     """``?conflict=X&tag=Y`` returns the intersection.
 
-    A geo needs at least one conflict tag in the conflict list AND at
-    least one free tag in the tag list. Without the AND-across-categories
+    A geo needs at least one conflict in the conflict list AND at
+    least one free tag in the tag list. Without the AND-across-buckets
     rule, the filter would degrade into a union and surface noise the
     analyst didn't ask for.
     """
-    conflict = Tag(name=f"conf-{uuid.uuid4().hex[:8]}", category="conflict")
+    conflict = Conflict(name=f"conf-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
     free = Tag(name=f"free-{uuid.uuid4().hex[:8]}", category="free")
     db.add_all([conflict, free])
     db.commit()
 
-    matching = _make_geo(db, author=author, tags=[conflict, free])
-    conflict_only = _make_geo(db, author=author, tags=[conflict])
+    matching = _make_geo(db, author=author, tags=[free], conflicts=[conflict])
+    conflict_only = _make_geo(db, author=author, conflicts=[conflict])
     free_only = _make_geo(db, author=author, tags=[free])
 
     try:
@@ -565,7 +565,8 @@ def test_points_and_across_conflict_and_tag(db, author):
         assert str(conflict_only.id) not in ids
         assert str(free_only.id) not in ids
     finally:
-        db.execute(Tag.__table__.delete().where(Tag.id.in_([conflict.id, free.id])))
+        db.execute(Conflict.__table__.delete().where(Conflict.id == conflict.id))
+        db.execute(Tag.__table__.delete().where(Tag.id == free.id))
         db.commit()
 
 

@@ -37,6 +37,7 @@ const createInput: EventCreateInput = {
   source_posted_at: "2026-01-01T00:00",
   proof: { type: "doc", content: [] },
   tag_ids: ["t1"],
+  conflict_ids: ["c1"],
   files: [vid],
   proof_files: [pngA, pngB],
 };
@@ -70,6 +71,18 @@ describe("createEvent multipart", () => {
     expect(body.getAll("proof_files")).toEqual([pngA, pngB]);
     expect(body.get("file")).toBe(vid); // create sends the source under singular `file`
     expect(body.getAll("files")).toEqual([]);
+  });
+
+  it("encodes tag_ids and conflict_ids as JSON arrays", async () => {
+    await createEvent(createInput);
+    const body = lastBody();
+    expect(body.get("tag_ids")).toBe(JSON.stringify(["t1"]));
+    expect(body.get("conflict_ids")).toBe(JSON.stringify(["c1"]));
+  });
+
+  it("omits conflict_ids when none are selected", async () => {
+    await createEvent({ ...createInput, conflict_ids: [] });
+    expect(lastBody().has("conflict_ids")).toBe(false);
   });
 
   it("omits the camera point when it isn't set", async () => {

@@ -92,6 +92,7 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
+            selectinload(Event.conflicts),
             selectinload(Event.media.and_(Media.role == "source")),
         )
         .filter(where_clause)

@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 
-import type { EventDetail, EventStatus, Tag } from "@/types";
+import type { Conflict, EventDetail, EventStatus, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -121,9 +121,19 @@ const MOCK_DETAIL: EventDetail = {
     trust_reason: "Verified analyst",
   },
   tags: [
-    { id: "t1", name: "Ukraine", category: "conflict" },
     { id: "t2", name: "Drone", category: "capture_source" },
     { id: "t3", name: "Donetsk", category: "free" },
+  ],
+  conflicts: [
+    {
+      id: "c1",
+      name: "Russian invasion of Ukraine",
+      wikidata_id: null,
+      start_year: 2022,
+      end_year: null,
+      ongoing: true,
+      tier: "major",
+    },
   ],
   source_url: "synthetic://demo",
   event_time: "15:45:00",
@@ -155,16 +165,56 @@ const MOCK_CARD_GEO = {
   lng: 37.8024,
   owner: { username: "analyst" },
   tags: [
-    { id: "t1", name: "Ukraine", category: "conflict" as const },
     { id: "t2", name: "Drone", category: "capture_source" as const },
+    { id: "t3", name: "Donetsk", category: "free" as const },
   ],
 };
 
 const MOCK_CURATED: Tag[] = [
-  { id: "c1", name: "Ukraine", category: "conflict" },
-  { id: "c2", name: "Russia", category: "conflict" },
   { id: "cs1", name: "Drone", category: "capture_source" },
   { id: "cs2", name: "Satellite", category: "capture_source" },
+];
+
+// A small slice of the conflicts referential for the TagPicker's typeahead:
+// a major and a minor ongoing entry, an ended one (searchable behind the
+// switch), and the "Other" escape row (tier none, pinned last).
+const MOCK_CONFLICTS: Conflict[] = [
+  {
+    id: "c1",
+    name: "Russian invasion of Ukraine",
+    wikidata_id: null,
+    start_year: 2022,
+    end_year: null,
+    ongoing: true,
+    tier: "major",
+  },
+  {
+    id: "c2",
+    name: "Sudanese civil war",
+    wikidata_id: null,
+    start_year: 2023,
+    end_year: null,
+    ongoing: true,
+    tier: "minor",
+  },
+  {
+    id: "c3",
+    name: "Falklands War",
+    wikidata_id: null,
+    start_year: 1982,
+    end_year: 1982,
+    ongoing: false,
+    tier: null,
+  },
+  {
+    id: "c4",
+    name: "Other",
+    wikidata_id: null,
+    start_year: null,
+    end_year: null,
+    ongoing: true,
+    tier: null,
+  },
 ];
 
 export default function PalettePage() {
@@ -179,6 +229,7 @@ export default function PalettePage() {
     { id: "f1", name: "donetsk", category: "free" },
   ]);
   const [tpSelected, setTpSelected] = useState<string[]>([]);
+  const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
 
   return (
     <PageShell
@@ -394,7 +445,7 @@ export default function PalettePage() {
 
           <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request)">
             <div className="w-full max-w-sm">
-              <IncompleteFormNotice missing={["Coordinates", "Conflict tag", "Proof"]} />
+              <IncompleteFormNotice missing={["Coordinates", "Conflict", "Proof"]} />
             </div>
           </Item>
 
@@ -404,7 +455,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="Curated + free tag selection (Pill chips + inline free-tag creation); submit / edit">
+          <Item name="<TagPicker>" usage="Conflict typeahead (ongoing by default, ended behind the switch) + curated/free tag selection (Pill chips + inline free-tag creation); submit / edit">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
@@ -412,6 +463,9 @@ export default function PalettePage() {
                 curatedTags={MOCK_CURATED}
                 selectedTagIds={tpSelected}
                 setSelectedTagIds={setTpSelected}
+                conflicts={MOCK_CONFLICTS}
+                selectedConflictIds={tpConflictSel}
+                setSelectedConflictIds={setTpConflictSel}
               />
             </div>
           </Item>

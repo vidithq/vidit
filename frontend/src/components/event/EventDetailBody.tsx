@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { EventDetail } from "@/types";
 import { formatDate, formatInstant } from "@/lib/format";
 import { sourceIsSynthetic } from "@/lib/events";
+import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -96,9 +97,9 @@ function DetailRows({
   compact: boolean;
   detailExtras?: ReactNode;
 }) {
-  // Curated tags (conflict, capture source) get their own labelled rows so
-  // they read as structured facts, not free-form chips lost in one row.
-  const conflictTags = geo.tags.filter((t) => t.category === "conflict");
+  // Conflicts (their own referential) and curated capture-source tags get
+  // their own labelled rows so they read as structured facts, not free-form
+  // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
@@ -193,7 +194,17 @@ function DetailRows({
           />
         </DetailRow>
       )}
-      {tagRow("Conflict", conflictTags, "conflict")}
+      {geo.conflicts.length > 0 && (
+        <DetailRow label="Conflict" concept="conflict" compact={compact} align="start">
+          <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
+            {geo.conflicts.map((c) => (
+              <Pill key={c.id} tone="neutral">
+                {conflictLabel(c)}
+              </Pill>
+            ))}
+          </div>
+        </DetailRow>
+      )}
       {tagRow("Capture source", captureTags, "capture_source")}
       {tagRow("Tags", freeTags)}
       {/* Compact panel omits requested-by + author rows: the author is in

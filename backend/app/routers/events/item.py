@@ -53,6 +53,7 @@ _DETAIL_LOADS = (
     joinedload(Event.requested_by),
     selectinload(Event.media.and_(Media.role == "source")),
     selectinload(Event.tags),
+    selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
     selectinload(Event.investigators).joinedload(EventInvestigator.user),
 )
@@ -175,6 +176,7 @@ async def geolocate_event(
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
     # Ids of existing media to drop (JSON array). A replacement source rides
     # in ``files``; the proof body's new inline images in ``proof_files``.
     remove_media_ids: str | None = Form(None),
@@ -194,7 +196,7 @@ async def geolocate_event(
     otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
     Blocked until the evidence floor is met (one source media, a proof image,
-    and the ``conflict`` + ``capture_source`` tags, 400 otherwise). Off
+    a conflict, and the ``capture_source`` tag, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
     """
     files = files or []
@@ -204,6 +206,7 @@ async def geolocate_event(
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
     # Not owner-gated at the router: the service enforces per-status ownership
@@ -225,6 +228,7 @@ async def geolocate_event(
             source_posted_at=parsed_source_posted_at,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
             remove_media_ids=parsed_remove_ids,
             files=files,
             proof_files=proof_files,
