@@ -588,9 +588,10 @@ export interface paths {
          *     The submit form needs ``File`` objects in ``files[]`` (the contract
          *     ``services/evidence_processing.py`` keys off), but the X CDN sets no
          *     CORS headers for a direct browser ``fetch``, so this thin proxy is the
-         *     only path. Strict host whitelist on ``u`` (``pbs.twimg.com`` /
-         *     ``video.twimg.com``) keeps it from becoming an SSRF / open-redirect
-         *     vector; auth-required so it can't be abused as a bandwidth pipe to X.
+         *     only path. Strict host whitelist on ``u`` (the X CDN hosts plus the
+         *     Telegram CDN hosts ``is_trusted_media_url`` allows, see
+         *     ``tweet_ingest``) keeps it from becoming an SSRF / open-redirect vector;
+         *     auth-required so it can't be abused as a bandwidth pipe.
          */
         get: operations["import_from_tweet_media_api_v1_events_import_from_tweet_media_get"];
         put?: never;
@@ -1426,16 +1427,14 @@ export interface components {
          *     The no-persist preview output (``import-from-tweet``): zero DB writes, the
          *     inspection window into the machine ``detect`` path. ``proof_text`` is the
          *     plain proof body the assemble step would wrap into the JSONB proof doc;
-         *     ``detected_from_url`` is the originating post.
+         *     ``detected_from_url`` is the originating post. ``event_date`` is None when
+         *     the tweet's timestamp is unusable (required-nullable).
          */
         DetectedGeolocPreview: {
             /** Detected From Url */
             detected_from_url: string;
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
+            /** Event Date */
+            event_date: string | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -1536,13 +1535,10 @@ export interface components {
             /** Requested At */
             requested_at: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
-            /**
-             * Source Posted At
-             * Format: date-time
-             */
-            source_posted_at: string;
+            /** Source Posted At */
+            source_posted_at: string | null;
             /** Source Url */
-            source_url: string;
+            source_url: string | null;
             /**
              * Status
              * @enum {string}
@@ -1675,7 +1671,7 @@ export interface components {
             id: string;
             owner: components["schemas"]["AuthorRef"];
             /** Source Url */
-            source_url: string;
+            source_url: string | null;
             /** Title */
             title: string;
         };
@@ -1782,7 +1778,7 @@ export interface components {
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
             /** Source Url */
-            source_url: string;
+            source_url: string | null;
             /**
              * Status
              * @enum {string}
@@ -1933,6 +1929,11 @@ export interface components {
          *     When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
          *     OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
          *     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
+         *     Without a quote or a footage link ``source_url`` is None (required-nullable)
+         *     and the form field starts empty; the OP's own URL is never a fallback.
+         *     ``source_posted_at`` follows the same rule for the source's post time: it
+         *     carries the quote's actual timestamp, never the OP's, and is None when
+         *     that timestamp isn't known.
          */
         TweetImportResponse: {
             /** Author Handle */
@@ -1951,8 +1952,10 @@ export interface components {
             /** Posted At */
             posted_at: string;
             quoted_tweet?: components["schemas"]["TweetImportQuotedTweet"] | null;
+            /** Source Posted At */
+            source_posted_at: string | null;
             /** Source Url */
-            source_url: string;
+            source_url: string | null;
             /** Suggested Title */
             suggested_title: string;
             /** Tweet Text */

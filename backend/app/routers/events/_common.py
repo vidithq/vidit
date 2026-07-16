@@ -25,6 +25,7 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "invalid_coordinates": 400,
     "invalid_proof": 400,
     "proof_image_required": 400,
+    "source_url_required": 400,
     "tag_requirements_not_met": 400,
     "invalid_state": 409,
 }

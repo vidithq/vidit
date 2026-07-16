@@ -264,6 +264,31 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
 # request (SSRF).
 TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 
+# Registrable bases Telegram serves footage from: its own CDN (the apex
+# ``cdn-telegram.org`` plus its ``cdnN.cdn-telegram.org`` shards) and
+# ``telesco.pe``. Matched by strict dot-boundary suffix (see
+# :func:`_host_matches_base`), never a substring, so a look-alike like
+# ``evil-cdn-telegram.org`` is rejected.
+TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
+
+# Byte cap on a single remote-media fetch, shared by every path that streams an
+# allowlisted CDN URL into memory: the media-proxy route and the archive /
+# Telegram chase (``archive._fetch_cdn_media``). Sized for the upload ceilings
+# (10 MB image / 100 MB video) plus HTTP-framing overhead. Anything bigger is an
+# unexpected upstream response or a hostile content-length lie; cap and bail so a
+# fetch can't buffer an unbounded stream in memory.
+MEDIA_FETCH_MAX_BYTES = 110 * 1024 * 1024
+
+
+def _host_matches_base(host: str, base: str) -> bool:
+    """Whether ``host`` is ``base`` itself or a subdomain of it.
+
+    A dot-boundary suffix test, not a substring: ``cdn4.cdn-telegram.org``
+    matches ``cdn-telegram.org`` while ``evil-cdn-telegram.org`` (shares the
+    trailing string but not the ``.`` boundary) does not.
+    """
+    return host == base or host.endswith("." + base)
+
 
 @dataclass(frozen=True)
 class ParsedMedia:
@@ -281,10 +306,13 @@ class ParsedMedia:
 def is_trusted_media_url(url: str) -> bool:
     """Allowlist check used by both the response builder and the proxy.
 
-    Single source of truth — ``parse_tweet`` (filtering what we advertise)
-    and the media-proxy route (validating ``u=`` before opening a socket)
-    both call this. Drift would silently drop legitimate media or open the
-    proxy to SSRF.
+    Single source of truth: ``parse_tweet`` (filtering what we advertise), the
+    archive / Telegram chases (before fetching a CDN media), and the media-proxy
+    route (validating ``u=`` before opening a socket) all call this. Drift would
+    silently drop legitimate media or open the proxy to SSRF. Admits the X CDN
+    (``TWITTER_MEDIA_HOSTS``, exact) and the Telegram CDN
+    (``TELEGRAM_MEDIA_BASE_HOSTS``, strict dot-boundary suffix so a look-alike
+    host can't slip through), ``https`` only.
     """
     try:
         parsed = urlparse(url)
@@ -292,7 +320,10 @@ def is_trusted_media_url(url: str) -> bool:
         return False
     if parsed.scheme != "https":
         return False
-    return (parsed.hostname or "").lower() in TWITTER_MEDIA_HOSTS
+    host = (parsed.hostname or "").lower()
+    if host in TWITTER_MEDIA_HOSTS:
+        return True
+    return any(_host_matches_base(host, base) for base in TELEGRAM_MEDIA_BASE_HOSTS)
 
 
 def _extract_media(
@@ -387,67 +418,66 @@ class ParsedQuotedTweet:
 
 _TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
 _T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
+_YOUTUBE_HOST_RE = re.compile(r"^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$", re.IGNORECASE)
+_TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
+
+# A tweet status path: ``/<handle>/status/<id>`` or the handle-less
+# ``/i/web/status/<id>``. Single source of truth for "this X link is footage":
+# a profile link (no ``/status/``) is not chaseable footage, only a status is.
+# ``archive._sole_linked_x_status`` reuses this same pattern to extract the id,
+# and ``resolve._status_link_handle`` reuses it to extract the handle.
+_X_STATUS_URL_RE = re.compile(
+    r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
+)
 
 
-def _extract_external_source_url(syndication: dict[str, Any]) -> str | None:
-    """First non-X URL from ``entities.urls``, when present.
+def classify_source_host(url: str) -> str:
+    """Coarse host class for a source URL: ``x`` / ``telegram`` / ``youtube`` /
+    ``other``. Drives whether the footage is retrievable (X, chaseable) or
+    off-platform (Telegram / YouTube, link only).
 
-    OSINT posts commonly put the *real* source as a body link
-    (``Source: https://t.me/...``, YouTube / Telegram / Mastodon). We trust
-    the embed serialiser's ``expanded_url`` over the wrapped ``t.co``
-    shortlink, skipping ``x.com`` / ``twitter.com`` / ``t.co`` so a tagged
-    profile or self-reference can't masquerade as a source.
+    An X host only classifies as ``x`` when the path is a status
+    (``_X_STATUS_URL_RE``): a bare profile link is not footage, so it falls
+    through to ``other`` like any unrelated link.
+    """
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return "other"
+    if _TWITTER_URL_HOST_RE.match(host):
+        return "x" if _X_STATUS_URL_RE.search(url) else "other"
+    if _TELEGRAM_HOST_RE.match(host):
+        return "telegram"
+    if _YOUTUBE_HOST_RE.match(host):
+        return "youtube"
+    return "other"
 
-    Returns the first off-platform URL, or ``None`` if all stay on X.
-    'First' matches the "Source: <link>" convention.
+
+def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str]]:
+    """Every expanded, host-classified source URL from ``entities.urls``.
+
+    The analyst's ``Source: <url>`` links. Skips the ``t.co`` wrapper (we trust
+    ``expanded_url``) and de-dupes, preserving order. Keeps X status links (a
+    status is a chaseable source; a bare profile link is not).
     """
     entities = syndication.get("entities")
-    if not isinstance(entities, dict):
-        return None
-    urls = entities.get("urls")
+    urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
-        return None
+        return []
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
             continue
         expanded = entry.get("expanded_url")
-        if not isinstance(expanded, str) or not expanded:
+        if not isinstance(expanded, str) or not expanded or expanded in seen:
             continue
         try:
-            parsed = urlparse(expanded)
+            host = (urlparse(expanded).hostname or "").lower()
         except ValueError:
             continue
-        host = (parsed.hostname or "").lower()
-        if not host:
+        if _T_CO_HOST_RE.match(host):
             continue
-        if _TWITTER_URL_HOST_RE.match(host) or _T_CO_HOST_RE.match(host):
-            continue
-        return expanded
-    return None
-
-
-def _extract_quoted_tweet(syndication: dict[str, Any]) -> ParsedQuotedTweet | None:
-    """Pull out the quoted-tweet attribution, when the OP quote-retweets.
-
-    Returns ``None`` for a top-level tweet or any unrecognised shape —
-    never raises. Defensive against schema drift on the unofficial
-    endpoint: anything upstream stops emitting degrades to "no quote" and
-    the form falls back to the OP URL.
-    """
-    qt = syndication.get("quoted_tweet")
-    if not isinstance(qt, dict):
-        return None
-    tweet_id = qt.get("id_str")
-    user = qt.get("user")
-    if not isinstance(tweet_id, str) or not isinstance(user, dict):
-        return None
-    handle = user.get("screen_name")
-    if not isinstance(handle, str) or not handle:
-        return None
-    raw_text = qt.get("text")
-    text: str = raw_text if isinstance(raw_text, str) else ""
-    return ParsedQuotedTweet(
-        source_url=f"https://x.com/{handle}/status/{tweet_id}",
-        author_handle=handle,
-        tweet_text=text,
-    )
+        seen.add(expanded)
+        out.append((expanded, classify_source_host(expanded)))
+    return out

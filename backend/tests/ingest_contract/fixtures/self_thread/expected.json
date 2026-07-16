@@ -1,0 +1,11 @@
+{
+  "description": "stitch rejoins head (video) and reply (coord + photo). The coordinate lives in the reply; the head is provenance. No source is declared, so both the head video and the reply photo are proof, and source is null. One detected row, owned by the archive owner, at the head permalink.",
+  "head_tweet_id": "9200000000000000001",
+  "coords": [[49.8429, 24.0311]],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-09",
+  "title": "Footage I filmed at the front this morning",
+  "source_media": [],
+  "proof_media": [["video", "op"], ["image", "op"]]
+}

@@ -6,10 +6,10 @@ import type { TweetImportCoord, TweetImportResponse } from "@/types";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import {
   buildSeedProof,
+  fetchProofFiles,
   fetchProxyBlob,
   makeFile,
   splitMedia,
-  uploadAsProofImage,
 } from "@/lib/tweetImport";
 
 /**
@@ -44,6 +44,13 @@ export function useTweetImport(form: TweetImportFormBindings) {
   const [extraCoordCandidates, setExtraCoordCandidates] = useState<
     TweetImportCoord[]
   >([]);
+  // The downloaded proof-image files, seeded into `ProofEditor` as its
+  // `initialProofFiles` (same staging mechanism as a manually picked "+
+  // Image", see `components/editor/ProofEditor.tsx`). The editor hydrates a
+  // live preview from these and reports them back up through its own
+  // `onProofFilesChange`, so this state exists only to hand the files to the
+  // editor; the form's committed `proofFiles` state still comes from there.
+  const [importedProofFiles, setImportedProofFiles] = useState<File[]>([]);
   // Bumped on every Import / Clear. ``applyTweetImport`` captures the
   // value at start as its "import id"; if it diverges before a state
   // write, a slow import (downloading + uploading N media) bails instead
@@ -82,15 +89,19 @@ export function useTweetImport(form: TweetImportFormBindings) {
       importTokenRef.current === localToken && !controller.signal.aborted;
 
     if (parsed.suggested_title) form.setTitle(parsed.suggested_title);
-    if (parsed.source_url) form.setSourceUrl(parsed.source_url);
+    // Always set, never just on truthy: a source-less import after a sourced
+    // one must clear the field rather than leave the previous URL behind.
+    form.setSourceUrl(parsed.source_url ?? "");
+    // The source's own post instant, when the backend actually resolved one
+    // (a dated quote). Never fabricated from the OP's own post time; empty
+    // when null, same as `toDatetimeLocalUTC` handles any unparsable input.
+    form.setSourcePostedAt(toDatetimeLocalUTC(parsed.source_posted_at));
     if (parsed.posted_at) {
-      // The imported tweet is the source on this path: its post time pre-fills
-      // the (required) source instant, and that instant's date the event date.
-      const sourcePostedAt = toDatetimeLocalUTC(parsed.posted_at);
-      if (sourcePostedAt) {
-        form.setSourcePostedAt(sourcePostedAt);
-        form.setEventDate(sourcePostedAt.slice(0, 10));
-      }
+      // The OP's post date is a provisional proxy for the event date only,
+      // pending the analyst's own read of the footage; it is not treated as
+      // the source's post time (see ``source_posted_at`` above).
+      const opPostedAt = toDatetimeLocalUTC(parsed.posted_at);
+      if (opPostedAt) form.setEventDate(opPostedAt.slice(0, 10));
     }
     if (parsed.parsed_coords.length > 0) {
       const [first, ...rest] = parsed.parsed_coords;
@@ -121,15 +132,15 @@ export function useTweetImport(form: TweetImportFormBindings) {
     if (primaryFile !== null) form.setFiles([primaryFile]);
 
     // ``proofMedia`` is already image-only by ``splitMedia``.
-    const proofImageUrls: string[] = [];
-    for (const m of proofMedia) {
-      if (!isCurrent()) return;
-      const url = await uploadAsProofImage(m.remote_url, controller.signal);
-      if (url !== null) proofImageUrls.push(url);
-    }
+    const proofFiles = await fetchProofFiles(
+      proofMedia,
+      tweetId,
+      controller.signal
+    );
     if (!isCurrent()) return;
 
-    form.setProof(buildSeedProof(parsed, proofImageUrls));
+    setImportedProofFiles(proofFiles);
+    form.setProof(buildSeedProof(parsed, proofFiles));
     setImportedFrom(parsed.author_handle || "unknown");
     // Bump so the editor key changes even on a same-author re-import.
     setImportGen((g) => g + 1);
@@ -142,6 +153,7 @@ export function useTweetImport(form: TweetImportFormBindings) {
     importTokenRef.current += 1;
     setImportedFrom(null);
     setExtraCoordCandidates([]);
+    setImportedProofFiles([]);
     form.setTitle("");
     form.setLat("");
     form.setLng("");
@@ -172,6 +184,7 @@ export function useTweetImport(form: TweetImportFormBindings) {
     importedFrom,
     importGen,
     extraCoordCandidates,
+    importedProofFiles,
     applyTweetImport,
     clearImportedTweet,
     swapCoordCandidate,

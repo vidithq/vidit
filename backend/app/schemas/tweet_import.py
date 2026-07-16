@@ -56,7 +56,8 @@ class DetectedGeolocPreview(BaseModel):
     The no-persist preview output (``import-from-tweet``): zero DB writes, the
     inspection window into the machine ``detect`` path. ``proof_text`` is the
     plain proof body the assemble step would wrap into the JSONB proof doc;
-    ``detected_from_url`` is the originating post.
+    ``detected_from_url`` is the originating post. ``event_date`` is None when
+    the tweet's timestamp is unusable (required-nullable).
     """
 
     lat: float
@@ -64,7 +65,7 @@ class DetectedGeolocPreview(BaseModel):
     title: str
     proof_text: str
     detected_from_url: str
-    event_date: date
+    event_date: date | None
     media: list[TweetImportMedia]
 
 
@@ -79,11 +80,21 @@ class TweetImportResponse(BaseModel):
     When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
     OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
+    Without a quote or a footage link ``source_url`` is None (required-nullable)
+    and the form field starts empty; the OP's own URL is never a fallback.
+    ``source_posted_at`` follows the same rule for the source's post time: it
+    carries the quote's actual timestamp, never the OP's, and is None when
+    that timestamp isn't known.
     """
 
-    source_url: str
+    source_url: str | None
     original_tweet_url: str
     posted_at: str  # ISO 8601 from X — frontend truncates to date for the form
+    # The source's own post instant (the quote's timestamp), ISO 8601 UTC.
+    # None when the source has no known date (no quote, or a footage link
+    # whose timestamp isn't derivable): the form field then starts empty
+    # rather than falling back to the OP's own date (required-nullable).
+    source_posted_at: str | None
     author_handle: str
     tweet_text: str
     suggested_title: str

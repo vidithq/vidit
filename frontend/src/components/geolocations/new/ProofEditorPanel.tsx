@@ -21,6 +21,10 @@ interface ProofEditorPanelProps {
   /** The inline proof images the editor is holding locally; the form uploads
    *  them as `proof_files[]` at publish. Omitted in request mode (image-free). */
   onProofFilesChange?: (files: File[]) => void;
+  /** Files the tweet-import flow already downloaded and matched to
+   *  ``placeholder://<filename>`` nodes in `proof`, for the editor to hydrate
+   *  into a live preview on mount (see `components/editor/ProofEditor.tsx`). */
+  initialProofFiles?: File[];
   /** Request mode: a request's proof is in-progress (else it'd be a
    *  geolocation), so it's optional and image-free — see ProofEditor. */
   allowImages?: boolean;
@@ -37,6 +41,7 @@ export function ProofEditorPanel({
   proof,
   onChange,
   onProofFilesChange,
+  initialProofFiles,
   allowImages = true,
   optional = false,
   invalid = false,
@@ -46,7 +51,12 @@ export function ProofEditorPanel({
       as="section"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
-      <SectionHeading title="Proof" concept="section_proof" optional={optional} />
+      <SectionHeading
+        title="Proof"
+        concept="section_proof"
+        optional={optional}
+        invalid={invalid}
+      />
 
       {/* Re-mount the editor on every import. ``importGen`` changes even
           on same-author re-import, where the handle alone would leave the
@@ -57,6 +67,7 @@ export function ProofEditorPanel({
       <ProofEditor
         key={importedFrom !== null ? `import-${importGen}` : "blank"}
         initialContent={proof}
+        initialProofFiles={initialProofFiles}
         onChange={onChange}
         onProofFilesChange={onProofFilesChange}
         allowImages={allowImages}

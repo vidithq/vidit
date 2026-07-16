@@ -166,7 +166,12 @@ class Event(Base):
     capture_source_coords = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )
-    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # The declared footage source. Nullable: a machine ``detected`` draft may
+    # carry none (the imported tweet neither quoted nor linked footage); the
+    # ``requested`` and ``geolocated`` states always have one, enforced by
+    # ``ck_events_source_url_status`` and required again at the geolocate
+    # promotion in ``services/events.geolocate``.
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # NOT NULL: every row carries a proof document. The empty-doc default catches
     # ORM constructions that omit proof; the create flow and machine path pass a
     # real doc. Inlined here (a fresh dict per row) rather than importing a shared
@@ -180,11 +185,13 @@ class Event(Base):
     # ``event_date``. NULL when the hour is unknown.
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # When the original source (a Telegram channel, an X account, …) posted the
-    # media. A real post instant, hence a full UTC timestamp and NOT NULL.
-    # Distinct from ``event_date`` (when the event happened) and ``created_at``
-    # (submission to Vidit). On the machine path it equals the imported tweet's
-    # timestamp (``source_url`` is the tweet there).
-    source_posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # media, a full UTC instant. Distinct from ``event_date`` (when the event
+    # happened) and ``created_at`` (submission to Vidit). Nullable: filled only
+    # when the source's date is actually known (the machine path knows it for a
+    # quoted tweet only); never a fabricated placeholder.
+    source_posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # When the analyst published THIS geolocation on X, the post time of
     # ``detected_from_url``. The authorship / precedence signal for "who
     # geolocated this first", consumed later by the claim/dispute pipeline. NULL
@@ -259,6 +266,14 @@ class Event(Base):
         CheckConstraint(
             "status <> 'geolocated' OR event_coords IS NOT NULL",
             name="ck_events_coords_status",
+        ),
+        # A requested or geolocated event always has a source URL (a request is
+        # a call to geolocate someone's footage; a geolocated row is vouched
+        # evidence). A ``detected`` draft may carry none, the promotion to
+        # ``geolocated`` requires it; ``closed`` keeps whatever it had.
+        CheckConstraint(
+            "status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL",
+            name="ck_events_source_url_status",
         ),
         # The terminal stamps are tied to status so an app path that forgets to
         # stamp is rejected at write time, not stored as silent bad data.

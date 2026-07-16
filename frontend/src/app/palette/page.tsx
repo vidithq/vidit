@@ -52,6 +52,7 @@ import {
   FORM_LABEL,
   FORM_LABEL_COMPACT,
   FORM_INVALID_FIELD,
+  FORM_INVALID_LABEL,
   FORM_ERROR_BANNER,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
@@ -373,10 +374,13 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label.">
+          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label (or SectionHeading's title) alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>
+              <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>
+                Invalid field label
+              </label>
             </div>
           </Item>
 

@@ -31,4 +31,20 @@ describe("ProofEditorPanel", () => {
     expect(screen.getByRole("heading", { name: /Proof/ })).toBeInTheDocument();
     expect(screen.queryByText("optional")).toBeNull();
   });
+
+  it("flags the heading red when missing, same as the section's outline", () => {
+    render(<ProofEditorPanel {...base} invalid />);
+    // The section card already gets FORM_INVALID_FIELD's outline; the
+    // heading now turns red too, matching every other required field.
+    expect(screen.getByRole("heading", { name: /Proof/ })).toHaveClass(
+      "!text-red-400"
+    );
+  });
+
+  it("leaves the heading unmarked when not invalid", () => {
+    render(<ProofEditorPanel {...base} />);
+    expect(screen.getByRole("heading", { name: /Proof/ })).not.toHaveClass(
+      "!text-red-400"
+    );
+  });
 });

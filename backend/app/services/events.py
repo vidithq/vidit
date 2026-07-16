@@ -83,6 +83,18 @@ class ProofImageRequiredError(EventError):
     code = "proof_image_required"
 
 
+class SourceUrlRequiredError(EventError):
+    """The geolocate promotion requires a source URL.
+
+    A machine ``detected`` draft may be born without one (the imported tweet
+    declared no source), so the requirement bites at the transition: a
+    ``geolocated`` row always carries its footage source (the same invariant
+    ``ck_events_source_url_status`` pins at the DB). Maps to 400.
+    """
+
+    code = "source_url_required"
+
+
 class EventStateError(EventError):
     """The event's lifecycle state forbids the requested transition.
 
@@ -426,13 +438,15 @@ async def geolocate(
     insert so the one-source partial unique index isn't tripped mid-flush.
 
     The evidence floor a direct create meets is enforced here, before any S3
-    work, since a request / machine detection is born incomplete: exactly one
+    work, since a request / machine detection is born incomplete: a non-blank
+    source URL (a ``detected`` draft may be born without one), exactly one
     source media (kept or new), at least one proof image in the final proof
     body, and the curated ``conflict`` + ``capture_source`` tags.
 
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
-    values, :class:`MediaRequiredError` / :class:`ProofImageRequiredError` /
+    values, :class:`SourceUrlRequiredError` / :class:`MediaRequiredError` /
+    :class:`ProofImageRequiredError` /
     :class:`TagRequirementsError` (400) when the floor is unmet,
     :class:`TooManyFilesError` (422) past the one-source cap, or a
     file-validation error. Returns the refreshed ``geolocated`` row.
@@ -454,6 +468,15 @@ async def geolocate(
     # fulfiller (anyone may answer an open request) must not rewrite it. Only the
     # owner's own detected submit may change it. Captured before ``status`` flips.
     keep_requester_source_url = geo.status == STATUS_REQUESTED
+
+    # The source floor at promotion: a ``geolocated`` row always carries its
+    # footage source. A ``detected`` draft may be born source-less, so the form
+    # value (required but possibly blank) must be a real URL here; a requested
+    # fulfilment keeps the requester's value, non-NULL by
+    # ``ck_events_source_url_status``, checked all the same.
+    effective_source_url = geo.source_url if keep_requester_source_url else source_url
+    if effective_source_url is None or not effective_source_url.strip():
+        raise SourceUrlRequiredError("A source URL is required to geolocate an event")
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
@@ -487,7 +510,7 @@ async def geolocate(
         geo.event_coords = from_shape(Point(lng, lat), srid=4326)
         geo.capture_source_coords = capture_point
         if not keep_requester_source_url:
-            geo.source_url = source_url
+            geo.source_url = source_url.strip()
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at

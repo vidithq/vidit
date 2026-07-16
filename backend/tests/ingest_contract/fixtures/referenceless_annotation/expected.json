@@ -1,0 +1,10 @@
+{
+  "description": "Community-thread annotation style: a coordinate and annotation photos, no quote and no footage link. The brick declares no source (url null, date null, no source media); both photos are proof. This is the honest partial detected draft.",
+  "coords": [[50.0045, 36.2312]],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-07",
+  "title": "Geolocated to south of the bridge",
+  "source_media": [],
+  "proof_media": [["image", "op"], ["image", "op"]]
+}

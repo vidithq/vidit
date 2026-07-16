@@ -1,0 +1,10 @@
+{
+  "description": "The analyst links their own earlier status first (a cross-reference: 'Previous geolocation here'), then a profile link, then the third-party status that is the actual footage. The own-status link shares the OP's handle, so resolve.py's own-handle skip demotes it; the profile link is not footage either (host \"other\"); that leaves exactly one footage candidate, the third-party status, which wins the source slot with no date and no source media (declared, not chased). The OP photo stays proof.",
+  "coords": [[26.564389, 57.087644]],
+  "source_url": "https://x.com/CENTCOM/status/9000000000000000002",
+  "source_posted_at": null,
+  "event_date": "2026-04-01",
+  "title": "Geolocated comms tower",
+  "source_media": [],
+  "proof_media": [["image", "op"]]
+}

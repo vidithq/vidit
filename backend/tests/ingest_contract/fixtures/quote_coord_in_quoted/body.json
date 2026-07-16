@@ -1,0 +1,24 @@
+{
+  "id_str": "8200000000000000001",
+  "created_at": "2026-03-02T11:00:00.000Z",
+  "user": { "screen_name": "map_hawk" },
+  "text": "Geolocated the clip below, see the pinned spot",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP2.jpg"
+    }
+  ],
+  "quoted_tweet": {
+    "id_str": "8200000000000000002",
+    "created_at": "2026-03-01T20:05:00.000Z",
+    "user": { "screen_name": "raw_feed" },
+    "text": "Shelling last night 50.450100, 30.523400 city outskirts",
+    "mediaDetails": [
+      {
+        "type": "photo",
+        "media_url_https": "https://pbs.twimg.com/media/FAKEQT2.jpg"
+      }
+    ]
+  }
+}

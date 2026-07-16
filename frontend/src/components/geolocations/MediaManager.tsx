@@ -76,6 +76,30 @@ export function MediaManager({
         ),
       onRemove: !locked && onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
       removeLabel: "Remove media",
+      // The tile itself is a muted, cropped preview; the lightbox is where a
+      // persisted source is actually reviewable, same as the read-only detail
+      // page's MediaGallery (playable video, uncropped image), so editing a
+      // detection doesn't lose the ability to watch/inspect its source media.
+      viewContent:
+        m.media_type === "image" ? (
+          <div className="relative h-[80vh] w-[85vw] max-w-4xl">
+            <Image
+              src={displayUrlsFor(m).hero}
+              alt=""
+              fill
+              sizes="90vw"
+              className="object-contain"
+            />
+          </div>
+        ) : (
+          <video
+            src={`${m.storage_url}#t=0.1`}
+            controls
+            preload="metadata"
+            className="max-h-[80vh] max-w-[85vw]"
+          />
+        ),
+      viewLabel: m.media_type === "image" ? "View image" : "Play video",
     })),
     // Render staged tiles only once their object URLs line up 1:1, else a brief
     // mismatch flashes a broken preview.
@@ -91,6 +115,17 @@ export function MediaManager({
           ),
           onRemove: onRemoveStaged ? () => onRemoveStaged(i) : undefined,
           removeLabel: "Remove file",
+          viewContent: f.type.startsWith("video/") ? (
+            <video src={stagedUrls[i]} controls className="max-h-[80vh] max-w-[85vw]" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={stagedUrls[i]}
+              alt={f.name}
+              className="max-h-[80vh] max-w-[85vw] object-contain"
+            />
+          ),
+          viewLabel: f.type.startsWith("video/") ? "Play video" : "View image",
         }))
       : []),
   ];

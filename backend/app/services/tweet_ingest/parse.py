@@ -1,35 +1,37 @@
-"""Human pre-fill orchestration — pasted tweet URL → ``ParsedTweet``.
+"""Human pre-fill: pasted tweet URL → ``ParsedTweet`` for the submit form.
 
-Backs ``POST /geolocations/import-from-tweet``: paste a tweet URL, get back
-structured data to pre-fill the submit form (title, source, posted-at,
-media, best-effort coordinates). The analyst always reviews and submits —
-nothing auto-publishes.
-
-Sibling of the machine ``detect`` path: both walk acquire → ``extract`` over
-the same normalized text, differing only in what they emit (a form pre-fill
-here, a ``DetectedGeoloc`` DTO there).
+Backs ``POST /events/import-from-tweet``. A thin mapper over the shared
+``resolve_tweet`` core (the same one the machine ``detect`` path runs), so the
+human pre-fill and the machine detection never drift on coordinates, source, or
+media. This module only reshapes ``ResolvedTweet`` into the form-facing payload.
+The analyst always reviews and submits; nothing auto-publishes.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
 
-from . import syndication
 from .errors import TweetFetchFailed
-from .extract import ParsedCoord, derive_title, extract_coords
+from .extract import ParsedCoord
+from .resolve import resolve_tweet
 from .syndication import ParsedMedia, ParsedQuotedTweet
 
 
 @dataclass(frozen=True)
 class ParsedTweet:
-    # The SOURCE — the quoted tweet's URL when the OP quote-retweets, else
-    # the OP's own. The OP is rarely the real source in OSINT (messenger,
-    # not footage source), so the frontend uses this as the ``source_url``
-    # form field.
-    source_url: str
-    # The OP's URL — kept so the frontend can cite the analyst in the proof
+    # The SOURCE: the quoted tweet's URL when the OP quote-retweets, else the
+    # sole footage link in the text. None when the tweet declares neither (the
+    # OP is a messenger, not the footage source, so its own URL never fills
+    # this): the ``source_url`` form field then starts empty.
+    source_url: str | None
+    # The source's post instant (ISO 8601 UTC), only when actually known: the
+    # quoted tweet's date or a chased Telegram post's date. None when the source
+    # is a bare link or the tweet declares none; never the OP's own post date.
+    source_posted_at: datetime | None
+    # The OP's URL, kept so the frontend can cite the analyst in the proof
     # body even when ``source_url`` points at the quoted source.
     original_tweet_url: str
     posted_at: str  # ISO 8601 UTC
@@ -44,76 +46,41 @@ class ParsedTweet:
 
 
 def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
-    """Top-level helper used by the route.
+    """Resolve ``url`` into the shared ``ResolvedTweet``, then reshape it for the
+    submit form.
 
-    Walks normalise → fetch → extract into a ``ParsedTweet``. The optional
-    ``client`` is for tests (an ``httpx.Client`` on a ``MockTransport``).
+    The resolution (fetch, quoted tweet, source links, coordinate fallback,
+    source URL) is the same one the machine path runs; only the empty-``created_at``
+    guard is human-path specific, since the form needs a real posted-at. The
+    optional ``client`` is for tests (an ``httpx.Client`` on a ``MockTransport``).
     """
-    normalised = syndication.normalise_tweet_url(url)
-    body = syndication.fetch_syndication(normalised.tweet_id, client=client)
-
-    # Author handle — prefer the response's screen name over the URL's,
-    # since `/i/web/status/<id>` has no handle. Fall back to the URL handle
-    # if the field is missing (schema-drift defensive).
-    user = body.get("user")
-    author_handle = normalised.handle
-    if isinstance(user, dict):
-        screen_name = user.get("screen_name")
-        if isinstance(screen_name, str) and screen_name:
-            author_handle = screen_name
-    if author_handle == "i":
-        # Neither the ``/i/web/status/...`` URL nor the response yielded a
-        # handle — emit empty; the caller can render "@unknown".
-        author_handle = ""
-
-    posted_at_raw = body.get("created_at")
-    if not isinstance(posted_at_raw, str) or not posted_at_raw:
+    resolved = resolve_tweet(url, client=client)
+    if resolved is None or not resolved.created_at:
         raise TweetFetchFailed("upstream missing created_at")
 
-    tweet_text = body.get("text")
-    if not isinstance(tweet_text, str):
-        tweet_text = ""
+    # ``/i/web/status/...`` yields no handle in URL or response: render "@unknown".
+    author_handle = "" if resolved.owner_handle == "i" else resolved.owner_handle
 
-    quoted = syndication._extract_quoted_tweet(body)
-
-    # Coords from the OP text first, falling back to the quoted tweet.
-    # Analyst commentary (the OP) usually carries them, but some posts just
-    # say "here ↓" and let the quoted source carry them.
-    coords = extract_coords(tweet_text)
-    if not coords and quoted is not None and quoted.tweet_text:
-        coords = extract_coords(quoted.tweet_text)
-
-    # Media split: OP tagged ``op``, quoted tweet tagged ``quote``; the
-    # frontend uses ``origin`` for ``files[]`` (primary) vs proof body
-    # (annotated screenshots).
-    media = list(syndication._extract_media(body, origin="op"))
-    if quoted is not None:
-        qt_body = body.get("quoted_tweet")
-        if isinstance(qt_body, dict):
-            media.extend(syndication._extract_media(qt_body, origin="quote"))
-
-    # ``source_url`` resolution, in priority order:
-    #
-    # 1. Quoted tweet's URL — OP quote-retweeted the source.
-    # 2. First non-X URL in ``entities.urls`` — analyst typed it
-    #    ("Source: https://t.me/...").
-    # 3. OP's own URL — wrong attribution often enough (analysts post their
-    #    analysis, not the footage source) that the frontend banner reminds
-    #    them to override, but better than a blank form.
-    if quoted is not None:
-        source_url = quoted.source_url
-    else:
-        external = syndication._extract_external_source_url(body)
-        source_url = external if external is not None else normalised.canonical
+    quoted_tweet: ParsedQuotedTweet | None = None
+    media: list[ParsedMedia] = list(resolved.op_media)
+    if resolved.quoted is not None:
+        quoted = resolved.quoted
+        quoted_tweet = ParsedQuotedTweet(
+            source_url=f"https://x.com/{quoted.handle}/status/{quoted.tweet_id}",
+            author_handle=quoted.handle,
+            tweet_text=quoted.text,
+        )
+        media.extend(quoted.media)
 
     return ParsedTweet(
-        source_url=source_url,
-        original_tweet_url=normalised.canonical,
-        posted_at=posted_at_raw,
+        source_url=resolved.source_url,
+        source_posted_at=resolved.source_posted_at,
+        original_tweet_url=resolved.detected_from_url,
+        posted_at=resolved.created_at,
         author_handle=author_handle,
-        tweet_text=tweet_text,
-        suggested_title=derive_title(tweet_text),
-        parsed_coords=coords,
+        tweet_text=resolved.text,
+        suggested_title=resolved.title,
+        parsed_coords=resolved.coords,
         media=media,
-        quoted_tweet=quoted,
+        quoted_tweet=quoted_tweet,
     )

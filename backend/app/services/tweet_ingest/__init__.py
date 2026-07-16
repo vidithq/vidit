@@ -6,6 +6,8 @@ Single-responsibility bricks behind one import surface:
   every path.
 * ``syndication`` — X I/O (URL normalisation, fetch + token + cache, schema
   mappers).
+* ``telegram``: off-platform footage chase, a t.me post's public embed to its
+  post date (+ media when served). Used by the archive chase.
 * ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
 * ``stitch`` — recombine records into threads (union-find on reply edges).
 * ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.
@@ -38,6 +40,7 @@ from .parse import ParsedTweet, parse_tweet
 from .records import TweetRecord
 from .stitch import stitch
 from .syndication import (
+    MEDIA_FETCH_MAX_BYTES,
     TWITTER_MEDIA_HOSTS,
     NormalisedTweetUrl,
     ParsedMedia,
@@ -48,6 +51,7 @@ from .syndication import (
 )
 
 __all__ = [
+    "MEDIA_FETCH_MAX_BYTES",
     "TWITTER_MEDIA_HOSTS",
     "DetectedGeoloc",
     "InvalidTweetUrl",

@@ -48,6 +48,7 @@ nav:
   - Home: index.md
   - API: api.md
   - Data model: data-model.md
+  - Ingestion: ingestion.md
   - Engineering: engineering.md
   - Design: design.md
   - Backups: backups.md

@@ -25,6 +25,7 @@ from app.schemas.tweet_import import (
 )
 from app.services.detection import preview_detection
 from app.services.tweet_ingest import (
+    MEDIA_FETCH_MAX_BYTES,
     InvalidTweetUrl,
     TweetFetchFailed,
     TweetNotAccessible,
@@ -96,6 +97,9 @@ def import_from_tweet(
         source_url=parsed.source_url,
         original_tweet_url=parsed.original_tweet_url,
         posted_at=parsed.posted_at,
+        # The resolved source's own timestamp (the quote's or the chased
+        # Telegram post's), never the OP's: None when the source is undated.
+        source_posted_at=(parsed.source_posted_at.isoformat() if parsed.source_posted_at else None),
         author_handle=parsed.author_handle,
         tweet_text=parsed.tweet_text,
         suggested_title=parsed.suggested_title,
@@ -125,7 +129,7 @@ def import_from_tweet(
                         content_type=m.content_type,
                         origin=m.origin,
                     )
-                    for m in d.media
+                    for m in [*d.source_media, *d.proof_media]
                 ],
             )
             for d in detections
@@ -133,11 +137,12 @@ def import_from_tweet(
     )
 
 
-# Per-stream byte cap on the media-proxy response. Sized for the upload
-# limits (10 MB image / 100 MB video) plus HTTP-framing overhead. Anything
-# bigger is an unexpected upstream response or a hostile content-length
-# lie; cap and bail so we don't buffer an unbounded stream in memory.
-_MEDIA_PROXY_MAX_BYTES = 110 * 1024 * 1024
+# Per-stream byte cap on the media-proxy response: the shared
+# MEDIA_FETCH_MAX_BYTES (one ceiling for this proxy and the archive
+# chase fetcher). Anything bigger is an unexpected upstream response or
+# a hostile content-length lie; cap and bail so we don't buffer an
+# unbounded stream in memory.
+_MEDIA_PROXY_MAX_BYTES = MEDIA_FETCH_MAX_BYTES
 
 
 @router.get("/import-from-tweet/media")
@@ -152,9 +157,10 @@ def import_from_tweet_media(
     The submit form needs ``File`` objects in ``files[]`` (the contract
     ``services/evidence_processing.py`` keys off), but the X CDN sets no
     CORS headers for a direct browser ``fetch``, so this thin proxy is the
-    only path. Strict host whitelist on ``u`` (``pbs.twimg.com`` /
-    ``video.twimg.com``) keeps it from becoming an SSRF / open-redirect
-    vector; auth-required so it can't be abused as a bandwidth pipe to X.
+    only path. Strict host whitelist on ``u`` (the X CDN hosts plus the
+    Telegram CDN hosts ``is_trusted_media_url`` allows, see
+    ``tweet_ingest``) keeps it from becoming an SSRF / open-redirect vector;
+    auth-required so it can't be abused as a bandwidth pipe.
     """
     if not is_trusted_media_url(u):
         raise HTTPException(status_code=400, detail="URL host not allowed")

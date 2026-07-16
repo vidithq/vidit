@@ -496,11 +496,12 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 
 Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the OP then the quoted tweet, capped at 3 candidates. `suggested_title` is the OP's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
 
-`source_url` resolution priority:
+`source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. See [`ingestion.md`](ingestion.md) for the full contract shared with the machine detection path. `source_url` resolution priority:
 
-1. **Quoted tweet's URL**: when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body.
-2. **First non-X URL in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` (or a Facebook / YouTube / Mastodon link) in the body. `x.com`, `twitter.com`, and bare `t.co` shortlinks are skipped.
-3. **OP's own URL** as a fallback so the form is at least filled; the analyst is expected to override when neither of the above applies.
+1. **Quoted tweet's URL**: when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body. `source_posted_at` is the quote's post date.
+2. **First X / Telegram / YouTube link in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` in the body. `source_posted_at` stays `null`, the link carries no date. A coordinate link (Google Maps) or any other host is not a footage source.
+
+Without either signal, `source_url` and `source_posted_at` are both `null` and the form field starts empty. The OP's own URL is never a fallback.
 
 `original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
 
@@ -550,6 +551,8 @@ Backfill the caller's profile from their official X "Download your data" export.
 **Tweets-only intake guard.** Only the allowlisted entries are extracted (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs.
 
 Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
+
+A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication; an unreachable status still lands the tweet, just source-less. A tweet whose footage is a Telegram post (`Source: t.me/<channel>/<id>`) has that post's public embed chased for its date and, when the embed serves it, its media; a sensitive post degrades to link + date.
 
 **Request:** `multipart/form-data` with a single `file` (the `.zip`).
 
@@ -622,7 +625,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL.
 
 **Errors:**
 | Code | Case |
@@ -646,7 +649,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `source_url` | string | yes | Original source URL, ≤2000 chars. |
 | `event_date` | string (YYYY-MM-DD) | yes | When the depicted event happened. |
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
-| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required: a post always has a time. Distinct from `event_date` and the submission time. |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date. Distinct from `event_date` and the submission time. |
 | `proof` | string (JSON) | no | Serialized Tiptap document. Its inline images reference not-yet-uploaded files as `placeholder://<filename>`, resolved against `proof_files`. |
 | `tag_ids` | string (JSON array) | yes | `["uuid1", "uuid2"]`. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
 | `file` | File | yes | Exactly one source file (image or video): the footage. |
@@ -752,10 +755,10 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_url` | string | ≤2000 chars, the footage origin. A `detected` geolocate corrects the machine's guess; fulfilling a `requested` event ignores this field and keeps the request's `source_url` (a fulfiller must not rewrite the requester's evidence anchor) |
+| `source_url` | string | ≤2000 chars, the footage origin. A `detected` draft may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url` (a fulfiller must not rewrite the requester's evidence anchor) |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
-| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required: a post always has a time |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date |
 | `proof` | JSON string | Tiptap document (sanitised); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
@@ -769,7 +772,7 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), or `proof_files_mismatch` |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, or `source_url_required` (a `detected` draft with no declared source, geolocated with a blank `source_url` field) |
 | 403 | Caller is not the owner of a `detected` draft (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |

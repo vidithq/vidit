@@ -69,4 +69,31 @@ describe("DetailsFields", () => {
     // Both the event date and the event time now carry the optional marker.
     expect(screen.getAllByText("optional")).toHaveLength(2);
   });
+
+  it("flags a missing field's label red, same as its input outline", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        eventDateInvalid
+        sourcePostedAtInvalid
+        sourceUrlInvalid
+      />
+    );
+    // Every invalid field's own label turns red, matching the outline already
+    // applied to its input (via `Input`'s `invalid` prop): the same
+    // treatment, not just one or the other.
+    expect(screen.getByText("Event date").closest("label")).toHaveClass(
+      "!text-red-400"
+    );
+    expect(screen.getByText("Source posted (UTC)").closest("label")).toHaveClass(
+      "!text-red-400"
+    );
+    expect(screen.getByText("Source URL").closest("label")).toHaveClass(
+      "!text-red-400"
+    );
+    // The always-optional event time never gets flagged.
+    expect(screen.getByText("Event time").closest("label")).not.toHaveClass(
+      "!text-red-400"
+    );
+  });
 });

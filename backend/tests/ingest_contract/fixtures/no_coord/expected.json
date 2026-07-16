@@ -1,0 +1,10 @@
+{
+  "description": "No coordinate anywhere. resolve_thread still resolves (coords empty), but detect yields no DetectedGeoloc and the archive backfill creates no row.",
+  "coords": [],
+  "source_url": null,
+  "source_posted_at": null,
+  "event_date": "2026-03-09",
+  "title": "Just some commentary on the situation, nothing to pin down here",
+  "source_media": [],
+  "proof_media": [["image", "op"]]
+}

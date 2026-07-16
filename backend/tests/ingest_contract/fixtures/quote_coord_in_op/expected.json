@@ -1,0 +1,10 @@
+{
+  "description": "Coordinate in the OP text, a quoted footage tweet with its own photo. The quote is the source (url + its date + its media); the OP's own photo is annotation (proof).",
+  "coords": [[48.012345, 37.802411]],
+  "source_url": "https://x.com/front_cam/status/8100000000000000002",
+  "source_posted_at": "2026-02-28T18:40:00+00:00",
+  "event_date": "2026-03-01",
+  "title": "Depot hit confirmed near the rail yard",
+  "source_media": [["image", "quote"]],
+  "proof_media": [["image", "op"]]
+}

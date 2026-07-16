@@ -26,6 +26,12 @@ export const FORM_LABEL_COMPACT =
 // one); the faint ring lifts it off the dark card. Append to the existing class.
 export const FORM_INVALID_FIELD = "!border-red-500/80 ring-1 ring-red-500/30";
 
+// Red label text for the same flagged state, on a `<label>` or a
+// `SectionHeading` title rather than a bordered block. Every required field
+// pairs this with FORM_INVALID_FIELD, so the label and its input always agree
+// on when to turn red. Append to the existing label class.
+export const FORM_INVALID_LABEL = "!text-red-400";
+
 // The one error banner: red, above the actions. Used by every form, auth card,
 // and admin panel. Earlier `_COMPACT` / `_BOXED` siblings only varied the red
 // tint (dark fill vs light wash) and the density, neither of which carried a

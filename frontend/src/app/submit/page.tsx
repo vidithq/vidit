@@ -199,6 +199,7 @@ function SubmitForm() {
     importedFrom,
     importGen,
     extraCoordCandidates,
+    importedProofFiles,
     applyTweetImport,
     clearImportedTweet,
     swapCoordCandidate,
@@ -237,7 +238,10 @@ function SubmitForm() {
         }
         setRequest(b);
         setTitle(b.title);
-        setSourceUrl(b.source_url);
+        // A ``requested`` row always carries a source_url (the backend CHECK
+        // ties it to status); the `?? ""` only satisfies the nullable wire
+        // type, it never actually falls back here.
+        setSourceUrl(b.source_url ?? "");
         // Carry the request's optional metadata into the form: the dates the
         // poster knew, and the in-progress proof so the analyst continues from
         // it instead of a blank editor. The form mounts only after the request
@@ -639,6 +643,7 @@ function SubmitForm() {
           proof={proof}
           onChange={setProof}
           onProofFilesChange={setProofFiles}
+          initialProofFiles={importedProofFiles}
           optional
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />

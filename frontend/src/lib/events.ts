@@ -56,9 +56,10 @@ export function sourceIsSynthetic(g: {
   return g.is_demo && g.status !== "detected";
 }
 
-/** Page size for the owner Detections queue. Matches the backend default
- *  (`per_page=20`, capped at 100). */
-const DETECTIONS_PER_PAGE = 20;
+/** Page size for the owner Detections queue. Kept below the backend default
+ *  (`per_page=20`, capped at 100) so the source-media previews on each card
+ *  load faster. */
+const DETECTIONS_PER_PAGE = 10;
 
 /** Shape of `GET /events/detections`: full-detail items (media + tags) so
  *  the queue renders the evidence and computes submit-readiness without a

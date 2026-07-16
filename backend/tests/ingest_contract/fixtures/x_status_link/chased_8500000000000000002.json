@@ -1,0 +1,20 @@
+{
+  "id_str": "8500000000000000002",
+  "created_at": "2026-03-04T21:30:00.000Z",
+  "user": { "screen_name": "source_gull" },
+  "text": "Raw footage from the scene",
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "variants": [
+          {
+            "bitrate": "832000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/85/vid/480x852/FAKECHASE.mp4?tag=12"
+          }
+        ]
+      }
+    }
+  ]
+}

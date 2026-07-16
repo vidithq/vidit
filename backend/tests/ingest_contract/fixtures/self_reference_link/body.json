@@ -1,0 +1,28 @@
+{
+  "id_str": "9400000000000000001",
+  "created_at": "2026-04-01T12:00:00.000Z",
+  "user": { "screen_name": "trace_falcon" },
+  "text": "Geolocated 26.564389, 57.087644 comms tower\nPrevious geolocation here: https://t.co/fakePREV\nSource: https://t.co/fakeCENTCOMPROFILE https://t.co/fakeCENTCOMSTATUS",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP10.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakePREV",
+        "expanded_url": "https://x.com/trace_falcon/status/8999999999999999999"
+      },
+      {
+        "url": "https://t.co/fakeCENTCOMPROFILE",
+        "expanded_url": "https://x.com/CENTCOM"
+      },
+      {
+        "url": "https://t.co/fakeCENTCOMSTATUS",
+        "expanded_url": "https://x.com/CENTCOM/status/9000000000000000002"
+      }
+    ]
+  }
+}

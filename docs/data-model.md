@@ -81,12 +81,12 @@ erDiagram
         VARCHAR title
         GEOMETRY event_coords "nullable, the subject; required at geolocated"
         GEOMETRY capture_source_coords "nullable, the camera position"
-        TEXT source_url
+        TEXT source_url "nullable, required at requested/geolocated"
         TEXT detected_from_url "nullable, detection provenance"
         JSONB proof
         DATE event_date "nullable"
         TIME event_time "nullable, optional UTC hour"
-        TIMESTAMPTZ source_posted_at "when the source posted (UTC)"
+        TIMESTAMPTZ source_posted_at "nullable, when the source posted (UTC)"
         TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
         TIMESTAMPTZ requested_at "nullable, entered requested"
         TIMESTAMPTZ detected_at "nullable, entered detected"
@@ -315,12 +315,12 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `eve
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `event_coords` | `GEOMETRY(Point, 4326)` | nullable, the subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise (a `requested` request may carry an approximate guess). Renamed from `location`. One subject point per event; multi-point is a deferred `event_points` child table. |
 | `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable, the camera position: where the footage was shot from. Always optional, one per event. |
-| `source_url` | `TEXT` | NOT NULL, where the footage was first published. For a machine `detected` row it points at the originating post; immutable once set. |
+| `source_url` | `TEXT` | nullable, where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected` (a machine draft may declare no source, see [`ingestion.md`](ingestion.md)). |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` re-import idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
 | `event_date` | `DATE` | nullable, when the depicted event happened. Often unknown for a `requested` event; the submit transition requires it at `geolocated`. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown. |
-| `source_posted_at` | `TIMESTAMPTZ` | NOT NULL, when the original source posted the media: a real post instant, so a full UTC timestamp. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). On the machine path it equals the imported tweet's timestamp. |
+| `source_posted_at` | `TIMESTAMPTZ` | nullable, when the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). A human submit or a machine detection with a quoted source always sets it; a machine detection with only a footage link (no quote) leaves it `NULL`, since the link carries no date, except a Telegram footage link whose public embed was chased, which carries the post's own date (see [`ingestion.md`](ingestion.md#archive-formats)). |
 | `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The "who geolocated it first" precedence input for the claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
 | `requested_at` | `TIMESTAMPTZ` | nullable, stamped when the event entered `requested`. |
 | `detected_at` | `TIMESTAMPTZ` | nullable, stamped when a machine produced it (`detected`). |
@@ -337,6 +337,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `eve
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database (the column is a plain `VARCHAR`, not a native enum), so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
 - `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate; the other states are free. The old "requested forbids coordinates" half is deliberately dropped so a `requested` request may carry an approximate guess.
+- `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL; a `detected` draft may carry none (see [`ingestion.md`](ingestion.md)). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). The terminal stamps are tied to status so an app path that forgets to stamp is rejected at write time, not stored as silent bad data.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected')) OR (status <> 'closed' AND before_closed_status IS NULL)`. Non-NULL and in-domain exactly when `closed`, NULL otherwise. The explicit `IS NOT NULL` is required: `NULL IN (...)` is unknown (not false), so without it a `closed` row could keep a NULL discriminator and slip through.
 
@@ -351,7 +352,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
 | `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date nullable (required at the `geolocated` transition); time optional (the hour is often unknown) |
-| `source_posted_at` | when the source posted the media | analyst, or detection (tweet timestamp) | NOT NULL, a post always has a time |
+| `source_posted_at` | when the source posted the media | analyst, or detection (a quoted source's date) | nullable: `NULL` on a `detected` row whose source is a footage link (no date) or whose source is undeclared |
 | `detected_post_at` | when the analyst posted the geolocation on X | detection only (the imported tweet's time) | NULL for human submits |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 

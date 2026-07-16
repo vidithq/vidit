@@ -1,6 +1,6 @@
 "use client";
 
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 
 interface CoordinateInputsProps {
@@ -34,7 +34,10 @@ export function CoordinateInputs({
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="space-y-1.5">
-        <label htmlFor={latId} className={FORM_LABEL}>
+        <label
+          htmlFor={latId}
+          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
           Latitude
         </label>
         <Input
@@ -49,7 +52,10 @@ export function CoordinateInputs({
         />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor={lngId} className={FORM_LABEL}>
+        <label
+          htmlFor={lngId}
+          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
           Longitude
         </label>
         <Input

@@ -52,15 +52,20 @@ class EventRead(BaseModel):
     event_coords: CoordsRead | None
     # The camera point: where the footage was shot from. Always optional.
     capture_source_coords: CoordsRead | None
-    source_url: str
+    # The declared footage source. NULL only on a machine ``detected`` draft
+    # (the imported tweet declared none); ``requested`` / ``geolocated`` rows
+    # always carry one (``ck_events_source_url_status``). Required-nullable
+    # like ``event_coords``: the key is always serialised.
+    source_url: str | None
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
     event_time: time | None
-    # When the original source posted the media: a real post instant (UTC),
-    # always present. Distinct from ``event_date`` (when the event happened) and
-    # ``created_at`` (submission).
-    source_posted_at: datetime
+    # When the original source posted the media (UTC). NULL when unknown (a
+    # machine detection only knows it for a dated quote). Distinct from
+    # ``event_date`` (when the event happened) and ``created_at`` (submission).
+    # Required-nullable: the key is always serialised.
+    source_posted_at: datetime | None
     created_at: datetime
     updated_at: datetime
     # Per-state entry stamps; each is NULL until the event enters that state.
@@ -171,7 +176,9 @@ class PossibleDuplicateRead(BaseModel):
     # Nullable (often unknown for a machine detection) but always serialised:
     # the sole constructor (``duplicates.list_possible_duplicates``) passes it.
     event_date: date | None
-    source_url: str
+    # Nullable for the same reason: a ``detected`` candidate may carry no
+    # source (it can still match on the date leg). Required-nullable.
+    source_url: str | None
     # Geodesic distance in metres from the caller-supplied (lat, lng). Float
     # (not int) so the frontend renders "120 m" vs "0.4 km" without rounding
     # artefacts at small distances.

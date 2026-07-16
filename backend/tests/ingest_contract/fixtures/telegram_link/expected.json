@@ -1,0 +1,10 @@
+{
+  "description": "Coordinate plus a Telegram footage link and two annotation photos, no quote. The link is the source url; its date is unknown (null); the footage itself is off-platform (no source media). Both OP photos are proof.",
+  "coords": [[44.6123, 33.5221]],
+  "source_url": "https://t.me/somechannel/12345",
+  "source_posted_at": null,
+  "event_date": "2026-03-04",
+  "title": "Geolocated airfield perimeter",
+  "source_media": [],
+  "proof_media": [["image", "op"], ["image", "op"]]
+}

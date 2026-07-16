@@ -186,14 +186,14 @@ async def _persist_one(
             owner_id=owner.id,
             title=dto.title,
             event_coords=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
-            # No reliable footage origin from the text alone, so the originating
-            # post is the honest source of record; it also surfaces as the
-            # distinct ``detected_from_url`` provenance link. ``source_url`` is
-            # immutable, so it points at the real post, not a guess.
-            source_url=dto.detected_from_url,
+            # The declared footage source (the quoted tweet or an off-platform
+            # link), distinct from the ``detected_from_url`` provenance link.
+            # NULL when the tweet declared none: a ``detected`` draft is partial
+            # by definition; the geolocate promotion requires the source.
+            source_url=dto.source_url,
             proof=tiptap_doc_from_text(dto.proof_text),
             event_date=dto.event_date,
-            source_posted_at=dto.posted_at,
+            source_posted_at=dto.source_posted_at,
             detected_post_at=dto.detected_post_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
@@ -204,10 +204,9 @@ async def _persist_one(
         db.flush()  # populate geo.id for media keys + the Media FK
 
         storage = get_storage()
-        # Exactly ONE media per detection: the source slot is capped at one
-        # (``uq_media_source_per_event``), so take the first tweet-order media
-        # that fetches + prepares cleanly and stop there.
-        for parsed in dto.media:
+        # The footage in the source slot, capped at one (``uq_media_source_per_event``):
+        # take the first resolved source media that fetches + prepares cleanly.
+        for parsed in dto.source_media:
             prepared = await _prepared_media(parsed, fetch_media, media_cache)
             if prepared is None:
                 continue
@@ -231,6 +230,46 @@ async def _persist_one(
                 uploaded_keys.append(landed)
                 uploaded_keys.extend(result.derivative_keys)
             break
+        # Proof media (the analyst's annotation): role=proof, several per event,
+        # no source-slot cap. Proof images travel inside the proof JSON as image
+        # nodes (that is how the read surfaces them, unlike source in ``media``),
+        # so collect the uploaded image URLs and append them to the proof doc.
+        proof_image_urls: list[str] = []
+        for parsed in dto.proof_media:
+            # Invariant: every proof row is referenced by the proof doc, and only
+            # image nodes go into it, so a non-image proof media would be an
+            # orphaned, unreadable blob. Skip it rather than persist bytes the read
+            # can never surface.
+            if parsed.kind != "image":
+                continue
+            prepared = await _prepared_media(parsed, fetch_media, media_cache)
+            if prepared is None:
+                continue
+            media_type = _media_type(prepared.content_type)
+            result = await upload_prepared_media(
+                prepared, detected_media_key(geo.id, prepared.content_type)
+            )
+            db.add(
+                Media(
+                    event_id=geo.id,
+                    role="proof",
+                    storage_url=result.url,
+                    media_type=media_type,
+                    sha256=result.sha256,
+                )
+            )
+            if media_type == "image":
+                proof_image_urls.append(result.url)
+            landed = storage.key_from_url(result.url)
+            if landed is not None:
+                uploaded_keys.append(landed)
+                uploaded_keys.extend(result.derivative_keys)
+        if proof_image_urls:
+            doc = dict(geo.proof)
+            content = list(doc.get("content", []))
+            content.extend({"type": "image", "attrs": {"src": url}} for url in proof_image_urls)
+            doc["content"] = content
+            geo.proof = doc  # reassign so SQLAlchemy flags the JSONB column dirty
         db.commit()
     except Exception:
         # Explicit rollback before the sweep so an autoflush in a downstream
@@ -303,6 +342,7 @@ async def backfill_from_archive(
     owner: User,
     archive_dir: Path,
     is_demo: bool = False,
+    chase: bool = False,
 ) -> AssembleOutcome:
     """Run a full archive backfill: acquire → stitch → detect → assemble.
 
@@ -313,7 +353,7 @@ async def backfill_from_archive(
     (the dev/admin seed path passes it).
     """
     handle = owner.x_handle or owner.username
-    records = read_tweets(archive_dir, handle=handle)
+    records = read_tweets(archive_dir, handle=handle, chase=chase)
     detections = [d for thread in stitch(records) for d in detect(thread)]
     return await assemble_detections(
         db,

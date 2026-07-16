@@ -7,10 +7,13 @@ so the cookie/CSRF fixtures stay in one place.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.services.tweet_ingest import (
     InvalidTweetUrl,
+    acquire,
     clean_proof_text,
     derive_title,
     extract_coords,
@@ -19,7 +22,6 @@ from app.services.tweet_ingest import (
     parse_tweet,
     syndication,
 )
-from app.services.tweet_ingest.syndication import _extract_external_source_url
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -386,72 +388,21 @@ def test_clean_proof_empty_input():
         ("https://evil.com/media/foo.jpg", False),
         ("https://pbs.twimg.com.evil.com/media/foo.jpg", False),
         ("not a url at all", False),
+        # Telegram CDN: apex + shard subdomains + telesco.pe, https only.
+        ("https://cdn-telegram.org/file/x.jpg", True),
+        ("https://cdn4.cdn-telegram.org/file/x.jpg", True),
+        ("https://CDN4.CDN-TELEGRAM.ORG/file/x.jpg", True),  # case-insensitive
+        ("https://telesco.pe/file/x.mp4", True),
+        ("http://cdn4.cdn-telegram.org/file/x.jpg", False),  # http rejected
+        # Suffix look-alikes that a naive substring check would admit.
+        ("https://evil-cdn-telegram.org/file/x.jpg", False),
+        ("https://cdn-telegram.org.evil.com/file/x.jpg", False),
+        ("https://telesco.pe.evil.com/file/x.mp4", False),
+        ("https://nottelesco.pe/file/x.mp4", False),
     ],
 )
 def test_is_trusted_media_url(url, expected):
     assert is_trusted_media_url(url) is expected
-
-
-# ── External source-URL extraction ────────────────────────────────────────
-
-
-def _entities_with_urls(urls: list[dict]) -> dict:
-    return {"entities": {"urls": urls}}
-
-
-def test_extract_external_source_url_returns_telegram_link():
-    body = _entities_with_urls(
-        [
-            {
-                "expanded_url": "https://t.me/somechannel/18880",
-                "url": "https://t.co/abc123",
-            }
-        ]
-    )
-    assert _extract_external_source_url(body) == "https://t.me/somechannel/18880"
-
-
-def test_extract_external_source_url_skips_x_self_references():
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://x.com/foo/status/123"},
-            {"expanded_url": "https://twitter.com/bar/status/456"},
-            {"expanded_url": "https://www.x.com/baz"},
-            {"expanded_url": "https://t.me/realsource/9"},
-        ]
-    )
-    # x.com / twitter.com / www.x.com all skipped → first non-X wins.
-    assert _extract_external_source_url(body) == "https://t.me/realsource/9"
-
-
-def test_extract_external_source_url_skips_bare_tco():
-    # Raw t.co (unexpanded) is the wrapped shortlink, not the source.
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://t.co/xyz789"},
-            {"expanded_url": "https://www.facebook.com/reel/123"},
-        ]
-    )
-    assert _extract_external_source_url(body) == "https://www.facebook.com/reel/123"
-
-
-def test_extract_external_source_url_returns_none_when_only_x_links():
-    body = _entities_with_urls(
-        [
-            {"expanded_url": "https://x.com/foo/status/123"},
-            {"expanded_url": "https://twitter.com/bar/status/456"},
-        ]
-    )
-    assert _extract_external_source_url(body) is None
-
-
-def test_extract_external_source_url_tolerates_missing_or_malformed_entities():
-    # Defensive against schema drift — anything unexpected returns None.
-    assert _extract_external_source_url({}) is None
-    assert _extract_external_source_url({"entities": None}) is None
-    assert _extract_external_source_url({"entities": {"urls": None}}) is None
-    assert _extract_external_source_url({"entities": {"urls": [{}]}}) is None
-    assert _extract_external_source_url({"entities": {"urls": [{"expanded_url": ""}]}}) is None
 
 
 # ── parse_tweet end-to-end ────────────────────────────────────────────────
@@ -463,7 +414,15 @@ def _stub_syndication(monkeypatch, body: dict) -> None:
     The real ``fetch_syndication`` makes a network call; these tests
     exercise everything *around* the fetch so we keep them hermetic.
     """
-    monkeypatch.setattr(syndication, "fetch_syndication", lambda tweet_id, client=None: body)
+
+    def _stub(tweet_id: str, client: object | None = None) -> dict:
+        return body
+
+    monkeypatch.setattr(syndication, "fetch_syndication", _stub)
+    # ``acquire`` binds ``fetch_syndication`` at import (``from .syndication
+    # import ...``), and both parse + the machine path fetch through it, so the
+    # module-level patch above doesn't reach that call site: patch it too.
+    monkeypatch.setattr(acquire, "fetch_syndication", _stub)
 
 
 def _user_block(handle: str) -> dict:
@@ -538,9 +497,51 @@ def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
     assert parsed.quoted_tweet is None
 
 
-def test_parse_tweet_source_url_falls_back_to_op(monkeypatch):
-    """No quote and no external URL → ``source_url`` equals the OP URL.
-    The analyst is expected to override the form field manually."""
+def test_parse_tweet_source_posted_at_from_quoted_date(monkeypatch):
+    """The quoted tweet carries the true source post instant, so
+    ``source_posted_at`` is the quote's date parsed to an aware UTC datetime."""
+    _stub_syndication(
+        monkeypatch,
+        {
+            "user": _user_block("alice"),
+            "created_at": "2026-05-01T00:00:00.000Z",
+            "text": "Strike 48.012345, 37.802411",
+            "mediaDetails": [_photo_media("op.jpg")],
+            "quoted_tweet": {
+                "id_str": "9999",
+                "user": _user_block("victim"),
+                "text": "footage of an attack",
+                "created_at": "2026-04-30T09:15:00.000Z",
+            },
+        },
+    )
+    parsed = parse_tweet("https://x.com/alice/status/1234567890")
+    assert parsed.source_url == "https://x.com/victim/status/9999"
+    assert parsed.source_posted_at == datetime(2026, 4, 30, 9, 15, tzinfo=UTC)
+
+
+def test_parse_tweet_source_posted_at_none_without_source(monkeypatch):
+    """A tweet that neither quotes nor links footage declares no source, so
+    ``source_posted_at`` stays None: no date is fabricated from the OP's own
+    post time."""
+    _stub_syndication(
+        monkeypatch,
+        {
+            "user": _user_block("alice"),
+            "created_at": "2026-05-01T00:00:00.000Z",
+            "text": "Strike 48.012345, 37.802411",
+            "mediaDetails": [_photo_media("op.jpg")],
+        },
+    )
+    parsed = parse_tweet("https://x.com/alice/status/1234567890")
+    assert parsed.source_url is None
+    assert parsed.source_posted_at is None
+
+
+def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
+    """No quote and no footage link: the tweet declared no source, so
+    ``source_url`` is None and the form field starts empty. The OP's own URL is
+    provenance (``original_tweet_url``), never a deduced source."""
     _stub_syndication(
         monkeypatch,
         {
@@ -552,8 +553,8 @@ def test_parse_tweet_source_url_falls_back_to_op(monkeypatch):
         },
     )
     parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/alice/status/1234567890"
-    assert parsed.original_tweet_url == parsed.source_url
+    assert parsed.source_url is None
+    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
 
 
 def test_parse_tweet_merges_op_and_quote_media_with_origin_tags(monkeypatch):

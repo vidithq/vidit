@@ -71,7 +71,12 @@ async def import_archive(
         except archive_zip.ArchiveIntakeError as exc:
             raise_typed_error(exc, _ARCHIVE_STATUS)
 
-        outcome = await backfill_from_archive(db, owner=current_user, archive_dir=archive_dir)
+        # chase=True: a tweet that only points at its footage via a linked
+        # "Source: x.com/.../status/..." status is chased through syndication
+        # (fail-soft, so an unreachable status still lands the tweet source-less).
+        outcome = await backfill_from_archive(
+            db, owner=current_user, archive_dir=archive_dir, chase=True
+        )
 
     logger.info(
         "Archive backfill for user %s: created=%d skipped=%d recreated=%d failed=%d",
