@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { DemoRequestsPanel } from "@/components/admin/DemoRequestsPanel";
 import { DemoDataPanel } from "@/components/admin/DemoDataPanel";
+import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { InviteCodesPanel } from "@/components/admin/InviteCodesPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
@@ -39,6 +40,7 @@ export default function AdminPage() {
   return (
     <PageShell title="Admin">
       <InviteCodesPanel />
+      <DetectionStatsPanel />
       <TrustPanel />
       <EventDeletePanel />
       <DemoDataPanel />

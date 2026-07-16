@@ -4,6 +4,29 @@
  */
 
 export interface paths {
+    "/api/v1/admin/detection-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detection Stats
+         * @description Machine-extraction quality signal: the reject-rate over machine
+         *     detections plus the missing-piece counts on the pending queue. Read-only,
+         *     no audit row (a metric read is not an administrative act). See
+         *     ``AdminDetectionStatsRead`` for the exact definitions.
+         */
+        get: operations["detection_stats_api_v1_admin_detection_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/events/{geolocation_id}": {
         parameters: {
             query?: never;
@@ -997,6 +1020,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminDetectionStatsRead
+         * @description Quality signal on the machine-extraction pipeline (admin-only).
+         *
+         *     A machine detection is a row imported from X, ``detected_from_url`` set
+         *     (the archive backfill / the bot); a human submit always carries NULL there.
+         *     Demo rows (``is_demo``) are excluded from both aggregates so seeded fixtures
+         *     don't pollute the metric.
+         *
+         *     Reject-rate: of every machine detection, the fraction dismissed while still
+         *     a draft, whichever door they left through. A machine detection counts as a
+         *     reject if either an owner closed it straight out of ``detected``
+         *     (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
+         *     admin soft-deleted it while it was still ``detected``
+         *     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
+         *     owner vouched (promoted to ``geolocated``) is not a reject, even once
+         *     soft-deleted (it was vouched before removal); a detection still awaiting
+         *     review is not a reject yet. This mirrors the dismissal semantics in
+         *     ``services/detection._reimportable``, where soft-delete and owner close are
+         *     the same judged-and-thrown-out shape. ``reject_rate`` is
+         *     ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
+         *     machine detections. Counted over all (non-demo) machine rows, soft-deleted
+         *     or not: the metric measures what the pipeline produced.
+         *
+         *     Two counting edges the metric accepts, both favouring over-counting
+         *     dismissals over under-counting them: an owner hard-delete
+         *     (``DELETE /events/{id}`` on an own draft) removes the row from both counts
+         *     entirely; an account-departure cascade soft-delete counts that account's
+         *     pending drafts as rejects.
+         *
+         *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
+         *     review, ``deleted_at IS NULL``, machine rows only, demo excluded): how many
+         *     drafts are missing a piece the geolocate floor will demand, so a
+         *     low-quality extraction run is visible before an analyst opens the queue.
+         */
+        AdminDetectionStatsRead: {
+            /** Machine Rejected */
+            machine_rejected: number;
+            /** Machine Total */
+            machine_total: number;
+            /** Pending */
+            pending: number;
+            /** Pending Missing Proof Image */
+            pending_missing_proof_image: number;
+            /** Pending Missing Source Media */
+            pending_missing_source_media: number;
+            /** Pending Missing Source Url */
+            pending_missing_source_url: number;
+            /** Reject Rate */
+            reject_rate: number;
+        };
         /**
          * AdminEventDeleteResponse
          * @description Response for `DELETE /admin/events/{id}`.
@@ -2084,6 +2158,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    detection_stats_api_v1_admin_detection_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDetectionStatsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete: {
         parameters: {
             query?: {

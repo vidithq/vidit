@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import type { components } from "./api-types";
 
 export type InviteCodeStatus = "active" | "exhausted" | "revoked" | "expired";
 
@@ -160,6 +161,16 @@ export function wipeDemoRequests(): Promise<WipeDemoRequestsResponse> {
   return apiFetch<WipeDemoRequestsResponse>("/admin/seed-demo-requests", {
     method: "DELETE",
   });
+}
+
+// ── Detection quality stats ───────────────────────────────────────────
+
+/** Machine-extraction quality signal (admin-only). Definitions live on the
+ *  backend `AdminDetectionStatsRead` schema. */
+export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
+
+export function getDetectionStats(): Promise<DetectionStats> {
+  return apiFetch<DetectionStats>("/admin/detection-stats");
 }
 
 // ── Maintenance ───────────────────────────────────────────────────────

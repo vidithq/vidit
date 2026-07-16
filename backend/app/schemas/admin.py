@@ -186,3 +186,47 @@ class AdminMaintenanceResponse(BaseModel):
     expired: int | None = None
     old_consumed: int | None = None
     pending_registrations_deleted: int | None = None
+
+
+class AdminDetectionStatsRead(BaseModel):
+    """Quality signal on the machine-extraction pipeline (admin-only).
+
+    A machine detection is a row imported from X, ``detected_from_url`` set
+    (the archive backfill / the bot); a human submit always carries NULL there.
+    Demo rows (``is_demo``) are excluded from both aggregates so seeded fixtures
+    don't pollute the metric.
+
+    Reject-rate: of every machine detection, the fraction dismissed while still
+    a draft, whichever door they left through. A machine detection counts as a
+    reject if either an owner closed it straight out of ``detected``
+    (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
+    admin soft-deleted it while it was still ``detected``
+    (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
+    owner vouched (promoted to ``geolocated``) is not a reject, even once
+    soft-deleted (it was vouched before removal); a detection still awaiting
+    review is not a reject yet. This mirrors the dismissal semantics in
+    ``services/detection._reimportable``, where soft-delete and owner close are
+    the same judged-and-thrown-out shape. ``reject_rate`` is
+    ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
+    machine detections. Counted over all (non-demo) machine rows, soft-deleted
+    or not: the metric measures what the pipeline produced.
+
+    Two counting edges the metric accepts, both favouring over-counting
+    dismissals over under-counting them: an owner hard-delete
+    (``DELETE /events/{id}`` on an own draft) removes the row from both counts
+    entirely; an account-departure cascade soft-delete counts that account's
+    pending drafts as rejects.
+
+    The ``pending_*`` counts profile the live ``detected`` queue (awaiting
+    review, ``deleted_at IS NULL``, machine rows only, demo excluded): how many
+    drafts are missing a piece the geolocate floor will demand, so a
+    low-quality extraction run is visible before an analyst opens the queue.
+    """
+
+    machine_total: int
+    machine_rejected: int
+    reject_rate: float
+    pending: int
+    pending_missing_source_media: int
+    pending_missing_proof_image: int
+    pending_missing_source_url: int

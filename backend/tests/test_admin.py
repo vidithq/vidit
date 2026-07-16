@@ -10,7 +10,13 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.event import STATUS_REQUESTED, Event
+from app.models.event import (
+    STATUS_CLOSED,
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Event,
+)
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
@@ -1041,3 +1047,314 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
     assert event is not None
     assert event.target["cascaded_geolocations"] >= 1
     assert "cascaded_requests" not in event.target
+
+
+# ── Detection quality stats ──────────────────────────────────────────────
+
+
+@pytest.fixture
+def events_cleanup(db):
+    """Collect event ids created inline by a test and drop them on teardown.
+
+    The suite shares one database, so the detection-stats tests assert on
+    deltas from a baseline rather than absolute counts; this fixture removes
+    the rows (media cascades via the FK) so a later run starts clean.
+    """
+    ids: list[uuid.UUID] = []
+    yield ids
+    if ids:
+        db.expire_all()
+        db.query(Media).filter(Media.event_id.in_(ids)).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def _detection_stats(admin_user):
+    response = client.get(
+        "/api/v1/admin/detection-stats",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_detection_stats_403_for_regular_user(regular_user):
+    response = client.get(
+        "/api/v1/admin/detection-stats",
+        headers=login_as(client, regular_user),
+    )
+    assert response.status_code == 403
+
+
+def test_detection_stats_401_for_anonymous():
+    response = client.get("/api/v1/admin/detection-stats")
+    assert response.status_code == 401
+
+
+def test_reject_rate_counts_closed_detections_not_geolocated(
+    admin_user, regular_user, events_cleanup, db
+):
+    """A machine detection closed straight out of ``detected`` is a reject; the
+    same detection promoted to ``geolocated`` is not; a still-pending one is not
+    a reject yet. All three are machine rows (``detected_from_url`` set) and so
+    lift ``machine_total`` equally."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    rejected = Event(
+        owner_id=regular_user.id,
+        title=f"Rejected {uuid.uuid4().hex[:8]}",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_DETECTED,
+        closed_at=now,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    geolocated = Event(
+        owner_id=regular_user.id,
+        title=f"Geolocated {uuid.uuid4().hex[:8]}",
+        status=STATUS_GEOLOCATED,
+        geolocated_at=now,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    pending = Event(
+        owner_id=regular_user.id,
+        title=f"Pending {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    db.add_all([rejected, geolocated, pending])
+    db.commit()
+    events_cleanup.extend([rejected.id, geolocated.id, pending.id])
+
+    after = _detection_stats(admin_user)
+
+    # Three machine rows added; exactly one (the closed-from-detected) rejected.
+    assert after["machine_total"] == before["machine_total"] + 3
+    assert after["machine_rejected"] == before["machine_rejected"] + 1
+    # reject_rate is exactly machine_rejected / machine_total.
+    assert after["machine_total"] > 0
+    assert abs(after["reject_rate"] - after["machine_rejected"] / after["machine_total"]) < 1e-9
+
+
+def test_reject_rate_ignores_human_submits(admin_user, regular_user, events_cleanup, db):
+    """A human submit (``detected_from_url`` NULL) is not a machine detection, so
+    it moves neither ``machine_total`` nor ``machine_rejected`` even when closed."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    human_closed = Event(
+        owner_id=regular_user.id,
+        title=f"Human closed {uuid.uuid4().hex[:8]}",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_REQUESTED,
+        closed_at=now,
+        source_url="https://example.com/source",
+        requested_at=now,
+    )
+    db.add(human_closed)
+    db.commit()
+    events_cleanup.append(human_closed.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"]
+    assert after["machine_rejected"] == before["machine_rejected"]
+
+
+def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_cleanup, db):
+    """The pending counts flag live ``detected`` drafts missing a source media, a
+    proof image, or a source URL. A draft with all three present lifts only the
+    ``pending`` total."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    bare = Event(
+        owner_id=regular_user.id,
+        title=f"Bare {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    complete = Event(
+        owner_id=regular_user.id,
+        title=f"Complete {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    db.add_all([bare, complete])
+    db.flush()
+    db.add_all(
+        [
+            Media(
+                event_id=complete.id,
+                role="source",
+                storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/s.jpg",
+                media_type="image",
+            ),
+            Media(
+                event_id=complete.id,
+                role="proof",
+                storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/p.jpg",
+                media_type="image",
+            ),
+        ]
+    )
+    db.commit()
+    events_cleanup.extend([bare.id, complete.id])
+
+    after = _detection_stats(admin_user)
+
+    # Two pending drafts added.
+    assert after["pending"] == before["pending"] + 2
+    # Only the bare one is missing each piece.
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"] + 1
+    assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1
+    assert after["pending_missing_source_url"] == before["pending_missing_source_url"] + 1
+
+
+def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cleanup, db):
+    """A soft-deleted ``detected`` row has left the pending queue, so it counts
+    toward neither the pending total nor its missing-piece tallies."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    soft_deleted = Event(
+        owner_id=regular_user.id,
+        title=f"Soft-deleted {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        deleted_at=now,
+    )
+    db.add(soft_deleted)
+    db.commit()
+    events_cleanup.append(soft_deleted.id)
+
+    after = _detection_stats(admin_user)
+    assert after["pending"] == before["pending"]
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+
+
+def test_reject_rate_counts_soft_deleted_draft(admin_user, regular_user, events_cleanup, db):
+    """A machine detection soft-deleted while still ``detected`` was judged and
+    thrown out, so it counts as a reject whichever door it left through: both
+    ``machine_total`` and ``machine_rejected`` move."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    soft_deleted_draft = Event(
+        owner_id=regular_user.id,
+        title=f"Soft-deleted draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        deleted_at=now,
+    )
+    db.add(soft_deleted_draft)
+    db.commit()
+    events_cleanup.append(soft_deleted_draft.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"] + 1
+    assert after["machine_rejected"] == before["machine_rejected"] + 1
+
+
+def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, events_cleanup, db):
+    """A soft-deleted ``geolocated`` machine row was vouched before removal, so it
+    lifts ``machine_total`` but is not a reject."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    soft_deleted_geo = Event(
+        owner_id=regular_user.id,
+        title=f"Soft-deleted geo {uuid.uuid4().hex[:8]}",
+        status=STATUS_GEOLOCATED,
+        geolocated_at=now,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        deleted_at=now,
+    )
+    db.add(soft_deleted_geo)
+    db.commit()
+    events_cleanup.append(soft_deleted_geo.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"] + 1
+    assert after["machine_rejected"] == before["machine_rejected"]
+
+
+def test_detection_stats_exclude_demo_rows(admin_user, regular_user, events_cleanup, db):
+    """A demo machine row moves neither aggregate: excluded from the machine and
+    the pending queries alike so seeded fixtures don't pollute the metric."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    demo_draft = Event(
+        owner_id=regular_user.id,
+        title=f"Demo draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        is_demo=True,
+    )
+    db.add(demo_draft)
+    db.commit()
+    events_cleanup.append(demo_draft.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"]
+    assert after["machine_rejected"] == before["machine_rejected"]
+    assert after["pending"] == before["pending"]
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+
+
+def test_pending_proof_video_counts_as_missing_proof_image(
+    admin_user, regular_user, events_cleanup, db
+):
+    """A pending draft whose only proof media is a video still lacks a proof
+    *image*, so it counts toward ``pending_missing_proof_image``."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    video_proof = Event(
+        owner_id=regular_user.id,
+        title=f"Video proof {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    db.add(video_proof)
+    db.flush()
+    db.add_all(
+        [
+            Media(
+                event_id=video_proof.id,
+                role="source",
+                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/s.jpg",
+                media_type="image",
+            ),
+            Media(
+                event_id=video_proof.id,
+                role="proof",
+                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/p.mp4",
+                media_type="video",
+            ),
+        ]
+    )
+    db.commit()
+    events_cleanup.extend([video_proof.id])
+
+    after = _detection_stats(admin_user)
+    assert after["pending"] == before["pending"] + 1
+    # Source media present, source URL present, but the only proof media is a
+    # video: the image predicate must still flag it as missing a proof image.
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+    assert after["pending_missing_source_url"] == before["pending_missing_source_url"]
+    assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1

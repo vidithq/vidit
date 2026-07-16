@@ -3,15 +3,15 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
-from app.models.event import Event
+from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
-from app.schemas.admin import AdminInviteCodeRead, InviteCodeStatus
+from app.schemas.admin import AdminDetectionStatsRead, AdminInviteCodeRead, InviteCodeStatus
 from app.services.auth import bump_token_version, generate_invite_code
 from app.services.storage import get_storage, sweep_keys
 
@@ -432,3 +432,73 @@ def hard_delete_user(
     )
 
     return target
+
+
+def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
+    """Machine-extraction quality signal for the admin panel (read-only).
+
+    See :class:`AdminDetectionStatsRead` for the exact definitions. Two cheap
+    aggregate queries, each one grouped pass with conditional counts:
+
+    1. Reject-rate over every machine detection (``detected_from_url`` set,
+       demo rows excluded): the ``count(*) FILTER (WHERE ...)`` of dismissed
+       drafts over the total. A machine detection dismissed while still a draft
+       counts as a reject whichever door it left through: an owner close off
+       ``detected`` or an admin soft-delete that never left ``detected``. A
+       soft-deleted ``geolocated`` row is not a reject (it was vouched before
+       removal). This mirrors :func:`app.services.detection._reimportable`,
+       where soft-delete and owner close are the same judged-and-thrown-out
+       shape.
+    2. The live ``detected`` queue (``deleted_at IS NULL``, demo rows and
+       human rows excluded), counting the drafts missing a source media, a
+       proof image, or a source URL, the pieces the geolocate floor will
+       demand.
+    """
+    not_demo = Event.is_demo.is_(False)
+    machine = and_(Event.detected_from_url.isnot(None), not_demo)
+    rejected = or_(
+        and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_DETECTED),
+        and_(Event.deleted_at.isnot(None), Event.status == STATUS_DETECTED),
+    )
+    machine_total, machine_rejected = (
+        db.query(
+            func.count(),
+            func.count().filter(rejected),
+        )
+        .filter(machine)
+        .one()
+    )
+
+    pending = and_(
+        Event.status == STATUS_DETECTED,
+        Event.deleted_at.is_(None),
+        Event.detected_from_url.isnot(None),
+        not_demo,
+    )
+    has_source = Event.media.any(Media.role == "source")
+    has_proof = Event.media.any(and_(Media.role == "proof", Media.media_type == "image"))
+    (
+        pending_total,
+        missing_source_media,
+        missing_proof_image,
+        missing_source_url,
+    ) = (
+        db.query(
+            func.count(),
+            func.count().filter(~has_source),
+            func.count().filter(~has_proof),
+            func.count().filter(Event.source_url.is_(None)),
+        )
+        .filter(pending)
+        .one()
+    )
+
+    return AdminDetectionStatsRead(
+        machine_total=int(machine_total),
+        machine_rejected=int(machine_rejected),
+        reject_rate=(int(machine_rejected) / int(machine_total)) if machine_total else 0.0,
+        pending=int(pending_total),
+        pending_missing_source_media=int(missing_source_media),
+        pending_missing_proof_image=int(missing_proof_image),
+        pending_missing_source_url=int(missing_source_url),
+    )
