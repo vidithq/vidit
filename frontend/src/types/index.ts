@@ -48,15 +48,13 @@ export type Conflict = components["schemas"]["ConflictRead"];
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
 /** Compact point from /events/points:
- *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
+ *  [id, lat, lng, event_date, added_date, detected, demo]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings,
  *  the timeline scrubbers bucket them for the histograms and filter their
  *  windows client-side. ``detected`` is 1 for a machine detection (marked on
- *  the map), 0 for a geolocated row. The endpoint only returns located rows, so
- *  every point has coordinates. */
-// [id, lat, lng, event_date, added_date, detected, demo] — the compact
-// `/events/points` tuple; `detected` colours the marker, `demo` gates the
-// filter panel's hide-demo toggle.
+ *  the map), 0 for a geolocated row; ``demo`` is 1 for a demo row (gates the
+ *  filter panel's hide-demo toggle). The endpoint only returns located rows,
+ *  so every point has coordinates. */
 export type MapPoint = [string, number, number, string, string, 0 | 1, 0 | 1];
 
 /**
