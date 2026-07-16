@@ -1,6 +1,7 @@
 from app.models.admin_event import AdminEvent
 from app.models.auth_event import AuthEvent
 from app.models.auth_token import AuthToken
+from app.models.bot_mention import BotMention
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event, EventGeolocator, EventInvestigator
 from app.models.follow import Follow
@@ -14,6 +15,7 @@ __all__ = [
     "AdminEvent",
     "AuthEvent",
     "AuthToken",
+    "BotMention",
     "Conflict",
     "Follow",
     "Event",

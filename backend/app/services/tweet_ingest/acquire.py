@@ -1,9 +1,11 @@
 """Acquire a single tweet via syndication → ``TweetRecord``.
 
-The syndication sibling of ``archive.read_tweets``: one fetch, one record, no
-reply edges (syndication can't expose a self-thread in one call, so ``stitch``
-is the identity here). Backs the no-persist detection preview on
-``import-from-tweet``; the bot is the other consumer.
+The syndication sibling of ``archive.read_tweets``: one fetch, one record.
+A reply's parent *pointer* (``in_reply_to_status_id_str``) is mapped when the
+payload carries it, but the chain itself is not — one call returns one tweet,
+so ``stitch`` over a single record is the identity. The preview uses it that
+way; the bot walks the pointer one ``fetch_syndication`` at a time to rebuild
+a self-thread (see ``services/bot``).
 """
 
 from __future__ import annotations
@@ -64,6 +66,8 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
 
     text = body.get("text")
     created_at = body.get("created_at")
+    in_reply_to_status = body.get("in_reply_to_status_id_str")
+    in_reply_to_user = body.get("in_reply_to_user_id_str")
     return TweetRecord(
         tweet_id=normalised.tweet_id,
         handle=handle,
@@ -71,6 +75,8 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
         created_at=created_at if isinstance(created_at, str) else "",
         permalink=normalised.canonical,
         media=list(_extract_media(body, origin="op")),
+        in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
+        in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),
         external_sources=[SourceLink(url=u, host=h) for u, h in extract_source_links(body)],
     )

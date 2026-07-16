@@ -273,7 +273,7 @@ TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
 
 # Byte cap on a single remote-media fetch, shared by every path that streams an
 # allowlisted CDN URL into memory: the media-proxy route and the archive /
-# Telegram chase (``archive._fetch_cdn_media``). Sized for the upload ceilings
+# Telegram chase (``archive.fetch_cdn_media``). Sized for the upload ceilings
 # (10 MB image / 100 MB video) plus HTTP-framing overhead. Anything bigger is an
 # unexpected upstream response or a hostile content-length lie; cap and bail so a
 # fetch can't buffer an unbounded stream in memory.

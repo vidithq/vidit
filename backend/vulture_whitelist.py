@@ -19,14 +19,14 @@
 
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
 # Populated from the DB row on every ORM load and set at construction; no line
-# reads them by name in app/. `claimed_at` currently has NO explicit Python
-# producer or consumer at all (its server_default stamps it and the assembled-
-# profile claim flow that inserts an explicit NULL is a deferred v0.4 item); it
-# is a live, documented column (migration u7p9r1t3v5x7, data-model.md), so the
-# ORM still hydrates it on load. Flagged for the maintainer, not removed.
+# reads them by name in app/. `claimed_at`'s only Python producer is the bot's
+# assembled-profile mint (services/bot inserts an explicit NULL); nothing in
+# app/ reads it back yet (the claim flow is a v0.5 item), so it still reads as
+# unused to vulture.
 created_by  # app/models/invite_code.py
 original_filename  # app/models/media.py, and schemas/media.py
 claimed_at  # app/models/user.py
+processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.

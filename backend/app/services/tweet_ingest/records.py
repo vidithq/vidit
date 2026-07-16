@@ -72,8 +72,9 @@ class TweetRecord:
     # where ``source_url`` (the footage origin) may be absent.
     permalink: str
     media: list[ParsedMedia] = field(default_factory=list)
-    # Reply edges — present from an archive (inline), ``None`` from syndication
-    # (one fetch returns one tweet without its chain). ``stitch`` unions on them.
+    # Reply edges — inline from an archive; from syndication the parent pointer
+    # maps when the payload carries it (the chain itself still takes one fetch
+    # per parent, the bot's walk). ``stitch`` unions on them.
     in_reply_to_status_id: str | None = None
     in_reply_to_user_id: str | None = None
     # The quoted tweet, resolved inline (syndication) or joined / chased

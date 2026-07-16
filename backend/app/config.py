@@ -86,6 +86,19 @@ class Settings(BaseSettings):
     # ``admin@vidit.app`` in prod.
     admin_emails: str = ""
 
+    # X bot (the "tag @ViditBot" on-ramp, see docs/ingestion.md). Reading the
+    # bot's mentions uses the app-only bearer token + the bot account's numeric
+    # user id (stored here so a run never pays a user lookup); both empty means
+    # the bot runner refuses to start. Posting replies needs user-context OAuth
+    # 1.0a credentials (all four); empty means the run processes mentions but
+    # posts nothing.
+    x_bot_bearer_token: str = ""
+    x_bot_user_id: str = ""
+    x_api_consumer_key: str = ""
+    x_api_consumer_secret: str = ""
+    x_bot_access_token: str = ""
+    x_bot_access_token_secret: str = ""
+
     model_config = {"env_file": ".env"}
 
     @property
@@ -114,6 +127,29 @@ class Settings(BaseSettings):
                 f"JWT_SECRET must be set to a non-default value when DATABASE_URL "
                 f"points to a non-local host (got {host!r}). Refusing to start with "
                 f"the placeholder secret."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_x_bot_config(self) -> "Settings":
+        read_pair = (self.x_bot_bearer_token, self.x_bot_user_id)
+        if any(read_pair) and not all(read_pair):
+            raise ValueError(
+                "X_BOT_BEARER_TOKEN and X_BOT_USER_ID must be set together — "
+                "refusing a half-configured mentions read."
+            )
+        write_creds = (
+            self.x_api_consumer_key,
+            self.x_api_consumer_secret,
+            self.x_bot_access_token,
+            self.x_bot_access_token_secret,
+        )
+        if any(write_creds) and not all(write_creds):
+            raise ValueError(
+                "The four X OAuth 1.0a settings (X_API_CONSUMER_KEY, "
+                "X_API_CONSUMER_SECRET, X_BOT_ACCESS_TOKEN, "
+                "X_BOT_ACCESS_TOKEN_SECRET) must be set together — refusing a "
+                "half-configured reply writer."
             )
         return self
 

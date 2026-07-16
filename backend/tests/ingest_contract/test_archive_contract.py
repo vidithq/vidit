@@ -241,7 +241,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         return loader.TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
-    monkeypatch.setattr(archive_mod, "_fetch_cdn_media", fake_cdn)
+    monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
     detections = [d for thread in stitch(records) for d in detect(thread)]
@@ -292,7 +292,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
         return loader.TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
-    monkeypatch.setattr(archive_mod, "_fetch_cdn_media", fake_cdn)
+    monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
     detections = [d for thread in stitch(records) for d in detect(thread)]

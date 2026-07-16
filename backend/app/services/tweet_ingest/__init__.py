@@ -22,7 +22,7 @@ shared failures without a cycle.
 from __future__ import annotations
 
 from .acquire import record_from_syndication
-from .archive import archive_media_fetcher, read_tweets
+from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .detect import DetectedGeoloc, detect
 from .errors import (
     InvalidTweetUrl,
@@ -69,6 +69,7 @@ __all__ = [
     "derive_title",
     "detect",
     "extract_coords",
+    "fetch_cdn_media",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
