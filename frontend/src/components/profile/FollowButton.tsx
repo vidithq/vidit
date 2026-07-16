@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { UserPlus, UserCheck, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
+import { loginNext } from "@/lib/navigation";
 import { Button } from "@/components/ui/Button";
 
 interface FollowButtonProps {
@@ -19,8 +22,17 @@ export default function FollowButton({
   // Surfaced under the button on a failed follow/unfollow — otherwise the
   // button silently re-enables in its old state and the click looks lost.
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const toggleFollow = async () => {
+    // Following requires an account; the profile page is public, so the
+    // proxy can't intercept. Route through login and land back here.
+    if (!user) {
+      router.push(loginNext(pathname ?? "/"));
+      return;
+    }
     setLoading(true);
     setError(null);
     const wasFollowing = following;

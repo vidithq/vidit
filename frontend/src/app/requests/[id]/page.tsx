@@ -13,6 +13,7 @@ import {
   uninvestigateEvent,
 } from "@/lib/events";
 import { formatDate } from "@/lib/format";
+import { loginNext } from "@/lib/navigation";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
@@ -103,6 +104,12 @@ export default function RequestDetailPage() {
   const canGeolocate = request.status === "requested";
 
   const handleToggleInvestigate = async () => {
+    // Signalling requires an account; the request page is public, so the
+    // proxy can't intercept. Route through login and land back here.
+    if (!user) {
+      router.push(loginNext(`/requests/${request!.id}`));
+      return;
+    }
     deleteMutation.reset();
     const next = !isInvestigatingMe;
     setOptimisticInvestigating(next);

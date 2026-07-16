@@ -64,6 +64,14 @@ export function safeNext(raw: string | null): string {
   return url.pathname + url.search + url.hash;
 }
 
+/** Sign-in path that lands the user back on `target` after login: the
+ *  login page reads `?next=` through `safeNext` above. For authed actions
+ *  sitting on public pages (follow, investigate), where the proxy can't
+ *  intercept because the page itself is anonymous-readable. */
+export function loginNext(target: string): string {
+  return `/login?next=${encodeURIComponent(target)}`;
+}
+
 function readStack(): string[] {
   try {
     const raw = window.sessionStorage.getItem(NAV_STACK_KEY);
