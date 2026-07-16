@@ -9,8 +9,9 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 
 // Local to this panel: admin surfaces inline their markup rather than minting a
-// shared primitive (see planning/next.md, where the admin dialect doesn't earn
-// palette entries). A quiet bordered stat cell, not a reusable card.
+// shared primitive (see docs/design.md, the admin-dialect section, where admin
+// internals don't earn palette entries). A quiet bordered stat cell, not a
+// reusable card.
 function Stat({
   value,
   label,
@@ -67,13 +68,16 @@ export function DetectionStatsPanel() {
           imported from X (the archive backfill or the bot;{" "}
           <code className="text-neutral-400">detected_from_url</code> set). The{" "}
           <span className="text-neutral-300">reject-rate</span> is the share of
-          machine detections an owner closed straight out of{" "}
-          <code className="text-neutral-400">detected</code> without ever
-          geolocating them; a detection vouched into{" "}
+          machine detections dismissed while still a draft, whichever door they
+          left through: an owner closed straight out of{" "}
+          <code className="text-neutral-400">detected</code>, or an admin
+          soft-deleted while still{" "}
+          <code className="text-neutral-400">detected</code>. A detection
+          vouched into{" "}
           <code className="text-neutral-400">geolocated</code>, or still
           awaiting review, is not a reject. The pending counts profile the live
-          review queue for drafts missing a piece the geolocate floor will
-          demand.
+          review queue (machine drafts, demo rows excluded) for drafts missing a
+          piece the geolocate floor will demand.
         </p>
       </header>
 
@@ -89,7 +93,11 @@ export function DetectionStatsPanel() {
             <Stat
               value={rejectRate}
               label="Reject-rate"
-              hint={`${stats.machine_rejected} of ${stats.machine_total} machine detections`}
+              hint={
+                stats.machine_total > 0
+                  ? `${stats.machine_rejected} of ${stats.machine_total} machine detections`
+                  : "No machine detections yet"
+              }
             />
             <Stat value={String(stats.machine_total)} label="Machine detections" />
             <Stat

@@ -1238,3 +1238,123 @@ def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cl
     after = _detection_stats(admin_user)
     assert after["pending"] == before["pending"]
     assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+
+
+def test_reject_rate_counts_soft_deleted_draft(admin_user, regular_user, events_cleanup, db):
+    """A machine detection soft-deleted while still ``detected`` was judged and
+    thrown out, so it counts as a reject whichever door it left through: both
+    ``machine_total`` and ``machine_rejected`` move."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    soft_deleted_draft = Event(
+        owner_id=regular_user.id,
+        title=f"Soft-deleted draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        deleted_at=now,
+    )
+    db.add(soft_deleted_draft)
+    db.commit()
+    events_cleanup.append(soft_deleted_draft.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"] + 1
+    assert after["machine_rejected"] == before["machine_rejected"] + 1
+
+
+def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, events_cleanup, db):
+    """A soft-deleted ``geolocated`` machine row was vouched before removal, so it
+    lifts ``machine_total`` but is not a reject."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    soft_deleted_geo = Event(
+        owner_id=regular_user.id,
+        title=f"Soft-deleted geo {uuid.uuid4().hex[:8]}",
+        status=STATUS_GEOLOCATED,
+        geolocated_at=now,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        deleted_at=now,
+    )
+    db.add(soft_deleted_geo)
+    db.commit()
+    events_cleanup.append(soft_deleted_geo.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"] + 1
+    assert after["machine_rejected"] == before["machine_rejected"]
+
+
+def test_detection_stats_exclude_demo_rows(admin_user, regular_user, events_cleanup, db):
+    """A demo machine row moves neither aggregate: excluded from the machine and
+    the pending queries alike so seeded fixtures don't pollute the metric."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    demo_draft = Event(
+        owner_id=regular_user.id,
+        title=f"Demo draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        is_demo=True,
+    )
+    db.add(demo_draft)
+    db.commit()
+    events_cleanup.append(demo_draft.id)
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"]
+    assert after["machine_rejected"] == before["machine_rejected"]
+    assert after["pending"] == before["pending"]
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+
+
+def test_pending_proof_video_counts_as_missing_proof_image(
+    admin_user, regular_user, events_cleanup, db
+):
+    """A pending draft whose only proof media is a video still lacks a proof
+    *image*, so it counts toward ``pending_missing_proof_image``."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    video_proof = Event(
+        owner_id=regular_user.id,
+        title=f"Video proof {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        source_url="https://example.com/source",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    )
+    db.add(video_proof)
+    db.flush()
+    db.add_all(
+        [
+            Media(
+                event_id=video_proof.id,
+                role="source",
+                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/s.jpg",
+                media_type="image",
+            ),
+            Media(
+                event_id=video_proof.id,
+                role="proof",
+                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/p.mp4",
+                media_type="video",
+            ),
+        ]
+    )
+    db.commit()
+    events_cleanup.extend([video_proof.id])
+
+    after = _detection_stats(admin_user)
+    assert after["pending"] == before["pending"] + 1
+    # Source media present, source URL present, but the only proof media is a
+    # video: the image predicate must still flag it as missing a proof image.
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
+    assert after["pending_missing_source_url"] == before["pending_missing_source_url"]
+    assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1

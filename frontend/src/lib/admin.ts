@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import type { components } from "./api-types";
 
 export type InviteCodeStatus = "active" | "exhausted" | "revoked" | "expired";
 
@@ -164,20 +165,9 @@ export function wipeDemoRequests(): Promise<WipeDemoRequestsResponse> {
 
 // ── Detection quality stats ───────────────────────────────────────────
 
-/** Machine-extraction quality signal (admin-only). Mirrors the backend
- *  `AdminDetectionStatsRead`. A machine detection is a row imported from X
- *  (`detected_from_url` set); `reject_rate` is the 0..1 fraction of them an
- *  owner closed straight out of `detected` without ever geolocating. The
- *  `pending_*` counts profile the live `detected` queue for missing pieces. */
-export interface DetectionStats {
-  machine_total: number;
-  machine_rejected: number;
-  reject_rate: number;
-  pending: number;
-  pending_missing_source_media: number;
-  pending_missing_proof_image: number;
-  pending_missing_source_url: number;
-}
+/** Machine-extraction quality signal (admin-only). Definitions live on the
+ *  backend `AdminDetectionStatsRead` schema. */
+export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 
 export function getDetectionStats(): Promise<DetectionStats> {
   return apiFetch<DetectionStats>("/admin/detection-stats");

@@ -1151,11 +1151,13 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 ### `GET /admin/detection-stats` 🛡️
 
-Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Demo rows (`is_demo`) are excluded from both aggregates. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections an owner closed straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) without ever geolocating them. A detection the owner vouched (promoted to `geolocated`), or one still awaiting review, is **not** a reject. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every (non-demo) machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
-The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own draft) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending drafts as rejects.
+
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only, demo excluded): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
 **Response 200:**
 ```json

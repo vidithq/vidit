@@ -43,7 +43,10 @@ fulfilled  # schemas/admin.py
 closed  # schemas/admin.py
 deleted_requests  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
+machine_total  # schemas/admin.py AdminDetectionStatsRead
+machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead
+pending  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_media  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_proof_image  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_url  # schemas/admin.py AdminDetectionStatsRead
