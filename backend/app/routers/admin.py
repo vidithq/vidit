@@ -10,6 +10,7 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
 from app.schemas.admin import (
+    AdminDetectionStatsRead,
     AdminEventDeleteResponse,
     AdminInviteCodeCreate,
     AdminInviteCodeRead,
@@ -48,6 +49,18 @@ def admin_me(current_user: User = Depends(require_admin)) -> AdminMeResponse:
     """Frontend route-guard probe: 200 + ``{is_admin: true}`` for admins, 403
     otherwise. Does not leak ``is_admin`` into the public ``UserRead``."""
     return AdminMeResponse(is_admin=True)
+
+
+@router.get("/detection-stats", response_model=AdminDetectionStatsRead)
+def detection_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminDetectionStatsRead:
+    """Machine-extraction quality signal: the reject-rate over machine
+    detections plus the missing-piece counts on the pending queue. Read-only,
+    no audit row (a metric read is not an administrative act). See
+    ``AdminDetectionStatsRead`` for the exact definitions."""
+    return admin_service.detection_quality_stats(db)
 
 
 @router.post(

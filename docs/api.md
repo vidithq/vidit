@@ -62,6 +62,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/timeline` | 🔒 | Activity feed from followed analysts |
 | **Admin** (collapsed below) | | | |
 | GET | `/admin/me` | 🛡️ | `is_admin` probe |
+| GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
 | POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
@@ -110,7 +111,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/users`, `/admin/invite-codes` list) carry no limit.
+`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit.
 
 ---
 
@@ -1137,7 +1138,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>14 admin endpoints, rarely-touched ops surface (invites, soft/hard delete, trust toggle, demo seeding, maintenance reapers). Expand for full contracts.</summary>
+<summary>15 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, trust toggle, demo seeding, maintenance reapers). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1147,6 +1148,27 @@ All routes below are mounted under `/admin` and gated by the `require_admin` Fas
 ```
 
 Returns 403 for non-admins, 401 for anonymous callers.
+
+### `GET /admin/detection-stats` 🛡️
+
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
+
+**Reject-rate** is the share of machine detections an owner closed straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) without ever geolocating them. A detection the owner vouched (promoted to `geolocated`), or one still awaiting review, is **not** a reject. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+
+**Response 200:**
+```json
+{
+  "machine_total": 420,
+  "machine_rejected": 37,
+  "reject_rate": 0.088,
+  "pending": 61,
+  "pending_missing_source_media": 4,
+  "pending_missing_proof_image": 9,
+  "pending_missing_source_url": 12
+}
+```
 
 ### `POST /admin/invite-codes` 🛡️
 
