@@ -665,7 +665,7 @@ export interface paths {
         /**
          * List Points
          * @description Return the map's events as a compact array:
-         *     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+         *     ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
          *     No joins, no limit, designed for map display with client-side clustering.
          *     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
          *     ``requested`` guess is not a confident pin, and a closed row was judged
@@ -673,8 +673,10 @@ export interface paths {
          *     are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
          *     timeline scrubbers and filters the windows client-side (no refetch per
          *     drag). ``detected`` is ``1`` for a machine detection (rendered marked),
-         *     ``0`` for a geolocated row, a flag, not the state string, to keep the
-         *     payload small. Cached in-memory for 60s per unique filter combination.
+         *     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
+         *     panel offers its hide-demo toggle only when one is present). Flags, not
+         *     strings, to keep the payload small. Cached in-memory for 60s per unique
+         *     filter combination.
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;

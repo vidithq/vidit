@@ -68,6 +68,7 @@ export default function EventPage() {
                         "",
                         "",
                         geo.status === "detected" ? 1 : 0,
+                        geo.is_demo ? 1 : 0,
                       ],
                     ]}
                     center={{ lat: geo.event_coords.lat, lng: geo.event_coords.lng }}

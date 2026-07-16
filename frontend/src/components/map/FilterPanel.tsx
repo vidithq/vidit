@@ -423,7 +423,18 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             on={trustedOnly}
             onToggle={() => setTrustedOnly((v) => !v)}
           />
-          <ToggleRow label="Hide demo data" on={hideDemo} onToggle={() => setHideDemo((v) => !v)} />
+          {/* Offered only when a demo row is actually on the map (the payload
+              flags them), like `?used=true` narrows the conflict list: a
+              toggle that can't change anything is noise. Kept while active
+              even though the filtered payload then carries no demo rows,
+              else it couldn't be switched off. */}
+          {(hideDemo || points.some((p) => p[6] === 1)) && (
+            <ToggleRow
+              label="Hide demo data"
+              on={hideDemo}
+              onToggle={() => setHideDemo((v) => !v)}
+            />
+          )}
 
           {hasActiveFilters && (
             <button

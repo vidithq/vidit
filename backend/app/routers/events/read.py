@@ -342,7 +342,7 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return the map's events as a compact array:
-    ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+    ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
     No joins, no limit, designed for map display with client-side clustering.
     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
     ``requested`` guess is not a confident pin, and a closed row was judged
@@ -350,8 +350,10 @@ def list_points(
     are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
     timeline scrubbers and filters the windows client-side (no refetch per
     drag). ``detected`` is ``1`` for a machine detection (rendered marked),
-    ``0`` for a geolocated row, a flag, not the state string, to keep the
-    payload small. Cached in-memory for 60s per unique filter combination.
+    ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
+    panel offers its hide-demo toggle only when one is present). Flags, not
+    strings, to keep the payload small. Cached in-memory for 60s per unique
+    filter combination.
     """
     if media and not set(media) <= _MEDIA_TYPES:
         raise HTTPException(
@@ -387,6 +389,7 @@ def list_points(
         Event.event_date,
         Event.created_at,
         Event.status,
+        Event.is_demo,
     )
     q = _apply_filters(
         q,
@@ -411,9 +414,10 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 6-tuple: [id, lat, lng, event_date, added_date, detected].
-    # ``detected`` is 1/0 (not the state string) so the no-LIMIT catalog payload
-    # stays small; the map colours the marker off this flag.
+    # Compact 7-tuple: [id, lat, lng, event_date, added_date, detected, demo].
+    # ``detected`` / ``demo`` are 1/0 flags (not strings) so the no-LIMIT
+    # catalog payload stays small; the map colours the marker off ``detected``
+    # and the filter panel shows its hide-demo toggle off ``demo``.
     result = [
         [
             str(r.id),
@@ -422,6 +426,7 @@ def list_points(
             r.event_date.isoformat(),
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
+            1 if r.is_demo else 0,
         ]
         for r in rows
     ]

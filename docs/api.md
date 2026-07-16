@@ -378,7 +378,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); the map buckets them for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one (a flag, not the status string). Located rows only, so `requested` events never appear here.
+Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); the map buckets them for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
@@ -394,8 +394,8 @@ params are still accepted but the map now filters dates client-side from the pay
 **Response 200:**
 ```json
 [
-  ["6c1f…uuid", 48.123, 37.456, "2024-03-11", "2024-03-12", 0],
-  ["a0b2…uuid", 50.450, 30.523, "2024-05-02", "2024-05-04", 1]
+  ["6c1f…uuid", 48.123, 37.456, "2024-03-11", "2024-03-12", 0, 0],
+  ["a0b2…uuid", 50.450, 30.523, "2024-05-02", "2024-05-04", 1, 0]
 ]
 ```
 

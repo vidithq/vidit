@@ -54,7 +54,10 @@ export type EventStatus = components["schemas"]["EventRead"]["status"];
  *  windows client-side. ``detected`` is 1 for a machine detection (marked on
  *  the map), 0 for a geolocated row. The endpoint only returns located rows, so
  *  every point has coordinates. */
-export type MapPoint = [string, number, number, string, string, 0 | 1];
+// [id, lat, lng, event_date, added_date, detected, demo] — the compact
+// `/events/points` tuple; `detected` colours the marker, `demo` gates the
+// filter panel's hide-demo toggle.
+export type MapPoint = [string, number, number, string, string, 0 | 1, 0 | 1];
 
 /**
  * Pre-fill payload from POST /events/import-from-tweet. Best-effort:
