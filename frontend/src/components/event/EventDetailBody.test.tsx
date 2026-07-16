@@ -26,7 +26,18 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       is_trusted: true,
       trust_reason: "Established track record",
     },
-    tags: [{ id: "t1", name: "Ukraine", category: "conflict" }],
+    tags: [],
+    conflicts: [
+      {
+        id: "c1",
+        name: "Russian invasion of Ukraine",
+        wikidata_id: "Q110999040",
+        start_year: 2022,
+        end_year: null,
+        ongoing: true,
+        tier: "major",
+      },
+    ],
     source_url: "https://t.me/channel/12345",
     proof: {
       type: "doc",
@@ -86,7 +97,10 @@ describe("EventDetailBody", () => {
     // Shared fields + proof render
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("48.015883, 37.802411")).toBeInTheDocument();
-    expect(screen.getByText("Ukraine")).toBeInTheDocument();
+    // An ongoing conflict carries its years too.
+    expect(
+      screen.getByText("Russian invasion of Ukraine (2022-present)")
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Anchor points match the imagery.")
     ).toBeInTheDocument();
@@ -105,20 +119,32 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
   });
 
-  it("splits curated tags into their own rows, free tags under Tags", () => {
+  it("splits conflicts and curated tags into their own rows, free tags under Tags", () => {
     render(
       <EventDetailBody
         geo={geoFixture({
           tags: [
-            { id: "t1", name: "Ukraine", category: "conflict" },
             { id: "t2", name: "Drone", category: "capture_source" },
             { id: "t3", name: "armor", category: "free" },
+          ],
+          conflicts: [
+            {
+              id: "c2",
+              name: "Falklands War",
+              wikidata_id: "Q127076",
+              start_year: 1982,
+              end_year: 1982,
+              ongoing: false,
+              tier: null,
+            },
           ],
         })}
         variant="page"
       />
     );
     expect(screen.getByText("Conflict")).toBeInTheDocument();
+    // An ended conflict carries its years for disambiguation.
+    expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
     expect(screen.getByText("Capture source")).toBeInTheDocument();
     expect(screen.getByText("Tags")).toBeInTheDocument();
   });

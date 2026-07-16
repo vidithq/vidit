@@ -57,6 +57,8 @@ investigators_sample  # schemas/event.py EventList
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
+start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
+end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc

@@ -81,6 +81,7 @@ async def create_event(
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
     # Exactly one source file (the footage); the proof body's inline images
     # ride alongside it and resolve against the doc's placeholder srcs.
     file: UploadFile = File(...),
@@ -109,6 +110,7 @@ async def create_event(
 
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
 
     try:
         geo = await events_service.create_with_evidence(
@@ -125,6 +127,7 @@ async def create_event(
             source_posted_at=parsed_source_posted_at,
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
             file=file,
             proof_files=proof_files,
         )
@@ -159,6 +162,7 @@ async def create_event_request(
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
     file: UploadFile = File(...),
     # The proof body's inline images (optional on a request), matched to the
     # doc's ``placeholder://`` srcs, same as the direct-create form.
@@ -182,6 +186,7 @@ async def create_event_request(
 
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
     # event_date is optional on a request, and event_time may stand alone: an
     # approximate hour-of-day (sun position / shadows) is knowable without the
     # date, so a time is NOT gated on a date.
@@ -204,6 +209,7 @@ async def create_event_request(
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,
             tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
             file=file,
             proof_files=proof_files,
         )

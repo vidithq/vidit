@@ -39,6 +39,7 @@ def get_timeline(
             owner=geo.owner,
             media=source_media(geo),
             tags=geo.tags,
+            conflicts=geo.conflicts,
         )
         for geo, lat, lng in result["items"]
     ]

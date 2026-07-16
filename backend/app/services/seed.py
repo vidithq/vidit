@@ -37,6 +37,7 @@ from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.models.conflict import Conflict, event_conflicts
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
@@ -251,12 +252,14 @@ HOTSPOTS_BY_REGION: dict[str, list[tuple[str, float, float, float]]] = {
 # tighter clustering; lower = more even background coverage.
 HOTSPOT_PROBABILITY = 0.85
 
-# Conflict tags by region. Set only where a curated `conflict` tag exists;
-# other regions get none (background-only points). Names must match the
-# `tags` table — the seeder creates them if absent.
-CONFLICT_TAG_BY_REGION: dict[str, str] = {
-    "Ukraine": "Ukraine",
-    "Middle East": "Israel Gaza",
+# Conflicts by region, rows in the `conflicts` referential (the seeder
+# creates them if absent, as `source='manual'`). Regions not listed fall
+# back to the `Other` escape conflict. Values are the exact Wikipedia
+# article titles so a later sync adopts the rows instead of forking
+# duplicates.
+CONFLICT_BY_REGION: dict[str, str] = {
+    "Ukraine": "Russo-Ukrainian War",
+    "Middle East": "Gaza war",
 }
 
 # Attached to every demo geo so one filter-chip click scopes to (or
@@ -294,10 +297,10 @@ CAPTURE_SOURCE_TAGS: list[str] = [
     "Unknown",
 ]
 
-# Conflict escape value (also seeded by `s5n7p9r1t3v5`). Demo geos in
-# regions with no curated conflict tag get this, so every row satisfies the
-# "one conflict per geo" intent and the "Other" chip is exercised.
-CONFLICT_OTHER_TAG = "Other"
+# Conflict escape value (seeded in prod by migration `j2l4n6p8r0t2`). Demo
+# geos in regions with no mapped conflict get this, so every row satisfies
+# the "one conflict per geo" intent and the "Other" chip is exercised.
+CONFLICT_OTHER_NAME = "Other"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -612,8 +615,6 @@ def _ensure_tags(db: Session) -> dict[str, Tag]:
     """
     needed: list[tuple[str, str]] = [
         (DEMO_TAG_NAME, "free"),
-        *((name, "conflict") for name in CONFLICT_TAG_BY_REGION.values()),
-        (CONFLICT_OTHER_TAG, "conflict"),
         *((name, "capture_source") for name in CAPTURE_SOURCE_TAGS),
         *((name, "free") for name in FREE_TAG_POOL),
     ]
@@ -621,6 +622,24 @@ def _ensure_tags(db: Session) -> dict[str, Tag]:
     db.execute(pg_insert(Tag).values(rows).on_conflict_do_nothing(index_elements=["name"]))
     db.flush()
     return {t.name: t for t in db.query(Tag).filter(Tag.name.in_([n for n, _ in needed])).all()}
+
+
+def _ensure_conflicts(db: Session) -> dict[str, Conflict]:
+    """Create the conflicts the seeder uses if absent; return them keyed by name.
+
+    Local-dev convenience mirroring `_ensure_tags`: in prod the referential
+    is fed by the Wikidata seed + Wikipedia sync, but a fresh dev DB must be
+    demoable without either. Race-safe via the `conflicts.name` UNIQUE.
+    Rows land QID-less (`source='manual'`, `ongoing=true`); a later sync run
+    adopts the ones the ongoing page also lists.
+    """
+    names = [*CONFLICT_BY_REGION.values(), CONFLICT_OTHER_NAME]
+    rows = [
+        {"id": uuid.uuid4(), "name": name, "ongoing": True, "source": "manual"} for name in names
+    ]
+    db.execute(pg_insert(Conflict).values(rows).on_conflict_do_nothing(index_elements=["name"]))
+    db.flush()
+    return {c.name: c for c in db.query(Conflict).filter(Conflict.name.in_(names)).all()}
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -655,11 +674,13 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
 
     authors = _ensure_demo_authors(db)
     tags_by_name = _ensure_tags(db)
+    conflicts_by_name = _ensure_conflicts(db)
     db.commit()  # lock in demo authors + tags before the bulk loop
     author_ids = [a.id for a in authors]
     # Memoise tag IDs as plain UUIDs — pure-Python lookup, no per-geo
     # `SELECT FROM tags` round-trip (a big deal at 50 k+ scale).
     tag_ids_by_name: dict[str, uuid.UUID] = {n: t.id for n, t in tags_by_name.items()}
+    conflict_ids_by_name: dict[str, uuid.UUID] = {n: c.id for n, c in conflicts_by_name.items()}
     template_ids = list(templates.keys())
     storage = get_storage()
 
@@ -671,6 +692,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     # Buffer M2M link + geolocator rows per batch, each flushed via one Core
     # INSERT, far cheaper than 1-4 ORM relationship writes per geo.
     pending_links: list[dict[str, uuid.UUID]] = []
+    pending_conflict_links: list[dict[str, uuid.UUID]] = []
     pending_geolocators: list[dict[str, Any]] = []
 
     def _flush_batch() -> None:
@@ -683,6 +705,9 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
         if pending_links:
             db.execute(insert(event_tags), pending_links)
             pending_links.clear()
+        if pending_conflict_links:
+            db.execute(insert(event_conflicts), pending_conflict_links)
+            pending_conflict_links.clear()
         if pending_geolocators:
             # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
             # ``Table`` and ``insert()`` accepts it.
@@ -759,10 +784,13 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
             {"event_id": geo_id, "user_id": author_id, "created_at": datetime.now(UTC)}
         )
 
-        # Pick tag IDs from the memoised dict and stage the link rows for
-        # the bulk Core insert — no DB hit, no ORM traversal.
-        for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
+        # Pick tag / conflict IDs from the memoised dicts and stage the link
+        # rows for the bulk Core inserts: no DB hit, no ORM traversal.
+        for tid in _pick_tag_ids_for(tag_ids_by_name):
             pending_links.append({"event_id": geo_id, "tag_id": tid})
+        conflict_id = _conflict_id_for(region["name"], conflict_ids_by_name)
+        if conflict_id is not None:
+            pending_conflict_links.append({"event_id": geo_id, "conflict_id": conflict_id})
 
         db.add(geo)
 
@@ -785,14 +813,21 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     return {"created": count, "templates": len(template_ids), "authors": len(authors)}
 
 
-def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -> list[uuid.UUID]:
+def _conflict_id_for(
+    region_name: str, conflict_ids_by_name: dict[str, uuid.UUID]
+) -> uuid.UUID | None:
+    """The conflict to attach to a demo geo: the region's mapped one if
+    configured, else the `Other` escape value, satisfying the "one conflict
+    per geo" invariant the submit form enforces."""
+    name = CONFLICT_BY_REGION.get(region_name, CONFLICT_OTHER_NAME)
+    return conflict_ids_by_name.get(name)
+
+
+def _pick_tag_ids_for(tag_ids_by_name: dict[str, uuid.UUID]) -> list[uuid.UUID]:
     """Pick the tag IDs to attach to a demo geo:
 
     - Always the `demo` free tag — one filter chip scopes to / hides every
       synthetic row.
-    - Exactly one `conflict` tag: the region's curated one if configured,
-      else "Other" — satisfies the "one conflict per geo" invariant the
-      submit form enforces.
     - Exactly one random `capture_source` tag, exercising the required
       selector + its map filter.
     - 1–3 random free tags from the OSINT pool for multi-tag combinations.
@@ -802,9 +837,6 @@ def _pick_tag_ids_for(region_name: str, tag_ids_by_name: dict[str, uuid.UUID]) -
     ids: list[uuid.UUID] = []
     if DEMO_TAG_NAME in tag_ids_by_name:
         ids.append(tag_ids_by_name[DEMO_TAG_NAME])
-    conflict_name = CONFLICT_TAG_BY_REGION.get(region_name, CONFLICT_OTHER_TAG)
-    if conflict_name in tag_ids_by_name:
-        ids.append(tag_ids_by_name[conflict_name])
     capture_source_name = random.choice(CAPTURE_SOURCE_TAGS)
     if capture_source_name in tag_ids_by_name:
         ids.append(tag_ids_by_name[capture_source_name])
@@ -892,9 +924,11 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
 
     authors = _ensure_demo_authors(db)
     tags_by_name = _ensure_tags(db)
+    conflicts_by_name = _ensure_conflicts(db)
     db.commit()
     author_ids = [a.id for a in authors]
     tag_ids_by_name: dict[str, uuid.UUID] = {n: t.id for n, t in tags_by_name.items()}
+    conflict_ids_by_name: dict[str, uuid.UUID] = {n: c.id for n, c in conflicts_by_name.items()}
     template_ids = list(templates.keys())
     storage = get_storage()
 
@@ -904,6 +938,7 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
     pool_sha256_by_key = _prepare_pool_media(templates, storage)
 
     pending_geo_tag_links: list[dict[str, uuid.UUID]] = []
+    pending_conflict_links: list[dict[str, uuid.UUID]] = []
     pending_investigator_rows: list[dict[str, Any]] = []
     pending_geolocator_rows: list[dict[str, Any]] = []
     counts: dict[EventStatus, int] = {
@@ -985,8 +1020,11 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
             )
         )
 
-        for tid in _pick_tag_ids_for(region["name"], tag_ids_by_name):
+        for tid in _pick_tag_ids_for(tag_ids_by_name):
             pending_geo_tag_links.append({"event_id": geo_id, "tag_id": tid})
+        conflict_id = _conflict_id_for(region["name"], conflict_ids_by_name)
+        if conflict_id is not None:
+            pending_conflict_links.append({"event_id": geo_id, "conflict_id": conflict_id})
 
         # Investigators only make sense on the open queue, not closed / geolocated
         # events don't accept new signals, and stale backfilled ones would
@@ -1008,6 +1046,8 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
     db.flush()
     if pending_geo_tag_links:
         db.execute(insert(event_tags), pending_geo_tag_links)
+    if pending_conflict_links:
+        db.execute(insert(event_conflicts), pending_conflict_links)
     # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
     # ``Table`` and ``insert()`` accepts it, same as the
     # ``insert(event_tags)`` call above.

@@ -127,12 +127,28 @@ erDiagram
     tags {
         UUID id PK
         VARCHAR name
-        VARCHAR category
+        VARCHAR category "capture_source | free"
     }
 
     event_tags {
         UUID event_id FK
         UUID tag_id FK
+    }
+
+    conflicts {
+        UUID id PK
+        VARCHAR name "UNIQUE"
+        VARCHAR wikidata_id "nullable, UNIQUE, sync/seed natural key"
+        INT start_year "nullable"
+        INT end_year "nullable"
+        BOOLEAN ongoing
+        TIMESTAMPTZ last_seen_at "nullable, last sync sighting"
+        VARCHAR source "sync | seed | manual"
+    }
+
+    event_conflicts {
+        UUID event_id FK
+        UUID conflict_id FK
     }
 
     follows {
@@ -152,6 +168,8 @@ erDiagram
     events ||--o{ media : "event_id"
     events ||--o{ event_tags : "event_id"
     tags ||--o{ event_tags : "tag_id"
+    events ||--o{ event_conflicts : "event_id"
+    conflicts ||--o{ event_conflicts : "conflict_id"
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_investigators : "event_id"
@@ -466,13 +484,14 @@ At least one `source` media is required per request and per `geolocated` event, 
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `name` | `VARCHAR(100)` | UNIQUE, NOT NULL |
-| `category` | `VARCHAR(20)` | NOT NULL, `'conflict'`, `'capture_source'`, or `'free'` |
+| `category` | `VARCHAR(20)` | NOT NULL, `'capture_source'` or `'free'` |
 
-Tags with category `conflict` are the main conflicts (Ukraine, Gaza, Sudan…), plus an `Other` escape value.
 Tags with category `capture_source` are the original "lens" that captured the media, `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Seeded in prod by migration `s5n7p9r1t3v5` (the demo seeder is local-only, but the category is required on the submit form, so the options must exist on a fresh prod DB).
 Tags with category `free` are user-created and free-form.
 
-`conflict` and `capture_source` are **curated** (server-managed, not user-creatable) and **required**: `POST /events` rejects a submission that doesn't carry at least one tag from each category (see [`api.md`](api.md) → `POST /events`). The rule is enforced at the API layer, not by a DB constraint, pre-existing rows and the demo seeder are unaffected, and each category ships an escape value. `name` is globally UNIQUE across all three categories, so a `capture_source` tag can't share a name with a `free` or `conflict` tag.
+Conflicts used to be a third category; they now live in the dedicated [`conflicts`](#conflicts) table (migration `j2l4n6p8r0t2` moved the rows and their event links).
+
+`capture_source` is **curated** (server-managed, not user-creatable) and **required**: a submission must carry at least one `capture_source` tag and at least one conflict (see [`api.md`](api.md) → `POST /events`). The rule is enforced at the API layer, not by a DB constraint, and both domains ship an escape value (`capture_source → "Unknown"`, conflict → `"Other"`). `name` is globally UNIQUE across both categories, so a `capture_source` tag can't share a name with a `free` tag.
 
 ---
 
@@ -486,6 +505,41 @@ Many-to-many junction table between `events` and `tags`.
 | `tag_id` | `UUID` | FK → `tags.id` ON DELETE CASCADE |
 
 Composite PK: `(event_id, tag_id)`
+
+---
+
+### `conflicts`
+
+The conflict referential: one row per armed conflict, externally synced. Fed by three writers, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`, the `Other` escape value plus the rows migrated out of `tags`). See [`ingestion.md`](ingestion.md#conflict-referential-sync) for the sync mechanics.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `name` | `VARCHAR(200)` | UNIQUE, NOT NULL. 200 (over tags' 100) because Wikipedia page names run long. |
+| `wikidata_id` | `VARCHAR(20)` | UNIQUE, nullable, the Wikidata item id (`Q131569`). The natural key the sync and seed writers upsert on; NULL on `manual` rows. |
+| `start_year` | `INTEGER` | nullable. The sync fills it from the page's start-of-conflict year only where it is NULL; an existing value (the Wikidata seed's years) is never overwritten. |
+| `end_year` | `INTEGER` | nullable |
+| `ongoing` | `BOOLEAN` | NOT NULL, default `false`. Mirrors presence on the Wikipedia ongoing-conflicts page, with a grace period. |
+| `tier` | `VARCHAR(10)` | nullable, `'major'`, `'minor'`, or `'conflict'`. The Wikipedia death-toll tier: major wars 10,000+ combat deaths in the current or previous year, minor wars 1,000-9,999, conflicts 100-999. Written by the daily sync from which tier table the row sits in (updated when a conflict moves tiers); NULL for rows the sync has never seen (historical seed rows, `manual` rows). |
+| `last_seen_at` | `TIMESTAMPTZ` | nullable, last time the sync saw the row on the page. NULL for rows the sync has never seen (`manual`, never-listed `seed` rows); those are immune to the grace-period deactivation. |
+| `source` | `VARCHAR(20)` | NOT NULL, `'sync'`, `'seed'`, or `'manual'` |
+
+**Why the QID is the natural key, not the name.** The Wikipedia page renames conflicts constantly (measured on 36 monthly snapshots over 2023-2026: 24 of 35 month transitions changed at least one name, almost all editorial renames of the same conflict; Sudan carried 5 names in 3 years). The QID survives every rename, so the sync upserts by `wikidata_id` and a rename updates `name` in place: events keep their association and the filter never fragments.
+
+**Lifecycle: never deleted.** Disappearance from the ongoing page is ambiguous (really ended, renamed, or slid below the page's tier threshold), so a row flips `ongoing=false` only after 14 consecutive days of absence, and no row is ever deleted: an ended conflict stays selectable forever, since archival footage remains taggable. Each sync pass also refreshes `tier` (a conflict that moves tables is updated) and backfills `start_year` where it is NULL. The `Other` escape row ships `ongoing=true` from the migration and the sync never touches it (`last_seen_at` stays NULL).
+
+---
+
+### `event_conflicts`
+
+Many-to-many junction table between `events` and `conflicts`, same shape as `event_tags`.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `conflict_id` | `UUID` | FK → `conflicts.id` ON DELETE CASCADE |
+
+Composite PK: `(event_id, conflict_id)`
 
 ---
 
@@ -503,11 +557,14 @@ SELECT t.name, t.category
 FROM tags t
 JOIN event_tags gt ON gt.tag_id = t.id
 WHERE gt.event_id = 'a3f8c2d1-...';
--- → [{ name: "Ukraine", category: "conflict" }, { name: "airstrike", category: "free" }]
+-- → [{ name: "Drone", category: "capture_source" }, { name: "airstrike", category: "free" }]
 ```
 
 ### Why a single `tags` table with a category?
-Conflicts and free-form tags share the same mechanics (filtering, many-to-many association). A single table plus a `category` field avoids duplicating the logic. The distinction is still queryable: `WHERE category = 'conflict'`.
+Capture-source and free-form tags share the same mechanics (filtering, many-to-many association). A single table plus a `category` field avoids duplicating the logic. The distinction is still queryable: `WHERE category = 'capture_source'`.
+
+### Why conflicts left the `tags` table
+A conflict is not a label an analyst invents; it is a referential row with an external identity (`wikidata_id`), a lifecycle (`ongoing`, the grace period), and machine writers (the Wikipedia sync, the Wikidata seed). None of that fits a `(id, name, category)` tag row, and bolting sync columns onto `tags` would have made every free tag carry them. So conflicts got their own table + join (`conflicts`, `event_conflicts`), and `tags` keeps the two categories that really do share mechanics.
 
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS unlocks native geospatial queries (bounding-box filtering, distance computation, clustering). GeoAlchemy2 exposes those types directly to SQLAlchemy.
@@ -536,9 +593,9 @@ FROM events;
 -- Filter by conflict
 SELECT g.id, g.title, ST_X(g.event_coords) AS lng, ST_Y(g.event_coords) AS lat
 FROM events g
-JOIN event_tags gt ON gt.event_id = g.id
-JOIN tags t ON t.id = gt.tag_id
-WHERE t.name = 'Ukraine' AND t.category = 'conflict';
+JOIN event_conflicts ec ON ec.event_id = g.id
+JOIN conflicts c ON c.id = ec.conflict_id
+WHERE c.name = 'Russian invasion of Ukraine';
 
 -- An analyst's geolocations (profile; stays on owner_id until it re-homes onto event_geolocators)
 SELECT id, title, event_date, created_at

@@ -26,6 +26,7 @@ dependencies = [
     # images before they hit S3. Pinned ≥11 for the modern security
     # window — older versions had libtiff + libwebp CVEs.
     "pillow>=11.0",
+    "beautifulsoup4>=4.15.0",
 ]
 
 [project.optional-dependencies]

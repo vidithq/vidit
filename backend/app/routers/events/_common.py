@@ -119,4 +119,5 @@ def build_event_read(
         investigators=[i.user for i in geo.investigators if i.user.deleted_at is None],
         media=[m for m in geo.media if m.role == "source"],
         tags=geo.tags,
+        conflicts=geo.conflicts,
     )

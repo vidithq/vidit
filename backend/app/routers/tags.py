@@ -11,16 +11,16 @@ from app.schemas.tag import TagCreate, TagRead
 
 router = APIRouter()
 
-# Categories authenticated users may create via the API. `conflict` and
-# `capture_source` are curated (by direct DB access / the seeding
-# migration) since both are required, filterable map dimensions that must
-# stay clean; only `free` is open to user creation.
+# Categories authenticated users may create via the API. `capture_source`
+# is curated (by the seeding migration) since it is a required, filterable
+# map dimension that must stay clean; only `free` is open to user creation.
+# Conflicts are not tags at all: they live in the `conflicts` referential.
 USER_CREATABLE_CATEGORIES = {"free"}
 
-# Server-managed taxonomies: every new geolocation must carry at least one
-# tag from each (enforced in `routers/events.py`). Surfaced as the
-# two required selectors on the submit form via `?curated=true`.
-CURATED_CATEGORIES = ("conflict", "capture_source")
+# Server-managed taxonomy: every new geolocation must carry one tag from it
+# (enforced in `services/events.py`). Surfaced as the required selector on
+# the submit form via `?curated=true`.
+CURATED_CATEGORIES = ("capture_source",)
 
 
 @router.get("", response_model=list[TagRead])
@@ -39,10 +39,10 @@ def list_tags(
     once every geo using it is removed.
 
     ``curated=true`` flips the default: it returns the full curated
-    taxonomy (``conflict`` + ``capture_source``) regardless of live usage.
-    The submit form needs *every* option in these two required buckets up
-    front so the analyst can pick the right one even when they're first to
-    tag it — the usage filter that's right for the map is wrong here.
+    ``capture_source`` taxonomy regardless of live usage. The submit form
+    needs *every* option in this required bucket up front so the analyst can
+    pick the right one even when they're first to tag it; the usage filter
+    that's right for the map is wrong here.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))

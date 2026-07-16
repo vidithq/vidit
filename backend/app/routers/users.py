@@ -178,6 +178,7 @@ def get_user_geolocations(
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
+            selectinload(Event.conflicts),
             selectinload(Event.media.and_(Media.role == "source")),
         )
         .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
@@ -199,6 +200,7 @@ def get_user_geolocations(
             owner=geo.owner,
             media=source_media(geo),
             tags=geo.tags,
+            conflicts=geo.conflicts,
         )
         for geo, lat, lng in rows
     ]

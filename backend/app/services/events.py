@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
+from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -140,26 +141,26 @@ def _sanitize_proof(proof_data: dict | None, **kwargs: bool) -> dict | None:
         raise InvalidProofError(str(exc)) from exc
 
 
-def _require_submission_tags(tags: list[Tag]) -> None:
-    """Enforce the curated-tag floor: one ``conflict`` + one ``capture_source``.
+def _require_submission_floor(tags: list[Tag], conflicts: list[Conflict]) -> None:
+    """Enforce the curated floor: one conflict + one ``capture_source`` tag.
 
     Half of the evidence floor a row must clear to become ``geolocated``. A
     human create runs it up front; a request / machine detection is born
-    tagless and runs it at the geolocate transition. Checked against resolved
-    ``Tag`` rows, so a bogus id payload fails like an empty one. Both categories
-    ship an escape value, so the rule is always satisfiable.
+    bare and runs it at the geolocate transition. Checked against resolved
+    ``Conflict`` / ``Tag`` rows, so a bogus id payload fails like an empty
+    one. Both domains ship an escape value (the ``Other`` conflict, the
+    ``Other`` capture source), so the rule is always satisfiable.
     """
-    categories = {t.category for t in tags}
-    if "conflict" not in categories:
-        raise TagRequirementsError("A conflict tag is required")
-    if "capture_source" not in categories:
+    if not conflicts:
+        raise TagRequirementsError("A conflict is required")
+    if "capture_source" not in {t.category for t in tags}:
         raise TagRequirementsError("A capture source tag is required")
 
 
 def _require_submission_media(has_media: bool) -> None:
     """Enforce the source floor: one source media on the row.
 
-    The sibling of :func:`_require_submission_tags`, shared by every write
+    The sibling of :func:`_require_submission_floor`, shared by every write
     (create, request, geolocate): an event never exists without its footage.
     """
     if not has_media:
@@ -179,6 +180,10 @@ def _require_proof_image(proof_doc: dict | None) -> None:
 
 def _resolve_tags(db: Session, tag_ids: list) -> list[Tag]:
     return db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+
+
+def _resolve_conflicts(db: Session, conflict_ids: list) -> list[Conflict]:
+    return db.query(Conflict).filter(Conflict.id.in_(conflict_ids)).all() if conflict_ids else []
 
 
 def _credit_geolocator(db: Session, geo: Event, user: User) -> None:
@@ -211,6 +216,7 @@ async def create_with_evidence(
     source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
+    conflict_ids: list,
     file: UploadFile,
     proof_files: list[UploadFile],
 ) -> Event:
@@ -224,8 +230,8 @@ async def create_with_evidence(
 
     The full evidence floor applies: subject coordinates, exactly ONE source
     file, at least one proof image in the proof body (a ``placeholder://`` src
-    resolved from ``proof_files``, see ``evidence_intake``), and the curated
-    ``conflict`` + ``capture_source`` tags. ``capture_source_lat`` / ``lng``
+    resolved from ``proof_files``, see ``evidence_intake``), a conflict, and
+    the curated ``capture_source`` tag. ``capture_source_lat`` / ``lng``
     (the camera point) are optional, both-or-neither.
 
     Failure modes (:class:`EvidenceIntakeError` subclasses, event rules
@@ -235,7 +241,7 @@ async def create_with_evidence(
     * No source file (:class:`MediaRequiredError`)
     * Tiptap proof fails sanitisation (:class:`InvalidProofError`)
     * No proof image (:class:`ProofImageRequiredError`)
-    * Missing required `conflict` / `capture_source` tag
+    * Missing required conflict / `capture_source` tag
       (:class:`TagRequirementsError`)
     * File type/size rejected, a proof placeholder/file mismatch, or the
       uploader raises (``InvalidFileError`` / ``ProofFilesMismatchError`` /
@@ -257,7 +263,8 @@ async def create_with_evidence(
     # image-less proof 400s without paying an S3 round-trip.
     _require_proof_image(proof_data)
     effective_tags = _resolve_tags(db, tag_ids)
-    _require_submission_tags(effective_tags)
+    effective_conflicts = _resolve_conflicts(db, conflict_ids)
+    _require_submission_floor(effective_tags, effective_conflicts)
 
     geo = Event(
         owner_id=current_user.id,
@@ -273,6 +280,7 @@ async def create_with_evidence(
         geolocated_at=datetime.now(UTC),
     )
     geo.tags = effective_tags
+    geo.conflicts = effective_conflicts
 
     db.add(geo)
     db.flush()
@@ -310,6 +318,7 @@ async def create_request(
     event_time: time | None = None,
     source_posted_at: datetime,
     tag_ids: list,
+    conflict_ids: list,
     file: UploadFile,
     proof_files: list[UploadFile],
 ) -> Event:
@@ -367,6 +376,7 @@ async def create_request(
         requested_at=datetime.now(UTC),
     )
     geo.tags = _resolve_tags(db, tag_ids)
+    geo.conflicts = _resolve_conflicts(db, conflict_ids)
 
     db.add(geo)
     db.flush()
@@ -400,6 +410,7 @@ async def geolocate(
     source_posted_at: datetime,
     proof_data: dict | None,
     tag_ids: list,
+    conflict_ids: list,
     remove_media_ids: list,
     files: list[UploadFile],
     proof_files: list[UploadFile],
@@ -441,7 +452,7 @@ async def geolocate(
     work, since a request / machine detection is born incomplete: a non-blank
     source URL (a ``detected`` draft may be born without one), exactly one
     source media (kept or new), at least one proof image in the final proof
-    body, and the curated ``conflict`` + ``capture_source`` tags.
+    body, a conflict, and the curated ``capture_source`` tag.
 
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
@@ -495,11 +506,12 @@ async def geolocate(
 
     # Evidence floor, checked up front (before any S3 upload) against the
     # post-geolocate state: one source survives, the final proof body carries
-    # an image, and both curated tags are set.
+    # an image, and the conflict + curated tag are set.
     _require_submission_media(len(kept) + len(files) > 0)
     _require_proof_image(proof_data if proof_data is not None else geo.proof)
     effective_tags = _resolve_tags(db, tag_ids)
-    _require_submission_tags(effective_tags)
+    effective_conflicts = _resolve_conflicts(db, conflict_ids)
+    _require_submission_floor(effective_tags, effective_conflicts)
 
     # Suppress autoflush across the transition: the ``geo.tags`` assignment
     # lazy-loads the current tags, which would flush the half-mutated row
@@ -515,6 +527,7 @@ async def geolocate(
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at
         geo.tags = effective_tags
+        geo.conflicts = effective_conflicts
         geo.status = STATUS_GEOLOCATED
         geo.geolocated_at = datetime.now(UTC)
     # Fulfilling an open request hands edit-rights to the fulfiller (the original

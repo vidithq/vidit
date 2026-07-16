@@ -14,6 +14,7 @@ import pytest
 
 from app.cache import points_cache
 from app.database import SessionLocal
+from app.models.conflict import Conflict
 from app.models.event import Event, EventGeolocator, EventInvestigator
 from app.models.tag import Tag
 from app.models.user import User
@@ -112,14 +113,14 @@ def free_tag(db):
 
 
 @pytest.fixture
-def conflict_tag(db):
-    tag = Tag(name=f"conflict-{uuid.uuid4().hex[:8]}", category="conflict")
-    db.add(tag)
+def conflict(db):
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    db.add(row)
     db.commit()
-    tag_id = tag.id
-    yield tag
+    conflict_id = row.id
+    yield row
     db.execute(
-        Tag.__table__.delete().where(Tag.id == tag_id),
+        Conflict.__table__.delete().where(Conflict.id == conflict_id),
     )
     db.commit()
 

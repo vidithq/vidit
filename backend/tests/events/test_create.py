@@ -1,7 +1,7 @@
 """Write path for ``POST /events`` (the direct geolocate).
 
 Auth + validation (coordinates, dates, file type, proof JSON), the required
-`conflict` / `capture_source` tag floor, and the proof-image intake: proof
+conflict + `capture_source` floor, and the proof-image intake: proof
 files ride in the same multipart and resolve against ``placeholder://`` srcs
 in the proof document. Shared fixtures live in `conftest.py`; `client` and the
 proof helpers in `_helpers.py`.
@@ -121,7 +121,7 @@ def test_list_rejects_malformed_date_filter(author):
     assert response.status_code == 422
 
 
-def test_create_rejects_too_many_proof_files(author, conflict_tag, capture_source_tag):
+def test_create_rejects_too_many_proof_files(author, conflict, capture_source_tag):
     """A proof batch past ``max_proof_images_per_event`` (10) is rejected
     before any upload. Without the cap, one submit can pin the worker
     through the Pillow + S3 pipeline for dozens of files in one request."""
@@ -138,7 +138,8 @@ def test_create_rejects_too_many_proof_files(author, conflict_tag, capture_sourc
         headers=login_as(client, author),
         data=_form(
             proof=json.dumps(doc),
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=files,
     )
@@ -148,7 +149,7 @@ def test_create_rejects_too_many_proof_files(author, conflict_tag, capture_sourc
     assert "proof images" in detail["message"]
 
 
-def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_source_tag):
+def test_create_rejects_disallowed_file_type(author, conflict, capture_source_tag):
     """A source file with a MIME type outside `ALLOWED_TYPES` is rejected with
     the typed `invalid_file` envelope BEFORE any S3 IO. Passes the required
     tags + proof so the request reaches the file-validate loop in the intake,
@@ -157,7 +158,10 @@ def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_sourc
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data=_form(tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)])),
+        data=_form(
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
+        ),
         files=[("file", ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")), proof_file_part()],
     )
     assert response.status_code == 400
@@ -166,7 +170,7 @@ def test_create_rejects_disallowed_file_type(author, conflict_tag, capture_sourc
     assert "not allowed" in detail["message"].lower()
 
 
-def test_create_rejects_video_proof_file(author, conflict_tag, capture_source_tag):
+def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
     """A proof part must be an image, the proof body embeds ``<img>`` nodes,
     so a video there could never render."""
     doc = {
@@ -178,7 +182,8 @@ def test_create_rejects_video_proof_file(author, conflict_tag, capture_source_ta
         headers=login_as(client, author),
         data=_form(
             proof=json.dumps(doc),
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=[
             ("file", ("tiny.jpg", TINY_JPEG, "image/jpeg")),
@@ -203,7 +208,7 @@ def test_create_rejects_invalid_proof_json(author):
     assert "proof" in response.json()["detail"].lower()
 
 
-def test_create_rejects_proof_without_image(author, conflict_tag, capture_source_tag):
+def test_create_rejects_proof_without_image(author, conflict, capture_source_tag):
     """The proof-image floor: a proof body with no inline image 400s before
     any upload (a vouched location needs a visual argument)."""
     doc = {
@@ -215,7 +220,8 @@ def test_create_rejects_proof_without_image(author, conflict_tag, capture_source
         headers=login_as(client, author),
         data=_form(
             proof=json.dumps(doc),
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=[("file", ("tiny.jpg", TINY_JPEG, "image/jpeg"))],
     )
@@ -223,7 +229,7 @@ def test_create_rejects_proof_without_image(author, conflict_tag, capture_source
     assert response.json()["detail"]["code"] == "proof_image_required"
 
 
-def test_create_rejects_placeholder_without_matching_file(author, conflict_tag, capture_source_tag):
+def test_create_rejects_placeholder_without_matching_file(author, conflict, capture_source_tag):
     """A ``placeholder://`` src with no uploaded file of that name is a 400
     (nothing uploads on a mismatched batch)."""
     response = client.post(
@@ -231,7 +237,8 @@ def test_create_rejects_placeholder_without_matching_file(author, conflict_tag, 
         headers=login_as(client, author),
         data=_form(
             proof=proof_form_field("missing.jpg"),
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=[("file", ("tiny.jpg", TINY_JPEG, "image/jpeg")), proof_file_part("other.jpg")],
     )
@@ -241,7 +248,7 @@ def test_create_rejects_placeholder_without_matching_file(author, conflict_tag, 
     assert "missing.jpg" in detail["message"]
 
 
-def test_create_rejects_unreferenced_proof_file(author, conflict_tag, capture_source_tag):
+def test_create_rejects_unreferenced_proof_file(author, conflict, capture_source_tag):
     """The reverse mismatch: an uploaded proof file no placeholder references
     would land as an untracked S3 object, 400 instead."""
     response = client.post(
@@ -249,7 +256,8 @@ def test_create_rejects_unreferenced_proof_file(author, conflict_tag, capture_so
         headers=login_as(client, author),
         data=_form(
             proof=proof_form_field("proof-1.jpg"),
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=[
             ("file", ("tiny.jpg", TINY_JPEG, "image/jpeg")),
@@ -280,8 +288,8 @@ def test_create_rejects_no_tags(author):
     assert "conflict" in detail["message"].lower()
 
 
-def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
-    """A capture-source tag without a conflict tag → 400."""
+def test_create_rejects_missing_conflict(author, capture_source_tag):
+    """A capture-source tag without a conflict → 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -294,12 +302,12 @@ def test_create_rejects_missing_conflict_tag(author, capture_source_tag):
     assert "conflict" in detail["message"].lower()
 
 
-def test_create_rejects_missing_capture_source_tag(author, conflict_tag):
-    """A conflict tag without a capture-source tag → 400."""
+def test_create_rejects_missing_capture_source_tag(author, conflict):
+    """A conflict without a capture-source tag → 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data=_form(tag_ids=json.dumps([str(conflict_tag.id)])),
+        data=_form(conflict_ids=json.dumps([str(conflict.id)])),
         files=_files(),
     )
     assert response.status_code == 400
@@ -324,9 +332,10 @@ def test_create_rejects_free_tag_only(author, free_tag):
 
 
 def test_create_succeeds_with_full_floor(
-    db, author, conflict_tag, capture_source_tag, tmp_path, monkeypatch
+    db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """Coordinates + one source + a resolved proof image + both curated tags
+    """Coordinates + one source + a resolved proof image + the conflict and
+    capture-source floor
     → 201; the placeholder src is rewritten to a real URL and a
     ``Media(role='proof')`` row lands alongside the source."""
     from app.services import storage as storage_module
@@ -343,14 +352,15 @@ def test_create_succeeds_with_full_floor(
             lng="34.5",
             capture_source_lat="48.6",
             capture_source_lng="34.6",
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=_files(),
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    categories = {t["category"] for t in body["tags"]}
-    assert {"conflict", "capture_source"} <= categories
+    assert {t["category"] for t in body["tags"]} == {"capture_source"}
+    assert [c["name"] for c in body["conflicts"]] == [conflict.name]
     assert body["status"] == "geolocated"
     assert body["geolocated_at"] is not None
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
@@ -378,7 +388,7 @@ def test_create_succeeds_with_full_floor(
 
 
 def test_create_round_trips_source_posted_at_and_event_time(
-    db, author, conflict_tag, capture_source_tag, tmp_path, monkeypatch
+    db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
     """``source_posted_at`` (required) and the optional ``event_time`` round-trip
     on the read model; ``event_time`` omitted → null."""
@@ -393,7 +403,8 @@ def test_create_round_trips_source_posted_at_and_event_time(
         lng="34.5",
         source_url="https://t.me/c/1",
         source_posted_at="2026-05-03T08:15",
-        tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+        tag_ids=json.dumps([str(capture_source_tag.id)]),
+        conflict_ids=json.dumps([str(conflict.id)]),
     )
 
     with_time = client.post(
@@ -430,7 +441,7 @@ def test_create_rejects_invalid_source_posted_at(author):
 
 
 def test_create_cleans_up_s3_when_proof_file_is_corrupt(
-    db, author, conflict_tag, capture_source_tag, tmp_path, monkeypatch
+    db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
     """A mid-batch upload failure must not strand orphan S3 objects.
 
@@ -440,7 +451,7 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
     pointing at it. With cleanup, the just-uploaded keys are swept via
     `Storage.delete_many` before the exception bubbles.
 
-    Passes the two required tags (conflict + capture source) so the request
+    Passes the required conflict + capture-source tag so the request
     reaches the upload stage, without them the required-category guard would
     400 *before* any upload and the test would pass vacuously.
 
@@ -456,7 +467,8 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
         headers=login_as(client, author),
         data=_form(
             title="orphan cleanup test",
-            tag_ids=json.dumps([str(conflict_tag.id), str(capture_source_tag.id)]),
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
         ),
         files=[
             ("file", ("ok.jpg", TINY_JPEG, "image/jpeg")),

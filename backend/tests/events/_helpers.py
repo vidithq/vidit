@@ -19,6 +19,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.main import app
+from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -44,6 +45,7 @@ def _make_geo(
     source_posted_at: datetime | None = None,
     deleted: bool = False,
     tags: list[Tag] | None = None,
+    conflicts: list[Conflict] | None = None,
     status: str | None = None,
     detected_from_url: str | None = None,
     # None models a source-less machine draft; only valid with status
@@ -83,6 +85,8 @@ def _make_geo(
         geo.deleted_at = datetime.now(UTC)
     if tags:
         geo.tags = tags
+    if conflicts:
+        geo.conflicts = conflicts
     db.add(geo)
     db.flush()
     if with_media:

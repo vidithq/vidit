@@ -29,7 +29,7 @@ import {
   type EventFieldsState,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
-import type { EventDetail, Tag } from "@/types";
+import type { Conflict, EventDetail, Tag } from "@/types";
 
 /**
  * Owner edit + submit of a machine-`detected` geolocation. Built like the create
@@ -96,6 +96,16 @@ export function EventEditForm({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
     geo.tags.map((t) => t.id)
   );
+  // The conflicts referential for the picker's typeahead, fetched whole once.
+  const {
+    data: conflictsData,
+    error: conflictsError,
+    refetch: reloadConflicts,
+  } = useApiResource<Conflict[]>("/conflicts");
+  const conflicts = conflictsData ?? [];
+  const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>(
+    geo.conflicts.map((c) => c.id)
+  );
 
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 
@@ -125,6 +135,7 @@ export function EventEditForm({
     source_posted_at: sourcePostedAt,
     proof,
     tag_ids: selectedTagIds,
+    conflict_ids: selectedConflictIds,
     remove_media_ids: [...removedIds],
     files: newFiles,
     proof_files: proofFiles,
@@ -165,7 +176,7 @@ export function EventEditForm({
     sourcePostedAt,
     proof,
     mediaCount: keptMediaCount,
-    hasConflictTag: selectedCurated.some((t) => t.category === "conflict"),
+    hasConflictTag: selectedConflictIds.length > 0,
     hasCaptureSourceTag: selectedCurated.some(
       (t) => t.category === "capture_source"
     ),
@@ -182,11 +193,11 @@ export function EventEditForm({
     // tell "didn't pick one" from "options still loading", otherwise it would
     // spuriously report both tags missing. Recoverable state, not a missing field
     // (mirrors the create form's guard).
-    if (curatedTags.length === 0) {
+    if (curatedTags.length === 0 || conflicts.length === 0) {
       submitMutation.setError(
-        curatedTagsError
+        curatedTagsError || conflictsError
           ? "Couldn’t load the Conflict and Capture source options. Use Retry above, or reload the page."
-          : "Still loading the required tag options. Give it a moment and try again."
+          : "Still loading the required Conflict and Capture source options. Give it a moment and try again."
       );
       return;
     }
@@ -265,7 +276,13 @@ export function EventEditForm({
         {curatedTagsError && (
           <CuratedTagsError
             onRetry={reloadCuratedTags}
-            message="Couldn't load the Conflict and Capture source options."
+            message="Couldn't load the Capture source options."
+          />
+        )}
+        {conflictsError && (
+          <CuratedTagsError
+            onRetry={reloadConflicts}
+            message="Couldn't load the Conflict options."
           />
         )}
         <TagPicker
@@ -274,6 +291,9 @@ export function EventEditForm({
           curatedTags={curatedTags}
           selectedTagIds={selectedTagIds}
           setSelectedTagIds={setSelectedTagIds}
+          conflicts={conflicts}
+          selectedConflictIds={selectedConflictIds}
+          setSelectedConflictIds={setSelectedConflictIds}
           requireConflict
           requireCaptureSource
           conflictInvalid={invalidKeys.has("conflict_tag")}

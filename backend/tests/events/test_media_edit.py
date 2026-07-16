@@ -42,9 +42,9 @@ def _detected(db, author, **kwargs):
     )
 
 
-def _form(conflict_tag=None, capture_source_tag=None, **overrides):
-    """The required full geolocate form; override per test. Pass both curated
-    tags to meet the tag floor (the proof-image floor is included)."""
+def _form(conflict=None, capture_source_tag=None, **overrides):
+    """The required full geolocate form; override per test. Pass the conflict
+    and the curated tag to meet the floor (the proof-image floor is included)."""
     form = {
         "title": "Edited",
         "lat": "50.0",
@@ -54,8 +54,9 @@ def _form(conflict_tag=None, capture_source_tag=None, **overrides):
         "source_posted_at": "2026-05-01T12:00",
         "proof": proof_form_field(),
     }
-    if conflict_tag is not None and capture_source_tag is not None:
-        form["tag_ids"] = json.dumps([str(conflict_tag.id), str(capture_source_tag.id)])
+    if conflict is not None and capture_source_tag is not None:
+        form["tag_ids"] = json.dumps([str(capture_source_tag.id)])
+        form["conflict_ids"] = json.dumps([str(conflict.id)])
     form.update(overrides)
     return form
 
@@ -73,7 +74,7 @@ def _geolocate(geo_id, author, **kwargs):
 
 
 def test_geolocate_rolls_back_flip_when_media_upload_fails(
-    db, author, conflict_tag, capture_source_tag
+    db, author, conflict, capture_source_tag
 ):
     # A file that clears the count floor but fails validation (disallowed MIME)
     # raises after the row was flipped to geolocated in-memory. The whole
@@ -82,7 +83,7 @@ def test_geolocate_rolls_back_flip_when_media_upload_fails(
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag),
+        data=_form(conflict, capture_source_tag),
         files=[("files", ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")), proof_file_part()],
     )
     assert response.status_code == 400
@@ -93,12 +94,12 @@ def test_geolocate_rolls_back_flip_when_media_upload_fails(
     assert len(refreshed.media) == 0
 
 
-def test_geolocate_adds_source_media(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_adds_source_media(db, author, conflict, capture_source_tag):
     geo = _detected(db, author)  # born media-less
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag),
+        data=_form(conflict, capture_source_tag),
         files=[_source_part(), proof_file_part()],
     )
     assert response.status_code == 200, response.text
@@ -113,7 +114,7 @@ def test_geolocate_adds_source_media(db, author, conflict_tag, capture_source_ta
     assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 1
 
 
-def test_geolocate_swaps_source_in_one_call(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_swaps_source_in_one_call(db, author, conflict, capture_source_tag):
     """Drop the existing source and add a new one atomically (net still exactly
     one, so both the floor and the one-source cap hold, the deletes flush
     before the insert, or the partial unique index would trip mid-flush)."""
@@ -122,7 +123,7 @@ def test_geolocate_swaps_source_in_one_call(db, author, conflict_tag, capture_so
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag, remove_media_ids=json.dumps([old_id])),
+        data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([old_id])),
         files=[_source_part(), proof_file_part()],
     )
     assert response.status_code == 200, response.text
@@ -131,7 +132,7 @@ def test_geolocate_swaps_source_in_one_call(db, author, conflict_tag, capture_so
     assert media[0]["id"] != old_id  # old one gone, a fresh one took its place
 
 
-def test_geolocate_remove_to_zero_is_blocked(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_remove_to_zero_is_blocked(db, author, conflict, capture_source_tag):
     """Removing the only source with no replacement leaves zero, which the
     evidence floor rejects (kept + new is what's counted). The floor check runs
     before any deletion, so the media survives."""
@@ -140,7 +141,7 @@ def test_geolocate_remove_to_zero_is_blocked(db, author, conflict_tag, capture_s
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag, remove_media_ids=json.dumps([media_id])),
+        data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([media_id])),
         files=[proof_file_part()],
     )
     assert response.status_code == 400
@@ -149,23 +150,21 @@ def test_geolocate_remove_to_zero_is_blocked(db, author, conflict_tag, capture_s
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 1
 
 
-def test_geolocate_unknown_remove_id_is_ignored(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_unknown_remove_id_is_ignored(db, author, conflict, capture_source_tag):
     """A stale remove id (media already gone) is a no-op, not a hard failure; the
     existing source stays, so the floor still passes."""
     geo = _detected(db, author, with_media=True)
     response = _geolocate(
         geo.id,
         author,
-        data=_form(
-            conflict_tag, capture_source_tag, remove_media_ids=json.dumps([str(uuid.uuid4())])
-        ),
+        data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([str(uuid.uuid4())])),
         files=[proof_file_part()],
     )
     assert response.status_code == 200
     assert len(response.json()["media"]) == 1  # untouched
 
 
-def test_geolocate_rejects_blank_source_url(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_rejects_blank_source_url(db, author, conflict, capture_source_tag):
     """The source floor at promotion: a ``detected`` draft may be born
     source-less, but geolocating it with a blank ``source_url`` form value is
     refused (400 ``source_url_required``) before any S3 work. The row stays a
@@ -174,7 +173,7 @@ def test_geolocate_rejects_blank_source_url(db, author, conflict_tag, capture_so
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag, source_url="   "),
+        data=_form(conflict, capture_source_tag, source_url="   "),
         files=[_source_part(), proof_file_part()],
     )
     assert response.status_code == 400
@@ -195,7 +194,7 @@ def test_geolocate_rejects_second_source(db, author):
     assert response.json()["detail"]["code"] == "too_many_files"
 
 
-def test_geolocate_drops_stale_proof_media(db, author, conflict_tag, capture_source_tag):
+def test_geolocate_drops_stale_proof_media(db, author, conflict, capture_source_tag):
     """A proof image the incoming doc no longer references is deleted (row +
     S3), so edits can't accrete orphaned proof rows."""
     geo = _detected(db, author, with_media=True)
@@ -212,7 +211,7 @@ def test_geolocate_drops_stale_proof_media(db, author, conflict_tag, capture_sou
     response = _geolocate(
         geo.id,
         author,
-        data=_form(conflict_tag, capture_source_tag),
+        data=_form(conflict, capture_source_tag),
         files=[proof_file_part()],
     )
     assert response.status_code == 200, response.text

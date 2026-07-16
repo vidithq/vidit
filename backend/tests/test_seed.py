@@ -260,21 +260,21 @@ def test_seed_demo_half_completed_prior_seed_only_fills_the_gap(db, demo_pool):
 
 
 def test_seed_demo_picks_tags_from_known_pool(db, demo_pool):
-    """Assigned tags must come from the documented free + conflict +
-    capture-source pools (plus the always-attached `demo` tag).
+    """Assigned tags must come from the documented free + capture-source
+    pools (plus the always-attached `demo` tag), and every geo's conflict
+    must come from the seeder's conflict referential rows.
 
-    Catches a regression where a typo in CONFLICT_TAG_BY_REGION,
+    Catches a regression where a typo in CONFLICT_BY_REGION,
     FREE_TAG_POOL, or CAPTURE_SOURCE_TAGS would silently start minting
-    tag rows the filter UI doesn't know about. Run with a larger sample
+    rows the filter UI doesn't know about. Run with a larger sample
     so we're likely to hit a Ukraine/Middle East region and exercise the
-    conflict-tag branch.
+    region-mapped conflict branch.
     """
     seed_service.seed_demo(db, count=50)
     db.expire_all()
     allowed_names = (
-        {seed_service.DEMO_TAG_NAME, seed_service.CONFLICT_OTHER_TAG}
+        {seed_service.DEMO_TAG_NAME}
         | set(seed_service.FREE_TAG_POOL)
-        | set(seed_service.CONFLICT_TAG_BY_REGION.values())
         | set(seed_service.CAPTURE_SOURCE_TAGS)
     )
     geos = db.query(Event).filter(Event.is_demo.is_(True)).all()
@@ -287,20 +287,21 @@ def test_seed_demo_picks_tags_from_known_pool(db, demo_pool):
     assert all(any(t.name == seed_service.DEMO_TAG_NAME for t in g.tags) for g in geos), (
         "every demo geo must carry the always-on `demo` tag"
     )
-    # New invariant: every demo geo carries exactly one capture_source
-    # tag and at least one conflict tag (the region's, or "Other") —
-    # mirrors the required-category rule the submit form enforces.
+    # Invariant: every demo geo carries exactly one capture_source tag and
+    # exactly one conflict (the region's, or "Other"), mirroring the
+    # evidence floor the submit form enforces.
     capture_set = set(seed_service.CAPTURE_SOURCE_TAGS)
-    conflict_set = set(seed_service.CONFLICT_TAG_BY_REGION.values()) | {
-        seed_service.CONFLICT_OTHER_TAG
+    conflict_set = set(seed_service.CONFLICT_BY_REGION.values()) | {
+        seed_service.CONFLICT_OTHER_NAME
     }
     for g in geos:
         names = [t.name for t in g.tags]
         assert sum(n in capture_set for n in names) == 1, (
             f"geo should carry exactly one capture_source tag, got {names}"
         )
-        assert any(n in conflict_set for n in names), (
-            f"geo should carry a conflict tag, got {names}"
+        conflict_names = [c.name for c in g.conflicts]
+        assert len(conflict_names) == 1 and conflict_names[0] in conflict_set, (
+            f"geo should carry exactly one known conflict, got {conflict_names}"
         )
 
 

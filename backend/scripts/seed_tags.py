@@ -1,10 +1,10 @@
-"""Backfill tags onto live, untagged geolocations.
+"""Backfill tags + a conflict onto live, untagged geolocations.
 
-The demo seeder creates geolocations without tags, so the map's tag filter
-buckets (which only surface tags used by a live geolocation) stay empty.
-This assigns each untagged geolocation one ``conflict`` + one ``capture_source``
-tag — the curated pair every real submission must carry — plus a couple of
-rotating ``free`` tags, so all three filter buckets populate with variety.
+The demo seeder creates geolocations without tags, so the map's filter
+buckets (which only surface values used by a live geolocation) stay empty.
+This assigns each untagged geolocation one conflict + one ``capture_source``
+tag (the curated pair every real submission must carry) plus a couple of
+rotating ``free`` tags, so all filter buckets populate with variety.
 
 Idempotent: geolocations that already carry tags are skipped. Assignment
 rotates by row order (no randomness) so re-runs and reviews are reproducible.
@@ -20,6 +20,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
+from app.models.conflict import Conflict
 from app.models.event import Event
 from app.models.tag import Tag
 
@@ -27,28 +28,29 @@ from app.models.tag import Tag
 def main() -> None:
     db = SessionLocal()
     try:
-        conflict = db.query(Tag).filter(Tag.category == "conflict").order_by(Tag.name).all()
+        conflicts = db.query(Conflict).order_by(Conflict.name).all()
         capture = db.query(Tag).filter(Tag.category == "capture_source").order_by(Tag.name).all()
         free = db.query(Tag).filter(Tag.category == "free").order_by(Tag.name).all()
-        if not conflict or not capture:
+        if not conflicts or not capture:
             raise SystemExit(
-                "Curated taxonomies missing (conflict / capture_source). "
+                "Curated taxonomies missing (conflicts / capture_source). "
                 "Run `uv run alembic upgrade head` first."
             )
 
         geos = (
             db.query(Event)
             .filter(Event.deleted_at.is_(None))
-            .options(selectinload(Event.tags))
+            .options(selectinload(Event.tags), selectinload(Event.conflicts))
             .order_by(Event.created_at)
             .all()
         )
 
         tagged = 0
         for i, geo in enumerate(geos):
-            if geo.tags:
+            if geo.tags or geo.conflicts:
                 continue
-            picks = [conflict[i % len(conflict)], capture[i % len(capture)]]
+            geo.conflicts = [conflicts[i % len(conflicts)]]
+            picks = [capture[i % len(capture)]]
             if free:
                 picks.append(free[i % len(free)])
                 picks.append(free[(i + 3) % len(free)])

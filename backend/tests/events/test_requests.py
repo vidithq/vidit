@@ -59,7 +59,7 @@ from tests.events._helpers import (
     proof_form_field,
 )
 
-# ``db`` / ``author`` / ``second_user`` / ``free_tag`` / ``conflict_tag`` /
+# ``db`` / ``author`` / ``second_user`` / ``free_tag`` / ``conflict`` /
 # ``capture_source_tag``, the autouse cookie-and-cache reset, and the shared
 # ``client`` all come from the package ``conftest`` + ``_helpers``. The
 # author / second_user teardown there is a superset that also clears
@@ -96,7 +96,8 @@ def third_user(db):
 
 # The geolocate transition (fulfilment) requires one conflict + one
 # capture_source tag, same floor as a direct create. The 200-expecting
-# fulfilment tests below thread both through this helper.
+# fulfilment tests below thread the tags through this helper (the conflict
+# rides in ``conflict_ids``).
 def _required_tag_ids(*tags: Tag) -> str:
     return json.dumps([str(t.id) for t in tags])
 
@@ -948,7 +949,7 @@ def test_close_rejected_on_terminal_state(db, author):
 # credited in ``event_geolocators``) while ``requested_by`` keeps the poster.
 
 
-def _geolocate_fulfilment(client, request_id, fulfiller, *tags, **overrides):
+def _geolocate_fulfilment(client, request_id, fulfiller, conflict, *tags, **overrides):
     """POST the geolocate form that fulfils a requested event. The request
     already carries a source media, so only the proof image is new."""
     data = {
@@ -959,6 +960,7 @@ def _geolocate_fulfilment(client, request_id, fulfiller, *tags, **overrides):
         "event_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "tag_ids": _required_tag_ids(*tags),
+        "conflict_ids": json.dumps([str(conflict.id)]),
         "proof": proof_form_field(),
     }
     data.update(overrides)
@@ -971,7 +973,7 @@ def _geolocate_fulfilment(client, request_id, fulfiller, *tags, **overrides):
 
 
 def test_geolocate_fulfils_requested_and_transfers_ownership(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """The end-to-end promise: another analyst answers an open request, the row
     transitions to ``geolocated`` in place, ``owner_id`` moves to the fulfiller
@@ -979,9 +981,7 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     request = _make_request(db, author=author)
     request_id = request.id
 
-    response = _geolocate_fulfilment(
-        client, request_id, second_user, conflict_tag, capture_source_tag
-    )
+    response = _geolocate_fulfilment(client, request_id, second_user, conflict, capture_source_tag)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == str(request_id)
@@ -1004,7 +1004,7 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
 
 
 def test_geolocate_keeps_requesters_source_url(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """A fulfiller cannot rewrite the requester's evidence anchor: geolocate()
     ignores the form ``source_url`` on a requested fulfilment and keeps the
@@ -1016,7 +1016,7 @@ def test_geolocate_keeps_requesters_source_url(
         client,
         request_id,
         second_user,
-        conflict_tag,
+        conflict,
         capture_source_tag,
         source_url="https://tamper.example/other",
     )
@@ -1029,7 +1029,7 @@ def test_geolocate_keeps_requesters_source_url(
 
 
 def test_geolocate_fulfilled_event_leaves_requested_view(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """Once fulfilled the row is ``geolocated``, so it drops off the requested
     surface and appears on the located view instead."""
@@ -1037,7 +1037,7 @@ def test_geolocate_fulfilled_event_leaves_requested_view(
     request_id = request.id
 
     assert (
-        _geolocate_fulfilment(client, request_id, second_user, conflict_tag, capture_source_tag)
+        _geolocate_fulfilment(client, request_id, second_user, conflict, capture_source_tag)
     ).status_code == 200
 
     # Gone from the requested-view list; present on the located one.
@@ -1050,7 +1050,7 @@ def test_geolocate_fulfilled_event_leaves_requested_view(
 
 
 def test_geolocate_fulfilment_reuses_existing_media(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """Fulfilment keeps the request's source media on the same row (no
     transfer / churn): the one source survives the transition; the proof image
@@ -1060,7 +1060,7 @@ def test_geolocate_fulfilment_reuses_existing_media(
     media_id = db.query(Media.id).filter(Media.event_id == request_id).scalar()
 
     assert (
-        _geolocate_fulfilment(client, request_id, second_user, conflict_tag, capture_source_tag)
+        _geolocate_fulfilment(client, request_id, second_user, conflict, capture_source_tag)
     ).status_code == 200
 
     db.expire_all()
@@ -1070,7 +1070,7 @@ def test_geolocate_fulfilment_reuses_existing_media(
 
 
 def test_geolocate_rejects_second_source_on_top_of_kept_one(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """An event carries a single source media: adding a file while keeping the
     request's existing one is rejected before any upload."""
@@ -1085,7 +1085,8 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
             "source_url": "https://example.com/post",
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
-            "tag_ids": _required_tag_ids(conflict_tag, capture_source_tag),
+            "tag_ids": _required_tag_ids(capture_source_tag),
+            "conflict_ids": json.dumps([str(conflict.id)]),
             "proof": proof_form_field(),
         },
         files=[("files", _tiny_jpeg()), proof_file_part()],
@@ -1095,7 +1096,7 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
 
 
 def test_geolocate_fulfilment_honors_analyst_title_and_tags(
-    db, author, second_user, free_tag, conflict_tag, capture_source_tag
+    db, author, second_user, free_tag, conflict, capture_source_tag
 ):
     """The fulfilling analyst CAN refine the title and tags, they know more than
     the poster did (place name resolved, conflict tag added). The refined values
@@ -1107,8 +1108,8 @@ def test_geolocate_fulfilment_honors_analyst_title_and_tags(
         client,
         request_id,
         second_user,
+        conflict,
         free_tag,
-        conflict_tag,
         capture_source_tag,
         title="Refined title with place name",
     )
@@ -1116,7 +1117,8 @@ def test_geolocate_fulfilment_honors_analyst_title_and_tags(
     body = response.json()
     assert body["title"] == "Refined title with place name"
     tag_names = {t["name"] for t in body["tags"]}
-    assert {free_tag.name, conflict_tag.name, capture_source_tag.name}.issubset(tag_names)
+    assert {free_tag.name, capture_source_tag.name}.issubset(tag_names)
+    assert conflict.name in {c["name"] for c in body["conflicts"]}
 
 
 def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_user):
@@ -1142,19 +1144,17 @@ def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_u
 
 
 def test_geolocate_fulfilment_rejected_when_closed(
-    db, author, second_user, conflict_tag, capture_source_tag
+    db, author, second_user, conflict, capture_source_tag
 ):
     """A withdrawn (``closed``) request is terminal, not answerable, geolocate
     409s with the invalid_state code (only ``requested`` / ``detected``
     transition)."""
     request = _make_request(db, author=author, status=STATUS_CLOSED)
-    response = _geolocate_fulfilment(
-        client, request.id, second_user, conflict_tag, capture_source_tag
-    )
+    response = _geolocate_fulfilment(client, request.id, second_user, conflict, capture_source_tag)
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"
 
 
-def test_geolocate_fulfilment_404_for_unknown(author, conflict_tag, capture_source_tag):
-    response = _geolocate_fulfilment(client, uuid.uuid4(), author, conflict_tag, capture_source_tag)
+def test_geolocate_fulfilment_404_for_unknown(author, conflict, capture_source_tag):
+    response = _geolocate_fulfilment(client, uuid.uuid4(), author, conflict, capture_source_tag)
     assert response.status_code == 404

@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.event import BeforeClosedStatus, EventStatus
+from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -102,6 +103,7 @@ class EventRead(BaseModel):
     # URLs, so surfacing their rows here would double-render them.
     media: list[MediaRead]
     tags: list[TagRead]
+    conflicts: list[ConflictRead]
 
     model_config = {"from_attributes": True}
 
@@ -126,6 +128,7 @@ class EventList(BaseModel):
     # constructor can't silently omit it and ship a false "no media".
     media: MediaRead | None
     tags: list[TagRead]
+    conflicts: list[ConflictRead]
     # Investigator aggregates, populated on the requested view only (count +
     # newest-first capped sample) so the card renders "N working" without N+1;
     # None on the located view.
@@ -147,9 +150,9 @@ class PaginatedEventDetails(BaseModel):
 
     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
     (media + tags + provenance) rather than the lightweight ``EventList``
-    card: the Detections queue needs the media to judge a detection and the tags
-    to compute submit-readiness (source media + a ``conflict`` + a
-    ``capture_source`` tag) without a per-row round-trip.
+    card: the Detections queue needs the media to judge a detection and the
+    tags + conflicts to compute submit-readiness (source media + a conflict +
+    a ``capture_source`` tag) without a per-row round-trip.
     """
 
     items: list[EventRead]

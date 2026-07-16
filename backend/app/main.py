@@ -14,6 +14,7 @@ from app.ratelimit import limiter
 from app.routers import (
     admin,
     auth,
+    conflicts,
     events,
     search,
     social,
@@ -132,6 +133,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 # shared prefix. Order is load-bearing — see ``routers/events/__init__.py``.
 for _event_router in events.routers:
     app.include_router(_event_router, prefix="/api/v1/events", tags=["events"])
+app.include_router(conflicts.router, prefix="/api/v1/conflicts", tags=["conflicts"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])

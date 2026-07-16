@@ -247,6 +247,7 @@ class Event(Base):
     requested_by = relationship("User", foreign_keys=[requested_by_id])
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="event_tags", back_populates="events")
+    conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
     investigators = relationship(
         "EventInvestigator",
         back_populates="event",

@@ -6,10 +6,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Tag category domain. ``conflict`` / ``capture_source`` are curated taxonomies;
-# ``free`` is user-typed. The alias is the value-domain source of truth — the
-# column, the Read schema, and the generated frontend type all derive from it.
-TagCategory = Literal["conflict", "capture_source", "free"]
+# Tag category domain. ``capture_source`` is a curated taxonomy; ``free`` is
+# user-typed. Conflicts are NOT tags: they live in the ``conflicts`` referential
+# (see ``models/conflict.py``). The alias is the value-domain source of truth,
+# the column, the Read schema, and the generated frontend type all derive from it.
+TagCategory = Literal["capture_source", "free"]
 
 event_tags = Table(
     "event_tags",

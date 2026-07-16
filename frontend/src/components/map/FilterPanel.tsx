@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
-import type { MapPoint, Tag } from "@/types";
+import type { Conflict, MapPoint, Tag } from "@/types";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { Dot } from "@/components/ui/Dot";
@@ -13,8 +13,11 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
 interface FilterPanelProps {
-  /** Live tag taxonomy driving the chip buckets. */
+  /** Live tag taxonomy driving the capture-source + free chip buckets. */
   tags: Tag[];
+  /** Conflicts carried by >=1 live event (`/conflicts?used=true`), driving the
+   *  Conflict chip bucket. Server-ordered: ongoing first, then name. */
+  conflicts: Conflict[];
   /** Boundary-filtered points (pre-window) — feeds the timeline histograms. */
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
@@ -147,7 +150,7 @@ function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
  * Tags → Author. Filter state lives in MapStateContext so it survives
  * navigation; the panel reads and writes the context directly.
  */
-export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelProps) {
+export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
     selectedConflicts,
     setSelectedConflicts,
@@ -231,7 +234,6 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
 
   // Alphabetical so the free-tag "top N" preview is stable across loads.
   const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
-  const conflictTags = tags.filter((t) => t.category === "conflict").sort(byName);
   const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
   const freeTags = tags.filter((t) => t.category === "free").sort(byName);
 
@@ -243,7 +245,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
       ];
 
   const renderChips = (
-    bucket: Tag[],
+    bucket: { id: string; name: string }[],
     selected: string[],
     setter: (v: string[] | ((prev: string[]) => string[])) => void,
   ) => (
@@ -288,7 +290,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
 
       {filtersOpen && (
         <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-          {conflictTags.length > 0 && (
+          {conflicts.length > 0 && (
             <FilterSection
               title="Conflict"
               concept="conflict"
@@ -297,7 +299,7 @@ export function FilterPanel({ tags, points, pointCount, loading }: FilterPanelPr
               open={!!openSections["Conflict"]}
               onToggle={() => toggleSection("Conflict")}
             >
-              {renderChips(conflictTags, selectedConflicts, setSelectedConflicts)}
+              {renderChips(conflicts, selectedConflicts, setSelectedConflicts)}
             </FilterSection>
           )}
 

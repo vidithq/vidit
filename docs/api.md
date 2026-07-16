@@ -52,6 +52,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
+| **Conflicts** | | | |
+| GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
 | **Users** | | | |
 | GET | `/users/{username}` | 🌐 | Public analyst profile |
 | PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
@@ -101,6 +103,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /search` | 60/min |
 | `GET /tags` | 60/min |
 | `POST /tags` | 30/min |
+| `GET /conflicts` | 60/min |
 | **Users / Timeline** | |
 | `GET /users/{username}`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
@@ -324,7 +327,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 |-------|------|-------------|
 | `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
 | `status` | string | Narrows within the view, e.g. `?view=requested&status=closed`. |
-| `conflict` | string (repeatable) | Filter by conflict tag name. Repeat the param to OR within the conflict bucket (`?conflict=Ukraine&conflict=Gaza`). Matching tags must additionally carry `category == "conflict"`, so a free tag with the same name doesn't poison the result. |
+| `conflict` | string (repeatable) | Filter by conflict name, matched against the [`conflicts`](#conflicts) referential (`conflicts.name`), not tags. Repeat the param to OR within the conflict bucket (`?conflict=Russian invasion of Ukraine&conflict=Gaza war`). Combining with other buckets ANDs across them. |
 | `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
 | `tag` | string (repeatable) | Filter by tag name (any category). Repeat the param to OR within the tag bucket (`?tag=drone&tag=tank`). Combining buckets ANDs across them, the event must satisfy each bucket independently. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input, latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
@@ -357,9 +360,11 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
       "media_type": "image"
     },
     "tags": [
-      { "name": "Ukraine", "category": "conflict" },
       { "name": "Drone", "category": "capture_source" },
       { "name": "airstrike", "category": "free" }
+    ],
+    "conflicts": [
+      { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
     ],
     "investigator_count": null,
     "investigators_sample": null
@@ -367,7 +372,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 ]
 ```
 
-`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the event's single `source` attachment (`null` if none); a `proof` image never appears here. `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
+`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the event's single `source` attachment (`null` if none); a `proof` image never appears here. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
 
@@ -621,7 +626,10 @@ Full detail for a single event, in any lifecycle state.
     }
   ],
   "tags": [
-    { "name": "Ukraine", "category": "conflict" }
+    { "name": "Drone", "category": "capture_source" }
+  ],
+  "conflicts": [
+    { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
   ]
 }
 ```
@@ -652,18 +660,19 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date. Distinct from `event_date` and the submission time. |
 | `proof` | string (JSON) | no | Serialized Tiptap document. Its inline images reference not-yet-uploaded files as `placeholder://<filename>`, resolved against `proof_files`. |
-| `tag_ids` | string (JSON array) | yes | `["uuid1", "uuid2"]`. **Must include at least one `conflict` tag and one `capture_source` tag** (see *Required categories* below). |
+| `tag_ids` | string (JSON array) | yes | `["uuid1", "uuid2"]`. **Must include at least one `capture_source` tag** (see *Required categories* below). |
+| `conflict_ids` | string (JSON array) | yes | `["uuid1"]`. Ids from the [conflict referential](#conflicts). **At least one is required** (see *Required categories* below). |
 | `file` | File | yes | Exactly one source file (image or video): the footage. |
 | `proof_files` | File[] | no | The proof body's inline images, matched to its `placeholder://` srcs by filename. At least one is required (see *Required categories*). |
 
 **Response 201:** same shape as `GET /events/{id}`, born `"status": "geolocated"` with `requested_by: null` and the caller in `geolocators`.
 
-**Required categories.** Three legs of the evidence floor, checked before any upload so a rejection doesn't pay an S3 round-trip: (1) exactly one source `file`; (2) at least one image in the `proof` body (an already-uploaded URL or a `placeholder://` resolved from `proof_files`); (3) the resolved `tag_ids` must reference at least one tag of category `conflict` and at least one of category `capture_source`, the two curated, server-managed taxonomies (see [`Tags`](#tags)). Both curated categories ship an escape value (`conflict → "Other"`, `capture_source → "Unknown"`) so the tag requirement is always satisfiable.
+**Required categories.** Three legs of the evidence floor, checked before any upload so a rejection doesn't pay an S3 round-trip: (1) exactly one source `file`; (2) at least one image in the `proof` body (an already-uploaded URL or a `placeholder://` resolved from `proof_files`); (3) `conflict_ids` must resolve to at least one [conflict](#conflicts) (error message "A conflict is required") and `tag_ids` to at least one tag of category `capture_source`, the curated, server-managed taxonomy (see [`Tags`](#tags)). Both domains ship an escape value (conflict → `"Other"`, `capture_source → "Unknown"`) so the requirement is always satisfiable; either miss rejects with `tag_requirements_not_met`.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitiser rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing `conflict` or `capture_source` tag), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa) |
+| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitiser rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa) |
 | 409 | `source_media_conflict`, a concurrent request raced past the one-source-per-event index |
 | 413 | Request body exceeds the platform body-size cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
 | 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than `max_proof_images_per_event` files** in `proof_files` (`too_many_files`), `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
@@ -686,7 +695,7 @@ Owner-only delete. Cascades media, tag links, and contributor rows. A **hard** d
 
 ### `GET /events/detections` 🔒
 
-The owner "Detections" queue: the caller's machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**, it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where the owner reviews and geolocates each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes geolocate-readiness (source media + a `conflict` + a `capture_source` tag) client-side without a per-row fetch.
+The owner "Detections" queue: the caller's machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**, it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where the owner reviews and geolocates each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes geolocate-readiness (source media + a conflict + a `capture_source` tag) client-side without a per-row fetch.
 
 **Query params:**
 | Param | Type | Description |
@@ -730,7 +739,8 @@ Open a request: creates a `requested` event with no coordinates yet (ex `POST /r
 | `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Often unknown for a request. |
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC); requires `event_date`. |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant (UTC). |
-| `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]`. Not required to open a request; the curated-tag floor is enforced at `geolocate`. |
+| `tag_ids` | string (JSON array) | no | `["uuid1", "uuid2"]`. Not required to open a request; the curated floor is enforced at `geolocate`. |
+| `conflict_ids` | string (JSON array) | no | Ids from the [conflict referential](#conflicts). Optional here, like `tag_ids`. |
 | `file` | File | yes | Exactly one source file (image or video). |
 
 **Response 201:** same shape as `GET /events/{id}`, with `"status": "requested"` and `event_coords` / `capture_source_coords` `null` unless a guess was supplied.
@@ -762,11 +772,12 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date |
 | `proof` | JSON string | Tiptap document (sanitised); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
+| `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
 | `files` | file[] | New source media to add (0 or 1; kept + new must total exactly one, same allowlist + size limits as create) |
 | `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |
 
-`detected_from_url` (the provenance anchor, the post the detection was imported from) and `status` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a direct create meets is satisfied by the post-geolocate state: **exactly one source media** (kept + new), **at least one proof image** in the final proof body, and **one `conflict` + one `capture_source` tag**. A `requested` event and a machine detection are both born without the curated tags, so the floor is enforced here; the fulfiller adds the tags as part of the geolocate.
+`detected_from_url` (the provenance anchor, the post the detection was imported from) and `status` carry no field, so a caller that sends them is ignored. Blocked until the evidence floor a direct create meets is satisfied by the post-geolocate state: **exactly one source media** (kept + new), **at least one proof image** in the final proof body, and **one conflict + one `capture_source` tag**. A `requested` event and a machine detection are both born without the curated floor, so it is enforced here; the fulfiller adds the conflict and tags as part of the geolocate.
 
 **Response 200:** same shape as `GET /events/{id}` (now `"status": "geolocated"`, the caller added to `geolocators`).
 
@@ -880,7 +891,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
       "is_demo": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
-      "tags": [{ "id": "uuid", "name": "Ukraine", "category": "conflict" }]
+      "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
     }
   ],
   "requests": [
@@ -937,13 +948,12 @@ List tags. By default returns only tags referenced by at least one **live** geol
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `category` | string | `conflict`, `capture_source`, or `free` |
-| `curated` | bool | When `true`, return the full curated taxonomy (`conflict` + `capture_source`) **regardless of live usage**, ignoring the default usage filter. Combine with `category` to scope to one curated bucket. |
+| `category` | string | `capture_source` or `free` |
+| `curated` | bool | When `true`, return the full curated `capture_source` taxonomy **regardless of live usage**, ignoring the default usage filter. Conflicts are no longer tags; the full conflict list lives on [`GET /conflicts`](#get-conflicts). |
 
 **Response 200:**
 ```json
 [
-  { "id": "uuid", "name": "Ukraine", "category": "conflict" },
   { "id": "uuid", "name": "Drone", "category": "capture_source" },
   { "id": "uuid", "name": "airstrike", "category": "free" }
 ]
@@ -953,7 +963,7 @@ List tags. By default returns only tags referenced by at least one **live** geol
 
 ### `POST /tags` 🔒
 
-Create a tag. Only `free` tags are creatable; `conflict` / `capture_source` are server-managed and rejected with 403.
+Create a tag. Only `free` tags are creatable; `capture_source` is server-managed and rejected with 403.
 
 **Request body:**
 ```json
@@ -978,6 +988,31 @@ Create a tag. Only `free` tags are creatable; `conflict` / `capture_source` are 
 | Code | Case |
 |------|------|
 | 409 | A tag with this name already exists |
+
+---
+
+## Conflicts
+
+### `GET /conflicts`
+
+List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Rate-limited to 60/min/IP.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `used` | bool | When `true`, return only conflicts carried by at least one live event, so a filter UI never surfaces a chip that matches zero results. Mirrors the default orphan filtering on [`GET /tags`](#get-tags). |
+
+**Response 200:**
+```json
+[
+  { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" },
+  { "id": "uuid", "name": "Western Sahara conflict", "wikidata_id": "Q1152920", "start_year": 1970, "end_year": null, "ongoing": false, "tier": null }
+]
+```
+
+`start_year` / `end_year` disambiguate same-named historical entries. `tier` is the Wikipedia death-toll tier (`major`, `minor`, `conflict`; see [`data-model.md`](data-model.md#conflicts)), NULL for rows the sync has never classified; clients use it to rank the default picker list. `last_seen_at` and `source` are sync internals and stay off the wire.
+
+Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed conflicts", available under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); any surface listing them should carry that attribution.
 
 ---
 
@@ -1070,7 +1105,8 @@ Geolocations for a given analyst.
       "lng": 37.456,
       "event_date": "2026-03-15",
       "media": { "id": "uuid", "storage_url": "https://…/abc.jpg", "media_type": "image" },
-      "tags": [{ "name": "Ukraine", "category": "conflict" }]
+      "tags": [{ "name": "Drone", "category": "capture_source" }],
+      "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }]
     }
   ],
   "total": 42,
