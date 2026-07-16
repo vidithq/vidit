@@ -3595,9 +3595,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
