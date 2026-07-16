@@ -421,7 +421,7 @@ def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
 
 def _cdn_client_factory(handler):
     """An ``httpx.AsyncClient`` factory backed by a ``MockTransport`` handler, for
-    monkeypatching ``httpx.AsyncClient`` so ``_fetch_cdn_media`` never leaves the
+    monkeypatching ``httpx.AsyncClient`` so ``fetch_cdn_media`` never leaves the
     box."""
     real = httpx.AsyncClient
 
@@ -445,7 +445,7 @@ async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
     parsed = ParsedMedia(
         kind="video", remote_url="https://video.twimg.com/big.mp4", content_type="video/mp4"
     )
-    assert await archive_mod._fetch_cdn_media(parsed) is None
+    assert await archive_mod.fetch_cdn_media(parsed) is None
 
 
 async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
@@ -460,7 +460,7 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
     parsed = ParsedMedia(
         kind="video", remote_url="https://video.twimg.com/ok.mp4", content_type="video/mp4"
     )
-    assert await archive_mod._fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
+    assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
 
 
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):

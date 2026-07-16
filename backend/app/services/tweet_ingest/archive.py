@@ -323,7 +323,7 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
     return records
 
 
-async def _fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
+async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
     """Fetch a chased source media from the X or Telegram CDN.
 
     Chased source tweets (X status) and chased Telegram embeds carry absolute CDN
@@ -372,7 +372,7 @@ def archive_media_fetcher(
 
     async def fetch(parsed: ParsedMedia) -> tuple[bytes, str] | None:
         if parsed.remote_url.startswith("http"):
-            return await _fetch_cdn_media(parsed)
+            return await fetch_cdn_media(parsed)
         # Defence in depth behind ``read_tweets``' id check: never read outside
         # the extraction dir, whatever ``remote_url`` resolves to.
         target = (base / parsed.remote_url).resolve()
