@@ -9,7 +9,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 
 // Local to this panel: admin surfaces inline their markup rather than minting a
-// shared primitive (see planning/next.md — the admin dialect doesn't earn
+// shared primitive (see planning/next.md, where the admin dialect doesn't earn
 // palette entries). A quiet bordered stat cell, not a reusable card.
 function Stat({
   value,
