@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import Sidebar from "@/components/Sidebar";
+import ClosedBetaBanner from "@/components/ClosedBetaBanner";
 
 const montserrat = Montserrat({
   subsets: ["latin", "cyrillic"],
@@ -50,6 +51,7 @@ export default function RootLayout({
       >
         <Providers>
           <Sidebar />
+          <ClosedBetaBanner />
           {children}
         </Providers>
       </body>

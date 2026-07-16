@@ -188,6 +188,7 @@ vidit/
 │   │   │   ├── map/                # MapLibre GL components + map overlays (FilterPanel, etc.)
 │   │   │   ├── profile/            # TrustBadge, ProfileHeader, useProfileEdit, etc.
 │   │   │   ├── ui/                 # PageShell, styles.ts, FieldHelp, etc.
+│   │   │   ├── ClosedBetaBanner.tsx
 │   │   │   ├── PathTracker.tsx
 │   │   │   └── Sidebar.tsx
 │   │   ├── contexts/AuthContext.tsx

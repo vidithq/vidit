@@ -12,20 +12,18 @@ const CSRF_COOKIE = "vidit_csrf";
 
 // Paths reachable WITHOUT a session; everything else is default-deny below.
 // Anonymous read is open: the content routes (map, events, requests,
-// profiles, search) are public, and `/bounties` rides along so its legacy
-// redirect to `/requests` still fires for signed-out visitors. Write and
-// account surfaces (`/submit`, `/import`, `/settings`, `/admin`, `/timeline`)
-// stay behind the wall; write sub-routes living under a public prefix
-// (`/events/[id]/edit`, `/profile/[username]/detections`) are bounced
-// client-side by `useRequireAuth`. The invite code gates registration only
-// (at `POST /auth/register`) — no site-wide gate cookie.
+// profiles, search) are public. Write and account surfaces (`/submit`,
+// `/import`, `/settings`, `/admin`, `/timeline`) stay behind the wall;
+// write sub-routes living under a public prefix (`/events/[id]/edit`,
+// `/profile/[username]/detections`) are bounced client-side by
+// `useRequireAuth`. The invite code gates registration only (at
+// `POST /auth/register`) — no site-wide gate cookie.
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
   "/map",
   "/events",
   "/requests",
-  "/bounties",
   "/profile",
   "/search",
   "/login",

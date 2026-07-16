@@ -717,6 +717,7 @@ export default function PalettePage() {
           <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
               <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
+              <li><span className="font-mono text-neutral-400">ClosedBetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: fixed nav rail, auth/route-driven, always on screen</li>
               <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page</li>
             </ul>

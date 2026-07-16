@@ -95,8 +95,9 @@ interface NavItem {
 // Map (the catalogue), Submit (add your work), Requests (the board) are the
 // working surfaces; Timeline + Search are alternate lenses on the catalogue.
 // About (public/meta) sits last. Home has no rail slot: the logo already links
-// it, so a second entry was pure noise once signed in. Logged out, the rail
-// filters down to just About (the rest carry `auth: true`).
+// it, so a second entry was pure noise once signed in. Anonymous read is open,
+// so only the write surface (Submit) and the follow-feed (Timeline) carry
+// `auth: true` and hide signed-out.
 // Profile/Settings/Sign-in/Sign-out are a separate identity block at the bottom,
 // not here.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
@@ -104,7 +105,6 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     href: "/map",
     icon: Globe,
     label: "Map",
-    auth: true,
     // Match exactly /events/<id> (one segment) so a geolocation detail
     // keeps the Map highlight; sub-routes like /events/<id>/edit don't.
     // Submit lives at /submit now, so no carve-out is needed here.
@@ -115,12 +115,11 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     href: "/requests",
     icon: Megaphone,
     label: "Requests",
-    auth: true,
     // Every /requests/* path is a Requests page (creation lives at /submit).
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
-  { href: "/search", icon: Search, label: "Search", auth: true },
+  { href: "/search", icon: Search, label: "Search" },
   { href: "/about", icon: Info, label: "About" },
 ];
 
