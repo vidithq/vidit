@@ -183,7 +183,7 @@ def test_chased_telegram_sensitive_is_date_only() -> None:
 
 def test_unchased_telegram_link_is_link_only() -> None:
     """The no-chase path (record carries no footage) is unchanged: link source,
-    no date, no source media — the ``telegram_link`` contract."""
+    no date, no source media, the ``telegram_link`` contract."""
     resolved = resolve_thread([_telegram_record(None)])
     assert resolved is not None
     assert resolved.source_url == _TG_URL

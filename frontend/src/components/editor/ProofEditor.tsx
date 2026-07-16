@@ -58,9 +58,10 @@ type MatchedProofFile = { placeholder: string; file: File };
 /**
  * Pure name-match between the `placeholder://<filename>` image nodes in `doc`
  * and `files`: no browser resource created here, so it's safe to run at
- * construction (see `matchedProofFiles` below).
+ * construction (see `matchedProofFiles` below). Exported for the collision
+ * regression test (see `ProofEditor.test.tsx`).
  */
-function matchInitialProofFiles(
+export function matchInitialProofFiles(
   doc: Record<string, unknown> | null | undefined,
   files: File[]
 ): MatchedProofFile[] {
@@ -79,14 +80,61 @@ function matchInitialProofFiles(
 /** Read `file` as a `data:` URL. Used (instead of `URL.createObjectURL`) for
  *  the import-hydration preview below, which needs no matching "revoke": a
  *  data URL is just a string, not an entry in the browser's Blob URL
- *  registry, so nothing about it can go stale or needs disposing. */
-function fileToDataUrl(file: File): Promise<string> {
+ *  registry, so nothing about it can go stale or needs disposing. Exported
+ *  for the collision regression test. */
+export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * A `data:` preview URL is derived purely from the file's bytes, so two
+ * imported files with identical content (different filenames, different
+ * placeholders) resolve to the exact same string. Appending the placeholder
+ * as a URL fragment makes each entry's preview URL unique; the browser
+ * ignores the fragment when decoding the payload, so rendering is
+ * unaffected. Exported for the collision regression test.
+ */
+export function uniqueDataUrl(dataUrl: string, placeholder: string): string {
+  return `${dataUrl}#${encodeURIComponent(placeholder)}`;
+}
+
+/**
+ * The core of `emit` below, pulled out as a pure function so the
+ * `previewUrl` → file matching (and its identical-content collision fix)
+ * is directly testable without booting a real Tiptap editor. Rewrites
+ * live-preview srcs in a copy of `json` back to their `placeholder://`
+ * form, and returns the files the rewritten doc still references (a
+ * deleted image node drops its file from the upload batch).
+ */
+export function resolveProofDoc(
+  json: Record<string, unknown>,
+  entries: ImageEntry[]
+): { doc: Record<string, unknown>; files: File[] } {
+  const byPreviewUrl = new Map(entries.map((e) => [e.previewUrl, e]));
+  const referenced = new Set<string>();
+
+  // Deep-clone first: mutating Tiptap's own JSON in place corrupts its
+  // document state. `structuredClone` is available in every runtime this
+  // ships to (modern browsers + the test env).
+  const doc = structuredClone(json);
+  walkImageNodes(doc, (n) => {
+    const src = n.attrs.src as string;
+    const entry = byPreviewUrl.get(src);
+    if (entry) {
+      n.attrs.src = entry.placeholder;
+      referenced.add(entry.placeholder);
+    } else if (src.startsWith(PROOF_PLACEHOLDER_PREFIX)) {
+      referenced.add(src);
+    }
+  });
+
+  const files = entries.filter((e) => referenced.has(e.placeholder)).map((e) => e.file);
+  return { doc, files };
 }
 
 /**
@@ -131,35 +179,13 @@ export default function ProofEditor({
 
   // Rewrite blob srcs → their `placeholder://` form in a copy of the emitted
   // doc, then report the copy plus the files it still references. Kept in a ref
-  // so the editor's `onUpdate` callback stays stable.
+  // so the editor's `onUpdate` callback stays stable. The actual matching
+  // lives in `resolveProofDoc` (pulled out for testability).
   const emit = useCallback(
     (json: Record<string, unknown>) => {
-      const byPreviewUrl = new Map(entriesRef.current.map((e) => [e.previewUrl, e]));
-      const referenced = new Set<string>();
-
-      // Deep-clone first: mutating Tiptap's own JSON in place corrupts its
-      // document state. `structuredClone` is available in every runtime this
-      // ships to (modern browsers + the test env).
-      const doc = structuredClone(json);
-      walkImageNodes(doc, (n) => {
-        const src = n.attrs.src as string;
-        const entry = byPreviewUrl.get(src);
-        if (entry) {
-          n.attrs.src = entry.placeholder;
-          referenced.add(entry.placeholder);
-        } else if (src.startsWith(PROOF_PLACEHOLDER_PREFIX)) {
-          referenced.add(src);
-        }
-      });
+      const { doc, files } = resolveProofDoc(json, entriesRef.current);
       onChange(doc);
-
-      // Surface only the files the doc still references (a deleted image node
-      // drops its file from the upload batch, so it never reaches S3).
-      onProofFilesChange?.(
-        entriesRef.current
-          .filter((e) => referenced.has(e.placeholder))
-          .map((e) => e.file),
-      );
+      onProofFilesChange?.(files);
     },
     [onChange, onProofFilesChange],
   );
@@ -198,11 +224,19 @@ export default function ProofEditor({
 
     (async () => {
       const resolved = await Promise.all(
-        matchedProofFiles.map(async ({ placeholder, file }) => ({
-          placeholder,
-          file,
-          previewUrl: await fileToDataUrl(file),
-        })),
+        matchedProofFiles.map(async ({ placeholder, file }) => {
+          const dataUrl = await fileToDataUrl(file);
+          return {
+            placeholder,
+            file,
+            // See `uniqueDataUrl`: two imported files with identical bytes
+            // would otherwise resolve to the exact same `data:` string,
+            // and `resolveProofDoc`'s `previewUrl`-keyed lookup would
+            // collapse the pair onto one file and silently drop the other
+            // from `proof_files[]`.
+            previewUrl: uniqueDataUrl(dataUrl, placeholder),
+          };
+        }),
       );
       if (cancelled) return;
 

@@ -89,15 +89,19 @@ export function useTweetImport(form: TweetImportFormBindings) {
       importTokenRef.current === localToken && !controller.signal.aborted;
 
     if (parsed.suggested_title) form.setTitle(parsed.suggested_title);
-    if (parsed.source_url) form.setSourceUrl(parsed.source_url);
+    // Always set, never just on truthy: a source-less import after a sourced
+    // one must clear the field rather than leave the previous URL behind.
+    form.setSourceUrl(parsed.source_url ?? "");
+    // The source's own post instant, when the backend actually resolved one
+    // (a dated quote). Never fabricated from the OP's own post time; empty
+    // when null, same as `toDatetimeLocalUTC` handles any unparsable input.
+    form.setSourcePostedAt(toDatetimeLocalUTC(parsed.source_posted_at));
     if (parsed.posted_at) {
-      // The imported tweet is the source on this path: its post time pre-fills
-      // the (required) source instant, and that instant's date the event date.
-      const sourcePostedAt = toDatetimeLocalUTC(parsed.posted_at);
-      if (sourcePostedAt) {
-        form.setSourcePostedAt(sourcePostedAt);
-        form.setEventDate(sourcePostedAt.slice(0, 10));
-      }
+      // The OP's post date is a provisional proxy for the event date only,
+      // pending the analyst's own read of the footage; it is not treated as
+      // the source's post time (see ``source_posted_at`` above).
+      const opPostedAt = toDatetimeLocalUTC(parsed.posted_at);
+      if (opPostedAt) form.setEventDate(opPostedAt.slice(0, 10));
     }
     if (parsed.parsed_coords.length > 0) {
       const [first, ...rest] = parsed.parsed_coords;

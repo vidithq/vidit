@@ -236,6 +236,12 @@ async def _persist_one(
         # so collect the uploaded image URLs and append them to the proof doc.
         proof_image_urls: list[str] = []
         for parsed in dto.proof_media:
+            # Invariant: every proof row is referenced by the proof doc, and only
+            # image nodes go into it, so a non-image proof media would be an
+            # orphaned, unreadable blob. Skip it rather than persist bytes the read
+            # can never surface.
+            if parsed.kind != "image":
+                continue
             prepared = await _prepared_media(parsed, fetch_media, media_cache)
             if prepared is None:
                 continue

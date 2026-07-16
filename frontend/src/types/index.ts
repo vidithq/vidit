@@ -81,7 +81,7 @@ export interface TweetImportQuotedTweet {
   tweet_text: string;
 }
 
-/** One machine detection the pipeline would produce from a pasted tweet — the
+/** One machine detection the pipeline would produce from a pasted tweet: the
  *  no-persist preview output (zero DB writes). The UI doesn't render this yet
  *  (the analyst-facing preview is deferred); the type keeps the contract
  *  honest with the backend ``DetectedGeolocPreview`` schema. */
@@ -97,7 +97,7 @@ export interface DetectedGeolocPreview {
 }
 
 export interface TweetImportResponse {
-  /** SOURCE URL — the quoted tweet's URL when the OP quote-retweets, an
+  /** SOURCE URL: the quoted tweet's URL when the OP quote-retweets, an
    *  off-platform footage link when the OP declares one, otherwise null (no
    *  fallback to the OP's own URL). The form binds this directly to its
    *  ``Source URL`` field, starting empty when null. */
@@ -107,6 +107,10 @@ export interface TweetImportResponse {
   original_tweet_url: string;
   /** ISO 8601 timestamp from X. The form truncates to date in UTC. */
   posted_at: string;
+  /** The source's own post instant (the quote's timestamp), ISO 8601. Null
+   *  when the source has no known date; the form field starts empty rather
+   *  than falling back to ``posted_at`` (the OP's own date). */
+  source_posted_at: string | null;
   author_handle: string;
   tweet_text: string;
   suggested_title: string;
@@ -115,7 +119,7 @@ export interface TweetImportResponse {
    *  which is primary vs proof. */
   media: TweetImportMedia[];
   quoted_tweet: TweetImportQuotedTweet | null;
-  /** The machine path's view of the same tweet — the detections the pipeline
+  /** The machine path's view of the same tweet: the detections the pipeline
    *  would produce, for inspection. Empty when no coordinate parses. */
   detected: DetectedGeolocPreview[];
 }

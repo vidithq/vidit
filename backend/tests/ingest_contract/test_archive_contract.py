@@ -167,17 +167,19 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert _media_roles(db, ref) == {"proof": 2}
     assert _proof_image_count(ref) == 2
 
-    # self_video: 1 proof video, no image injected (only images go into the doc).
+    # self_video: the only proof media is a video. A proof video is never
+    # referenced by the proof doc (only images are injected), so it is skipped at
+    # persistence and the row lands media-less rather than orphaning the bytes.
     [sv] = _rows_for(db, owner, "self_video_no_signal")
-    assert _media_roles(db, sv) == {"proof": 1}
-    assert _media_types(db, sv) == {"video"}
+    assert _media_roles(db, sv) == {}
     assert _proof_image_count(sv) == 0
 
-    # self_thread: head video + reply photo, both role=proof; only the photo is
-    # injected into the proof doc.
+    # self_thread: head video + reply photo, both proof; the video is skipped
+    # (only images enter the proof doc), so one proof image row survives and is
+    # injected.
     [st] = _rows_for(db, owner, "self_thread")
-    assert _media_roles(db, st) == {"proof": 2}
-    assert _media_types(db, st) == {"video", "image"}
+    assert _media_roles(db, st) == {"proof": 1}
+    assert _media_types(db, st) == {"image"}
     assert _proof_image_count(st) == 1
 
     # mention_prefix: 1 proof image.

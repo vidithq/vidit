@@ -80,8 +80,8 @@ describe("DetailsFields", () => {
       />
     );
     // Every invalid field's own label turns red, matching the outline already
-    // applied to its input (via `Input`'s `invalid` prop) — same treatment,
-    // not just one or the other.
+    // applied to its input (via `Input`'s `invalid` prop): the same
+    // treatment, not just one or the other.
     expect(screen.getByText("Event date").closest("label")).toHaveClass(
       "!text-red-400"
     );

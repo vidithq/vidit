@@ -54,6 +54,7 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
         monkeypatch,
         returns=ParsedTweet(
             source_url="https://x.com/handle/status/1234567890",
+            source_posted_at=None,
             original_tweet_url="https://x.com/handle/status/1234567890",
             posted_at="2025-11-12T14:33:00.000Z",
             author_handle="handle",
@@ -93,6 +94,7 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
         monkeypatch,
         returns=ParsedTweet(
             source_url="https://x.com/handle/status/1",
+            source_posted_at=None,
             original_tweet_url="https://x.com/handle/status/1",
             posted_at="2025-11-12T14:33:00.000Z",
             author_handle="handle",

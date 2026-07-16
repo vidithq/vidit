@@ -82,11 +82,19 @@ class TweetImportResponse(BaseModel):
     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
     Without a quote or a footage link ``source_url`` is None (required-nullable)
     and the form field starts empty; the OP's own URL is never a fallback.
+    ``source_posted_at`` follows the same rule for the source's post time: it
+    carries the quote's actual timestamp, never the OP's, and is None when
+    that timestamp isn't known.
     """
 
     source_url: str | None
     original_tweet_url: str
     posted_at: str  # ISO 8601 from X — frontend truncates to date for the form
+    # The source's own post instant (the quote's timestamp), ISO 8601 UTC.
+    # None when the source has no known date (no quote, or a footage link
+    # whose timestamp isn't derivable): the form field then starts empty
+    # rather than falling back to the OP's own date (required-nullable).
+    source_posted_at: str | None
     author_handle: str
     tweet_text: str
     suggested_title: str

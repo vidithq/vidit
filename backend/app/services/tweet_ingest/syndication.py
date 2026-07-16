@@ -271,6 +271,14 @@ TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 # ``evil-cdn-telegram.org`` is rejected.
 TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
 
+# Byte cap on a single remote-media fetch, shared by every path that streams an
+# allowlisted CDN URL into memory: the media-proxy route and the archive /
+# Telegram chase (``archive._fetch_cdn_media``). Sized for the upload ceilings
+# (10 MB image / 100 MB video) plus HTTP-framing overhead. Anything bigger is an
+# unexpected upstream response or a hostile content-length lie; cap and bail so a
+# fetch can't buffer an unbounded stream in memory.
+MEDIA_FETCH_MAX_BYTES = 110 * 1024 * 1024
+
 
 def _host_matches_base(host: str, base: str) -> bool:
     """Whether ``host`` is ``base`` itself or a subdomain of it.
@@ -298,7 +306,7 @@ class ParsedMedia:
 def is_trusted_media_url(url: str) -> bool:
     """Allowlist check used by both the response builder and the proxy.
 
-    Single source of truth — ``parse_tweet`` (filtering what we advertise), the
+    Single source of truth: ``parse_tweet`` (filtering what we advertise), the
     archive / Telegram chases (before fetching a CDN media), and the media-proxy
     route (validating ``u=`` before opening a socket) all call this. Drift would
     silently drop legitimate media or open the proxy to SSRF. Admits the X CDN

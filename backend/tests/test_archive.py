@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
+
 from app.services.tweet_ingest import (
     ParsedMedia,
     archive_media_fetcher,
@@ -289,6 +291,176 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
     assert deduped.quoted is not None
     assert deduped.quoted.tweet_id == "888"
     assert seen_ids == ["888"]  # only the deduped sole candidate was chased
+
+
+def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
+    """Host gate: a non-X URL (an archive.org capture, a common OSINT citation)
+    that merely carries ``x.com/<w>/status/<id>`` inside its path is not an X
+    status link, so it is never chased. The candidate rule keys on the real host
+    via ``classify_source_host``, not a raw substring match on the whole URL."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": "Cited https://t.co/fakearchive",
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/fakearchive",
+                            "expanded_url": (
+                                "https://web.archive.org/web/20240101000000/"
+                                "https://x.com/u/status/123"
+                            ),
+                        }
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    def fake_fetch(tweet_id, *, client=None):
+        raise AssertionError("a non-X host must never be chased")
+
+    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert record.quoted is None
+
+
+def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch):
+    """A tweet linking BOTH an X status and a Telegram post is ambiguous at
+    resolve (two footage candidates across hosts), so neither is chased: the X
+    status must not materialise as a quote and win precedence over the empty
+    resolved source."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": "Source: https://x.com/src/status/999 also https://t.me/chan/42",
+                "entities": {
+                    "urls": [
+                        {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
+                        {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    def fake_fetch(tweet_id, *, client=None):
+        raise AssertionError("ambiguous source must not chase the X status")
+
+    def fake_embed(url, *, client=None):
+        raise AssertionError("ambiguous source must not chase the Telegram post")
+
+    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert record.quoted is None
+    assert record.telegram is None
+
+
+def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
+    """A link to the owner's OWN status in the handle-less ``i/web/status`` form,
+    absent from the export (deleted / truncated), slips both the ``by_id`` and the
+    URL-handle exclusions. Once chased, the syndication handle reveals it as the
+    owner's own post, so the result is thrown out rather than materialised as
+    third-party footage."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": "Reposting my earlier one https://t.co/self",
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/self",
+                            "expanded_url": "https://x.com/i/web/status/999",
+                        }
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    def fake_fetch(tweet_id, *, client=None):
+        assert tweet_id == "999"
+        return {
+            "user": {"screen_name": "Analyst"},  # the owner's handle, different case
+            "text": "my own footage",
+            "created_at": "2025-11-12T09:00:00.000Z",
+        }
+
+    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    [record] = read_tweets(archive, handle="analyst", chase=True)
+    assert record.quoted is None
+
+
+def _cdn_client_factory(handler):
+    """An ``httpx.AsyncClient`` factory backed by a ``MockTransport`` handler, for
+    monkeypatching ``httpx.AsyncClient`` so ``_fetch_cdn_media`` never leaves the
+    box."""
+    real = httpx.AsyncClient
+
+    def make_client(**_kwargs):
+        return real(transport=httpx.MockTransport(handler))
+
+    return make_client
+
+
+async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
+    """A CDN response larger than the shared byte cap is dropped fail-soft
+    (media-incomplete), not buffered unbounded into memory."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    monkeypatch.setattr(archive_mod, "MEDIA_FETCH_MAX_BYTES", 16)
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        _cdn_client_factory(lambda _req: httpx.Response(200, content=b"x" * 64)),
+    )
+    parsed = ParsedMedia(
+        kind="video", remote_url="https://video.twimg.com/big.mp4", content_type="video/mp4"
+    )
+    assert await archive_mod._fetch_cdn_media(parsed) is None
+
+
+async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
+    """A CDN response within the cap streams back intact."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        _cdn_client_factory(lambda _req: httpx.Response(200, content=b"tiny-mp4-bytes")),
+    )
+    parsed = ParsedMedia(
+        kind="video", remote_url="https://video.twimg.com/ok.mp4", content_type="video/mp4"
+    )
+    assert await archive_mod._fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
 
 
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):

@@ -92,6 +92,37 @@ def test_source_same_footage_link_repeated_is_one_candidate():
     assert posted is None
 
 
+def test_source_x_and_twitter_variants_of_one_status_are_one_candidate():
+    # x.com and twitter.com links (plus a trailing slash / query variant) that
+    # point at the SAME status id dedupe by status id to a single candidate, not
+    # three ambiguous ones, so the source resolves instead of being lost.
+    record = _rec(
+        external_sources=[
+            SourceLink(url="https://x.com/a/status/9", host="x"),
+            SourceLink(url="https://twitter.com/a/status/9", host="x"),
+            SourceLink(url="https://x.com/a/status/9/", host="x"),
+            SourceLink(url="https://x.com/a/status/9?s=20", host="x"),
+        ]
+    )
+    url, posted = resolve_source([record])
+    assert url == "https://x.com/a/status/9"
+    assert posted is None
+
+
+def test_source_other_host_dedupes_on_trailing_slash_and_query():
+    # Two Telegram links to the same post differing only by a trailing slash /
+    # query are one candidate, not a false ambiguity.
+    record = _rec(
+        external_sources=[
+            SourceLink(url="https://t.me/chan/7", host="telegram"),
+            SourceLink(url="https://t.me/chan/7/?embed=1", host="telegram"),
+        ]
+    )
+    url, posted = resolve_source([record])
+    assert url == "https://t.me/chan/7"
+    assert posted is None
+
+
 def test_source_skips_leading_profile_link_status_link_wins():
     # Regression: entities.urls carries the profile link before the status link
     # (the order X returns them in). classify_source_host now demotes the

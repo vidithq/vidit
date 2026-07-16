@@ -9,14 +9,14 @@ Every derived field is either correct or empty. No field is a guess dressed as d
 A field fills only on an explicit signal in the tweet or its quote:
 
 - **Quote**: the OP quote-tweets another post. The quoted tweet is the footage source.
-- **Footage link**: the OP's text carries a link to X, Telegram, or YouTube (the OSINT convention `Source: <url>`). That link is the footage source. For X, only a status link counts (`x.com/<handle>/status/<id>`); a profile link is not footage.
+- **Footage link**: the OP's text carries a link to X, Telegram, or YouTube (the OSINT convention `Source: <url>`). That link is the footage source. For X, only a status link counts (`x.com/<handle>/status/<id>`); a profile link is not footage. A link to any other host (a coordinate link, an article, anything outside X / Telegram / YouTube) is not a footage signal and leaves the source empty.
 - **Coordinate**: a parseable coordinate in the OP's own text, or, when the OP's text yields none, in the quoted tweet's text.
 
 Nothing is deduced beyond these three signals:
 
 - **No self-source.** A thread that neither quotes nor links footage has declared no source. Its own media stays proof (the analyst's annotation), never promoted to source. The thread's own permalink is provenance, not a source.
 - **No cross-author thread rollup.** The archive backfill stitches a reply chain into one thread (see [Archive formats](#archive-formats) below); a third party's post is never folded into the analyst's own thread as if it were the analyst's own text.
-- **No self-reference as source.** A link to the analyst's own post is a cross-reference, not footage; a single remaining third-party footage link is the source, several distinct candidates leave the source empty for review.
+- **No self-reference as source.** A link to the analyst's own post is a cross-reference, not footage; a single remaining third-party footage link is the source, several distinct candidates leave the source empty for review. This excludes links only: a deliberate quote of the analyst's own earlier post is still an explicit quote signal, so it counts as the source under the quote rule above.
 
 When no source is declared, `source_url` and `source_posted_at` are both `NULL`, and the tweet's own media (photos, video) is stored with `role=proof`, an annotation attached to the event rather than evidence of the footage's origin.
 

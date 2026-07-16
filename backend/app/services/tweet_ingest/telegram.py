@@ -1,4 +1,4 @@
-"""Telegram footage chase — a t.me post's public embed → date (+ maybe media).
+"""Telegram footage chase: a t.me post's public embed to its date (+ maybe media).
 
 Off-platform OSINT sources are frequently Telegram posts (``Source:
 https://t.me/<channel>/<id>``). Telegram serves a public, auth-less embed for a
@@ -61,10 +61,12 @@ _PHOTO_RE = re.compile(
 )
 
 # A sensitive / oversized post: the embed ships a placeholder, not the footage.
-# When present, any photo tag is a poster stand-in, not evidence, so no media is
-# taken (the date still is).
+# When present, a wrapper photo tag is a poster stand-in, not evidence, so it is
+# not taken (the date still is). Only the genuine withhold strings count; the
+# footer "VIEW IN TELEGRAM" link is standard embed chrome present on normal posts
+# too, so it is NOT a withhold signal (it would suppress real media).
 _MEDIA_WITHHELD_RE = re.compile(
-    r"message_media_not_supported|Please open Telegram to view this post|VIEW IN TELEGRAM"
+    r"message_media_not_supported|Please open Telegram to view this post"
 )
 
 
@@ -133,13 +135,14 @@ def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | No
 def _extract_media(embed_html: str) -> list[ParsedMedia]:
     """The footage the embed serves: the inlined mp4, else the wrapper photo(s).
 
-    A withheld-media marker (sensitive / oversized post) short-circuits to no
-    media, so a poster placeholder is never mistaken for evidence. Every URL is
-    re-checked against :func:`is_trusted_media_url` (only the Telegram CDN), so a
-    tampered embed can't point the downstream fetch at an arbitrary host.
+    Decision order matters: an inlined ``<video>`` on the Telegram CDN is real
+    footage, so it is taken first regardless of any chrome text. Only when there
+    is no such video does the withheld-media marker matter: a sensitive /
+    oversized post ships a poster photo placeholder, so the photo path is
+    suppressed there (the date still comes back). Every URL is re-checked against
+    :func:`is_trusted_media_url` (only the Telegram CDN), so a tampered embed
+    can't point the downstream fetch at an arbitrary host.
     """
-    if _MEDIA_WITHHELD_RE.search(embed_html) is not None:
-        return []
     videos = [
         ParsedMedia(kind="video", remote_url=src, content_type="video/mp4", origin="quote")
         for src in (html.unescape(m.group(1)) for m in _VIDEO_RE.finditer(embed_html))
@@ -147,6 +150,8 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     ]
     if videos:
         return videos
+    if _MEDIA_WITHHELD_RE.search(embed_html) is not None:
+        return []
     return [
         ParsedMedia(kind="image", remote_url=src, content_type="image/jpeg", origin="quote")
         for src in (html.unescape(m.group(1)) for m in _PHOTO_RE.finditer(embed_html))

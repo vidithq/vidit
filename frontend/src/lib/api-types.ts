@@ -588,9 +588,10 @@ export interface paths {
          *     The submit form needs ``File`` objects in ``files[]`` (the contract
          *     ``services/evidence_processing.py`` keys off), but the X CDN sets no
          *     CORS headers for a direct browser ``fetch``, so this thin proxy is the
-         *     only path. Strict host whitelist on ``u`` (``pbs.twimg.com`` /
-         *     ``video.twimg.com``) keeps it from becoming an SSRF / open-redirect
-         *     vector; auth-required so it can't be abused as a bandwidth pipe to X.
+         *     only path. Strict host whitelist on ``u`` (the X CDN hosts plus the
+         *     Telegram CDN hosts ``is_trusted_media_url`` allows, see
+         *     ``tweet_ingest``) keeps it from becoming an SSRF / open-redirect vector;
+         *     auth-required so it can't be abused as a bandwidth pipe.
          */
         get: operations["import_from_tweet_media_api_v1_events_import_from_tweet_media_get"];
         put?: never;
@@ -1930,6 +1931,9 @@ export interface components {
          *     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
          *     Without a quote or a footage link ``source_url`` is None (required-nullable)
          *     and the form field starts empty; the OP's own URL is never a fallback.
+         *     ``source_posted_at`` follows the same rule for the source's post time: it
+         *     carries the quote's actual timestamp, never the OP's, and is None when
+         *     that timestamp isn't known.
          */
         TweetImportResponse: {
             /** Author Handle */
@@ -1948,6 +1952,8 @@ export interface components {
             /** Posted At */
             posted_at: string;
             quoted_tweet?: components["schemas"]["TweetImportQuotedTweet"] | null;
+            /** Source Posted At */
+            source_posted_at: string | null;
             /** Source Url */
             source_url: string | null;
             /** Suggested Title */

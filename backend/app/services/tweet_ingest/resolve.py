@@ -17,6 +17,7 @@ derivations into the bundled ``ResolvedTweet``.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from urllib.parse import urlparse
@@ -65,37 +66,76 @@ def _is_own_status_link(url: str, owner_handle: str) -> bool:
     return handle is not None and handle.lower() == owner_handle.lower()
 
 
-def _source_link(thread: list[TweetRecord]) -> SourceLink | None:
+@dataclass(frozen=True)
+class FootageCandidate:
+    """A deduplicated footage-source candidate: the link, its host class, and,
+    for an X status, the extracted status id (the archive chase key)."""
+
+    url: str
+    host: str
+    status_id: str | None
+
+
+def _footage_dedup_key(url: str, host: str, status_id: str | None) -> str:
+    """The identity two footage links share, so duplicates collapse to one
+    candidate.
+
+    An X status keys on the status id, so ``x.com`` / ``twitter.com`` (or
+    query / trailing-slash) variants of one status are one candidate; other
+    hosts key on host plus path with the query and any trailing slash stripped.
+    """
+    if status_id is not None:
+        return f"x:{status_id}"
+    parsed = urlparse(url)
+    return f"{host}:{(parsed.hostname or '').lower()}{parsed.path.rstrip('/')}"
+
+
+def footage_candidates(
+    links: Iterable[tuple[str, str]], *, owner_handle: str
+) -> list[FootageCandidate]:
+    """The deduplicated footage candidates among host-classified source links.
+
+    The single source of truth both the shared resolution (:func:`_source_link`)
+    and the archive chase run, so "which link is the footage source" cannot drift
+    between them. A link is a candidate when its host is footage
+    (X status / Telegram / YouTube); an X status back to ``owner_handle``'s own
+    post is a cross-reference, not footage, and is dropped first (only the X host
+    carries a handle to compare). Duplicates collapse per :func:`_footage_dedup_key`.
+    """
+    candidates: list[FootageCandidate] = []
+    seen: set[str] = set()
+    for url, host in links:
+        if host not in _FOOTAGE_SOURCE_HOSTS:
+            continue
+        status_id: str | None = None
+        if host == "x":
+            if _is_own_status_link(url, owner_handle):
+                continue
+            match = _X_STATUS_URL_RE.search(url)
+            status_id = match.group(1) if match is not None else None
+        key = _footage_dedup_key(url, host, status_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(FootageCandidate(url=url, host=host, status_id=status_id))
+    return candidates
+
+
+def _source_link(thread: list[TweetRecord]) -> FootageCandidate | None:
     """The only external link that points at footage (X / Telegram / YouTube),
     or ``None`` when there is none or several.
 
-    An X status link back to the thread owner's own post is a cross-reference,
-    never footage, so it is skipped first (only the X host carries a handle to
-    compare against the owner; Telegram / YouTube links have no such
-    self-reference case). Among the remaining footage links, deduped by URL
-    (the same link repeated is one candidate), a sole candidate is the declared
-    source; several distinct candidates are ambiguous, so no link is picked and
-    the source stays empty for review.
+    Decided by :func:`footage_candidates` (the shared rule): a sole candidate is
+    the declared source; several distinct candidates are ambiguous, so no link is
+    picked and the source stays empty for review.
     """
     owner_handle = thread[0].handle if thread else ""
-    candidates: list[SourceLink] = []
-    seen_urls: set[str] = set()
-    for record in thread:
-        for link in record.external_sources:
-            if link.host not in _FOOTAGE_SOURCE_HOSTS:
-                continue
-            if link.host == "x" and _is_own_status_link(link.url, owner_handle):
-                continue
-            if link.url in seen_urls:
-                continue
-            seen_urls.add(link.url)
-            candidates.append(link)
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
+    links = [(link.url, link.host) for record in thread for link in record.external_sources]
+    candidates = footage_candidates(links, owner_handle=owner_handle)
+    return candidates[0] if len(candidates) == 1 else None
 
 
-def _telegram_footage(thread: list[TweetRecord], link: SourceLink) -> TelegramFootage | None:
+def _telegram_footage(thread: list[TweetRecord], link: FootageCandidate) -> TelegramFootage | None:
     """The chased Telegram embed backing the resolved footage ``link``, or ``None``.
 
     Only when the resolved source link is a Telegram post whose embed was chased

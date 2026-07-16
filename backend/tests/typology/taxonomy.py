@@ -1,17 +1,17 @@
-"""Typology taxonomy — classify a geolocation tweet by its structural shape.
+"""Typology taxonomy: classify a geolocation tweet by its structural shape.
 
 Three axes, each a stable string so weights + fixtures can bucket on them:
 
-* ``coord_format``   — which extractor family recovers the coordinate:
+* ``coord_format``   (which extractor family recovers the coordinate):
                        ``decimal`` / ``hemisphere`` / ``dms`` / ``gmaps`` /
                        ``none`` (no parseable coordinate in the text).
-* ``coord_location`` — where the coordinate lives: ``op`` (the tweet body),
+* ``coord_location`` (where the coordinate lives): ``op`` (the tweet body),
                        ``quoted`` (only in the quoted tweet), or ``image_only``
-                       (nowhere in text — the ~14% a vision pass would need).
-* ``structure``      — ``single`` or ``quote`` (a quoted tweet is attached).
+                       (nowhere in text, the ~14% a vision pass would need).
+* ``structure``      (``single`` or ``quote``, a quoted tweet is attached).
 
 Classification *reuses the real parser* (``extract.extract_coords`` and its
-module-level regexes) rather than re-deriving coordinate rules — the harness
+module-level regexes) rather than re-deriving coordinate rules; the harness
 tests those exact patterns, so importing them is deliberate: a rename upstream
 breaks the harness loudly instead of letting it drift.
 """

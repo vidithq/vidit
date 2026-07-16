@@ -116,6 +116,36 @@ async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
     assert proof_rows.count() == 2
 
 
+async def test_proof_video_is_skipped_not_orphaned(db, owner):
+    # A proof video is never referenced by the proof doc (only images are
+    # injected) and the read serialises only source media, so persisting it would
+    # orphan the bytes. It is skipped: no media row, no proof image node.
+    video = ParsedMedia(
+        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
+    )
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(proof_media=[video])], fetch_media=_image_fetcher
+    )
+    geo = outcome.created[0]
+    assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
+    assert [n for n in geo.proof["content"] if n.get("type") == "image"] == []
+
+
+async def test_proof_image_kept_when_mixed_with_video(db, owner):
+    # A mix of proof image + proof video: only the image persists and is injected
+    # into the proof doc; the video is skipped.
+    video = ParsedMedia(
+        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
+    )
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(proof_media=[_img(), video])], fetch_media=_image_fetcher
+    )
+    geo = outcome.created[0]
+    proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
+    assert len(proof_rows) == 1 and proof_rows[0].media_type == "image"
+    assert len([n for n in geo.proof["content"] if n.get("type") == "image"]) == 1
+
+
 async def test_assemble_persists_detected_row(db, owner):
     # A sourced detection (the quote typology): the declared source URL + date
     # and the quote's media land on the row, the media in the source slot.

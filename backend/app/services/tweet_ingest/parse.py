@@ -10,6 +10,7 @@ The analyst always reviews and submits; nothing auto-publishes.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
 
@@ -26,6 +27,10 @@ class ParsedTweet:
     # OP is a messenger, not the footage source, so its own URL never fills
     # this): the ``source_url`` form field then starts empty.
     source_url: str | None
+    # The source's post instant (ISO 8601 UTC), only when actually known: the
+    # quoted tweet's date or a chased Telegram post's date. None when the source
+    # is a bare link or the tweet declares none; never the OP's own post date.
+    source_posted_at: datetime | None
     # The OP's URL, kept so the frontend can cite the analyst in the proof
     # body even when ``source_url`` points at the quoted source.
     original_tweet_url: str
@@ -69,6 +74,7 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
 
     return ParsedTweet(
         source_url=resolved.source_url,
+        source_posted_at=resolved.source_posted_at,
         original_tweet_url=resolved.detected_from_url,
         posted_at=resolved.created_at,
         author_handle=author_handle,

@@ -21,6 +21,7 @@ function parsedTweet(
     source_url: "https://x.com/source/status/2",
     original_tweet_url: "https://x.com/analyst/status/1",
     posted_at: "2026-01-05T12:00:00Z",
+    source_posted_at: "2026-01-04T09:00:00Z",
     author_handle: "analyst",
     tweet_text: "Geolocated the strike.",
     suggested_title: "Strike",

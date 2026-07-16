@@ -154,6 +154,34 @@ _TELESCO_HTML = (
     "</div>"
 )
 
+# Standard embed chrome: the footer "VIEW IN TELEGRAM" link rides on normal posts
+# too, so it must NOT suppress real inlined media (video or photo).
+_VIDEO_WITH_CHROME_HTML = (
+    '<div class="tgme_widget_message">'
+    '<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>'
+    '<a class="tgme_widget_message_link">VIEW IN TELEGRAM</a>'
+    f'<time datetime="{_DATE}"></time>'
+    "</div>"
+)
+_PHOTO_WITH_CHROME_HTML = (
+    '<div class="tgme_widget_message">'
+    '<a class="tgme_widget_message_photo_wrap" '
+    "style=\"background-image:url('https://cdn4.cdn-telegram.org/file/photo1.jpg')\"></a>"
+    '<a class="tgme_widget_message_link">VIEW IN TELEGRAM</a>'
+    f'<time datetime="{_DATE}" class="time"></time>'
+    "</div>"
+)
+
+# A genuine withheld-media marker AND an inlined video: the video is real footage
+# and wins; the marker only suppresses the poster-photo path.
+_WITHHELD_MARKER_WITH_VIDEO_HTML = (
+    '<div class="tgme_widget_message">'
+    '<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>'
+    '<div class="message_media_not_supported">Please open Telegram to view this post</div>'
+    f'<time datetime="{_DATE}"></time>'
+    "</div>"
+)
+
 
 def test_photo_embed_yields_date_and_image() -> None:
     embed = _fetch(_PHOTO_HTML)
@@ -182,6 +210,32 @@ def test_telesco_pe_media_is_trusted() -> None:
     embed = _fetch(_TELESCO_HTML)
     assert embed is not None
     assert [m.remote_url for m in embed.media] == ["https://telesco.pe/file/video9.mp4"]
+
+
+def test_view_in_telegram_chrome_does_not_withhold_video() -> None:
+    # "VIEW IN TELEGRAM" is standard footer chrome, not a withhold signal: a real
+    # inlined video alongside it is still captured.
+    embed = _fetch(_VIDEO_WITH_CHROME_HTML)
+    assert embed is not None
+    assert [m.kind for m in embed.media] == ["video"]
+
+
+def test_view_in_telegram_chrome_does_not_withhold_photo() -> None:
+    # Same for a served wrapper photo: the footer link does not turn it into a
+    # withheld poster.
+    embed = _fetch(_PHOTO_WITH_CHROME_HTML)
+    assert embed is not None
+    assert [(m.kind, m.remote_url) for m in embed.media] == [
+        ("image", "https://cdn4.cdn-telegram.org/file/photo1.jpg")
+    ]
+
+
+def test_inlined_video_wins_over_withheld_marker() -> None:
+    # Even with a genuine withheld-media marker present, an inlined trusted video
+    # is real footage and is captured; the marker only suppresses the poster photo.
+    embed = _fetch(_WITHHELD_MARKER_WITH_VIDEO_HTML)
+    assert embed is not None
+    assert [m.kind for m in embed.media] == ["video"]
 
 
 def test_sensitive_post_yields_date_only() -> None:

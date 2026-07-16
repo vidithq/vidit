@@ -510,7 +510,7 @@ async def geolocate(
         geo.event_coords = from_shape(Point(lng, lat), srid=4326)
         geo.capture_source_coords = capture_point
         if not keep_requester_source_url:
-            geo.source_url = source_url
+            geo.source_url = source_url.strip()
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at

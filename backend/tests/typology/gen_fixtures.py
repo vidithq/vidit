@@ -61,7 +61,7 @@ def generate() -> list[dict]:
                 break
             fixture = sanitize(op, quoted, has_quote, seed=_stable_seed(typology, index))
             # The sanitized fixture must still classify the same and round-trip
-            # through the parser — otherwise sanitisation changed the shape.
+            # through the parser, otherwise sanitisation changed the shape.
             same_shape = (
                 classify(fixture["op_text"], fixture["quoted_text"], fixture["has_quote"]).key()
                 == typology

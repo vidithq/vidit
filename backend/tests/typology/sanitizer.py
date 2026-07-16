@@ -5,7 +5,7 @@ keeps only the *structure* a coordinate lives in, never the analyst's words,
 handle, links, or real coordinate:
 
 * the coordinate keeps its exact real form (separators, ``°``, typographic
-  primes, letter placement — the quirks that break parsers) but every digit is
+  primes, letter placement, the quirks that break parsers) but every digit is
   swapped for a synthetic in-bounds value;
 * free prose words collapse to ``text``;
 * ``@handles`` → ``@user`` and links → ``https://example.invalid/x``;
@@ -46,7 +46,7 @@ _COORD_RES: tuple[tuple[str, re.Pattern[str]], ...] = (
 _HANDLE_RE = re.compile(r"@\w{1,15}")
 _URL_RE = re.compile(r"https?://\S+")
 _DIGIT_RUN_RE = re.compile(r"\d+")
-# Latin + Cyrillic word runs — the analyst's prose, replaced wholesale.
+# Latin + Cyrillic word runs: the analyst's prose, replaced wholesale.
 _WORD_RE = re.compile(r"[A-Za-zЀ-ӿ]+")
 
 _URL_TOKEN = "https://example.invalid/x"
@@ -61,7 +61,7 @@ def _digit_swapped(span: str, rng: random.Random) -> str | None:
     Same-length runs keep decimal precision and the format's shape; the retry
     loop rejects a draw that pushes latitude past 90 / longitude past 180.
     Returns ``None`` if no in-bounds draw is found (caller uses a canonical
-    fallback) — never returns the real digits.
+    fallback), never returns the real digits.
     """
     for _ in range(40):
         cand = _DIGIT_RUN_RE.sub(
@@ -73,7 +73,7 @@ def _digit_swapped(span: str, rng: random.Random) -> str | None:
 
 
 def _canonical(fmt: str, rng: random.Random) -> str:
-    """A clean synthetic coordinate of ``fmt`` — the fallback when digit-swapping
+    """A clean synthetic coordinate of ``fmt``: the fallback when digit-swapping
     a pathological span can't land in bounds."""
     lat = round(rng.uniform(35.0, 60.0), 5)
     lng = round(rng.uniform(-10.0, 60.0), 5)
@@ -98,7 +98,7 @@ def _to_dms(value: float, pos: str, neg: str, minute: str = "'", second: str = '
 
 def _synth_dms(original: str, rng: random.Random) -> str:
     """A synthetic DMS coordinate with valid minutes/seconds (0-59), preserving
-    the original's prime glyphs — ASCII ``' "`` vs typographic ``′ ″`` — because
+    the original's prime glyphs (ASCII ``' "`` vs typographic ``′ ″``) because
     the typographic form is the exact recall gap real archives surface, so a
     fixture must keep it. (Digit-swapping DMS would emit invalid 60+ minutes.)
     """
@@ -112,7 +112,7 @@ def _synth_dms(original: str, rng: random.Random) -> str:
 def _rewrite(text: str, rng: random.Random) -> str:
     """Skeletonise ``text``: synthesize coordinate spans, redact handles/links,
     collapse prose to ``text``. Single pass over non-overlapping spans."""
-    # Priority 0 coords, 1 urls, 2 handles — the lower priority wins an overlap,
+    # Priority 0 coords, 1 urls, 2 handles: the lower priority wins an overlap,
     # so a gmaps coordinate (which is also a url) survives instead of being
     # redacted away. Resolve strictly by priority, not by which starts first.
     by_priority: dict[int, list[tuple[int, int, str]]] = {0: [], 1: [], 2: []}

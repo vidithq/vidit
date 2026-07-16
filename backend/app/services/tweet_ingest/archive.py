@@ -20,8 +20,10 @@ import httpx
 
 from .errors import TweetFetchFailed, TweetNotAccessible
 from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
+from .resolve import FootageCandidate, footage_candidates
 from .syndication import (
     _X_STATUS_URL_RE,
+    MEDIA_FETCH_MAX_BYTES,
     ParsedMedia,
     _extract_media,
     extract_source_links,
@@ -172,40 +174,35 @@ def _quoted_from_syndication(quoted_id: str) -> QuotedTweet | None:
     )
 
 
-def _sole_linked_x_status(tweet: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> str | None:
-    """The id of the only third-party X status the tweet links
-    (``entities.urls``), or ``None`` when there is none or several.
+def _linked_status_id(url: str) -> str | None:
+    """The X status id in ``url`` (``_X_STATUS_URL_RE``), or ``None``."""
+    match = _X_STATUS_URL_RE.search(url)
+    return match.group(1) if match is not None else None
 
-    OSINT posts often write ``Source: https://x.com/<author>/status/<id>`` for
-    the footage they geolocated; that status is the source tweet. ``by_id`` is
-    the archive's own tweets: a linked id that is in there is the analyst's own
-    post (a cross-reference), never third-party footage, so it is excluded
-    first. When several distinct candidates remain the source is ambiguous, so
-    none is chased and the source stays empty for review; the same id linked
-    twice is one candidate. A profile link (no ``/status/``) doesn't match,
-    same rule ``classify_source_host`` applies (``_X_STATUS_URL_RE``, the
-    single source of truth for both).
+
+def _sole_footage_candidate(
+    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, owner_handle: str
+) -> FootageCandidate | None:
+    """The single footage candidate the OP links, or ``None`` when there is none
+    or several.
+
+    Decided by ``resolve.footage_candidates`` (the shared rule, so the chase and
+    the resolution can't disagree on which link is the source), fed the
+    host-classified ``entities.urls``. ``by_id`` is the archive's own tweets: a
+    linked id already in the export is the owner's own post (a cross-reference),
+    never third-party footage, so it is dropped first, even in the handle-less
+    ``i/web/status`` form the shared own-handle skip can't catch. A chase runs
+    only when this sole candidate is an X status or a Telegram post; a mixed pair
+    (an X status plus a Telegram / YouTube link) is ambiguous, so nothing chases
+    and the source stays empty for review.
     """
-    urls = (tweet.get("entities") or {}).get("urls")
-    if not isinstance(urls, list):
-        return None
-    candidates: set[str] = set()
-    for entry in urls:
-        if not isinstance(entry, dict):
-            continue
-        expanded = entry.get("expanded_url")
-        if not isinstance(expanded, str):
-            continue
-        match = _X_STATUS_URL_RE.search(expanded)
-        if match is None:
-            continue
-        status_id = match.group(1)
-        if status_id in by_id:
-            continue
-        candidates.add(status_id)
-    if len(candidates) == 1:
-        return next(iter(candidates))
-    return None
+    links = [
+        (url, host)
+        for url, host in extract_source_links(tweet)
+        if _linked_status_id(url) not in by_id
+    ]
+    candidates = footage_candidates(links, owner_handle=owner_handle)
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _archive_quoted(
@@ -214,10 +211,11 @@ def _archive_quoted(
     """Resolve a tweet's footage source tweet.
 
     A literal quote first (in-archive join, or a syndication chase of a
-    third-party quote); else, when ``chase`` is on, the sole third-party linked
-    X status (``Source: https://x.com/.../status/...``) chased via syndication.
-    ``None`` when nothing resolves. Held in the record's ``quoted`` field, but
-    it is "the source tweet" whether it came from a quote or a link.
+    third-party quote); else, when ``chase`` is on and the sole footage candidate
+    is a third-party X status (``Source: https://x.com/.../status/...``), that
+    status chased via syndication. ``None`` when nothing resolves. Held in the
+    record's ``quoted`` field, but it is "the source tweet" whether it came from a
+    quote or a link.
     """
     quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
     if quoted_id is not None:
@@ -234,33 +232,40 @@ def _archive_quoted(
             )
         return _quoted_from_syndication(quoted_id) if chase else None
     if chase:
-        linked = _sole_linked_x_status(tweet, by_id)
-        if linked is not None:
-            return _quoted_from_syndication(linked)
+        candidate = _sole_footage_candidate(tweet, by_id, owner_handle=handle)
+        if candidate is not None and candidate.host == "x" and candidate.status_id is not None:
+            quoted = _quoted_from_syndication(candidate.status_id)
+            if quoted is not None and quoted.handle.lower() == handle.lower():
+                # A link to the owner's OWN status absent from the export (deleted
+                # tweet, truncated archive) slips the ``by_id`` exclusion; the
+                # chased handle reveals it as a self-reference, never footage.
+                return None
+            return quoted
     return None
 
 
-def _archive_telegram(tweet: dict[str, Any], *, chase: bool) -> TelegramFootage | None:
+def _archive_telegram(
+    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str, chase: bool
+) -> TelegramFootage | None:
     """Chase the tweet's sole Telegram footage link via its public embed.
 
     OSINT posts write ``Source: https://t.me/<channel>/<id>`` for off-platform
-    footage. When ``chase`` is on and the tweet links exactly one Telegram post,
-    fetch its embed for the post date and (when the embed serves it) the footage
-    media. Several distinct Telegram links leave the footage source ambiguous at
-    resolve, so none is chased. Fail-soft: ``fetch_telegram_embed`` returns
-    ``None`` on any error, and the record then keeps the link with no date,
-    exactly as before the chase existed.
+    footage. When ``chase`` is on and the sole footage candidate is a Telegram
+    post (``_sole_footage_candidate``, the shared ambiguity rule), fetch its embed
+    for the post date and (when the embed serves it) the footage media. A tweet
+    that also links another footage source is ambiguous, so nothing is chased.
+    Fail-soft: ``fetch_telegram_embed`` returns ``None`` on any error, and the
+    record then keeps the link with no date, exactly as before the chase existed.
     """
     if not chase:
         return None
-    telegram_urls = {url for url, host in extract_source_links(tweet) if host == "telegram"}
-    if len(telegram_urls) != 1:
+    candidate = _sole_footage_candidate(tweet, by_id, owner_handle=handle)
+    if candidate is None or candidate.host != "telegram":
         return None
-    url = next(iter(telegram_urls))
-    embed = fetch_telegram_embed(url)
+    embed = fetch_telegram_embed(candidate.url)
     if embed is None:
         return None
-    return TelegramFootage(url=url, posted_at=embed.posted_at, media=list(embed.media))
+    return TelegramFootage(url=candidate.url, posted_at=embed.posted_at, media=list(embed.media))
 
 
 def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[TweetRecord]:
@@ -309,7 +314,7 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
                 quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
-                telegram=_archive_telegram(tweet, chase=chase),
+                telegram=_archive_telegram(tweet, by_id, handle=handle, chase=chase),
                 external_sources=[
                     SourceLink(url=u, host=h) for u, h in extract_source_links(tweet)
                 ],
@@ -319,22 +324,35 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
 
 
 async def _fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
-    """Fetch a chased source media from the X CDN (``pbs`` / ``video.twimg.com``).
+    """Fetch a chased source media from the X or Telegram CDN.
 
-    Chased source tweets carry absolute CDN URLs in ``remote_url`` (unlike the
-    archive's own media, which are ``tweets_media/`` disk paths). SSRF-guarded by
-    the same host allowlist the media proxy uses.
+    Chased source tweets (X status) and chased Telegram embeds carry absolute CDN
+    URLs in ``remote_url`` (unlike the archive's own media, which are
+    ``tweets_media/`` disk paths). SSRF-guarded by ``is_trusted_media_url``, the
+    same host allowlist the media proxy uses. Streamed with a byte cap
+    (``MEDIA_FETCH_MAX_BYTES``, shared with the proxy) so a hostile / buggy CDN
+    file that lies about its size can't OOM the worker; over the cap degrades to
+    ``None`` (media-incomplete), fail-soft like a fetch error.
     """
     if not is_trusted_media_url(parsed.remote_url):
         return None
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(parsed.remote_url)
+        async with (
+            httpx.AsyncClient(timeout=20.0) as client,
+            client.stream("GET", parsed.remote_url) as resp,
+        ):
+            if resp.status_code != 200:
+                return None
+            buffer = bytearray()
+            async for chunk in resp.aiter_bytes():
+                buffer.extend(chunk)
+                if len(buffer) > MEDIA_FETCH_MAX_BYTES:
+                    return None
     except httpx.HTTPError:
         return None
-    if resp.status_code == 200 and resp.content:
-        return resp.content, parsed.content_type
-    return None
+    if not buffer:
+        return None
+    return bytes(buffer), parsed.content_type
 
 
 def archive_media_fetcher(

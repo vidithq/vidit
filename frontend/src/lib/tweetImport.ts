@@ -6,12 +6,12 @@ import type { TweetImportMedia, TweetImportResponse } from "@/types";
  * choreography (abort tokens, staged form writes) lives in
  * `useTweetImport`. Two rules drive the payload split:
  *
- * - SOURCE URL: the quoted tweet's URL when the OP quote-retweets
- *   (OSINT-correct: the analyst is the messenger, not the source). With no
- *   quote, the backend tries the first non-X URL in ``entities.urls``
- *   (analyst typed ``Source: t.me/<channel>/<id>`` in the body); failing
- *   that, falls back to the OP's own URL so the form is filled. The
- *   analyst should override to the real source.
+ * - SOURCE URL: only set on an explicit signal, either the quoted tweet's URL
+ *   when the OP quote-retweets (OSINT-correct: the analyst is the messenger,
+ *   not the source), or the first footage link the backend recognises in the
+ *   OP's own text (X / Telegram / YouTube). With neither signal the field is
+ *   left empty; the OP's own URL is never used as a fallback, since that
+ *   would credit the analyst as the source.
  * - MEDIA SPLIT: uniform across OP and quoted tweet, videos go to primary
  *   (``files[]``), images go to proof, staged the same way the editor's
  *   "+ Image" control stages a manually picked file (see
@@ -24,11 +24,12 @@ import type { TweetImportMedia, TweetImportResponse } from "@/types";
  *   syndication endpoint doesn't expose reply-chain media, so a video
  *   posted in a reply is invisible here.
  *
- * Upstream X CDN URLs are pulled via the backend proxy
- * ``/events/import-from-tweet/media`` because the X CDN omits the
- * CORS headers a browser ``fetch`` needs. The proxy is whitelisted to
- * ``pbs.twimg.com`` / ``video.twimg.com`` so a hostile or schema-drifted
- * ``remote_url`` can't open it to arbitrary outbound fetches.
+ * Upstream media URLs are pulled via the backend proxy
+ * ``/events/import-from-tweet/media`` because the source CDNs omit the
+ * CORS headers a browser ``fetch`` needs. The proxy is whitelisted to the
+ * X CDN hosts and the Telegram CDN hosts (see ``is_trusted_media_url`` in
+ * ``tweet_ingest``) so a hostile or schema-drifted ``remote_url`` can't
+ * open it to arbitrary outbound fetches.
  */
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
