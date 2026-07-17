@@ -32,11 +32,16 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
+    # Composite to match the worker's claim query (filter on status, order
+    # by created_at).
     op.create_index(
-        op.f("ix_bot_webhook_events_status"), "bot_webhook_events", ["status"], unique=False
+        "ix_bot_webhook_events_status_created_at",
+        "bot_webhook_events",
+        ["status", "created_at"],
+        unique=False,
     )
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_bot_webhook_events_status"), table_name="bot_webhook_events")
+    op.drop_index("ix_bot_webhook_events_status_created_at", table_name="bot_webhook_events")
     op.drop_table("bot_webhook_events")

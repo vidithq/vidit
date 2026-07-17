@@ -217,6 +217,8 @@ async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_o
 
 
 async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
+    import app.services.bot as bot_service
+
     await _run(db, [TAGGED_ID])
     outcome, seen_params, posted, liked = await _run(db, [TAGGED_ID])
 
@@ -224,9 +226,52 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
     assert outcome.events_created == 0
     assert posted == []
     assert liked == []  # an already-handled mention earns no second gesture
-    # The second pull resumed from the ledger's max mention id.
-    assert seen_params[0]["since_id"] == TAGGED_ID
+    # The second pull resumed from the ledger's max mention id, minus the
+    # lookback overlap that keeps webhook-dropped mentions reachable.
+    expected = str(int(TAGGED_ID) - bot_service._SINCE_ID_OVERLAP)
+    assert seen_params[0]["since_id"] == expected
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
+
+
+async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner):
+    # The webhook dropped TAGGED_ID but delivered the newer BARE_ID, so the
+    # ledger max leapfrogged the dropped mention. The poll's since_id sits
+    # one overlap behind the max, so a since_id-honouring API still serves
+    # TAGGED_ID and the mention is recovered.
+    db.add(BotMention(mention_tweet_id=BARE_ID, author_handle=HANDLE, outcome="no_detection"))
+    db.commit()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        since = int(req.url.params["since_id"])
+        data = [
+            {"id": mid, "author_id": "u1", "text": BODIES[mid]["text"]}
+            for mid in (TAGGED_ID, BARE_ID)
+            if int(mid) > since
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "data": data,
+                "includes": {"users": [{"id": "u1", "username": HANDLE}]},
+                "meta": {},
+            },
+        )
+
+    posted: list[dict[str, object]] = []
+    liked: list[dict[str, object]] = []
+    with (
+        _syndication_client() as syn,
+        httpx.Client(transport=httpx.MockTransport(handler)) as read,
+        _write_client(posted, liked) as write,
+    ):
+        outcome = await run_bot_once(
+            db, syndication_client=syn, x_read_client=read, x_write_client=write
+        )
+
+    assert outcome.events_created == 1  # the dropped mention processed
+    assert outcome.already_handled == 1  # the ledgered one re-read, absorbed
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    assert ledger.outcome == "created"
 
 
 async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
@@ -311,7 +356,7 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
 async def test_like_budget_cap_skips_like_but_draft_still_lands(db, linked_owner, monkeypatch):
     import app.services.bot as bot_service
 
-    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_PASS", 0)
+    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_HOUR", 0)
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert liked == []
@@ -351,20 +396,75 @@ async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, mon
     # it processes fresh means the webhook missed it, and that must page.
     import app.services.bot as bot_service
 
-    captured: list[str] = []
+    captured: list[tuple[str, str | None]] = []
     monkeypatch.setattr(settings, "x_webhook_enabled", True)
-    monkeypatch.setattr(bot_service.sentry_sdk, "capture_message", captured.append)
+    monkeypatch.setattr(
+        bot_service.sentry_sdk,
+        "capture_message",
+        lambda message, level=None: captured.append((message, level)),
+    )
 
     await _run(db, [TAGGED_ID])
 
-    assert any("webhook gap" in m and TAGGED_ID in m for m in captured)
+    assert any(
+        "webhook gap" in m and TAGGED_ID in m and level == "warning" for m, level in captured
+    )
+
+
+async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkeypatch):
+    # Every fresh verdict is a gap, not only the created/no_detection family:
+    # a mention whose pipeline raised still arrived via reconciliation.
+    import app.services.bot as bot_service
+
+    captured: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(settings, "x_webhook_enabled", True)
+    monkeypatch.setattr(
+        bot_service.sentry_sdk,
+        "capture_message",
+        lambda message, level=None: captured.append((message, level)),
+    )
+    unknown_id = "9300000000000000009"
+
+    def read_handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": unknown_id, "author_id": "u1", "text": "@viditbot hello"}],
+                "includes": {"users": [{"id": "u1", "username": HANDLE}]},
+                "meta": {},
+            },
+        )
+
+    posted: list[dict[str, object]] = []
+    liked: list[dict[str, object]] = []
+    try:
+        with (
+            _syndication_client() as syn,  # 404s the unknown id, so the pipeline raises
+            httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
+            _write_client(posted, liked) as write,
+        ):
+            outcome = await run_bot_once(
+                db, syndication_client=syn, x_read_client=read, x_write_client=write
+            )
+
+        assert outcome.failed == 1
+        assert any("webhook gap" in m and unknown_id in m for m, _ in captured)
+    finally:
+        db.query(BotMention).filter(BotMention.mention_tweet_id == unknown_id).delete(
+            synchronize_session=False
+        )
+        db.commit()
 
 
 async def test_poll_stays_gap_silent_while_webhook_disabled(db, linked_owner, monkeypatch):
     import app.services.bot as bot_service
 
     captured: list[str] = []
-    monkeypatch.setattr(bot_service.sentry_sdk, "capture_message", captured.append)
+    monkeypatch.setattr(
+        bot_service.sentry_sdk,
+        "capture_message",
+        lambda message, level=None: captured.append(message),
+    )
 
     await _run(db, [TAGGED_ID])
 

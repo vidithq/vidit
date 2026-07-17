@@ -545,7 +545,7 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome, so a mention is processed (and billed, the reads and gestures are the paid X API) at most once. Shared by both delivery paths, the webhook and the reconciliation poll: whichever sees a mention first records it, the other skips it. The poll's `since_id` is the max `mention_tweet_id`; a mention already present is skipped even if the API re-serves it. See [`ingestion.md`](ingestion.md#bot-format) for the pipeline.
+The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome, so a mention is processed (and billed, the reads and gestures are the paid X API) at most once. Shared by both delivery paths, the webhook and the reconciliation poll: whichever sees a mention first records it, the other skips it. The poll's `since_id` is the max `mention_tweet_id` minus a one-interval lookback, so a mention the webhook dropped stays reachable even after a newer delivery advanced the max (the re-read overlap is absorbed here as already-handled). See [`ingestion.md`](ingestion.md#bot-format) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -555,6 +555,7 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 | `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`; nothing created, no reply), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
 | `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply, success (event ref + warnings) or failure (no-coordinates format hint, linked authors only); NULL when no reply was earned, reply credentials are absent, or the post failed (the detection stays durable either way). |
+| `liked_at` | `TIMESTAMPTZ` | nullable. When the bot liked the tagged tweet (the receipt ack). The gesture budget counts likes in the trailing hour from it, as it counts replies via `reply_tweet_id` + `processed_at`. |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
 
 ---
@@ -567,7 +568,7 @@ The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `mention` | `JSONB` | NOT NULL. The internal `Mention` shape (`tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`): everything the pipeline needs, so a drain never re-reads (re-bills) the paid API. |
-| `status` | `VARCHAR(10)` | NOT NULL, indexed. `'queued'` → `'done'` \| `'failed'`. `done` means the pipeline ran (the per-mention outcome, including a ledgered `failed`, lives in `bot_mentions`); `failed` means the attempt budget is spent or the payload was malformed. |
+| `status` | `VARCHAR(10)` | NOT NULL. `'queued'` → `'processing'` → `'done'` \| `'failed'`. `processing` marks a claimed row so a concurrent worker skips it (an exception re-queues it; a hard worker crash strands it and the reconciliation poll re-delivers the mention). `done` means the pipeline ran (the per-mention outcome, including a ledgered `failed`, lives in `bot_mentions`); `failed` means the attempt budget is spent or the payload was malformed. Composite index `(status, created_at)` matches the claim query. |
 | `attempts` | `INTEGER` | NOT NULL, default 0. Claim counter; at the budget the row lands `failed` (poison-pill guard). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 

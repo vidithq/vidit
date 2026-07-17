@@ -24,9 +24,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 import httpx
 
 from app.config import settings
-from app.services.x_api import _oauth1_header
 
-_API_BASE = "https://api.x.com/2"
+# Private x_api imports are deliberate: the API base and the OAuth 1.0a
+# signing have one home, and this in-repo operator script is a trusted
+# consumer, not a reason to widen x_api's public surface.
+from app.services.x_api import _API_BASE, _oauth1_header
+
 _TIMEOUT_S = 30.0
 
 

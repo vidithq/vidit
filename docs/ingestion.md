@@ -38,7 +38,7 @@ The bot reads its own mentions: an analyst tags the bot on the tweet that carrie
 
 **Attribution.** The detections land owned by the **existing Vidit account whose `x_handle` an admin linked**; the bot never mints users. The nominal link is bound to the invite code at mint time and copied onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) is the repair and backfill path. A mention from a handle no live account carries is recorded in the ledger as `no_account` and produces nothing: no user row, no draft, no reply. The tag stays the consent for sync; self-serve handle linking (verify-by-post) is a later gate (see `planning/next.md`). A deliberate consequence of the shared resolution: a quote of someone else's coordinate tweet still resolves (the quote is an explicit signal), so tagging the bot on such a quote credits the tagger while the quoted tweet stays recorded as `source_url`; contested attribution is what the claim/dispute pipeline exists for.
 
-**Response model.** Every gesture below is billed, so each is gated and budget-capped per pass and per author (likes and replies each carry their own caps, mirrored); past a cap the draft still lands (detection is unbilled) and only the gesture is skipped, logged.
+**Response model.** Every gesture below is billed, so each is gated and budget-capped over a trailing-hour wall-clock window, in total and per author (likes and replies each carry their own caps, mirrored; the budget seeds from the `bot_mentions` ledger, so the caps hold across drain passes and worker restarts); past a cap the draft still lands (detection is unbilled) and only the gesture is skipped, logged.
 
 | Moment | Gesture | Condition |
 |---|---|---|

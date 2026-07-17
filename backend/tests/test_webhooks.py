@@ -35,6 +35,7 @@ HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 
 COORD_ID = "9400000000000000001"
 BARE_ID = "9400000000000000002"
+BARE2_ID = "9400000000000000003"
 
 BODIES = {
     COORD_ID: {
@@ -48,6 +49,12 @@ BODIES = {
         "created_at": "2026-07-18T11:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "@viditbot nothing to see here",
+    },
+    BARE2_ID: {
+        "id_str": BARE2_ID,
+        "created_at": "2026-07-18T12:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot still nothing here",
     },
 }
 
@@ -200,6 +207,16 @@ def test_crc_challenge_without_credentials_is_503(monkeypatch):
     assert resp.status_code == 503
 
 
+def test_crc_challenge_rejects_json_shaped_token():
+    # The signing-oracle gate: the CRC answer is the same HMAC construction
+    # the POST verifier checks over the raw body, so the responder must never
+    # sign anything that could BE a webhook body. A JSON body can't fit the
+    # URL-safe charset.
+    body = json.dumps({"for_user_id": BOT_USER_ID, "tweet_create_events": []})
+    resp = client.get(WEBHOOK_PATH, params={"crc_token": body})
+    assert resp.status_code == 400
+
+
 # ── Signature gate ─────────────────────────────────────────────────────────
 
 
@@ -227,6 +244,47 @@ def test_post_with_missing_signature_is_401(db):
     assert resp.status_code == 401
 
 
+def test_post_with_non_ascii_signature_is_401(db):
+    # A non-ASCII header value must mismatch cleanly (bytes comparison), not
+    # 500 out of compare_digest. Sent as latin-1 bytes: the client refuses a
+    # non-ASCII str, but the wire allows the bytes and the server decodes
+    # them as latin-1 into a non-ASCII str.
+    body = json.dumps({"for_user_id": BOT_USER_ID}).encode()
+    resp = client.post(
+        WEBHOOK_PATH,
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-twitter-webhooks-signature": "sha256=écorché".encode("latin-1"),
+        },
+    )
+    assert resp.status_code == 401
+
+
+def test_post_with_oversized_body_is_413(db):
+    from app.routers import webhooks as webhooks_module
+
+    body = b"x" * (webhooks_module._MAX_BODY_BYTES + 1)
+    resp = client.post(
+        WEBHOOK_PATH,
+        content=body,
+        headers={"content-type": "application/json", "x-twitter-webhooks-signature": _sign(body)},
+    )
+    assert resp.status_code == 413
+    assert _queued_mentions(db) == []
+
+
+def test_post_without_bot_user_id_is_503(db, monkeypatch):
+    # An empty x_bot_user_id would silently drop every delivery (no
+    # for_user_id ever matches); it must be loud like the missing secret.
+    monkeypatch.setattr(settings, "x_bot_user_id", "")
+    resp = _post_payload(
+        {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
+    )
+    assert resp.status_code == 503
+    assert _queued_mentions(db) == []
+
+
 # ── Payload parsing ────────────────────────────────────────────────────────
 
 
@@ -241,6 +299,37 @@ def test_extended_tweet_full_text_wins_over_truncated_text(db):
     assert resp.json() == {"queued": 1}
     (mention,) = _queued_mentions(db)
     assert mention["text"] == BODIES[COORD_ID]["text"]
+
+
+def test_tag_only_in_extended_entities_is_kept(db):
+    # On a truncated tweet the tag can live past the truncation point: only
+    # extended_tweet.entities carries it. The top-level entities miss the bot.
+    event = _tweet_create_event(
+        COORD_ID,
+        text="@viditbot archive 55.751200, 37.6…",
+        mentions_bot=False,
+        truncated=True,
+        extended_tweet={
+            "full_text": BODIES[COORD_ID]["text"],
+            "entities": {"user_mentions": [{"id_str": BOT_USER_ID}]},
+        },
+    )
+    resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": [event]})
+    assert resp.json() == {"queued": 1}
+    (mention,) = _queued_mentions(db)
+    assert mention["text"] == BODIES[COORD_ID]["text"]
+
+
+def test_delivery_over_batch_cap_is_truncated(db):
+    from app.routers import webhooks as webhooks_module
+
+    cap = webhooks_module._MAX_EVENTS_PER_DELIVERY
+    events = [
+        _tweet_create_event(str(9500000000000000000 + i), text="@viditbot hi")
+        for i in range(cap + 1)
+    ]
+    resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": events})
+    assert resp.json() == {"queued": cap}
 
 
 def test_foreign_for_user_id_is_ignored_with_200(db):
@@ -363,3 +452,67 @@ async def test_poison_row_lands_failed_after_attempt_budget(db):
     assert outcome.mentions_seen == 0
     db.refresh(row)
     assert row.status == "failed"
+
+
+def test_claim_flips_status_so_a_second_worker_skips_it(db):
+    from app.database import SessionLocal
+    from app.services.bot import _claim_webhook_event
+
+    row = BotWebhookEvent(mention={"tweet_id": COORD_ID})
+    db.add(row)
+    db.commit()
+
+    claimed = _claim_webhook_event(db)
+    assert claimed is not None
+    assert claimed.status == "processing"
+    assert claimed.attempts == 1
+
+    other = SessionLocal()
+    try:
+        assert _claim_webhook_event(other) is None
+    finally:
+        other.close()
+
+
+async def test_drain_exception_requeues_the_claimed_row(db, monkeypatch):
+    import app.services.bot as bot_service
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("pipeline died")
+
+    monkeypatch.setattr(bot_service, "process_single_mention", _boom)
+    _post_payload(
+        {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
+    )
+
+    with pytest.raises(RuntimeError):
+        await drain_webhook_events(db)
+
+    row = db.query(BotWebhookEvent).one()
+    assert row.status == "queued"  # retryable, bounded by the attempt budget
+    assert row.attempts == 1
+
+
+async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
+    # The caps are wall-clock (seeded from the ledger's trailing hour), not
+    # per drain pass: a second pass minutes later must not mint fresh budget.
+    import app.services.bot as bot_service
+
+    monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 1)
+    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_HOUR", 1)
+
+    _post_payload(
+        {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}
+    )
+    _, posted, liked = await _drain(db)
+    assert len(posted) == 1  # the failure reply spent the reply budget
+    assert len(liked) == 1
+
+    _post_payload(
+        {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE2_ID)]}
+    )
+    outcome, posted, liked = await _drain(db)
+
+    assert outcome.no_detection == 1  # the mention still processed
+    assert posted == []  # but the hourly caps held across passes
+    assert liked == []

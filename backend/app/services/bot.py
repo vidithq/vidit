@@ -22,7 +22,8 @@ then record the mention in the ``bot_mentions`` ledger.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
-so a fresh run resumes exactly where the last one stopped.
+one interval behind the max (``_SINCE_ID_OVERLAP``) so a mention the webhook
+dropped is still re-read even after a newer one advanced the ledger.
 
 Response model: the bot **likes** the tagged tweet as a receipt ack when the
 author is a linked live account (``no_account`` stays fully silent); a
@@ -32,8 +33,9 @@ the expected format, unless the tagged tweet is itself a reply to the bot
 (the loop guard: a courtesy answer to the bot's own reply auto-mentions the
 bot and must not earn another reply). All reply text is linkless by contract
 (a URL 13x's the per-post price; the clickable link lives in the bot bio); the
-composers own that invariant. Every like and reply spends the per-pass
-and per-author budgets (:class:`GestureBudget`).
+composers own that invariant. Every like and reply spends the hourly
+and per-author budgets (:class:`GestureBudget`, seeded from the ledger's
+trailing window so the caps hold across passes, not per drain).
 """
 
 from __future__ import annotations
@@ -41,10 +43,12 @@ from __future__ import annotations
 import dataclasses
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import sentry_sdk
 from sqlalchemy import Numeric, cast, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -80,14 +84,27 @@ _REPLY_MAX_CHARS = 280
 
 # Billed-spend ceilings on the write side. The mention surface is public: any
 # stranger can tag the bot on a coordinate tweet, and each posted gesture is
-# billed. A pass posts at most this many replies (success + failure) and this
-# many likes, in total and per author; past a ceiling the draft still lands
-# (detection is unbilled) but the gesture is skipped and logged: a flood
-# burns nothing but its own posting effort.
-_MAX_REPLIES_PER_PASS = 20
-_MAX_REPLIES_PER_AUTHOR_PER_PASS = 3
-_MAX_LIKES_PER_PASS = 20
-_MAX_LIKES_PER_AUTHOR_PER_PASS = 3
+# billed. The window posts at most this many replies (success + failure) and
+# this many likes, in total and per author; past a ceiling the draft still
+# lands (detection is unbilled) but the gesture is skipped and logged: a
+# flood burns nothing but its own posting effort. The window is wall-clock
+# (the trailing hour, read from the ledger), not per pass: the worker drains
+# every few seconds, so a per-pass budget would multiply the caps hundreds
+# of times an hour.
+_MAX_REPLIES_PER_HOUR = 20
+_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 3
+_MAX_LIKES_PER_HOUR = 20
+_MAX_LIKES_PER_AUTHOR_PER_HOUR = 3
+_GESTURE_WINDOW = timedelta(hours=1)
+
+# The reconciliation poll's cursor lookback, in snowflake id space (the
+# timestamp lives in the bits above 22, so this is one poll interval of ids).
+# The ledger max is fed by BOTH paths: if the webhook drops mention A but
+# delivers newer B, a cursor at B would never re-read A. Pulling from one
+# interval behind the max re-reads the trailing window every pass; the cost
+# is a bounded number of billed re-reads per pass, absorbed by the ledger as
+# ``already_handled``.
+_SINCE_ID_OVERLAP = (60 * 60 * 1000) << 22
 
 # Attempt budget on one queued webhook event: past it the row lands
 # ``failed`` (poison-pill guard, mirroring the archive jobs). The ledger's
@@ -103,17 +120,45 @@ class BotNotConfigured(RuntimeError):
 
 @dataclass
 class GestureBudget:
-    """Per-pass spend tracker for the billed gestures (replies + likes)."""
+    """Windowed spend tracker for the billed gestures (replies + likes).
+
+    Seeded from the ledger's trailing hour (:meth:`from_ledger`) so the caps
+    are wall-clock, surviving worker restarts and spanning drain passes; the
+    in-memory counts then track the current pass on top.
+    """
 
     replies_posted: int = 0
     likes_posted: int = 0
     _replies_by_author: dict[str, int] = dataclasses.field(default_factory=dict)
     _likes_by_author: dict[str, int] = dataclasses.field(default_factory=dict)
 
+    @classmethod
+    def from_ledger(cls, db: Session) -> GestureBudget:
+        """A budget pre-charged with the trailing window's ledgered gestures:
+        replies are rows with ``reply_tweet_id`` set, likes rows with
+        ``liked_at`` stamped."""
+        cutoff = datetime.now(UTC) - _GESTURE_WINDOW
+        budget = cls()
+        for handle, count in (
+            db.query(BotMention.author_handle, func.count())
+            .filter(BotMention.reply_tweet_id.isnot(None), BotMention.processed_at >= cutoff)
+            .group_by(BotMention.author_handle)
+        ):
+            budget.replies_posted += count
+            budget._replies_by_author[handle] = count
+        for handle, count in (
+            db.query(BotMention.author_handle, func.count())
+            .filter(BotMention.liked_at >= cutoff)
+            .group_by(BotMention.author_handle)
+        ):
+            budget.likes_posted += count
+            budget._likes_by_author[handle] = count
+        return budget
+
     def reply_allowed(self, author_handle: str) -> bool:
         return (
-            self.replies_posted < _MAX_REPLIES_PER_PASS
-            and self._replies_by_author.get(author_handle, 0) < _MAX_REPLIES_PER_AUTHOR_PER_PASS
+            self.replies_posted < _MAX_REPLIES_PER_HOUR
+            and self._replies_by_author.get(author_handle, 0) < _MAX_REPLIES_PER_AUTHOR_PER_HOUR
         )
 
     def note_reply(self, author_handle: str) -> None:
@@ -122,8 +167,8 @@ class GestureBudget:
 
     def like_allowed(self, author_handle: str) -> bool:
         return (
-            self.likes_posted < _MAX_LIKES_PER_PASS
-            and self._likes_by_author.get(author_handle, 0) < _MAX_LIKES_PER_AUTHOR_PER_PASS
+            self.likes_posted < _MAX_LIKES_PER_HOUR
+            and self._likes_by_author.get(author_handle, 0) < _MAX_LIKES_PER_AUTHOR_PER_HOUR
         )
 
     def note_like(self, author_handle: str) -> None:
@@ -272,7 +317,7 @@ def compose_failure_reply() -> str:
         "Vidit: no coordinates found in this thread. Write them in the post "
         "text (like 48.858370, 2.294481), add the source as a quote, and tag "
         "me again."
-    )[:_REPLY_MAX_CHARS]
+    )
 
 
 def _record(
@@ -282,7 +327,11 @@ def _record(
     outcome: BotMentionOutcome,
     events_created: int = 0,
     reply_tweet_id: str | None = None,
-) -> None:
+    liked: bool = False,
+) -> bool:
+    """Insert the ledger row; ``False`` when the mention_tweet_id UNIQUE lost
+    a race (another worker ledgered it between the existence check and here),
+    which the caller counts as ``already_handled`` instead of aborting."""
     db.add(
         BotMention(
             mention_tweet_id=mention.tweet_id,
@@ -290,9 +339,15 @@ def _record(
             outcome=outcome,
             events_created=events_created,
             reply_tweet_id=reply_tweet_id,
+            liked_at=datetime.now(UTC) if liked else None,
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return False
+    return True
 
 
 def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | None) -> str | None:
@@ -412,13 +467,17 @@ async def process_single_mention(
     # subsequent pull re-reads (re-bills) it until a newer analyst mention
     # lands.
     if mention.author_id == settings.x_bot_user_id:
-        _record(db, mention, outcome="self")
+        if not _record(db, mention, outcome="self"):
+            outcome.already_handled += 1
+            return "already_handled"
         return "self"
     # The receipt ack: like the tagged tweet, linked live authors only (an
     # unlinked author stays fully silent, whatever the thread yields).
     author_linked = _linked_owner(db, mention.author_handle) is not None
+    liked = False
     if author_linked and budget.like_allowed(mention.author_handle):
         if _like_failsoft(mention, client=x_write_client):
+            liked = True
             budget.note_like(mention.author_handle)
             outcome.likes_posted += 1
     elif author_linked:
@@ -435,7 +494,9 @@ async def process_single_mention(
         db.rollback()
         logger.exception("Bot mention %s failed", mention.tweet_id)
         sentry_sdk.capture_exception(exc)
-        _record(db, mention, outcome="failed")
+        if not _record(db, mention, outcome="failed", liked=liked):
+            outcome.already_handled += 1
+            return "already_handled"
         outcome.failed += 1
         return "failed"
     if (
@@ -449,13 +510,16 @@ async def process_single_mention(
         # answer to the bot's own reply (which auto-mentions the bot) would
         # earn another reply, forever.
         reply_id = _post_reply_failsoft(mention, compose_failure_reply(), client=x_write_client)
-    _record(
+    if not _record(
         db,
         mention,
         outcome=verdict,
         events_created=created,
         reply_tweet_id=reply_id,
-    )
+        liked=liked,
+    ):
+        outcome.already_handled += 1
+        return "already_handled"
     outcome.events_created += created
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
@@ -473,9 +537,12 @@ async def process_single_mention(
 
 def _since_id(db: Session) -> str | None:
     # NUMERIC, not BIGINT: an X snowflake fits a signed 64-bit today, but the
-    # cursor must not be the thing that breaks the day one doesn't.
+    # cursor must not be the thing that breaks the day one doesn't. The
+    # overlap subtraction makes the poll re-read the trailing interval (see
+    # _SINCE_ID_OVERLAP): a mention the webhook dropped stays reachable even
+    # after a newer webhook-delivered one advanced the ledger max.
     latest = db.query(func.max(cast(BotMention.mention_tweet_id, Numeric))).scalar()
-    return str(int(latest)) if latest is not None else None
+    return str(max(int(latest) - _SINCE_ID_OVERLAP, 1)) if latest is not None else None
 
 
 async def run_bot_once(
@@ -509,7 +576,7 @@ async def run_bot_once(
         client=x_read_client,
     )
     outcome.mentions_seen = len(mentions)
-    budget = GestureBudget()
+    budget = GestureBudget.from_ledger(db)
     for mention in mentions:
         verdict = await process_single_mention(
             db,
@@ -519,10 +586,12 @@ async def run_bot_once(
             budget=budget,
             outcome=outcome,
         )
-        if settings.x_webhook_enabled and verdict in ("created", "no_detection", "no_account"):
+        # Any FRESH verdict means the webhook missed this mention; only a
+        # ledger hit (already_handled) or the bot's own post is nominal.
+        if settings.x_webhook_enabled and verdict not in ("already_handled", "self"):
             message = f"webhook gap: mention {mention.tweet_id} arrived via reconciliation"
             logger.warning(message)
-            sentry_sdk.capture_message(message)
+            sentry_sdk.capture_message(message, level="warning")
     return outcome
 
 
@@ -545,12 +614,14 @@ def enqueue_webhook_mentions(db: Session, mentions: list[Mention]) -> int:
 def _claim_webhook_event(db: Session) -> BotWebhookEvent | None:
     """Claim the oldest queued webhook event, or ``None`` when drained.
 
-    Same ``FOR UPDATE SKIP LOCKED`` pattern as the archive jobs, without a
-    ``running`` state: the claim bumps ``attempts`` and commits (releasing
-    the lock), and concurrency safety is the ledger's job: two workers
-    racing the same mention would both run the pipeline, and the second
-    records ``already_handled``. Rows past the attempt budget land
-    ``failed`` (poison-pill guard).
+    Same ``FOR UPDATE SKIP LOCKED`` pattern as the archive jobs: the claim
+    flips the row to ``processing``, bumps ``attempts`` and commits
+    (releasing the lock), so a concurrent worker's ``queued`` filter skips
+    it rather than double-running the pipeline. The drain re-queues on
+    exception; a worker killed hard mid-claim strands the row in
+    ``processing``, and the hourly reconciliation poll re-delivers the
+    mention (its ledger row never landed), so nothing is lost. Rows past
+    the attempt budget land ``failed`` (poison-pill guard).
     """
     while True:
         event = (
@@ -566,6 +637,7 @@ def _claim_webhook_event(db: Session) -> BotWebhookEvent | None:
             event.status = "failed"
             db.commit()
             continue
+        event.status = "processing"
         event.attempts += 1
         db.commit()
         return event
@@ -601,14 +673,15 @@ async def drain_webhook_events(
     """Drain the webhook queue through the shared mention pipeline.
 
     Called by the import worker between archive drains; tests call it
-    directly. One :class:`GestureBudget` spans the pass, same ceilings as a
-    poll pass. A pipeline exception leaves the row ``queued`` for a later
-    pass (bounded by the attempt budget); the nominal outcomes, including a
-    ledgered ``failed`` mention, land the row ``done``; the ledger row is
-    the retry path from there.
+    directly. The :class:`GestureBudget` is seeded from the ledger's
+    trailing hour, so the gesture ceilings hold across passes. A pipeline
+    exception re-queues the claimed row for a later pass (bounded by the
+    attempt budget) and propagates (the worker backs off); the nominal
+    outcomes, including a ledgered ``failed`` mention, land the row
+    ``done``; the ledger row is the retry path from there.
     """
     outcome = BotRunOutcome()
-    budget = GestureBudget()
+    budget = GestureBudget.from_ledger(db)
     while (event := _claim_webhook_event(db)) is not None:
         mention = _mention_from_payload(event.mention)
         if mention is None:
@@ -617,14 +690,20 @@ async def drain_webhook_events(
             db.commit()
             continue
         outcome.mentions_seen += 1
-        await process_single_mention(
-            db,
-            mention,
-            syndication_client=syndication_client,
-            x_write_client=x_write_client,
-            budget=budget,
-            outcome=outcome,
-        )
+        try:
+            await process_single_mention(
+                db,
+                mention,
+                syndication_client=syndication_client,
+                x_write_client=x_write_client,
+                budget=budget,
+                outcome=outcome,
+            )
+        except Exception:
+            db.rollback()
+            event.status = "queued"
+            db.commit()
+            raise
         event.status = "done"
         db.commit()
     return outcome

@@ -124,7 +124,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: a request is either X's (HMAC-signed with the consumer secret) or rejected at the cost of one HMAC, cheaper than any limiter bookkeeping.
+`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
 
 ---
 
@@ -1554,23 +1554,27 @@ The X Account Activity webhook, the bot's nominal mention delivery (see [`ingest
 
 X's Challenge-Response Check (CRC), sent at registration and then hourly; a wrong or slow answer deactivates the webhook. Answered in-request, no DB.
 
-**Query:** `crc_token` (required).
+**Query:** `crc_token` (required). Must match `^[A-Za-z0-9_-]{1,200}$` (X's CRC tokens are short URL-safe strings). The gate is what keeps the responder from being a signing oracle: the answer is the exact HMAC construction the POST verifies over the raw body, and a JSON webhook body can never fit that charset.
 
 **Response 200:**
 ```json
 { "response_token": "sha256=<base64(HMAC-SHA256(consumer_secret, crc_token))>" }
 ```
 
+**Response 400:** `crc_token` outside the URL-safe shape.
+
 **Response 503:** the X credentials are not configured on this deployment.
 
 ### `POST /webhooks/x`
 
-One Account Activity delivery. The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`; compared constant-time, mismatch → `401`. A valid signature always answers `200`, whatever the payload: a foreign `for_user_id`, non-mention events, or the bot's own posts are ignored (a non-2xx would make X retry and eventually deactivate the webhook). Mentions are reduced to the internal shape and queued in [`bot_webhook_events`](data-model.md#bot_webhook_events); the import worker runs the pipeline, never the request.
+One Account Activity delivery. The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`; compared constant-time as bytes, mismatch → `401`. A body over 512 KiB → `413` before the body is read (an AAA delivery is small). A valid signature always answers `200`, whatever the payload: a foreign `for_user_id`, non-mention events, or the bot's own posts are ignored (a non-2xx would make X retry and eventually deactivate the webhook). Mentions are reduced to the internal shape and queued in [`bot_webhook_events`](data-model.md#bot_webhook_events); the import worker runs the pipeline, never the request.
 
 **Response 200:**
 ```json
 { "queued": 1 }
 ```
+
+**Response 503:** the consumer secret or the bot user id is not configured (an empty bot user id would otherwise silently drop every delivery).
 
 ---
 
