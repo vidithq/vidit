@@ -1164,7 +1164,8 @@ export interface paths {
          *
          *     X sends one at registration and then hourly; a wrong or slow answer
          *     deactivates the webhook. Pure HMAC over the token, no DB, so the answer
-         *     is immediate.
+         *     is immediate. Tokens outside X's URL-safe shape are rejected: see
+         *     ``_CRC_TOKEN_RE`` for why signing arbitrary input would be an oracle.
          */
         get: operations["crc_challenge_api_v1_webhooks_x_get"];
         put?: never;
