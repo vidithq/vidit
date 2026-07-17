@@ -29,13 +29,23 @@ export function RecentSubmissions({
 }) {
   return (
     <Card>
-      <div className="space-y-1">
-        <SectionEyebrow title="Recent submissions" margin="none" />
-        <p className="text-xs text-neutral-500">
-          {profile.geolocations_count > 0
-            ? `${profile.username}'s latest geolocations, newest first.`
-            : "No geolocations yet."}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <SectionEyebrow title="Recent submissions" margin="none" />
+          <p className="text-xs text-neutral-500">
+            {profile.geolocations_count > 0
+              ? `${profile.username}'s latest geolocations, newest first.`
+              : "No geolocations yet."}
+          </p>
+        </div>
+        {submissions.length > 0 && (
+          <Link
+            href={`/search?author=${encodeURIComponent(profile.username)}`}
+            className={`text-xs ${TEXT_LINK}`}
+          >
+            Show more
+          </Link>
+        )}
       </div>
 
       {submissions.length > 0 ? (

@@ -902,6 +902,10 @@ export interface paths {
          *     "user is still typing" hits cheap. The frontend debounces the
          *     input on its side so we shouldn't see those much in practice, but
          *     the cheap short-circuit is robust against accidental load.
+         *
+         *     ``author`` scopes the event groups to one owner's work and empties the
+         *     users group; with an empty ``q`` it browses that author's whole view
+         *     (the profile's "Show more" entry point).
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -3746,6 +3750,8 @@ export interface operations {
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
+                /** @description Scope the event groups to this owner username (exact match) */
+                author?: string | null;
             };
             header?: never;
             path?: never;

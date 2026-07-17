@@ -13,12 +13,16 @@ export function search(opts: {
   q: string;
   type?: SearchType;
   limit?: number;
+  /** Scope the event groups to this owner username; with an empty `q` the
+   *  backend browses that author's whole view (the profile's "Show more"). */
+  author?: string;
 }): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
     type: opts.type ?? "all",
     limit: String(opts.limit ?? 20),
   });
+  if (opts.author) params.set("author", opts.author);
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }
 

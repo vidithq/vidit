@@ -629,3 +629,111 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
+
+
+# ── Author filter ─────────────────────────────────────────────────────────
+# ``?author=<username>`` scopes the event groups to one owner (the profile's
+# "Show more" entry point); with an empty ``q`` it browses that author's
+# whole view, newest first, plain titles as their own highlight.
+
+
+@pytest.fixture
+def other_author(db):
+    user = User(
+        username=f"otherauth{uuid.uuid4().hex[:8]}",
+        email=f"other-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def _seed_geo(db, owner, title):
+    geo = Event(
+        owner_id=owner.id,
+        title=title,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/post-a",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add(geo)
+    db.commit()
+    return geo.id
+
+
+def test_author_filter_scopes_event_groups_and_empties_users(db, caller, other_author):
+    token = _unique_token()
+    mine = _seed_geo(db, caller, f"Strike {token} east")
+    theirs = _seed_geo(db, other_author, f"Strike {token} west")
+    try:
+        response = client.get(f"/api/v1/search?q={token}&author={caller.username}")
+        assert response.status_code == 200
+        body = response.json()
+        assert [h["id"] for h in body["geolocations"]] == [str(mine)]
+        assert body["total"]["geolocations"] == 1
+        # The users group empties under an author scope, even on type=all:
+        # the caller's username would otherwise match itself.
+        assert body["users"] == []
+        assert body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id.in_([mine, theirs])).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_author_with_empty_query_browses_the_authors_view(db, caller, other_author):
+    token = _unique_token()
+    older = _seed_geo(db, caller, f"First {token}")
+    newer = _seed_geo(db, caller, f"Second {token}")
+    noise = _seed_geo(db, other_author, f"Noise {token}")
+    request_row = Event(
+        owner_id=caller.id,
+        requested_by_id=caller.id,
+        title=f"Where is {token}",
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+        # A request always carries the footage it asks about
+        # (``ck_events_source_url_status``).
+        source_url="https://example.com/request-footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(request_row)
+    db.commit()
+    request_id = request_row.id
+    try:
+        response = client.get(f"/api/v1/search?author={caller.username}")
+        assert response.status_code == 200
+        body = response.json()
+        geo_ids = [h["id"] for h in body["geolocations"]]
+        # Browse mode: the author's located view, newest first, noise excluded.
+        assert geo_ids.index(str(newer)) < geo_ids.index(str(older))
+        assert str(noise) not in geo_ids
+        # No FTS predicate, so the plain title stands in for the highlight.
+        newest = next(h for h in body["geolocations"] if h["id"] == str(newer))
+        assert newest["title_highlight"] == newest["title"]
+        assert HIGHLIGHT_START not in newest["title_highlight"]
+        # The requested view rides the same scope.
+        assert str(request_id) in [h["id"] for h in body["requests"]]
+    finally:
+        db.query(Event).filter(Event.id.in_([older, newer, noise, request_id])).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+def test_author_unknown_returns_empty_groups(caller):
+    response = client.get("/api/v1/search?author=no-such-analyst-here")
+    assert response.status_code == 200
+    assert all(response.json()[k] == [] for k in ("geolocations", "requests", "users"))
+
+
+def test_author_rejects_malformed_username():
+    response = client.get("/api/v1/search?q=x&author=bad%20name%21")
+    assert response.status_code == 422

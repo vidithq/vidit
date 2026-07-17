@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, Film, MapPin, Radar } from "lucide-react";
+import { Archive, Bot, Film, MapPin } from "lucide-react";
 
 import { getUserStats, type UserStats } from "@/lib/users";
 import { ActivityBars } from "@/components/ui/ActivityBars";
@@ -48,7 +48,9 @@ export function ProfileInsights({ username }: { username: string }) {
 
       <StatGrid>
         <StatTile icon={MapPin} label="Geolocated" value={stats.geolocated_count} />
-        <StatTile icon={Radar} label="Detected" value={stats.detected_count} />
+        {/* Bot, not a new glyph: the one detected marker across the app
+            (StatusBadge, DetectionsEntry). */}
+        <StatTile icon={Bot} label="Detected" value={stats.detected_count} />
         <StatTile icon={Archive} label="Closed" value={stats.closed_count} />
         <StatTile icon={Film} label="Media" value={stats.media_count} />
       </StatGrid>

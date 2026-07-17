@@ -68,7 +68,7 @@ _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesc
 
 
 def _search_events(
-    db: Session, *, query: str, limit: int, extra_where: str
+    db: Session, *, query: str, limit: int, extra_where: str, author: str | None = None
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
     """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
 
@@ -81,26 +81,55 @@ def _search_events(
     ``COUNT(*) OVER ()`` so the UI renders "3 of 142", not "3 of 3".
     Soft-deleted rows are excluded. The caller hydrates the rows it needs off
     the ranked id list.
+
+    ``author`` narrows to events owned by that username (bound parameter,
+    exact match). With an ``author`` and an **empty** ``query`` the FTS
+    predicate drops entirely: browse mode, the author's whole view newest
+    first with the plain title as its own "highlight" (nothing to mark). The
+    profile's "Show more" lands here, then typing narrows within it.
     """
-    sql = text(
-        f"""
-        SELECT id,
-               ts_rank({_GEO_TSVECTOR}, plainto_tsquery('simple', :q)) AS rank,
-               ts_headline(
-                   'simple', {_strip_sentinels("title")},
-                   plainto_tsquery('simple', :q),
-                   :opts
-               ) AS title_highlight,
-               COUNT(*) OVER () AS total_count
-        FROM events
-        WHERE deleted_at IS NULL
-          AND {extra_where}
-          AND {_GEO_TSVECTOR} @@ plainto_tsquery('simple', :q)
-        ORDER BY rank DESC, created_at DESC
-        LIMIT :lim
-        """
-    )
-    rows = db.execute(sql, {"q": query, "lim": limit, "opts": _HEADLINE_OPTS_FULL}).all()
+    author_join = "JOIN users owner_u ON owner_u.id = events.owner_id" if author else ""
+    author_where = "AND owner_u.username = :author" if author else ""
+    params: dict[str, object] = {"lim": limit}
+    if author:
+        params["author"] = author
+
+    if query.strip():
+        sql = text(
+            f"""
+            SELECT events.id,
+                   ts_rank({_GEO_TSVECTOR}, plainto_tsquery('simple', :q)) AS rank,
+                   ts_headline(
+                       'simple', {_strip_sentinels("title")},
+                       plainto_tsquery('simple', :q),
+                       :opts
+                   ) AS title_highlight,
+                   COUNT(*) OVER () AS total_count
+            FROM events {author_join}
+            WHERE events.deleted_at IS NULL
+              AND {extra_where}
+              {author_where}
+              AND {_GEO_TSVECTOR} @@ plainto_tsquery('simple', :q)
+            ORDER BY rank DESC, events.created_at DESC
+            LIMIT :lim
+            """
+        )
+        params |= {"q": query, "opts": _HEADLINE_OPTS_FULL}
+    else:
+        sql = text(
+            f"""
+            SELECT events.id,
+                   title AS title_highlight,
+                   COUNT(*) OVER () AS total_count
+            FROM events {author_join}
+            WHERE events.deleted_at IS NULL
+              AND {extra_where}
+              {author_where}
+            ORDER BY events.created_at DESC
+            LIMIT :lim
+            """
+        )
+    rows = db.execute(sql, params).all()
     if not rows:
         return [], {}, 0
     total = int(rows[0].total_count)
@@ -109,7 +138,9 @@ def _search_events(
     return ids, highlight_by_id, total
 
 
-def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+def search_geolocations(
+    db: Session, *, query: str, limit: int, author: str | None = None
+) -> tuple[list[dict], int]:
     """Top-N located events matching ``query`` + the pre-LIMIT total.
 
     The located view: live ``geolocated`` / ``detected`` rows with a subject
@@ -125,6 +156,7 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
         limit=limit,
         # Literal status values from ``EventStatus``, never user input.
         extra_where="status IN ('geolocated', 'detected') AND event_coords IS NOT NULL",
+        author=author,
     )
     if not ids:
         return [], 0
@@ -170,7 +202,9 @@ def search_geolocations(db: Session, *, query: str, limit: int) -> tuple[list[di
     return out, total
 
 
-def search_requests(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+def search_requests(
+    db: Session, *, query: str, limit: int, author: str | None = None
+) -> tuple[list[dict], int]:
     """Top-N requested events (requests) matching ``query`` + the pre-LIMIT total.
 
     The requested view: ``status = 'requested'``. Same FTS path as the located
@@ -182,7 +216,7 @@ def search_requests(db: Session, *, query: str, limit: int) -> tuple[list[dict],
     # ``STATUS_REQUESTED`` is a module Literal constant, never user input, so this
     # fragment is safe. Never thread caller input through ``extra_where``.
     ids, highlight_by_id, total = _search_events(
-        db, query=query, limit=limit, extra_where=f"status = '{STATUS_REQUESTED}'"
+        db, query=query, limit=limit, extra_where=f"status = '{STATUS_REQUESTED}'", author=author
     )
     if not ids:
         return [], 0
@@ -320,13 +354,20 @@ def search_all(
     query: str,
     types: set[str],
     limit: int,
+    author: str | None = None,
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
     ``types`` is a subset of ``{"geolocation", "request", "user"}`` (the
     router expands ``type=all`` before calling). An empty / whitespace-only
     query short-circuits to empty, keeping index cost off "typed but didn't
-    submit" hits.
+    submit" hits — unless ``author`` is set, which flips the event groups
+    into browse mode (the author's whole view, newest first).
+
+    ``author`` scopes the two event groups to that owner's events and empties
+    the users group (searching analysts within one analyst's work is
+    meaningless), so the response shape stays stable while the frontend's
+    author chip is active.
 
     Returns ``{group: {"hits": [...], "total": int}}`` for every group:
     ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for
@@ -338,16 +379,16 @@ def search_all(
         "requests": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
     }
-    if not query.strip():
+    if not query.strip() and author is None:
         return result
 
     if "geolocation" in types:
-        hits, total = search_geolocations(db, query=query, limit=limit)
+        hits, total = search_geolocations(db, query=query, limit=limit, author=author)
         result["geolocations"] = {"hits": hits, "total": total}
     if "request" in types:
-        hits, total = search_requests(db, query=query, limit=limit)
+        hits, total = search_requests(db, query=query, limit=limit, author=author)
         result["requests"] = {"hits": hits, "total": total}
-    if "user" in types:
+    if "user" in types and author is None:
         hits, total = search_users(db, query=query, limit=limit)
         result["users"] = {"hits": hits, "total": total}
     return result

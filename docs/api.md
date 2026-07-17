@@ -888,9 +888,10 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups. |
+| `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless `author` is set). |
 | `type` | enum | `all` (default), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
+| `author` | string | Scope the two event groups to this owner username (exact match; same `[A-Za-z0-9_-]{1,50}` pattern as the `/events` filter, else 422). Empties the users group. With an empty `q`, browse mode: the author's whole view, newest first, plain titles as their own highlight (the profile's "Show more" entry point). |
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 

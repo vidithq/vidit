@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.ratelimit import limiter
+from app.routers._event_query import AUTHOR_FILTER_PATTERN
 from app.schemas.search import SearchResponse, SearchTotals, SearchType
 from app.services import search as search_service
 
@@ -33,6 +34,11 @@ def search(
         description="One of 'all', 'geolocation', 'request', 'user'",
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
+    author: str | None = Query(
+        None,
+        pattern=AUTHOR_FILTER_PATTERN,
+        description="Scope the event groups to this owner username (exact match)",
+    ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     """Grouped FTS across the three first-class entity types.
@@ -41,6 +47,10 @@ def search(
     "user is still typing" hits cheap. The frontend debounces the
     input on its side so we shouldn't see those much in practice, but
     the cheap short-circuit is robust against accidental load.
+
+    ``author`` scopes the event groups to one owner's work and empties the
+    users group; with an empty ``q`` it browses that author's whole view
+    (the profile's "Show more" entry point).
     """
     if type not in search_service.ALLOWED_TYPES:
         raise HTTPException(
@@ -49,7 +59,7 @@ def search(
         )
 
     types = search_service.types_from_param(type)
-    grouped = search_service.search_all(db, query=q, types=types, limit=limit)
+    grouped = search_service.search_all(db, query=q, types=types, limit=limit, author=author)
 
     # ``total`` is the pre-LIMIT match count from ``COUNT(*) OVER ()``,
     # so it can exceed ``len(hits)`` — the UI uses this to render "N of M"

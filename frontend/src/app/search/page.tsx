@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Megaphone, Search as SearchIcon, Users } from "lucide-react";
+import { MapPin, Megaphone, Search as SearchIcon, User, Users, X } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
@@ -61,10 +61,14 @@ function SearchPageBody() {
   // the input binds to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const initialType = (searchParams.get("type") as SearchType) || "all";
+  const initialAuthor = searchParams.get("author");
 
   const [queryInput, setQueryInput] = useState(initialQ);
   const [activeQuery, setActiveQuery] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
+  // Set only via the URL (the profile's "Show more" link), cleared via its
+  // chip: there's no author input on this page yet.
+  const [authorFilter, setAuthorFilter] = useState<string | null>(initialAuthor);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,16 +87,19 @@ function SearchPageBody() {
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (authorFilter) params.set("author", authorFilter);
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [queryInput, typeFilter, router]);
+  }, [queryInput, typeFilter, authorFilter, router]);
 
-  // Issue the API call whenever the committed query / type changes.
+  // Issue the API call whenever the committed query / type / author changes.
+  // An author scope with an empty query is a valid search (browse mode: the
+  // author's whole view, the profile's "Show more" landing).
   useEffect(() => {
     const q = activeQuery.trim();
-    if (!q) {
+    if (!q && !authorFilter) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -101,7 +108,7 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({ q, type: typeFilter })
+    search({ q, type: typeFilter, author: authorFilter ?? undefined })
       .then((response) => {
         // Stale response (a newer request started since) — drop so the
         // in-flight fetch gets the final word.
@@ -114,7 +121,7 @@ function SearchPageBody() {
         setError(err.message);
         setLoading(false);
       });
-  }, [activeQuery, typeFilter]);
+  }, [activeQuery, typeFilter, authorFilter]);
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -146,7 +153,11 @@ function SearchPageBody() {
         />
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {TYPE_FILTERS.map((opt) => (
+          {TYPE_FILTERS.filter(
+            // The users group empties under an author scope, so its filter
+            // chip would be a dead toggle while the author chip is active.
+            (opt) => !authorFilter || opt.value !== "user"
+          ).map((opt) => (
             <Pill
               key={opt.value}
               tone={typeFilter === opt.value ? "accent" : "neutral"}
@@ -156,20 +167,34 @@ function SearchPageBody() {
               {opt.label}
             </Pill>
           ))}
+          {authorFilter && (
+            <Pill
+              tone="accent"
+              icon={<User size={11} />}
+              title="Remove the author filter"
+              onClick={() => setAuthorFilter(null)}
+            >
+              by @{authorFilter}
+              <X size={11} />
+            </Pill>
+          )}
         </div>
 
-        {activeQuery.trim() && (
+        {(activeQuery.trim() || authorFilter) && (
           <div className="flex items-center justify-between text-[11px] text-neutral-500 min-h-[16px]">
             <span>
               {loading
                 ? "Searching…"
                 : results
-                  ? `${totalHits} result${totalHits === 1 ? "" : "s"} for `
+                  ? `${totalHits} result${totalHits === 1 ? "" : "s"}${activeQuery.trim() ? " for " : ""}`
                   : null}
-              {!loading && results && (
+              {!loading && results && activeQuery.trim() && (
                 <span className="text-neutral-300 font-medium">
                   &ldquo;{activeQuery.trim()}&rdquo;
                 </span>
+              )}
+              {!loading && results && authorFilter && (
+                <span> by <span className="text-neutral-300 font-medium">@{authorFilter}</span></span>
               )}
             </span>
           </div>
@@ -181,15 +206,19 @@ function SearchPageBody() {
           </div>
         )}
 
-        {!activeQuery.trim() && (
+        {!activeQuery.trim() && !authorFilter && (
           <EmptyState>
             Start typing to search across geolocations, requests and analysts.
           </EmptyState>
         )}
 
-        {activeQuery.trim() && results && totalHits === 0 && !loading && (
+        {(activeQuery.trim() || authorFilter) && results && totalHits === 0 && !loading && (
           <EmptyState>
-            No matches for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span>.
+            No matches
+            {activeQuery.trim() && (
+              <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
+            )}
+            {authorFilter && <> by @{authorFilter}</>}.
             {typeFilter !== "all" && (
               <>
                 {" "}
