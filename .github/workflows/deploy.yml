@@ -98,6 +98,11 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --service backend-conflicts --ci
 
+      - name: Deploy bot cron to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend-bot --ci
+
   deploy-frontend:
     name: Deploy frontend (Vercel)
     if: inputs.target == 'frontend' || inputs.target == 'both'
