@@ -903,9 +903,10 @@ export interface paths {
          *     input on its side so we shouldn't see those much in practice, but
          *     the cheap short-circuit is robust against accidental load.
          *
-         *     ``author`` scopes the event groups to one owner's work and empties the
-         *     users group; with an empty ``q`` it browses that author's whole view
-         *     (the profile's "Show more" entry point).
+         *     Any active filter scopes the event groups and empties the users group;
+         *     with an empty ``q`` the response browses the filtered view (the
+         *     profile's "Show more" entry point). Filter semantics are the shared
+         *     ones (see ``services/event_filters.apply_filters``).
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -3750,8 +3751,18 @@ export interface operations {
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
-                /** @description Scope the event groups to this owner username (exact match) */
+                conflict?: string[] | null;
+                capture_source?: string[] | null;
+                tag?: string[] | null;
+                event_date_from?: string | null;
+                event_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Scope the event groups to this owner username (substring match) */
                 author?: string | null;
+                media?: string[] | null;
+                trusted_only?: boolean;
+                hide_demo?: boolean;
             };
             header?: never;
             path?: never;

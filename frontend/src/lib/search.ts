@@ -13,9 +13,18 @@ export function search(opts: {
   q: string;
   type?: SearchType;
   limit?: number;
-  /** Scope the event groups to this owner username; with an empty `q` the
-   *  backend browses that author's whole view (the profile's "Show more"). */
+  /** The standard event filter set (same vocabulary as /events and
+   *  /events/points); scopes the two event groups and empties the users
+   *  group. With an empty `q` and any active filter the backend browses the
+   *  filtered view (the profile's "Show more" entry point). */
   author?: string;
+  conflict?: string[];
+  captureSource?: string[];
+  tag?: string[];
+  media?: string[];
+  eventDateFrom?: string;
+  eventDateTo?: string;
+  trustedOnly?: boolean;
 }): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
@@ -23,6 +32,13 @@ export function search(opts: {
     limit: String(opts.limit ?? 20),
   });
   if (opts.author) params.set("author", opts.author);
+  opts.conflict?.forEach((n) => params.append("conflict", n));
+  opts.captureSource?.forEach((n) => params.append("capture_source", n));
+  opts.tag?.forEach((n) => params.append("tag", n));
+  opts.media?.forEach((n) => params.append("media", n));
+  if (opts.eventDateFrom) params.set("event_date_from", opts.eventDateFrom);
+  if (opts.eventDateTo) params.set("event_date_to", opts.eventDateTo);
+  if (opts.trustedOnly) params.set("trusted_only", "true");
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }
 

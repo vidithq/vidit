@@ -9,22 +9,34 @@ filtered at query time.
 
 Since the request + geolocation merge there is a single FTS query path over the
 one ``events`` table (:func:`_search_events`); the located and requested
-views differ only by a status/coords filter and the fields each surfaces. The
-TSVECTOR expressions here must match the migration's ``CREATE INDEX`` expressions
-byte-for-byte or Postgres falls back to a sequential scan; both live as module
-constants so the query and the migration can't drift.
+views differ only by a status/coords filter and the fields each surfaces, and
+both compose with the standard event filter set (``services/event_filters``),
+the same predicates `/events` and `/events/points` take. The TSVECTOR
+expressions must stay expression-tree-equal to the migration's
+``CREATE INDEX`` expressions (config name as a SQL literal, never a bound
+parameter) or Postgres falls back to a sequential scan; the event one is the
+``_geo_tsvector`` builder, the user one a module constant, so the queries and
+the migration can't drift.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, text
+from sqlalchemy import func, literal_column, text
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.sql.elements import ColumnClause
 
-from app.models.event import STATUS_REQUESTED, Event, EventInvestigator
+from app.models.event import (
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Event,
+    EventInvestigator,
+)
 from app.models.media import Media
 from app.models.user import User
+from app.services.event_filters import EventFilters
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
 # (U+0002 / U+0003) not an ASCII string like ``[[HL]]``: an ASCII marker is
@@ -57,79 +69,75 @@ def _strip_sentinels(col: str) -> str:
     return f"translate({col}, chr(2) || chr(3), '')"
 
 
-# TSVECTOR expressions — must match the migration index expressions. Raw
-# SQL so the byte sequence the planner sees on write equals what we ask for
-# on read.
+# TSVECTOR expressions. The events one is built from ORM ``func`` calls so it
+# composes with the shared filter predicates; the config name stays a SQL
+# literal (``literal_column``), never a bound parameter, because a
+# ``$1::regconfig`` expression would not match the migration's index
+# expression tree and the planner would fall back to a sequential scan. The
+# users one stays raw SQL (its query takes no event filters).
 #
 # ``source_url`` is excluded — see the migration docstring for why URL
 # substring matches don't survive the simple parser's tokenization.
-_GEO_TSVECTOR = "to_tsvector('simple', coalesce(title, ''))"
+_TS_CONFIG: ColumnClause[str] = literal_column("'simple'")
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
 
 
+def _geo_tsvector():
+    """``to_tsvector('simple', coalesce(title, ''))`` — must stay
+    expression-tree-equal to the migration's GIN index expression."""
+    return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
+
+
 def _search_events(
-    db: Session, *, query: str, limit: int, extra_where: str, author: str | None = None
+    db: Session,
+    *extra_criteria,
+    query: str,
+    limit: int,
+    view: str,
+    filters: EventFilters,
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
     """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
 
-    The single FTS query path for both event views: the located view and the
-    requested view pass different ``extra_where`` fragments (a located
-    status + coords predicate vs ``status = 'requested'``) into the same
-    ``title`` TSVECTOR + ts_headline query. ``ids`` are ranked (``ts_rank``
-    desc, ``created_at`` desc tie-break), ``highlights`` maps each id to its
-    ``ts_headline`` title, and ``total`` is the pre-``LIMIT`` match count via
-    ``COUNT(*) OVER ()`` so the UI renders "3 of 142", not "3 of 3".
-    Soft-deleted rows are excluded. The caller hydrates the rows it needs off
-    the ranked id list.
+    The single FTS query path for both event views, composed with the shared
+    filter predicates (:class:`EventFilters`, the same set `/events` and
+    `/events/points` take) so the surfaces can't drift. ``ids`` are ranked
+    (``ts_rank`` desc, ``created_at`` desc tie-break), ``highlights`` maps
+    each id to its ``ts_headline`` title, and ``total`` is the pre-``LIMIT``
+    match count via ``COUNT(*) OVER ()`` so the UI renders "3 of 142", not
+    "3 of 3". Soft-deleted rows are excluded (inside ``filters.apply``). The
+    caller hydrates the rows it needs off the ranked id list.
 
-    ``author`` narrows to events owned by that username (bound parameter,
-    exact match). With an ``author`` and an **empty** ``query`` the FTS
-    predicate drops entirely: browse mode, the author's whole view newest
-    first with the plain title as its own "highlight" (nothing to mark). The
-    profile's "Show more" lands here, then typing narrows within it.
+    With active filters and an **empty** ``query`` the FTS predicate drops
+    entirely: browse mode, the filtered view newest first with the plain
+    title as its own "highlight" (nothing to mark). The profile's "Show
+    more" lands here, then typing narrows within it.
+
+    ``extra_criteria`` are per-group predicates layered on top of the view
+    (search is narrower than the list views: closed rows stay out).
     """
-    author_join = "JOIN users owner_u ON owner_u.id = events.owner_id" if author else ""
-    author_where = "AND owner_u.username = :author" if author else ""
-    params: dict[str, object] = {"lim": limit}
-    if author:
-        params["author"] = author
-
-    if query.strip():
-        sql = text(
-            f"""
-            SELECT events.id,
-                   ts_rank({_GEO_TSVECTOR}, plainto_tsquery('simple', :q)) AS rank,
-                   ts_headline(
-                       'simple', {_strip_sentinels("title")},
-                       plainto_tsquery('simple', :q),
-                       :opts
-                   ) AS title_highlight,
-                   COUNT(*) OVER () AS total_count
-            FROM events {author_join}
-            WHERE events.deleted_at IS NULL
-              AND {extra_where}
-              {author_where}
-              AND {_GEO_TSVECTOR} @@ plainto_tsquery('simple', :q)
-            ORDER BY rank DESC, events.created_at DESC
-            LIMIT :lim
-            """
-        )
-        params |= {"q": query, "opts": _HEADLINE_OPTS_FULL}
+    q = query.strip()
+    if q:
+        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
+        headline = func.ts_headline(
+            _TS_CONFIG,
+            func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''")),
+            tsquery,
+            _HEADLINE_OPTS_FULL,
+        ).label("title_highlight")
+        stmt = db.query(Event.id, headline, func.count().over().label("total_count"))
+        stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
+        stmt = stmt.filter(_geo_tsvector().op("@@")(tsquery))
+        stmt = stmt.order_by(func.ts_rank(_geo_tsvector(), tsquery).desc(), Event.created_at.desc())
     else:
-        sql = text(
-            f"""
-            SELECT events.id,
-                   title AS title_highlight,
-                   COUNT(*) OVER () AS total_count
-            FROM events {author_join}
-            WHERE events.deleted_at IS NULL
-              AND {extra_where}
-              {author_where}
-            ORDER BY events.created_at DESC
-            LIMIT :lim
-            """
+        stmt = db.query(
+            Event.id,
+            Event.title.label("title_highlight"),
+            func.count().over().label("total_count"),
         )
-    rows = db.execute(sql, params).all()
+        stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
+        stmt = stmt.order_by(Event.created_at.desc())
+
+    rows = stmt.limit(limit).all()
     if not rows:
         return [], {}, 0
     total = int(rows[0].total_count)
@@ -139,24 +147,26 @@ def _search_events(
 
 
 def search_geolocations(
-    db: Session, *, query: str, limit: int, author: str | None = None
+    db: Session, *, query: str, limit: int, filters: EventFilters | None = None
 ) -> tuple[list[dict], int]:
     """Top-N located events matching ``query`` + the pre-LIMIT total.
 
     The located view: live ``geolocated`` / ``detected`` rows with a subject
     coordinate. A status predicate (not bare ``event_coords IS NOT NULL``)
     because a ``requested`` row may now carry an approximate guess yet belongs
-    to the requested view; closed rows stay out of search. Returns
+    to the requested view; closed rows stay out of search (narrower than the
+    ``located`` list view, which keeps them as audit trail). Returns
     ``(hits, total)``: ``hits`` are dicts ready for the router's Pydantic
     schema; ``total`` is the pre-``LIMIT`` match count.
     """
     ids, highlight_by_id, total = _search_events(
         db,
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
+        Event.event_coords.isnot(None),
         query=query,
         limit=limit,
-        # Literal status values from ``EventStatus``, never user input.
-        extra_where="status IN ('geolocated', 'detected') AND event_coords IS NOT NULL",
-        author=author,
+        view="located",
+        filters=filters or EventFilters(),
     )
     if not ids:
         return [], 0
@@ -203,20 +213,23 @@ def search_geolocations(
 
 
 def search_requests(
-    db: Session, *, query: str, limit: int, author: str | None = None
+    db: Session, *, query: str, limit: int, filters: EventFilters | None = None
 ) -> tuple[list[dict], int]:
     """Top-N requested events (requests) matching ``query`` + the pre-LIMIT total.
 
-    The requested view: ``status = 'requested'``. Same FTS path as the located
-    view via :func:`_search_events`; carries ``claimer_count`` (investigator
-    count, reader vocabulary) so the result card renders the same "N working"
-    badge as the index.
+    The requested view: ``status = 'requested'`` (withdrawn requests stay out
+    of search, unlike the list view's audit trail). Same FTS path as the
+    located view via :func:`_search_events`; carries ``claimer_count``
+    (investigator count, reader vocabulary) so the result card renders the
+    same "N working" badge as the index.
     """
-    # ``extra_where`` is interpolated raw into the query (see ``_search_events``);
-    # ``STATUS_REQUESTED`` is a module Literal constant, never user input, so this
-    # fragment is safe. Never thread caller input through ``extra_where``.
     ids, highlight_by_id, total = _search_events(
-        db, query=query, limit=limit, extra_where=f"status = '{STATUS_REQUESTED}'", author=author
+        db,
+        Event.status == STATUS_REQUESTED,
+        query=query,
+        limit=limit,
+        view="requested",
+        filters=filters or EventFilters(),
     )
     if not ids:
         return [], 0
@@ -354,41 +367,43 @@ def search_all(
     query: str,
     types: set[str],
     limit: int,
-    author: str | None = None,
+    filters: EventFilters | None = None,
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
     ``types`` is a subset of ``{"geolocation", "request", "user"}`` (the
     router expands ``type=all`` before calling). An empty / whitespace-only
     query short-circuits to empty, keeping index cost off "typed but didn't
-    submit" hits — unless ``author`` is set, which flips the event groups
-    into browse mode (the author's whole view, newest first).
+    submit" hits — unless a filter is active, which flips the event groups
+    into browse mode (the filtered view, newest first).
 
-    ``author`` scopes the two event groups to that owner's events and empties
-    the users group (searching analysts within one analyst's work is
-    meaningless), so the response shape stays stable while the frontend's
-    author chip is active.
+    ``filters`` (the standard event filter set) scopes the two event groups;
+    while any filter is active the users group empties: the filters are
+    event predicates, and an unfiltered analyst list next to a filtered
+    event view would read as if the filter applied. The response shape stays
+    stable either way.
 
     Returns ``{group: {"hits": [...], "total": int}}`` for every group:
     ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for
     "3 of 142". Unrequested groups get empty hits / total=0 so the JSON
     shape stays stable for the frontend.
     """
+    filters = filters or EventFilters()
     result: dict[str, dict] = {
         "geolocations": {"hits": [], "total": 0},
         "requests": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
     }
-    if not query.strip() and author is None:
+    if not query.strip() and not filters.active:
         return result
 
     if "geolocation" in types:
-        hits, total = search_geolocations(db, query=query, limit=limit, author=author)
+        hits, total = search_geolocations(db, query=query, limit=limit, filters=filters)
         result["geolocations"] = {"hits": hits, "total": total}
     if "request" in types:
-        hits, total = search_requests(db, query=query, limit=limit, author=author)
+        hits, total = search_requests(db, query=query, limit=limit, filters=filters)
         result["requests"] = {"hits": hits, "total": total}
-    if "user" in types and author is None:
+    if "user" in types and not filters.active:
         hits, total = search_users(db, query=query, limit=limit)
         result["users"] = {"hits": hits, "total": total}
     return result

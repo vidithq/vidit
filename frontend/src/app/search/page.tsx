@@ -11,23 +11,30 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Megaphone, Search as SearchIcon, User, Users, X } from "lucide-react";
+import { Filter, MapPin, Megaphone, Search as SearchIcon, User, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
+  Conflict,
   SearchRequestHit,
   SearchEventHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
+  Tag,
 } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
+import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { ChipBucket } from "@/components/ui/ChipBucket";
+import { FilterSection, chipSummary, rangeSummary } from "@/components/ui/FilterSection";
+import { ToggleRow } from "@/components/ui/ToggleRow";
+import { useApiResource } from "@/hooks/useApiResource";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
@@ -37,6 +44,12 @@ const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "geolocation", label: "Geolocations", icon: <MapPin size={11} /> },
   { value: "request", label: "Requests", icon: <Megaphone size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
+];
+
+// Fixed media-presence options (Media.media_type values), same as the map.
+const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
+  ["image", "Image"],
+  ["video", "Video"],
 ];
 
 // Debounce window: reactive enough to feel live, long enough not to fire
@@ -61,17 +74,121 @@ function SearchPageBody() {
   // the input binds to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const initialType = (searchParams.get("type") as SearchType) || "all";
-  const initialAuthor = searchParams.get("author");
 
   const [queryInput, setQueryInput] = useState(initialQ);
   const [activeQuery, setActiveQuery] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
-  // Set only via the URL (the profile's "Show more" link), cleared via its
-  // chip: there's no author input on this page yet.
-  const [authorFilter, setAuthorFilter] = useState<string | null>(initialAuthor);
+  // The standard event filter set (the map's vocabulary), URL-synced. The
+  // author leg has no input on this page: it arrives via the URL (the
+  // profile's "Show more" link) and clears via its pill.
+  const [authorFilter, setAuthorFilter] = useState<string | null>(searchParams.get("author"));
+  const [selectedConflicts, setSelectedConflicts] = useState<string[]>(
+    searchParams.getAll("conflict")
+  );
+  const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>(
+    searchParams.getAll("capture_source")
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(searchParams.getAll("tag"));
+  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>(
+    searchParams.getAll("media")
+  );
+  const [eventFrom, setEventFrom] = useState(searchParams.get("event_date_from") ?? "");
+  const [eventTo, setEventTo] = useState(searchParams.get("event_date_to") ?? "");
+  const [trustedOnly, setTrustedOnly] = useState(searchParams.get("trusted_only") === "true");
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Accordion open-state, like the map panel: curated buckets open first.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    Conflict: true,
+    "Capture source": true,
+  });
+  const toggleSection = (title: string) =>
+    setOpenSections((s) => ({ ...s, [title]: !s[title] }));
+
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Same pickers as the map: the live taxonomy + the used-conflict list.
+  const { data: tagsData } = useApiResource<Tag[]>("/tags");
+  const tags = tagsData ?? [];
+  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const conflicts = conflictsData ?? [];
+  const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
+  const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
+  const freeTags = tags.filter((t) => t.category === "free").sort(byName);
+
+  const toggleInBucket = (
+    name: string,
+    set: (v: string[] | ((prev: string[]) => string[])) => void
+  ) => set((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  const removeFromBucket = (
+    name: string,
+    set: (v: string[] | ((prev: string[]) => string[])) => void
+  ) => set((prev) => prev.filter((n) => n !== name));
+
+  const clearFilters = () => {
+    setAuthorFilter(null);
+    setSelectedConflicts([]);
+    setSelectedCaptureSources([]);
+    setSelectedTags([]);
+    setSelectedMediaTypes([]);
+    setEventFrom("");
+    setEventTo("");
+    setTrustedOnly(false);
+  };
+
+  const eventActive = !!(eventFrom || eventTo);
+
+  // The shared removable-pill row (same pattern as the map's overlay).
+  const activeFilters: ActiveFilter[] = [
+    ...selectedConflicts.map((n) => ({
+      key: `conflict:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedConflicts),
+    })),
+    ...selectedCaptureSources.map((n) => ({
+      key: `capture:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedCaptureSources),
+    })),
+    ...selectedTags.map((n) => ({
+      key: `tag:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedTags),
+    })),
+    ...selectedMediaTypes.map((n) => ({
+      key: `media:${n}`,
+      label: n[0].toUpperCase() + n.slice(1),
+      onRemove: () => removeFromBucket(n, setSelectedMediaTypes),
+    })),
+    ...(eventActive
+      ? [
+          {
+            key: "event-window",
+            label: `Event: ${rangeSummary(eventFrom, eventTo)}`,
+            onRemove: () => {
+              setEventFrom("");
+              setEventTo("");
+            },
+          },
+        ]
+      : []),
+    ...(authorFilter
+      ? [
+          {
+            key: "author",
+            label: `by @${authorFilter}`,
+            icon: <User size={11} />,
+            onRemove: () => setAuthorFilter(null),
+          },
+        ]
+      : []),
+    ...(trustedOnly
+      ? [{ key: "trusted", label: "Trusted only", onRemove: () => setTrustedOnly(false) }]
+      : []),
+  ];
+  const hasActiveFilters = activeFilters.length > 0;
 
   // Monotonic request token: each fetch increments it, late responses
   // apply only if their token is still latest. Comparing on `response.query`
@@ -88,18 +205,37 @@ function SearchPageBody() {
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (authorFilter) params.set("author", authorFilter);
+      selectedConflicts.forEach((n) => params.append("conflict", n));
+      selectedCaptureSources.forEach((n) => params.append("capture_source", n));
+      selectedTags.forEach((n) => params.append("tag", n));
+      selectedMediaTypes.forEach((n) => params.append("media", n));
+      if (eventFrom) params.set("event_date_from", eventFrom);
+      if (eventTo) params.set("event_date_to", eventTo);
+      if (trustedOnly) params.set("trusted_only", "true");
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [queryInput, typeFilter, authorFilter, router]);
+  }, [
+    queryInput,
+    typeFilter,
+    authorFilter,
+    selectedConflicts,
+    selectedCaptureSources,
+    selectedTags,
+    selectedMediaTypes,
+    eventFrom,
+    eventTo,
+    trustedOnly,
+    router,
+  ]);
 
-  // Issue the API call whenever the committed query / type / author changes.
-  // An author scope with an empty query is a valid search (browse mode: the
-  // author's whole view, the profile's "Show more" landing).
+  // Issue the API call whenever the committed query / type / filters change.
+  // Any active filter with an empty query is a valid search (browse mode:
+  // the filtered view, the profile's "Show more" landing).
   useEffect(() => {
     const q = activeQuery.trim();
-    if (!q && !authorFilter) {
+    if (!q && !hasActiveFilters) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -108,7 +244,18 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({ q, type: typeFilter, author: authorFilter ?? undefined })
+    search({
+      q,
+      type: typeFilter,
+      author: authorFilter ?? undefined,
+      conflict: selectedConflicts,
+      captureSource: selectedCaptureSources,
+      tag: selectedTags,
+      media: selectedMediaTypes,
+      eventDateFrom: eventFrom || undefined,
+      eventDateTo: eventTo || undefined,
+      trustedOnly,
+    })
       .then((response) => {
         // Stale response (a newer request started since) — drop so the
         // in-flight fetch gets the final word.
@@ -121,7 +268,19 @@ function SearchPageBody() {
         setError(err.message);
         setLoading(false);
       });
-  }, [activeQuery, typeFilter, authorFilter]);
+  }, [
+    activeQuery,
+    typeFilter,
+    authorFilter,
+    selectedConflicts,
+    selectedCaptureSources,
+    selectedTags,
+    selectedMediaTypes,
+    eventFrom,
+    eventTo,
+    trustedOnly,
+    hasActiveFilters,
+  ]);
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -154,9 +313,9 @@ function SearchPageBody() {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {TYPE_FILTERS.filter(
-            // The users group empties under an author scope, so its filter
-            // chip would be a dead toggle while the author chip is active.
-            (opt) => !authorFilter || opt.value !== "user"
+            // The users group empties while any event filter is active, so
+            // its chip would be a dead toggle.
+            (opt) => !hasActiveFilters || opt.value !== "user"
           ).map((opt) => (
             <Pill
               key={opt.value}
@@ -167,20 +326,122 @@ function SearchPageBody() {
               {opt.label}
             </Pill>
           ))}
-          {authorFilter && (
-            <Pill
-              tone="accent"
-              icon={<User size={11} />}
-              title="Remove the author filter"
-              onClick={() => setAuthorFilter(null)}
-            >
-              by @{authorFilter}
-              <X size={11} />
-            </Pill>
-          )}
+          <Pill
+            tone={filtersOpen ? "accent" : "secondary"}
+            icon={<Filter size={11} />}
+            onClick={() => setFiltersOpen((o) => !o)}
+          >
+            Filters
+          </Pill>
         </div>
 
-        {(activeQuery.trim() || authorFilter) && (
+        <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
+
+        {filtersOpen && (
+          <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+            {conflicts.length > 0 && (
+              <FilterSection
+                title="Conflict"
+                concept="conflict"
+                summary={chipSummary(selectedConflicts)}
+                active={selectedConflicts.length > 0}
+                open={!!openSections["Conflict"]}
+                onToggle={() => toggleSection("Conflict")}
+              >
+                <ChipBucket
+                  options={conflicts}
+                  selected={selectedConflicts}
+                  onToggle={(n) => toggleInBucket(n, setSelectedConflicts)}
+                />
+              </FilterSection>
+            )}
+
+            {captureSourceTags.length > 0 && (
+              <FilterSection
+                title="Capture source"
+                concept="capture_source"
+                summary={chipSummary(selectedCaptureSources)}
+                active={selectedCaptureSources.length > 0}
+                open={!!openSections["Capture source"]}
+                onToggle={() => toggleSection("Capture source")}
+              >
+                <ChipBucket
+                  options={captureSourceTags}
+                  selected={selectedCaptureSources}
+                  onToggle={(n) => toggleInBucket(n, setSelectedCaptureSources)}
+                />
+              </FilterSection>
+            )}
+
+            <FilterSection
+              title="Source media"
+              concept="source_media"
+              summary={chipSummary(
+                selectedMediaTypes.map((m) => m[0].toUpperCase() + m.slice(1))
+              )}
+              active={selectedMediaTypes.length > 0}
+              open={!!openSections["Source media"]}
+              onToggle={() => toggleSection("Source media")}
+            >
+              <ChipBucket
+                options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
+                selected={selectedMediaTypes}
+                onToggle={(n) => toggleInBucket(n, setSelectedMediaTypes)}
+              />
+            </FilterSection>
+
+            <FilterSection
+              title="Event date"
+              concept="event_date"
+              summary={rangeSummary(eventFrom, eventTo)}
+              active={eventActive}
+              open={!!openSections["Event date"]}
+              onToggle={() => toggleSection("Event date")}
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={eventFrom}
+                  onChange={(e) => setEventFrom(e.target.value)}
+                  aria-label="Event date from"
+                  className="bg-neutral-800 text-[11px]"
+                />
+                <span className="text-neutral-500 text-xs">–</span>
+                <Input
+                  type="date"
+                  value={eventTo}
+                  onChange={(e) => setEventTo(e.target.value)}
+                  aria-label="Event date to"
+                  className="bg-neutral-800 text-[11px]"
+                />
+              </div>
+            </FilterSection>
+
+            {freeTags.length > 0 && (
+              <FilterSection
+                title="Tags"
+                summary={chipSummary(selectedTags)}
+                active={selectedTags.length > 0}
+                open={!!openSections["Tags"]}
+                onToggle={() => toggleSection("Tags")}
+              >
+                <ChipBucket
+                  options={freeTags}
+                  selected={selectedTags}
+                  onToggle={(n) => toggleInBucket(n, setSelectedTags)}
+                />
+              </FilterSection>
+            )}
+
+            <ToggleRow
+              label="Trusted analysts only"
+              on={trustedOnly}
+              onToggle={() => setTrustedOnly((v) => !v)}
+            />
+          </div>
+        )}
+
+        {(activeQuery.trim() || hasActiveFilters) && (
           <div className="flex items-center justify-between text-[11px] text-neutral-500 min-h-[16px]">
             <span>
               {loading
@@ -206,19 +467,19 @@ function SearchPageBody() {
           </div>
         )}
 
-        {!activeQuery.trim() && !authorFilter && (
+        {!activeQuery.trim() && !hasActiveFilters && (
           <EmptyState>
             Start typing to search across geolocations, requests and analysts.
           </EmptyState>
         )}
 
-        {(activeQuery.trim() || authorFilter) && results && totalHits === 0 && !loading && (
+        {(activeQuery.trim() || hasActiveFilters) && results && totalHits === 0 && !loading && (
           <EmptyState>
             No matches
             {activeQuery.trim() && (
               <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
             )}
-            {authorFilter && <> by @{authorFilter}</>}.
+            {hasActiveFilters && <> with the active filters</>}.
             {typeFilter !== "all" && (
               <>
                 {" "}

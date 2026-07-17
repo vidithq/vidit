@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, Filter, User } from "lucide-react";
 
 import type { Conflict, MapPoint, Tag } from "@/types";
-import { Pill } from "@/components/ui/Pill";
-import { Switch } from "@/components/ui/Switch";
+import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { ChipBucket } from "@/components/ui/ChipBucket";
+import { FilterSection, chipSummary, rangeSummary } from "@/components/ui/FilterSection";
+import { ToggleRow } from "@/components/ui/ToggleRow";
 import { Dot } from "@/components/ui/Dot";
-import { FieldHelp } from "@/components/ui/FieldHelp";
-import type { Concept } from "@/lib/fieldHelp";
 import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
@@ -37,118 +37,15 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["video", "Video"],
 ];
 
-/** Collapsed-header summary: "Any", a single value, or "first +N". */
-function chipSummary(values: string[]): string {
-  if (values.length === 0) return "Any";
-  if (values.length === 1) return values[0];
-  return `${values[0]} +${values.length - 1}`;
-}
-
-const fmtMonth = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-
-/** Compact "start – end" summary from two optional ISO dates ("" = open). */
-function rangeSummary(from: string, to: string): string {
-  if (!from && !to) return "Any";
-  return `${from ? fmtMonth(from) : "…"} – ${to ? fmtMonth(to) : "…"}`;
-}
-
-/**
- * One collapsible filter section. Open/closed state is owned by the parent
- * (controlled via `open` + `onToggle`) so a panel re-render — e.g. toggling
- * "show all tags" — never resets which sections are expanded. While collapsed
- * the header shows a one-line state summary (orange when active); heavy
- * controls (the timelines) only mount when open.
- */
-function FilterSection({
-  title,
-  concept,
-  summary,
-  active,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  /** Shared `?` concept for this filter (same registry as the forms / detail
-   *  page). Omit for filter-only controls with no domain concept. */
-  concept?: Concept;
-  summary: string;
-  active: boolean;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  // The header is a row, not one button: the `?` is its own button (a button
-  // can't nest inside another), so the title + the summary/chevron each toggle
-  // the section while the `?` opens its tooltip independently.
-  return (
-    <div className="border-b border-neutral-800 last:border-b-0">
-      <div className="w-full flex items-center justify-between py-2.5 group">
-        <span className="flex items-center gap-1 min-w-0">
-          <button
-            onClick={onToggle}
-            aria-expanded={open}
-            className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
-          >
-            {title}
-          </button>
-          {concept && <FieldHelp concept={concept} size={12} />}
-        </span>
-        <button
-          onClick={onToggle}
-          aria-label={`Toggle ${title}`}
-          className="flex items-center gap-1.5 min-w-0"
-        >
-          {!open && (
-            <span
-              className={`text-[11px] truncate max-w-[150px] ${
-                active ? "text-orange-400" : "text-neutral-600"
-              }`}
-            >
-              {summary}
-            </span>
-          )}
-          {open ? (
-            <ChevronUp size={13} className="text-neutral-500 shrink-0" />
-          ) : (
-            <ChevronDown size={13} className="text-neutral-500 shrink-0" />
-          )}
-        </button>
-      </div>
-      {open && <div className="pb-3">{children}</div>}
-    </div>
-  );
-}
-
-/** A compact on/off row for a boolean filter. The whole row is the switch
- *  (role + click live here), so the `<Switch>` renders as its visual span. */
-function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      onClick={onToggle}
-      className="w-full flex items-center justify-between py-2.5 border-b border-neutral-800 last:border-b-0 group"
-    >
-      <span className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors">
-        {label}
-      </span>
-      <Switch as="span" size="sm" on={on} />
-    </button>
-  );
-}
-
 /**
  * The map's filter overlay. Sections collapse individually (state summaries in
  * the header), ordered required → optional, broad → specific: Conflict and
  * Capture source (curated, open by default) → Event date → Added →
  * Tags → Author. Filter state lives in MapStateContext so it survives
- * navigation; the panel reads and writes the context directly.
+ * navigation; the panel reads and writes the context directly. Active state
+ * also renders as the shared removable-pill row (`ActiveFilterPills`, the
+ * same pattern as the search page), visible even while the panel is
+ * collapsed.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
@@ -214,23 +111,83 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     set: (v: string[] | ((prev: string[]) => string[])) => void,
   ) => set((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
 
+  const removeFromBucket = (
+    name: string,
+    set: (v: string[] | ((prev: string[]) => string[])) => void,
+  ) => set((prev) => prev.filter((n) => n !== name));
+
   const eventActive = !!(eventStart || eventEnd);
   const submittedActive = !!(submittedStart || submittedEnd);
   const authorActive = !!authorFilter.trim();
 
-  const activeFilterCount =
-    selectedConflicts.length +
-    selectedCaptureSources.length +
-    selectedTags.length +
-    selectedMediaTypes.length +
-    (trustedOnly ? 1 : 0) +
-    (hideDemo ? 1 : 0) +
-    // Each timeline window counts as one active filter.
-    (eventActive ? 1 : 0) +
-    (submittedActive ? 1 : 0) +
-    (authorActive ? 1 : 0);
+  // The shared removable-pill row: one entry per active filter, each date
+  // window one entry (matching how the count treats them).
+  const activeFilters: ActiveFilter[] = [
+    ...selectedConflicts.map((n) => ({
+      key: `conflict:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedConflicts),
+    })),
+    ...selectedCaptureSources.map((n) => ({
+      key: `capture:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedCaptureSources),
+    })),
+    ...selectedTags.map((n) => ({
+      key: `tag:${n}`,
+      label: n,
+      onRemove: () => removeFromBucket(n, setSelectedTags),
+    })),
+    ...selectedMediaTypes.map((n) => ({
+      key: `media:${n}`,
+      label: n[0].toUpperCase() + n.slice(1),
+      onRemove: () => removeFromBucket(n, setSelectedMediaTypes),
+    })),
+    ...(eventActive
+      ? [
+          {
+            key: "event-window",
+            label: `Event: ${rangeSummary(eventStart, eventEnd)}`,
+            onRemove: () => {
+              setEventStart("");
+              setEventEnd("");
+              setEventPlaying(false);
+            },
+          },
+        ]
+      : []),
+    ...(submittedActive
+      ? [
+          {
+            key: "submitted-window",
+            label: `Added: ${rangeSummary(submittedStart, submittedEnd)}`,
+            onRemove: () => {
+              setSubmittedStart("");
+              setSubmittedEnd("");
+              setSubmittedPlaying(false);
+            },
+          },
+        ]
+      : []),
+    ...(authorActive
+      ? [
+          {
+            key: "author",
+            label: `by @${authorFilter.trim()}`,
+            icon: <User size={11} />,
+            onRemove: () => setAuthorFilter(""),
+          },
+        ]
+      : []),
+    ...(trustedOnly
+      ? [{ key: "trusted", label: "Trusted only", onRemove: () => setTrustedOnly(false) }]
+      : []),
+    ...(hideDemo
+      ? [{ key: "hide-demo", label: "Demo hidden", onRemove: () => setHideDemo(false) }]
+      : []),
+  ];
 
-  const hasActiveFilters = activeFilterCount > 0;
+  const hasActiveFilters = activeFilters.length > 0;
 
   // Alphabetical so the free-tag "top N" preview is stable across loads.
   const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
@@ -244,24 +201,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
         ...freeTags.slice(TAGS_PREVIEW).filter((t) => selectedTags.includes(t.name)),
       ];
 
-  const renderChips = (
-    bucket: { id: string; name: string }[],
-    selected: string[],
-    setter: (v: string[] | ((prev: string[]) => string[])) => void,
-  ) => (
-    <div className="flex flex-wrap gap-1.5">
-      {bucket.map((tag) => (
-        <Pill
-          key={tag.id}
-          tone={selected.includes(tag.name) ? "accent" : "neutral"}
-          onClick={() => toggleInBucket(tag.name, setter)}
-        >
-          {tag.name}
-        </Pill>
-      ))}
-    </div>
-  );
-
   return (
     <div className="absolute top-4 left-[72px] z-1000 w-72">
       <button
@@ -273,7 +212,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
           <span className="text-neutral-300 font-medium">Filters</span>
           {hasActiveFilters && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-medium">
-              {activeFilterCount}
+              {activeFilters.length}
             </span>
           )}
         </div>
@@ -288,6 +227,12 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
         </div>
       </button>
 
+      {hasActiveFilters && (
+        <div className="mt-1.5">
+          <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
+        </div>
+      )}
+
       {filtersOpen && (
         <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
           {conflicts.length > 0 && (
@@ -299,7 +244,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               open={!!openSections["Conflict"]}
               onToggle={() => toggleSection("Conflict")}
             >
-              {renderChips(conflicts, selectedConflicts, setSelectedConflicts)}
+              <ChipBucket
+                options={conflicts}
+                selected={selectedConflicts}
+                onToggle={(n) => toggleInBucket(n, setSelectedConflicts)}
+              />
             </FilterSection>
           )}
 
@@ -312,7 +261,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               open={!!openSections["Capture source"]}
               onToggle={() => toggleSection("Capture source")}
             >
-              {renderChips(captureSourceTags, selectedCaptureSources, setSelectedCaptureSources)}
+              <ChipBucket
+                options={captureSourceTags}
+                selected={selectedCaptureSources}
+                onToggle={(n) => toggleInBucket(n, setSelectedCaptureSources)}
+              />
             </FilterSection>
           )}
 
@@ -326,17 +279,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             open={!!openSections["Source media"]}
             onToggle={() => toggleSection("Source media")}
           >
-            <div className="flex flex-wrap gap-1.5">
-              {MEDIA_TYPES.map(([value, lbl]) => (
-                <Pill
-                  key={value}
-                  tone={selectedMediaTypes.includes(value) ? "accent" : "neutral"}
-                  onClick={() => toggleInBucket(value, setSelectedMediaTypes)}
-                >
-                  {lbl}
-                </Pill>
-              ))}
-            </div>
+            <ChipBucket
+              options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
+              selected={selectedMediaTypes}
+              onToggle={(n) => toggleInBucket(n, setSelectedMediaTypes)}
+            />
           </FilterSection>
 
           <FilterSection
@@ -389,7 +336,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               open={!!openSections["Tags"]}
               onToggle={() => toggleSection("Tags")}
             >
-              {renderChips(visibleFreeTags, selectedTags, setSelectedTags)}
+              <ChipBucket
+                options={visibleFreeTags}
+                selected={selectedTags}
+                onToggle={(n) => toggleInBucket(n, setSelectedTags)}
+              />
               {freeTags.length > TAGS_PREVIEW && (
                 <button
                   onClick={() => setShowAllTags((s) => !s)}
@@ -437,15 +388,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               on={hideDemo}
               onToggle={() => setHideDemo((v) => !v)}
             />
-          )}
-
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="w-full text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors py-2"
-            >
-              Clear all filters
-            </button>
           )}
         </div>
       )}

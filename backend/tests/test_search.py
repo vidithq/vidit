@@ -737,3 +737,64 @@ def test_author_unknown_returns_empty_groups(caller):
 def test_author_rejects_malformed_username():
     response = client.get("/api/v1/search?q=x&author=bad%20name%21")
     assert response.status_code == 422
+
+
+# ── The shared filter set ─────────────────────────────────────────────────
+# /search composes the same predicates as /events and /events/points
+# (services/event_filters). A spot-check per family, not the full matrix:
+# the predicate internals are pinned by the /events read suite.
+
+
+def test_conflict_filter_scopes_search(db, caller):
+    from app.models.conflict import Conflict
+
+    token = _unique_token()
+    row = Conflict(name=f"conf-{token}", ongoing=True, source="manual")
+    db.add(row)
+    db.commit()
+    tagged = _seed_geo(db, caller, f"Tagged {token}")
+    tagged_event = db.query(Event).filter(Event.id == tagged).one()
+    tagged_event.conflicts.append(row)
+    untagged = _seed_geo(db, caller, f"Untagged {token}")
+    db.commit()
+    try:
+        response = client.get(f"/api/v1/search?q={token}&conflict=conf-{token}")
+        assert response.status_code == 200
+        body = response.json()
+        assert [h["id"] for h in body["geolocations"]] == [str(tagged)]
+        # Any active event filter empties the users group, not just author.
+        assert body["users"] == [] and body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id.in_([tagged, untagged])).delete(synchronize_session=False)
+        db.execute(Conflict.__table__.delete().where(Conflict.id == row.id))
+        db.commit()
+
+
+def test_event_date_filter_scopes_search_and_browses(db, caller):
+    token = _unique_token()
+    inside = _seed_geo(db, caller, f"Inside {token}")
+    outside = _seed_geo(db, caller, f"Outside {token}")
+    db.query(Event).filter(Event.id == outside).update({"event_date": date(2020, 1, 1)})
+    db.commit()
+    try:
+        # With a query.
+        response = client.get(f"/api/v1/search?q={token}&event_date_from=2026-01-01")
+        ids = [h["id"] for h in response.json()["geolocations"]]
+        assert str(inside) in ids and str(outside) not in ids
+        # Browse mode: the date window alone is an active filter (no q).
+        response = client.get(f"/api/v1/search?author={caller.username}&event_date_from=2026-01-01")
+        ids = [h["id"] for h in response.json()["geolocations"]]
+        assert str(inside) in ids and str(outside) not in ids
+    finally:
+        db.query(Event).filter(Event.id.in_([inside, outside])).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_garbage_date_filter_returns_422(caller):
+    response = client.get("/api/v1/search?q=x&event_date_from=not-a-date")
+    assert response.status_code == 422
+
+
+def test_garbage_media_filter_returns_422(caller):
+    response = client.get("/api/v1/search?q=x&media=hologram")
+    assert response.status_code == 422

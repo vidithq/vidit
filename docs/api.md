@@ -888,10 +888,12 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless `author` is set). |
+| `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
 | `type` | enum | `all` (default), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| `author` | string | Scope the two event groups to this owner username (exact match; same `[A-Za-z0-9_-]{1,50}` pattern as the `/events` filter, else 422). Empties the users group. With an empty `q`, browse mode: the author's whole view, newest first, plain titles as their own highlight (the profile's "Show more" entry point). |
+| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `trusted_only`, `hide_demo`. Scopes the two event groups. |
+
+Any active filter empties the users group (the filters are event predicates; an unfiltered analyst list next to a filtered event view would read as if the filter applied). With an empty `q` and at least one active filter, **browse mode**: the filtered view, newest first, plain titles as their own highlight (the profile's "Show more" entry point); typing then narrows within it.
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 
