@@ -568,6 +568,8 @@ The durable queue behind `POST /events/import-archive`: the endpoint stages the 
 | `zip_key` | `TEXT` | NOT NULL. Storage key of the staged upload (`archive-imports/<id>.zip`); the object is deleted when the job reaches a terminal state. |
 | `status` | `VARCHAR(10)` | NOT NULL, indexed. `'queued'` → `'running'` → `'done'` \| `'failed'`. A `running` row whose `started_at` is past the stale window is reclaimable (worker died mid-job). |
 | `attempts` | `INTEGER` | NOT NULL, default 0. Claim counter; at the budget the job lands `failed` instead of looping (poison-pill guard). |
+| `post_estimate` | `INTEGER` | nullable. Zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average); display only. |
+| `progress_done` / `progress_total` | `INTEGER` | NOT NULL default 0 / nullable. The worker's live scan position, batched every few rows once the parse has the exact detection count. |
 | `created_count` / `skipped_count` / `recreated_count` / `failed_count` | `INTEGER` | NOT NULL, default 0. The assemble counts, final once `done`. |
 | `error` | `TEXT` | nullable. Terse operator-facing failure reason; the owner gets the story by email. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |

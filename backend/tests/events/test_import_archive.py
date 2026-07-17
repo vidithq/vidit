@@ -285,3 +285,22 @@ def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypat
     refreshed = db.get(ArchiveImportJob, job.id)
     assert refreshed.started_at is not None and claimed_at is not None
     assert refreshed.started_at > claimed_at
+
+
+def test_job_carries_estimate_and_live_progress(db, author, sent_emails):
+    """The enqueue stamps the zip-metadata post estimate; the worker stamps
+    the exact scan position (done / total) as rows land, so the upload
+    page's poll can render live progress."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    body = accepted.json()
+    assert body["post_estimate"] >= 1
+    assert body["progress_done"] == 0 and body["progress_total"] is None
+
+    assert _drain(db) == 1
+    polled = client.get(
+        f"/api/v1/events/import-archive/{body['id']}", headers=login_as(client, author)
+    ).json()
+    assert polled["status"] == "done"
+    # One geo tweet: the scan is 1 / 1 at the end.
+    assert polled["progress_done"] == 1
+    assert polled["progress_total"] == 1

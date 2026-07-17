@@ -54,25 +54,33 @@ STALE_RUNNING_AFTER = timedelta(minutes=30)
 # and still never read as dead.
 HEARTBEAT_INTERVAL = timedelta(minutes=5)
 MAX_ATTEMPTS = 3
+# Batch size for the analyst-facing progress stamp: one UPDATE per this many
+# handled detections (plus the final one), cheap next to the per-row work.
+PROGRESS_EVERY = 10
 
 
 def staging_key(job_id: uuid.UUID) -> str:
     return f"{STAGING_PREFIX}{job_id}.zip"
 
 
-def enqueue(db: Session, *, owner: User, zip_bytes: bytes) -> ArchiveImportJob:
+def enqueue(
+    db: Session, *, owner: User, zip_bytes: bytes, post_estimate: int | None = None
+) -> ArchiveImportJob:
     """Stage the validated upload and insert its ``queued`` row.
 
     The zip was already streamed to disk under ``MAX_UPLOAD_BYTES`` and passed
     :func:`archive_zip.inspect_archive`, so everything staged here is worth a
-    worker pass. Staging happens before the insert: a row without its object
-    would fail the worker, an object without its row is a harmless orphan
-    under the bounded upload cap.
+    worker pass (``post_estimate`` is that inspection's free volume hint).
+    Staging happens before the insert: a row without its object would fail
+    the worker, an object without its row is a harmless orphan under the
+    bounded upload cap.
     """
     # Mint the id up front (the column default only fires at flush): the
     # staging key embeds it, and staging must precede the insert.
     job_id = uuid.uuid4()
-    job = ArchiveImportJob(id=job_id, owner_id=owner.id, zip_key=staging_key(job_id))
+    job = ArchiveImportJob(
+        id=job_id, owner_id=owner.id, zip_key=staging_key(job_id), post_estimate=post_estimate
+    )
     get_storage().put_bytes_sync(zip_bytes, job.zip_key, "application/zip")
     db.add(job)
     db.commit()
@@ -164,8 +172,18 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             archive_dir.mkdir()
             zip_path.write_bytes(get_storage().get_bytes(job.zip_key))
             archive_zip.extract_allowlisted(zip_path, archive_dir)
+
+            def stamp_progress(done: int, total: int) -> None:
+                # Fires between per-row transactions (see assemble_detections),
+                # so the commit here never splits one. Batched: an UPDATE per
+                # PROGRESS_EVERY rows plus the boundaries.
+                if done == total or done == 1 or done % PROGRESS_EVERY == 0:
+                    job.progress_done = done
+                    job.progress_total = total
+                    db.commit()
+
             outcome = await backfill_from_archive(
-                db, owner=owner, archive_dir=archive_dir, chase=True
+                db, owner=owner, archive_dir=archive_dir, chase=True, on_progress=stamp_progress
             )
     except Exception as exc:
         db.rollback()

@@ -571,6 +571,9 @@ A tweet that references its footage only through a linked status (`Source: x.com
 {
   "id": "uuid",
   "status": "queued",
+  "post_estimate": 1240,
+  "progress_done": 0,
+  "progress_total": null,
   "created": 0, "skipped": 0, "recreated": 0, "failed": 0,
   "error": null,
   "created_at": "2026-07-17T12:00:00Z",
@@ -592,7 +595,7 @@ A tweet that references its footage only through a linked status (`Source: x.com
 
 One archive-import job, owner-only (someone else's job id reads as 404, indistinguishable from unknown). The upload page polls this until `status` is terminal; the completion email is the durable signal for an analyst who left.
 
-`status` walks `queued` → `running` → `done` | `failed`. The counts are final once `done`: `created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land). A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
+`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`: `created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land). A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
 
 **Response 200:** the job payload above, counts and timestamps filled per status.
 

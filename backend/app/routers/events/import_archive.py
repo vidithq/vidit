@@ -73,7 +73,7 @@ async def import_archive(
                 out.write(chunk)
 
         try:
-            archive_zip.inspect_archive(zip_path)
+            inspection = archive_zip.inspect_archive(zip_path)
         except archive_zip.ArchiveIntakeError as exc:
             raise_typed_error(exc, _ARCHIVE_STATUS)
 
@@ -82,7 +82,12 @@ async def import_archive(
         # a multi-second stall on the single-process event loop is the exact
         # failure mode this endpoint's async rework removed.
         job = await run_in_threadpool(
-            lambda: archive_jobs.enqueue(db, owner=current_user, zip_bytes=zip_path.read_bytes())
+            lambda: archive_jobs.enqueue(
+                db,
+                owner=current_user,
+                zip_bytes=zip_path.read_bytes(),
+                post_estimate=inspection.post_estimate,
+            )
         )
 
     logger.info("Archive import staged for user %s: job %s", current_user.id, job.id)

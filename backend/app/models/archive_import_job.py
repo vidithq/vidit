@@ -39,6 +39,15 @@ class ArchiveImportJob(Base):
         String(10), nullable=False, default="queued", index=True
     )
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Analyst-facing progress. ``post_estimate`` comes free from the zip
+    # metadata at enqueue (declared tweets.js size over the per-record
+    # average), a display hint, never a contract. The worker stamps
+    # ``progress_total`` once the parse gives the exact detection count and
+    # batches ``progress_done`` as rows land, so the upload page's poll can
+    # render "137 / 412".
+    post_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    progress_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Assemble counts, final once ``done`` (see ``AssembleOutcome``).
     created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -386,7 +386,15 @@ export async function awaitImportJob(
     intervalMs = 2500,
     maxErrors = 8,
     timeoutMs = 15 * 60_000,
-  }: { intervalMs?: number; maxErrors?: number; timeoutMs?: number } = {}
+    onUpdate,
+  }: {
+    intervalMs?: number;
+    maxErrors?: number;
+    timeoutMs?: number;
+    /** Fires with every successfully polled snapshot (queued / running
+     *  progress included), so the page can render live progress. */
+    onUpdate?: (job: ArchiveImportJob) => void;
+  } = {}
 ): Promise<ArchiveImportJob> {
   const deadline = Date.now() + timeoutMs;
   let consecutiveErrors = 0;
@@ -394,6 +402,7 @@ export async function awaitImportJob(
     try {
       const job = await getImportJob(jobId);
       consecutiveErrors = 0;
+      onUpdate?.(job);
       if (job.status === "done" || job.status === "failed") return job;
     } catch {
       consecutiveErrors += 1;

@@ -67,6 +67,8 @@ top_conflicts  # schemas/user.py UserStatsRead
 capture_sources  # schemas/user.py UserStatsRead
 monthly_activity  # schemas/user.py UserStatsRead
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
+progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc

@@ -1462,6 +1462,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Post Estimate */
+            post_estimate: number | null;
+            /** Progress Done */
+            progress_done: number;
+            /** Progress Total */
+            progress_total: number | null;
             /** Recreated */
             recreated: number;
             /** Skipped */

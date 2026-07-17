@@ -26,6 +26,13 @@ class ArchiveImportJobRead(BaseModel):
 
     id: uuid.UUID
     status: ArchiveImportJobStatus
+    # Analyst-facing progress: ``post_estimate`` is the free zip-metadata
+    # volume hint stamped at enqueue (a display hint, not a promise);
+    # ``progress_done`` / ``progress_total`` are the worker's live scan
+    # position once the parse has the exact detection count.
+    post_estimate: int | None
+    progress_done: int
+    progress_total: int | None
     created: int = Field(validation_alias="created_count")
     skipped: int = Field(validation_alias="skipped_count")
     recreated: int = Field(validation_alias="recreated_count")

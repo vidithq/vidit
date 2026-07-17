@@ -98,6 +98,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
   // the import is still running server-side, so this renders a calm
   // "check your email" state, never the failure banner.
   const [pollLost, setPollLost] = useState(false);
+  // Latest polled snapshot while the import runs: the post estimate stamped
+  // at enqueue, then the worker's live scan position (done / total).
+  const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
 
   // Strip to the allowlisted entries in the browser first, then upload, so the
   // sensitive rest of the export never leaves the device (and the upload is a
@@ -107,9 +110,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const { run, loading, error } = useMutation(
     async (archive: File): Promise<ArchiveImportJob | null> => {
       const queued = await importArchive(await stripArchive(archive));
+      setLiveJob(queued);
       let job: ArchiveImportJob;
       try {
-        job = await awaitImportJob(queued.id);
+        job = await awaitImportJob(queued.id, { onUpdate: setLiveJob });
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
         throw err;
@@ -295,11 +299,19 @@ export function ImportArchivePanel({ username }: { username: string }) {
           {loading ? "Importing…" : "Import archive"}
         </Button>
         {loading && (
-          <p className="text-xs text-neutral-500">
-            Keeping only your posts, then uploading. The import runs in the background
-            and we email you when it finishes, so you can leave this page; a large
-            archive can take a few minutes.
-          </p>
+          <div className="space-y-1.5">
+            <p className="text-xs text-neutral-300">
+              {liveJob === null
+                ? "Keeping only your posts, then uploading…"
+                : liveJob.progress_total !== null
+                  ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} coordinate detections processed.`
+                  : `Queued · ~${(liveJob.post_estimate ?? 1).toLocaleString()} post${(liveJob.post_estimate ?? 1) === 1 ? "" : "s"} in your archive, waiting for the importer.`}
+            </p>
+            <p className="text-xs text-neutral-500">
+              You can close this page: the import keeps running and we email you
+              when it finishes.
+            </p>
+          </div>
         )}
       </form>
     </div>
