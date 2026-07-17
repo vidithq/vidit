@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import type { components } from "./api-types";
 import type { ExternalLinks, User } from "@/types";
 
 /**
@@ -40,6 +41,18 @@ export interface PublicProfile {
   followers_count: number;
   following_count: number;
   is_following: boolean;
+}
+
+/**
+ * Shape returned by `GET /users/{username}/stats` — the aggregated
+ * shape-of-work payload behind the profile insights section, aliased from
+ * the generated OpenAPI types (never hand-written, per the single-source
+ * rule). `monthly_activity` is always 12 zero-filled buckets, oldest first.
+ */
+export type UserStats = components["schemas"]["UserStatsRead"];
+
+export function getUserStats(username: string): Promise<UserStats> {
+  return apiFetch<UserStats>(`/users/${encodeURIComponent(username)}/stats`);
 }
 
 /**

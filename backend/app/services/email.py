@@ -169,6 +169,60 @@ def password_changed_email(*, to: str) -> Email:
     )
 
 
+def archive_import_complete_email(
+    *,
+    to: str,
+    created: int,
+    skipped: int,
+    recreated: int,
+    failed: int,
+    detections_link: str,
+) -> Email:
+    # ``created`` already includes the re-created rows (the assemble outcome
+    # appends them to ``created`` and bumps ``recreated`` on top), so the
+    # headline count is ``created`` alone; recreated is a subset callout.
+    lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
+    if recreated:
+        lines.append(f"  {recreated} of them re-created after an earlier dismissal")
+    if skipped:
+        lines.append(f"  {skipped} already imported (skipped)")
+    if failed:
+        lines.append(f"  {failed} could not be imported")
+    counts = "\n".join(lines)
+    return Email(
+        to=to,
+        subject="Your X archive import is done",
+        text=(
+            "Your X archive finished importing:\n"
+            "\n"
+            f"{counts}\n"
+            "\n"
+            "Each detection is a draft attributed to you; review them and\n"
+            "geolocate the ones you vouch for:\n"
+            "\n"
+            f"  {detections_link}\n"
+            "\n"
+            "— Vidit\n"
+        ),
+    )
+
+
+def archive_import_failed_email(*, to: str) -> Email:
+    return Email(
+        to=to,
+        subject="Your X archive import failed",
+        text=(
+            "Something went wrong while importing your X archive and the\n"
+            "import stopped. Anything imported before the failure is kept, and\n"
+            "re-uploading the same archive skips it and continues from there.\n"
+            "If it keeps failing, reach out on the Discord linked from the\n"
+            "site footer.\n"
+            "\n"
+            "— Vidit\n"
+        ),
+    )
+
+
 def registration_confirmation_email(*, to: str, link: str) -> Email:
     return Email(
         to=to,

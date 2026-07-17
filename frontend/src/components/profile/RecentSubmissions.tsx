@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { buttonClasses } from "@/components/ui/Button";
 import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
@@ -29,13 +30,23 @@ export function RecentSubmissions({
 }) {
   return (
     <Card>
-      <div className="space-y-1">
-        <SectionEyebrow title="Recent submissions" margin="none" />
-        <p className="text-xs text-neutral-500">
-          {profile.geolocations_count > 0
-            ? `${profile.username}'s latest geolocations, newest first.`
-            : "No geolocations yet."}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <SectionEyebrow title="Recent submissions" margin="none" />
+          <p className="text-xs text-neutral-500">
+            {profile.geolocations_count > 0
+              ? `${profile.username}'s latest geolocations, newest first.`
+              : "No geolocations yet."}
+          </p>
+        </div>
+        {submissions.length > 0 && (
+          <Link
+            href={`/search?type=event&author=${encodeURIComponent(profile.username)}`}
+            className={buttonClasses("secondary")}
+          >
+            Show more
+          </Link>
+        )}
       </div>
 
       {submissions.length > 0 ? (

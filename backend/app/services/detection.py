@@ -290,6 +290,7 @@ async def assemble_detections(
     detections: list[DetectedGeoloc],
     fetch_media: MediaFetcher,
     is_demo: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
     """Persist each detection as a ``detected`` ``Event`` owned by ``owner``.
 
@@ -302,6 +303,11 @@ async def assemble_detections(
     ``outcome.failed``, rolled back, and the loop moves on. A detection may carry
     no media — a ``detected`` row can be media-incomplete until its owner
     completes it before validating.
+
+    ``on_progress(done, total)`` fires after every handled detection (skips
+    and failures included: the analyst-facing meaning is "position in the
+    scan"). Called between per-row transactions, so a callback that commits
+    on the same session never splits one.
     """
     outcome = AssembleOutcome()
     # Media cache scoped to the current thread: ``detect`` emits a thread's
@@ -309,12 +315,19 @@ async def assemble_detections(
     # resetting on a URL change bounds the cached bytes to one thread.
     cache_url: str | None = None
     media_cache: _MediaCache = {}
-    for dto in detections:
+    total = len(detections)
+    if on_progress is not None:
+        # Announce the exact total up front (0 / N), so even a zero-detection
+        # archive stamps it and the caller's display leaves the estimate.
+        on_progress(0, total)
+    for index, dto in enumerate(detections, start=1):
         if dto.detected_from_url != cache_url:
             cache_url, media_cache = dto.detected_from_url, {}
         verdict = _disposition(db, owner, dto)
         if verdict == "skip":
             outcome.skipped += 1
+            if on_progress is not None:
+                on_progress(index, total)
             continue
         try:
             geo = await _persist_one(
@@ -329,10 +342,14 @@ async def assemble_detections(
             logger.exception("Detection assemble failed for %s", dto.detected_from_url)
             db.rollback()
             outcome.failed += 1
+            if on_progress is not None:
+                on_progress(index, total)
             continue
         outcome.created.append(geo)
         if verdict == "recreate":
             outcome.recreated += 1
+        if on_progress is not None:
+            on_progress(index, total)
     return outcome
 
 
@@ -343,6 +360,7 @@ async def backfill_from_archive(
     archive_dir: Path,
     is_demo: bool = False,
     chase: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
     """Run a full archive backfill: acquire → stitch → detect → assemble.
 
@@ -358,6 +376,7 @@ async def backfill_from_archive(
     return await assemble_detections(
         db,
         owner=owner,
+        on_progress=on_progress,
         detections=detections,
         fetch_media=archive_media_fetcher(archive_dir),
         is_demo=is_demo,

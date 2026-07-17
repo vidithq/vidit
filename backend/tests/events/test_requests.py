@@ -224,13 +224,17 @@ def test_list_filters_by_tag(db, author, free_tag):
     assert str(without_tag.id) not in ids
 
 
-def test_list_filters_by_author_substring(db, author):
+def test_list_filters_by_author_exact(db, author):
+    """Exact case-insensitive match, same semantics as every author surface
+    (see services/event_filters.apply_author_filter): a fragment matches
+    nothing."""
     request = _make_request(db, author=author)
-    needle = author.username[2:6]
-    response = client.get(f"{_LIST}&author={needle}")
+    response = client.get(f"{_LIST}&author={author.username.upper()}")
     assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(request.id) in ids
+    assert str(request.id) in {row["id"] for row in response.json()}
+    response = client.get(f"{_LIST}&author={author.username[2:6]}")
+    assert response.status_code == 200
+    assert str(request.id) not in {row["id"] for row in response.json()}
 
 
 def test_list_honours_limit(db, author):

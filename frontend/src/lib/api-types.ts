@@ -586,16 +586,41 @@ export interface paths {
         put?: never;
         /**
          * Import Archive
-         * @description Backfill the caller's profile from their X "Download your data" zip.
+         * @description Enqueue the caller's X "Download your data" zip for the backfill worker.
          *
          *     The upload is the consent: every row lands ``detected``, attributed to the
          *     caller (no handle-ownership check in this version, see ``planning``). Only the
-         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are read; the
-         *     rest of the export is never extracted. The import runs synchronously behind a
-         *     size cap (``archive_zip.MAX_UPLOAD_BYTES``); a larger archive waits for the
-         *     durable-worker upgrade. Returns the assemble counts.
+         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are ever read;
+         *     the rest of the export is never extracted. The request validates the zip
+         *     (shape + declared sizes, so a bad file 4xxs here, not in a failure email),
+         *     stages it, and returns the ``queued`` job; the worker service runs the
+         *     import and emails the outcome. Poll ``GET /events/import-archive/{job_id}``
+         *     for the counts.
          */
         post: operations["import_archive_api_v1_events_import_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/import-archive/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Job
+         * @description The caller's import job, for the upload page to poll until terminal.
+         *
+         *     Owner-only: someone else's job id reads as 404 (indistinguishable from
+         *     unknown, so ids don't leak whether an import exists).
+         */
+        get: operations["get_import_job_api_v1_events_import_archive__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -877,8 +902,36 @@ export interface paths {
          *     "user is still typing" hits cheap. The frontend debounces the
          *     input on its side so we shouldn't see those much in practice, but
          *     the cheap short-circuit is robust against accidental load.
+         *
+         *     Any active filter scopes the event groups and empties the users group;
+         *     with an empty ``q`` the response browses the filtered view (the
+         *     profile's "Show more" entry point). Filter semantics are the shared
+         *     ones (see ``services/event_filters.apply_filters``).
          */
         get: operations["search_api_v1_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/authors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Authors
+         * @description Usernames for the author-filter typeahead (both filter surfaces).
+         *
+         *     The author filter is an exact match; this picker is how a partial name
+         *     becomes a real handle. Empty ``q`` short-circuits to an empty list.
+         */
+        get: operations["suggest_authors_api_v1_search_authors_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1026,6 +1079,29 @@ export interface paths {
          *     the error instead of silently no-op'ing.
          */
         delete: operations["unfollow_user_api_v1_users__username__follow_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{username}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Stats
+         * @description Aggregated shape-of-work stats for a public profile.
+         *
+         *     Anonymous like the rest of the profile read surface; live rows only.
+         *     All aggregation lives in ``services/user_stats``.
+         */
+        get: operations["get_user_stats_api_v1_users__username__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1356,23 +1432,53 @@ export interface components {
             deleted_users: number;
         };
         /**
-         * ArchiveImportResult
-         * @description Outcome of an archive backfill: how the detections landed.
+         * ArchiveImportJobRead
+         * @description One archive-import job as the owner polls it.
          *
-         *     The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
-         *     a live row already held; ``recreated`` a previously rejected pair
-         *     re-detected; ``failed`` a detection that raised mid-persist and was
-         *     rolled back (the others still land).
+         *     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
+         *     counts are the assemble outcome, final once ``done`` (zero until then):
+         *     ``created`` is new ``detected`` rows; ``skipped`` a pair a live row
+         *     already held; ``recreated`` a previously rejected pair re-detected;
+         *     ``failed`` a detection that raised mid-persist and was rolled back (the
+         *     others still land). ``error`` stays operator-oriented and terse; the
+         *     owner gets the human story by email.
          */
-        ArchiveImportResult: {
+        ArchiveImportJobRead: {
             /** Created */
             created: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
             /** Failed */
             failed: number;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Post Estimate */
+            post_estimate: number | null;
+            /** Progress Done */
+            progress_done: number;
+            /** Progress Total */
+            progress_total: number | null;
             /** Recreated */
             recreated: number;
             /** Skipped */
             skipped: number;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
         };
         /**
          * AuthorRef
@@ -1394,6 +1500,16 @@ export interface components {
             trust_reason: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * AuthorSuggestions
+         * @description ``GET /search/authors``: usernames for the author-filter typeahead
+         *     (prefix matches first, then alphabetical). The filter itself is an exact
+         *     match, so the picker is how a partial name becomes a real handle.
+         */
+        AuthorSuggestions: {
+            /** Authors */
+            authors: string[];
         };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
@@ -1766,6 +1882,16 @@ export interface components {
             storage_url: string;
         };
         /**
+         * MonthBucket
+         * @description One calendar-month activity bucket. ``month`` is ``YYYY-MM``.
+         */
+        MonthBucket: {
+            /** Count */
+            count: number;
+            /** Month */
+            month: string;
+        };
+        /**
          * PaginatedEventDetails
          * @description Full-detail paginated events: the owner Detections-queue payload.
          *
@@ -1954,7 +2080,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "geolocation" | "request" | "user";
+            type: "all" | "event" | "geolocation" | "request" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };
@@ -1992,6 +2118,16 @@ export interface components {
             username: string;
             /** Username Highlight */
             username_highlight: string;
+        };
+        /**
+         * TagCount
+         * @description One (name, count) aggregation entry: a conflict or capture-source tally.
+         */
+        TagCount: {
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
         };
         /** TagCreate */
         TagCreate: {
@@ -2188,6 +2324,33 @@ export interface components {
             trust_reason: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * UserStatsRead
+         * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
+         *
+         *     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
+         *     three status counts. ``monthly_activity`` is always 12 buckets (the last 12
+         *     calendar months including the current one, zero-filled), so the frontend
+         *     renders a fixed-width bar row.
+         */
+        UserStatsRead: {
+            /** Capture Sources */
+            capture_sources: components["schemas"]["TagCount"][];
+            /** Closed Count */
+            closed_count: number;
+            /** Detected Count */
+            detected_count: number;
+            /** Geolocated Count */
+            geolocated_count: number;
+            /** Media Count */
+            media_count: number;
+            /** Monthly Activity */
+            monthly_activity: components["schemas"]["MonthBucket"][];
+            /** Top Conflicts */
+            top_conflicts: components["schemas"]["TagCount"][];
+            /** Total Events */
+            total_events: number;
         };
         /**
          * UserUpdate
@@ -3188,12 +3351,45 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveImportJobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_job_api_v1_events_import_archive__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArchiveImportResult"];
+                    "application/json": components["schemas"]["ArchiveImportJobRead"];
                 };
             };
             /** @description Validation Error */
@@ -3594,6 +3790,18 @@ export interface operations {
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
+                conflict?: string[] | null;
+                capture_source?: string[] | null;
+                tag?: string[] | null;
+                event_date_from?: string | null;
+                event_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Scope the event groups to this owner username (exact, case-insensitive) */
+                author?: string | null;
+                media?: string[] | null;
+                trusted_only?: boolean;
+                hide_demo?: boolean;
             };
             header?: never;
             path?: never;
@@ -3608,6 +3816,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_authors_api_v1_search_authors_get: {
+        parameters: {
+            query?: {
+                /** @description Username fragment; same charset gate as ?author= */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorSuggestions"];
                 };
             };
             /** @description Validation Error */
@@ -3874,6 +4114,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_stats_api_v1_users__username__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatsRead"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -8,8 +8,11 @@ and `rate_limit_enabled` actually disables every limit. Each test keys its
 bucket on a unique X-Forwarded-For IP and `live_limiter` resets the in-memory
 store, so buckets don't bleed between tests.
 
-Comprehensive coverage of every documented limit (N pass / N+1 -> 429) is the
-open-beta anti-scraping row in planning/next.md; this module pins the mechanism.
+The wiring tests pin the mechanism; the parametrized suite at the bottom pins
+the documented limit of every read endpoint on the anonymous surface (N pass /
+N+1 -> 429), the v0.4 read-endpoint anti-scraping floor. Extending the N/N+1
+coverage to every documented write limit is the open-beta anti-scraping row in
+planning/next.md.
 """
 
 from __future__ import annotations
@@ -135,3 +138,46 @@ def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
     finally:
         db.query(Tag).filter(Tag.name == name).delete(synchronize_session=False)
         db.commit()
+
+
+# ── Per-documented-limit coverage: the anonymous read surface ──────────────
+# One behavioral check per documented read limit (docs/api.md → Rate limits):
+# N requests answer, N+1 returns 429. Anonymous throughout — these endpoints
+# are the public exposure the limits exist for. A 404 body (unknown id /
+# username) still counts: the limiter runs before the handler, so the check
+# needs no fixture rows and pins the quota, not the payload. Each case gets
+# its own XFF IP, so buckets never bleed across cases.
+
+_READ_LIMITS = [
+    ("/api/v1/events", 120),
+    (f"/api/v1/events/{uuid.UUID(int=0)}", 120),
+    ("/api/v1/events/points", 60),
+    ("/api/v1/search?q=vidit", 60),
+    ("/api/v1/search/authors?q=vidit", 60),
+    ("/api/v1/tags", 60),
+    ("/api/v1/conflicts", 60),
+    ("/api/v1/users/no-such-user", 120),
+    ("/api/v1/users/no-such-user/events", 120),
+    ("/api/v1/users/no-such-user/stats", 120),
+]
+
+
+@pytest.mark.parametrize(("path", "limit"), _READ_LIMITS, ids=[p for p, _ in _READ_LIMITS])
+def test_documented_read_limit_blocks_at_n_plus_1(live_limiter, path, limit):
+    ip = f"198.51.100.{_READ_LIMITS.index((path, limit)) + 1}"
+    for i in range(limit):
+        resp = client.get(path, headers={"X-Forwarded-For": ip})
+        assert resp.status_code != 429, f"request {i} already 429"
+    blocked = client.get(path, headers={"X-Forwarded-For": ip})
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"] == "Rate limit exceeded. Try again later."
+
+
+def test_documented_detections_queue_limit(live_limiter, user):
+    # The one non-anonymous read on the documented table: the owner's
+    # detections queue, 120/min.
+    headers = _auth(user, "198.51.100.120")
+    for i in range(120):
+        resp = client.get("/api/v1/events/detections", headers=headers)
+        assert resp.status_code == 200, f"request {i} was {resp.status_code}"
+    assert client.get("/api/v1/events/detections", headers=headers).status_code == 429

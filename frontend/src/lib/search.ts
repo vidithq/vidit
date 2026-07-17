@@ -13,13 +13,58 @@ export function search(opts: {
   q: string;
   type?: SearchType;
   limit?: number;
+  /** The standard event filter set (same vocabulary as /events and
+   *  /events/points); scopes the two event groups and empties the users
+   *  group. With an empty `q` and any active filter the backend browses the
+   *  filtered view (the profile's "Show more" entry point). */
+  author?: string;
+  conflict?: string[];
+  captureSource?: string[];
+  tag?: string[];
+  media?: string[];
+  eventDateFrom?: string;
+  eventDateTo?: string;
+  submittedFrom?: string;
+  submittedTo?: string;
+  trustedOnly?: boolean;
 }): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
     type: opts.type ?? "all",
     limit: String(opts.limit ?? 20),
   });
+  if (opts.author) params.set("author", opts.author);
+  opts.conflict?.forEach((n) => params.append("conflict", n));
+  opts.captureSource?.forEach((n) => params.append("capture_source", n));
+  opts.tag?.forEach((n) => params.append("tag", n));
+  opts.media?.forEach((n) => params.append("media", n));
+  if (opts.eventDateFrom) params.set("event_date_from", opts.eventDateFrom);
+  if (opts.eventDateTo) params.set("event_date_to", opts.eventDateTo);
+  if (opts.submittedFrom) params.set("submitted_from", opts.submittedFrom);
+  if (opts.submittedTo) params.set("submitted_to", opts.submittedTo);
+  if (opts.trustedOnly) params.set("trusted_only", "true");
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
+}
+
+/**
+ * The `?author=` charset gate, mirroring the backend's
+ * `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`): the single frontend
+ * source for "is this a committable author value". Anything else would 422
+ * server-side and surface as a broken-looking error banner.
+ */
+export const AUTHOR_FILTER_RE = /^[A-Za-z0-9_-]{1,50}$/;
+
+/**
+ * Username typeahead for the author filter: `GET /search/authors`. The
+ * author filter is an exact match, so this picker is how a partial name
+ * becomes a real handle (prefix matches first, capped server-side).
+ */
+export async function suggestAuthors(q: string): Promise<string[]> {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const params = new URLSearchParams({ q: trimmed });
+  const res = await apiFetch<{ authors: string[] }>(`/search/authors?${params.toString()}`);
+  return res.authors;
 }
 
 /**

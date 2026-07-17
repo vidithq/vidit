@@ -27,6 +27,11 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { ActivityBars } from "@/components/ui/ActivityBars";
+import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
+import { ChipBucket } from "@/components/ui/ChipBucket";
+import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -310,6 +315,22 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
+            <PaletteActiveFilterPills />
+          </Item>
+
+          <Item name="<FilterSection>" usage="One collapsible filter section (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. Shared by the map overlay and the search filter area.">
+            <PaletteFilterSection />
+          </Item>
+
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, capture sources, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
+            <PaletteChipBucket />
+          </Item>
+
+          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter (Trusted only, Hide demo): the whole row is the switch (role + click), the <Switch> rendering as its visual span. Shared by the map overlay and the search filter area.">
+            <PaletteToggleRow />
+          </Item>
+
           <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | strong, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -532,6 +553,27 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<ActivityBars>" usage="Fixed-width monthly activity row (profile insights): one bar per bucket, heights relative to the max, accent for active months, neutral stub for empty ones. Hover a bar for month + count.">
+            <div className="w-full max-w-xs">
+              <ActivityBars
+                buckets={[
+                  { month: "2025-08", count: 0 },
+                  { month: "2025-09", count: 2 },
+                  { month: "2025-10", count: 5 },
+                  { month: "2025-11", count: 1 },
+                  { month: "2025-12", count: 0 },
+                  { month: "2026-01", count: 3 },
+                  { month: "2026-02", count: 8 },
+                  { month: "2026-03", count: 4 },
+                  { month: "2026-04", count: 0 },
+                  { month: "2026-05", count: 6 },
+                  { month: "2026-06", count: 2 },
+                  { month: "2026-07", count: 7 },
+                ]}
+              />
+            </div>
+          </Item>
+
           <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
@@ -725,5 +767,73 @@ export default function PalettePage() {
         </section>
       </div>
     </PageShell>
+  );
+}
+
+// ── Filter-family demos (stateful, so they live as tiny components) ─────────
+
+function PaletteActiveFilterPills() {
+  const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by @ana-demo"]);
+  if (active.length === 0)
+    return (
+      <button className="text-[11px] text-neutral-500" onClick={() => setActive(["Russo-Ukrainian War", "dashcam", "by @ana-demo"])}>
+        All removed. Reset the demo
+      </button>
+    );
+  return (
+    <ActiveFilterPills
+      filters={active.map((label) => ({
+        key: label,
+        label,
+        onRemove: () => setActive((prev) => prev.filter((l) => l !== label)),
+      }))}
+      onClearAll={() => setActive([])}
+    />
+  );
+}
+
+function PaletteFilterSection() {
+  const [open, setOpen] = useState(true);
+  const [selected, setSelected] = useState<string[]>(["Drone"]);
+  return (
+    <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <FilterSection
+        title="Capture source"
+        summary={chipSummary(selected)}
+        active={selected.length > 0}
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+      >
+        <ChipBucket
+          options={["Drone", "Dashcam", "CCTV"].map((n) => ({ id: n, name: n }))}
+          selected={selected}
+          onToggle={(n) =>
+            setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+          }
+        />
+      </FilterSection>
+    </div>
+  );
+}
+
+function PaletteChipBucket() {
+  const [selected, setSelected] = useState<string[]>(["Image"]);
+  return (
+    <ChipBucket
+      options={["Image", "Video"].map((n) => ({ id: n, name: n }))}
+      selected={selected}
+      onToggle={(n) =>
+        setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+      }
+    />
+  );
+}
+
+function PaletteToggleRow() {
+  const [on, setOn] = useState(true);
+  return (
+    <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <ToggleRow label="Trusted analysts only" on={on} onToggle={() => setOn((v) => !v)} />
+    </div>
   );
 }

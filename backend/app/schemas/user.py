@@ -126,6 +126,39 @@ class UserProfile(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TagCount(BaseModel):
+    """One (name, count) aggregation entry: a conflict or capture-source tally."""
+
+    name: str
+    count: int
+
+
+class MonthBucket(BaseModel):
+    """One calendar-month activity bucket. ``month`` is ``YYYY-MM``."""
+
+    month: str
+    count: int
+
+
+class UserStatsRead(BaseModel):
+    """Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
+
+    Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
+    three status counts. ``monthly_activity`` is always 12 buckets (the last 12
+    calendar months including the current one, zero-filled), so the frontend
+    renders a fixed-width bar row.
+    """
+
+    geolocated_count: int
+    detected_count: int
+    closed_count: int
+    total_events: int
+    media_count: int
+    top_conflicts: list[TagCount]
+    capture_sources: list[TagCount]
+    monthly_activity: list[MonthBucket]
+
+
 class UserUpdate(BaseModel):
     """Body for ``PATCH /users/me``.
 

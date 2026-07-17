@@ -2,7 +2,6 @@
 
 import {
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,37 +10,62 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Megaphone, Search as SearchIcon, Users } from "lucide-react";
+import { MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
-import { search, splitHighlights } from "@/lib/search";
+import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
+  Conflict,
   SearchRequestHit,
   SearchEventHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
+  Tag,
 } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
+import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { rangeSummary } from "@/components/ui/FilterSection";
+import {
+  EMPTY_EVENT_FILTERS,
+  EventFilterSections,
+  buildActiveFilterPills,
+  type EventFilterPatch,
+  type EventFilterValues,
+} from "@/components/filters/EventFilterSections";
+import { useApiResource } from "@/hooks/useApiResource";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 
+// The reader-facing type picker: the two event groups are one "Events" entry
+// (the filter set below only applies to events, so the picker doesn't force
+// the geolocation vs request split; results still render as two groups).
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
-  { value: "geolocation", label: "Geolocations", icon: <MapPin size={11} /> },
-  { value: "request", label: "Requests", icon: <Megaphone size={11} /> },
+  { value: "event", label: "Events", icon: <MapPin size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
+
+// The type values that scope to events (the legacy singletons stay valid in
+// a shared URL even though the picker no longer offers them).
+const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request"];
 
 // Debounce window: reactive enough to feel live, long enough not to fire
 // on every keystroke of a long phrase.
 const DEBOUNCE_MS = 300;
+
+interface DateWindows {
+  eventFrom: string;
+  eventTo: string;
+  addedFrom: string;
+  addedTo: string;
+}
 
 export default function SearchPage() {
   // `useSearchParams` opts out of static prerender, so the body lives
@@ -58,16 +82,92 @@ function SearchPageBody() {
   const searchParams = useSearchParams();
 
   // URL is the source of truth so shared links land in the same view;
-  // the input binds to local state so typing isn't gated on URL round-trips.
+  // the inputs bind to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
-  const initialType = (searchParams.get("type") as SearchType) || "all";
+  const initialValues: EventFilterValues = {
+    conflicts: searchParams.getAll("conflict"),
+    captureSources: searchParams.getAll("capture_source"),
+    tags: searchParams.getAll("tag"),
+    mediaTypes: searchParams.getAll("media"),
+    // A crafted URL can carry anything; the shared gate keeps an ineligible
+    // value from 422ing every fetch on the page.
+    author: (() => {
+      const raw = searchParams.get("author") ?? "";
+      return AUTHOR_FILTER_RE.test(raw) ? raw : "";
+    })(),
+    trustedOnly: searchParams.get("trusted_only") === "true",
+  };
+  const initialDates: DateWindows = {
+    eventFrom: searchParams.get("event_date_from") ?? "",
+    eventTo: searchParams.get("event_date_to") ?? "",
+    addedFrom: searchParams.get("submitted_from") ?? "",
+    addedTo: searchParams.get("submitted_to") ?? "",
+  };
+  const arrivedFiltered =
+    Object.values(initialDates).some(Boolean) ||
+    initialValues.conflicts.length > 0 ||
+    initialValues.captureSources.length > 0 ||
+    initialValues.tags.length > 0 ||
+    initialValues.mediaTypes.length > 0 ||
+    !!initialValues.author ||
+    initialValues.trustedOnly;
+  // A filtered link without an explicit type (the profile's "Show more")
+  // lands on the Events scope: filters are event predicates.
+  const initialType =
+    (searchParams.get("type") as SearchType) || (arrivedFiltered ? "event" : "all");
 
   const [queryInput, setQueryInput] = useState(initialQ);
-  const [activeQuery, setActiveQuery] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
+  const [values, setValues] = useState<EventFilterValues>(initialValues);
+  const [dates, setDates] = useState<DateWindows>(initialDates);
+
+  // The debounced snapshot the fetch + URL run on, so typing (the query or
+  // the author field) doesn't fire a request per keystroke.
+  const [committed, setCommitted] = useState({ q: initialQ, values: initialValues, dates: initialDates });
+
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Same pickers as the map: the live taxonomy + the used-conflict list.
+  const { data: tagsData } = useApiResource<Tag[]>("/tags");
+  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+
+  const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
+  const clearFilters = () => {
+    setValues(EMPTY_EVENT_FILTERS);
+    setDates({ eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" });
+  };
+
+  const eventWindowActive = !!(dates.eventFrom || dates.eventTo);
+  const addedWindowActive = !!(dates.addedFrom || dates.addedTo);
+
+  // The shared pill entries plus this surface's two window entries.
+  const activeFilters: ActiveFilter[] = [
+    ...buildActiveFilterPills(values, onPatch),
+    ...(eventWindowActive
+      ? [
+          {
+            key: "event-window",
+            label: `Event: ${rangeSummary(dates.eventFrom, dates.eventTo)}`,
+            onRemove: () => setDates((d) => ({ ...d, eventFrom: "", eventTo: "" })),
+          },
+        ]
+      : []),
+    ...(addedWindowActive
+      ? [
+          {
+            key: "added-window",
+            label: `Added: ${rangeSummary(dates.addedFrom, dates.addedTo)}`,
+            onRemove: () => setDates((d) => ({ ...d, addedFrom: "", addedTo: "" })),
+          },
+        ]
+      : []),
+  ];
+  // The author narrows the view without carrying a pill (its chip lives in
+  // the Author section), so it counts as active on its own.
+  const hasActiveFilters = activeFilters.length > 0 || !!values.author.trim();
+  const onEventScope = EVENT_TYPES.includes(typeFilter);
 
   // Monotonic request token: each fetch increments it, late responses
   // apply only if their token is still latest. Comparing on `response.query`
@@ -75,24 +175,53 @@ function SearchPageBody() {
   // land an older response over a newer one.
   const latestRequestId = useRef<number>(0);
 
-  // Debounced commit: input → activeQuery + URL via `replace` (not `push`)
-  // so the back button doesn't fill with intermediate query states.
+  // Debounced commit: inputs → the committed snapshot + the URL via
+  // `replace` (not `push`) so the back button doesn't fill with
+  // intermediate states.
   useEffect(() => {
     const t = setTimeout(() => {
-      setActiveQuery(queryInput);
+      // Identity-preserving commit: if nothing changed (e.g. the chip click
+      // already committed synchronously), keep the previous object so the
+      // fetch effect doesn't refire on a content-identical snapshot.
+      setCommitted((prev) => {
+        const next = { q: queryInput, values, dates };
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (values.author.trim()) params.set("author", values.author.trim());
+      values.conflicts.forEach((n) => params.append("conflict", n));
+      values.captureSources.forEach((n) => params.append("capture_source", n));
+      values.tags.forEach((n) => params.append("tag", n));
+      values.mediaTypes.forEach((n) => params.append("media", n));
+      if (dates.eventFrom) params.set("event_date_from", dates.eventFrom);
+      if (dates.eventTo) params.set("event_date_to", dates.eventTo);
+      if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
+      if (dates.addedTo) params.set("submitted_to", dates.addedTo);
+      if (values.trustedOnly) params.set("trusted_only", "true");
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [queryInput, typeFilter, router]);
+  }, [queryInput, typeFilter, values, dates, router]);
 
-  // Issue the API call whenever the committed query / type changes.
+  // Issue the API call whenever the committed snapshot / type changes.
+  // Any active filter with an empty query is a valid search (browse mode:
+  // the filtered view, the profile's "Show more" landing).
   useEffect(() => {
-    const q = activeQuery.trim();
-    if (!q) {
+    const q = committed.q.trim();
+    const v = committed.values;
+    const d = committed.dates;
+    const filtersActive =
+      v.conflicts.length > 0 ||
+      v.captureSources.length > 0 ||
+      v.tags.length > 0 ||
+      v.mediaTypes.length > 0 ||
+      !!v.author.trim() ||
+      v.trustedOnly ||
+      Object.values(d).some(Boolean);
+    if (!q && !filtersActive) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -101,7 +230,20 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({ q, type: typeFilter })
+    search({
+      q,
+      type: typeFilter,
+      author: v.author.trim() || undefined,
+      conflict: v.conflicts,
+      captureSource: v.captureSources,
+      tag: v.tags,
+      media: v.mediaTypes,
+      eventDateFrom: d.eventFrom || undefined,
+      eventDateTo: d.eventTo || undefined,
+      submittedFrom: d.addedFrom || undefined,
+      submittedTo: d.addedTo || undefined,
+      trustedOnly: v.trustedOnly,
+    })
       .then((response) => {
         // Stale response (a newer request started since) — drop so the
         // in-flight fetch gets the final word.
@@ -114,7 +256,9 @@ function SearchPageBody() {
         setError(err.message);
         setLoading(false);
       });
-  }, [activeQuery, typeFilter]);
+  }, [committed, typeFilter]);
+
+  const activeQuery = committed.q;
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -123,12 +267,28 @@ function SearchPageBody() {
     );
   }, [results]);
 
-  const onChipClick = useCallback((t: SearchType) => {
+  const onChipClick = (t: SearchType) => {
+    // The filters are event predicates: leaving the Events scope while some
+    // are active would silently keep constraining the event groups, so they
+    // clear with the scope. The committed snapshot updates in the same
+    // render: the fetch effect keys on it plus the type, and letting the
+    // debounce catch up 300 ms later would fire one request with the STALE
+    // filters first (type=user&conflict=… flashing "No matches").
+    if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
+      clearFilters();
+      const cleared: DateWindows = { eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" };
+      setCommitted({ q: queryInput, values: EMPTY_EVENT_FILTERS, dates: cleared });
+    } else {
+      setCommitted({ q: queryInput, values, dates });
+    }
     setTypeFilter(t);
-  }, []);
+  };
 
-  const showGroup = (group: SearchType): boolean =>
-    typeFilter === "all" || typeFilter === group;
+  const showGroup = (group: "geolocation" | "request" | "user"): boolean => {
+    if (typeFilter === "all") return true;
+    if (typeFilter === "event") return group !== "user";
+    return typeFilter === group;
+  };
 
   return (
     <PageShell
@@ -149,7 +309,11 @@ function SearchPageBody() {
           {TYPE_FILTERS.map((opt) => (
             <Pill
               key={opt.value}
-              tone={typeFilter === opt.value ? "accent" : "neutral"}
+              tone={
+                typeFilter === opt.value || (opt.value === "event" && onEventScope)
+                  ? "accent"
+                  : "neutral"
+              }
               icon={opt.icon}
               onClick={() => onChipClick(opt.value)}
             >
@@ -158,18 +322,64 @@ function SearchPageBody() {
           ))}
         </div>
 
-        {activeQuery.trim() && (
+        <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
+
+        {/* Picking the Events scope surfaces the filter panel directly (the
+            sections collapse individually); no separate toggle to find. */}
+        {onEventScope && (
+          <EventFilterSections
+            tags={tagsData ?? []}
+            conflicts={conflictsData ?? []}
+            values={values}
+            onPatch={onPatch}
+            dateSections={[
+              {
+                title: "Event date",
+                concept: "event_date",
+                summary: rangeSummary(dates.eventFrom, dates.eventTo),
+                active: eventWindowActive,
+                children: (
+                  <DateRange
+                    label="Event date"
+                    from={dates.eventFrom}
+                    to={dates.eventTo}
+                    onChange={(from, to) => setDates((d) => ({ ...d, eventFrom: from, eventTo: to }))}
+                  />
+                ),
+              },
+              {
+                title: "Added",
+                concept: "added",
+                summary: rangeSummary(dates.addedFrom, dates.addedTo),
+                active: addedWindowActive,
+                children: (
+                  <DateRange
+                    label="Added"
+                    from={dates.addedFrom}
+                    to={dates.addedTo}
+                    onChange={(from, to) => setDates((d) => ({ ...d, addedFrom: from, addedTo: to }))}
+                  />
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {(activeQuery.trim() || hasActiveFilters) && (
           <div className="flex items-center justify-between text-[11px] text-neutral-500 min-h-[16px]">
             <span>
               {loading
                 ? "Searching…"
                 : results
-                  ? `${totalHits} result${totalHits === 1 ? "" : "s"} for `
+                  ? `${totalHits} result${totalHits === 1 ? "" : "s"}${activeQuery.trim() ? " for " : ""}`
                   : null}
-              {!loading && results && (
+              {!loading && results && activeQuery.trim() && (
                 <span className="text-neutral-300 font-medium">
                   &ldquo;{activeQuery.trim()}&rdquo;
                 </span>
+              )}
+              {!loading && results && values.author.trim() && (
+                <span> by <span className="text-neutral-300 font-medium">@{values.author.trim()}</span></span>
               )}
             </span>
           </div>
@@ -181,16 +391,23 @@ function SearchPageBody() {
           </div>
         )}
 
-        {!activeQuery.trim() && (
+        {/* Emptiness gates read the LIVE inputs (not the debounced snapshot)
+            so clearing filters doesn't flash stale results under the
+            start-typing prompt for a debounce window. */}
+        {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
             Start typing to search across geolocations, requests and analysts.
           </EmptyState>
         )}
 
-        {activeQuery.trim() && results && totalHits === 0 && !loading && (
+        {(activeQuery.trim() || hasActiveFilters) && results && totalHits === 0 && !loading && (
           <EmptyState>
-            No matches for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span>.
-            {typeFilter !== "all" && (
+            No matches
+            {activeQuery.trim() && (
+              <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
+            )}
+            {hasActiveFilters && <> with the active filters</>}.
+            {typeFilter !== "all" && !hasActiveFilters && (
               <>
                 {" "}
                 <button
@@ -206,7 +423,7 @@ function SearchPageBody() {
           </EmptyState>
         )}
 
-        {results && (
+        {(queryInput.trim() || hasActiveFilters) && results && (
           <>
             {showGroup("geolocation") && results.geolocations.length > 0 && (
               <ResultGroup
@@ -237,6 +454,40 @@ function SearchPageBody() {
           </>
         )}
     </PageShell>
+  );
+}
+
+/** The search surface's date controls (the map uses its timeline scrubbers
+ *  for the same two sections): a from/to pair of native date inputs. */
+function DateRange({
+  label,
+  from,
+  to,
+  onChange,
+}: {
+  label: string;
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        aria-label={`${label} from`}
+        className="bg-neutral-800 text-[11px]"
+      />
+      <span className="text-neutral-500 text-xs">–</span>
+      <Input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        aria-label={`${label} to`}
+        className="bg-neutral-800 text-[11px]"
+      />
+    </div>
   );
 }
 

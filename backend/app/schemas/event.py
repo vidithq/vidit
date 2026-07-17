@@ -2,8 +2,9 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import BeforeClosedStatus, EventStatus
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
@@ -11,19 +12,37 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
-class ArchiveImportResult(BaseModel):
-    """Outcome of an archive backfill: how the detections landed.
+class ArchiveImportJobRead(BaseModel):
+    """One archive-import job as the owner polls it.
 
-    The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
-    a live row already held; ``recreated`` a previously rejected pair
-    re-detected; ``failed`` a detection that raised mid-persist and was
-    rolled back (the others still land).
+    ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
+    counts are the assemble outcome, final once ``done`` (zero until then):
+    ``created`` is new ``detected`` rows; ``skipped`` a pair a live row
+    already held; ``recreated`` a previously rejected pair re-detected;
+    ``failed`` a detection that raised mid-persist and was rolled back (the
+    others still land). ``error`` stays operator-oriented and terse; the
+    owner gets the human story by email.
     """
 
-    created: int
-    skipped: int
-    recreated: int
-    failed: int
+    id: uuid.UUID
+    status: ArchiveImportJobStatus
+    # Analyst-facing progress: ``post_estimate`` is the free zip-metadata
+    # volume hint stamped at enqueue (a display hint, not a promise);
+    # ``progress_done`` / ``progress_total`` are the worker's live scan
+    # position once the parse has the exact detection count.
+    post_estimate: int | None
+    progress_done: int
+    progress_total: int | None
+    created: int = Field(validation_alias="created_count")
+    skipped: int = Field(validation_alias="skipped_count")
+    recreated: int = Field(validation_alias="recreated_count")
+    failed: int = Field(validation_alias="failed_count")
+    error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CoordsRead(BaseModel):

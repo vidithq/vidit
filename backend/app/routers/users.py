@@ -10,8 +10,8 @@ from app.models.user import User
 from app.ratelimit import limiter
 from app.routers.events._common import coords_or_none, source_media
 from app.schemas.event import EventList, PaginatedEvents
-from app.schemas.user import UserProfile, UserRead, UserUpdate
-from app.services import social
+from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
+from app.services import social, user_stats
 
 router = APIRouter()
 
@@ -114,6 +114,22 @@ def get_user_profile(
         following_count=following_count,
         is_following=is_following,
     )
+
+
+@router.get("/{username}/stats", response_model=UserStatsRead)
+@limiter.limit("120/minute")
+def get_user_stats(
+    request: Request,
+    username: str,
+    db: Session = Depends(get_db),
+) -> UserStatsRead:
+    """Aggregated shape-of-work stats for a public profile.
+
+    Anonymous like the rest of the profile read surface; live rows only.
+    All aggregation lives in ``services/user_stats``.
+    """
+    user = _get_live_user_or_404(db, username)
+    return user_stats.get_user_stats(db, user_id=user.id)
 
 
 @router.post("/{username}/follow", status_code=status.HTTP_204_NO_CONTENT)

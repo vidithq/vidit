@@ -29,7 +29,7 @@ from app.schemas.user import AuthorRef
 # The ``type=`` query values, echoed back on the response. Mirrors
 # ``services.search.ALLOWED_TYPES`` (kept a plain set there for the runtime
 # membership check); this Literal is the typed contract the OpenAPI spec ships.
-SearchType = Literal["all", "geolocation", "request", "user"]
+SearchType = Literal["all", "event", "geolocation", "request", "user"]
 
 
 class SearchTotals(BaseModel):
@@ -119,3 +119,11 @@ class SearchResponse(BaseModel):
     type: SearchType
 
     model_config = {"from_attributes": True}
+
+
+class AuthorSuggestions(BaseModel):
+    """``GET /search/authors``: usernames for the author-filter typeahead
+    (prefix matches first, then alphabetical). The filter itself is an exact
+    match, so the picker is how a partial name becomes a real handle."""
+
+    authors: list[str]

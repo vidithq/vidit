@@ -50,6 +50,20 @@ An X "Download your data" export additionally exposes the analyst's own reply ed
 - **Telegram footage links**: chased through the post's public embed (`t.me/<channel>/<id>?embed=1`) for the post date and, when the embed serves it, the footage media. A sensitive-content post serves neither, so it degrades to link + date. Only public `t.me/<channel>/<id>` posts are fetched; several distinct footage links leave the source ambiguous and nothing is chased.
 - **Photos and videos**: video capture takes the highest-bitrate mp4 variant the export saved.
 
+## Archive import worker
+
+`POST /events/import-archive` never runs the backfill in the request: a large export's unzip and parse would freeze the single-process API for seconds at a time and hold the HTTP response open for minutes. The endpoint validates the zip (shape + declared sizes, so a bad file 4xxs synchronously), stages it to storage under `archive-imports/<job_id>.zip`, and inserts an [`archive_import_jobs`](data-model.md) row; the worker does the rest.
+
+**Postgres is the queue.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row with `FOR UPDATE SKIP LOCKED` (safe under concurrent workers), stamps it `running`, downloads the staged zip, and runs the same hardened extract + backfill as before, attributed to the job's owner. Terminal states are `done` (assemble counts stamped) and `failed` (terse `error`); both delete the staged object, so the bucket never accumulates raw exports.
+
+**Crash recovery.** A worker killed mid-job leaves the row `running`; it becomes claimable again once `started_at` is older than the stale window (30 min). `started_at` doubles as a liveness heartbeat, re-stamped every 5 min while the job runs, so a legitimately long import never crosses the window while alive and a reclaim never races a still-running first run (e.g. two worker instances overlapping during a rolling deploy). Three attempts, then the job lands `failed` (poison-pill guard). The backfill is idempotent on `(detected_from_url, coordinate)`, so a reclaimed half-applied run never duplicates rows.
+
+**Email.** The job finishes after the analyst has typically navigated away, so the worker emails the outcome: the counts and a link to the Detections queue on success, a retry-safe failure notice otherwise. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
+
+**Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever (5 s idle sleep), one fresh session per pass; `IMPORT_WORKER_ONCE=1` makes a single drain-and-exit pass (by hand, or a cron fallback).
+
+**Scheduler config.** An **always-on** Railway service (not a cron): built from the backend image (root `Dockerfile`), start command `uv run python scripts/run_import_worker.py`, no exposed port, env `DATABASE_URL=${{backend.DATABASE_URL}}` plus the same storage (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) variables as the backend, and `SENTRY_DSN` so a failed job pages instead of sitting in logs.
+
 ## Conflict referential sync
 
 The conflicts an event can be tagged with are not user-created: they live in the [`conflicts`](data-model.md#conflicts) table, fed from two external sources by [`conflict_sync.py`](../backend/app/services/conflict_sync.py) and [`seed_conflicts.py`](../backend/scripts/seed_conflicts.py).

@@ -22,8 +22,8 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { stripArchive } from "@/lib/archive";
-import { importArchive } from "@/lib/events";
-import type { ArchiveImportResult } from "@/types";
+import { ImportPollLost, awaitImportJob, importArchive } from "@/lib/events";
+import type { ArchiveImportJob } from "@/types";
 
 /** X's official walkthrough for requesting the data archive. */
 const X_ARCHIVE_HELP =
@@ -93,16 +93,48 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<ArchiveImportResult | null>(null);
+  const [result, setResult] = useState<ArchiveImportJob | null>(null);
+  // The poll lost sight of the job (transient errors, or a very long run):
+  // the import is still running server-side, so this renders a calm
+  // "check your email" state, never the failure banner.
+  const [pollLost, setPollLost] = useState(false);
+  // Latest polled snapshot while the import runs: the post estimate stamped
+  // at enqueue, then the worker's live scan position (done / total).
+  const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
 
   // Strip to the allowlisted entries in the browser first, then upload, so the
   // sensitive rest of the export never leaves the device (and the upload is a
-  // fraction of the size).
+  // fraction of the size). The upload only enqueues the import (202); the
+  // worker service runs it and emails the outcome, and the poll below keeps
+  // this page live for the analyst who stayed.
   const { run, loading, error } = useMutation(
-    async (archive: File) => importArchive(await stripArchive(archive)),
+    async (archive: File): Promise<ArchiveImportJob | null> => {
+      const queued = await importArchive(await stripArchive(archive));
+      setLiveJob(queued);
+      let job: ArchiveImportJob;
+      try {
+        job = await awaitImportJob(queued.id, { onUpdate: setLiveJob });
+      } catch (err) {
+        if (err instanceof ImportPollLost) return null; // still running
+        throw err;
+      }
+      if (job.status === "failed") {
+        // Same story as the failure email and the API doc: a failed job
+        // keeps whatever landed before the failure, and re-uploading skips
+        // it and continues.
+        throw new Error(
+          "The import failed on our side. Anything imported before the failure is kept; upload the same archive again to continue from there, and reach out on Discord if it keeps failing."
+        );
+      }
+      return job;
+    },
     {
       onSuccess: (res) => {
         refreshDetectionCount();
+        if (res === null) {
+          setPollLost(true);
+          return;
+        }
         // Bridge straight to the review queue when there's fresh work to triage;
         // only stay here when nothing landed (retry) or it was all already imported.
         if (res.created > 0) {
@@ -114,6 +146,26 @@ export function ImportArchivePanel({ username }: { username: string }) {
       onError: importErrorMessage,
     }
   );
+
+  if (pollLost) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-neutral-200">
+          Your archive is uploaded and the import is still running in the background.
+          You can leave this page: we&apos;ll email you when it finishes, and new
+          detections land in your review queue as they&apos;re created.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Link
+            href={`/profile/${username}/detections`}
+            className={buttonClasses("primary")}
+          >
+            Open the detections queue
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Reached only when the import created nothing. Three cases: some posts failed
   // to persist (retry the same file), the archive was already fully imported
@@ -250,10 +302,19 @@ export function ImportArchivePanel({ username }: { username: string }) {
           {loading ? "Importing…" : "Import archive"}
         </Button>
         {loading && (
-          <p className="text-xs text-neutral-500">
-            Keeping only your posts, then uploading and detecting geolocations. A large
-            archive can take a moment.
-          </p>
+          <div className="space-y-1.5">
+            <p className="text-xs text-neutral-300">
+              {liveJob === null
+                ? "Keeping only your posts, then uploading…"
+                : liveJob.progress_total !== null
+                  ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`
+                  : `Queued · ~${(liveJob.post_estimate ?? 1).toLocaleString()} post${(liveJob.post_estimate ?? 1) === 1 ? "" : "s"} in your archive, waiting for the importer.`}
+            </p>
+            <p className="text-xs text-neutral-500">
+              You can close this page: the import keeps running and we email you
+              when it finishes.
+            </p>
+          </div>
         )}
       </form>
     </div>

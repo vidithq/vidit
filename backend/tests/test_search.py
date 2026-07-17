@@ -629,3 +629,300 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
+
+
+# ── Author filter ─────────────────────────────────────────────────────────
+# ``?author=<username>`` scopes the event groups to one owner (the profile's
+# "Show more" entry point); with an empty ``q`` it browses that author's
+# whole view, newest first, plain titles as their own highlight.
+
+
+@pytest.fixture
+def other_author(db):
+    user = User(
+        username=f"otherauth{uuid.uuid4().hex[:8]}",
+        email=f"other-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def _seed_geo(db, owner, title):
+    geo = Event(
+        owner_id=owner.id,
+        title=title,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/post-a",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add(geo)
+    db.commit()
+    return geo.id
+
+
+def test_author_filter_scopes_event_groups_and_empties_users(db, caller, other_author):
+    token = _unique_token()
+    mine = _seed_geo(db, caller, f"Strike {token} east")
+    theirs = _seed_geo(db, other_author, f"Strike {token} west")
+    try:
+        response = client.get(f"/api/v1/search?q={token}&author={caller.username}")
+        assert response.status_code == 200
+        body = response.json()
+        assert [h["id"] for h in body["geolocations"]] == [str(mine)]
+        assert body["total"]["geolocations"] == 1
+        # The users group empties under an author scope, even on type=all:
+        # the caller's username would otherwise match itself.
+        assert body["users"] == []
+        assert body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id.in_([mine, theirs])).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_author_with_empty_query_browses_the_authors_view(db, caller, other_author):
+    token = _unique_token()
+    older = _seed_geo(db, caller, f"First {token}")
+    newer = _seed_geo(db, caller, f"Second {token}")
+    noise = _seed_geo(db, other_author, f"Noise {token}")
+    request_row = Event(
+        owner_id=caller.id,
+        requested_by_id=caller.id,
+        title=f"Where is {token}",
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+        # A request always carries the footage it asks about
+        # (``ck_events_source_url_status``).
+        source_url="https://example.com/request-footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+    )
+    db.add(request_row)
+    db.commit()
+    request_id = request_row.id
+    try:
+        response = client.get(f"/api/v1/search?author={caller.username}")
+        assert response.status_code == 200
+        body = response.json()
+        geo_ids = [h["id"] for h in body["geolocations"]]
+        # Browse mode: the author's located view, newest first, noise excluded.
+        assert geo_ids.index(str(newer)) < geo_ids.index(str(older))
+        assert str(noise) not in geo_ids
+        # No FTS predicate, so the plain title stands in for the highlight.
+        newest = next(h for h in body["geolocations"] if h["id"] == str(newer))
+        assert newest["title_highlight"] == newest["title"]
+        assert HIGHLIGHT_START not in newest["title_highlight"]
+        # The requested view rides the same scope.
+        assert str(request_id) in [h["id"] for h in body["requests"]]
+    finally:
+        db.query(Event).filter(Event.id.in_([older, newer, noise, request_id])).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+def test_author_unknown_returns_empty_groups(caller):
+    response = client.get("/api/v1/search?author=no-such-analyst-here")
+    assert response.status_code == 200
+    assert all(response.json()[k] == [] for k in ("geolocations", "requests", "users"))
+
+
+def test_author_rejects_malformed_username():
+    response = client.get("/api/v1/search?q=x&author=bad%20name%21")
+    assert response.status_code == 422
+
+
+# ── The shared filter set ─────────────────────────────────────────────────
+# /search composes the same predicates as /events and /events/points
+# (services/event_filters). A spot-check per family, not the full matrix:
+# the predicate internals are pinned by the /events read suite.
+
+
+def test_conflict_filter_scopes_search(db, caller):
+    from app.models.conflict import Conflict
+
+    token = _unique_token()
+    row = Conflict(name=f"conf-{token}", ongoing=True, source="manual")
+    db.add(row)
+    db.commit()
+    tagged = _seed_geo(db, caller, f"Tagged {token}")
+    tagged_event = db.query(Event).filter(Event.id == tagged).one()
+    tagged_event.conflicts.append(row)
+    untagged = _seed_geo(db, caller, f"Untagged {token}")
+    db.commit()
+    try:
+        response = client.get(f"/api/v1/search?q={token}&conflict=conf-{token}")
+        assert response.status_code == 200
+        body = response.json()
+        assert [h["id"] for h in body["geolocations"]] == [str(tagged)]
+        # Any active event filter empties the users group, not just author.
+        assert body["users"] == [] and body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id.in_([tagged, untagged])).delete(synchronize_session=False)
+        db.execute(Conflict.__table__.delete().where(Conflict.id == row.id))
+        db.commit()
+
+
+def test_event_date_filter_scopes_search_and_browses(db, caller):
+    token = _unique_token()
+    inside = _seed_geo(db, caller, f"Inside {token}")
+    outside = _seed_geo(db, caller, f"Outside {token}")
+    db.query(Event).filter(Event.id == outside).update({"event_date": date(2020, 1, 1)})
+    db.commit()
+    try:
+        # With a query.
+        response = client.get(f"/api/v1/search?q={token}&event_date_from=2026-01-01")
+        ids = [h["id"] for h in response.json()["geolocations"]]
+        assert str(inside) in ids and str(outside) not in ids
+        # Browse mode: the date window alone is an active filter (no q).
+        response = client.get(f"/api/v1/search?author={caller.username}&event_date_from=2026-01-01")
+        ids = [h["id"] for h in response.json()["geolocations"]]
+        assert str(inside) in ids and str(outside) not in ids
+    finally:
+        db.query(Event).filter(Event.id.in_([inside, outside])).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_garbage_date_filter_returns_422(caller):
+    response = client.get("/api/v1/search?q=x&event_date_from=not-a-date")
+    assert response.status_code == 422
+
+
+def test_garbage_media_filter_returns_422(caller):
+    response = client.get("/api/v1/search?q=x&media=hologram")
+    assert response.status_code == 422
+
+
+def test_type_event_returns_both_event_groups_without_users(db, caller):
+    """``type=event`` is the unified reader chip: both event groups, no
+    analyst hits even when the query matches a username."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Event-type {token}")
+    try:
+        response = client.get(f"/api/v1/search?q={token}&type=event")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["type"] == "event"
+        assert [h["id"] for h in body["geolocations"]] == [str(geo)]
+        assert body["requests"] == []
+        assert body["users"] == [] and body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+# ── Author typeahead ──────────────────────────────────────────────────────
+
+
+def test_author_suggestions_substring_prefix_first(db, caller, other_author):
+    """The picker matches a substring but surfaces prefix matches first; the
+    filter itself stays exact, so this is how a fragment becomes a handle.
+    Only analysts owning >=1 live event are suggested: that is all the filter
+    can match, and it keeps the anonymous endpoint from doubling as an
+    account-enumeration oracle."""
+    geo = _seed_geo(db, caller, f"Suggestable {_unique_token()}")
+    try:
+        fragment = caller.username[:6]  # "caller" prefix shared by the fixture pool
+        response = client.get(f"/api/v1/search/authors?q={fragment}")
+        assert response.status_code == 200
+        authors = response.json()["authors"]
+        assert caller.username in authors
+        assert other_author.username not in authors
+        # A mid-string fragment still matches (substring, not prefix-only).
+        mid = caller.username[2:8]
+        response = client.get(f"/api/v1/search/authors?q={mid}")
+        assert caller.username in response.json()["authors"]
+        # An account with no live event is never suggested, even on an exact
+        # username probe (the enumeration guard).
+        response = client.get(f"/api/v1/search/authors?q={other_author.username}")
+        assert response.json()["authors"] == []
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_author_suggestions_exclude_soft_deleted(db, caller):
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    geo = _seed_geo(db, caller, f"Deleted owner {_unique_token()}")
+    caller.deleted_at = _dt.now(_UTC)
+    db.commit()
+    try:
+        response = client.get(f"/api/v1/search/authors?q={caller.username}")
+        assert response.status_code == 200
+        assert caller.username not in response.json()["authors"]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_author_suggestions_empty_and_invalid_q(caller):
+    assert client.get("/api/v1/search/authors?q=").json()["authors"] == []
+    assert client.get("/api/v1/search/authors?q=bad%20name%21").status_code == 422
+
+
+def test_author_filter_is_exact_on_search(db, caller):
+    """`?author=` on /search matches exactly, never a fragment sweep."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Exact {token}")
+    try:
+        fragment = caller.username[:6]
+        response = client.get(f"/api/v1/search?q={token}&author={fragment}")
+        assert response.status_code == 200
+        assert response.json()["geolocations"] == []
+        response = client.get(f"/api/v1/search?q={token}&author={caller.username.upper()}")
+        assert [h["id"] for h in response.json()["geolocations"]] == [str(geo)]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
+    """Browse mode (no FTS, plain title as its own highlight) still strips
+    planted STX/ETX bytes, same guarantee as the ts_headline branch: a
+    crafted title must not render fake <mark>s on the anonymous surface."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Planted {HIGHLIGHT_START}fake{HIGHLIGHT_STOP} {token}")
+    try:
+        response = client.get(f"/api/v1/search?author={caller.username}")
+        assert response.status_code == 200
+        hit = next(h for h in response.json()["geolocations"] if h["id"] == str(geo))
+        assert HIGHLIGHT_START not in hit["title_highlight"]
+        assert HIGHLIGHT_STOP not in hit["title_highlight"]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_fts_query_uses_the_gin_index(db):
+    """The ORM-built tsvector expression must stay expression-tree-equal to
+    the migration's GIN index expression, or the whole anonymous search
+    surface silently degrades to sequential scans. Pin it with EXPLAIN."""
+    from sqlalchemy import func as safunc
+    from sqlalchemy import text as satext
+
+    from app.services import search as search_service
+
+    tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
+    # ONLY the FTS predicate, nothing else: with other filter legs in the
+    # WHERE, a near-empty table (CI) lets the planner satisfy the query via
+    # some other index at trivial cost. Alone, no btree can serve a
+    # ``@@`` match, so with seq scans discouraged the plan uses the GIN iff
+    # the expression still matches the index tree; a drift shows as a forced
+    # Seq Scan. Matchability, not costing. Session-scoped toggle, reset below.
+    stmt = db.query(Event.id).filter(search_service._geo_tsvector().op("@@")(tsquery))
+    compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
+    db.execute(satext("SET enable_seqscan = off"))
+    try:
+        plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+    finally:
+        db.execute(satext("RESET enable_seqscan"))
+    assert "ix_events_search_fts" in plan, plan
