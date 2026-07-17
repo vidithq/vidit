@@ -910,16 +910,16 @@ def test_fts_query_uses_the_gin_index(db):
     from sqlalchemy import text as satext
 
     from app.services import search as search_service
-    from app.services.event_filters import EventFilters
 
     tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
-    stmt = EventFilters().apply(db.query(Event.id), view="located")
-    stmt = stmt.filter(search_service._geo_tsvector().op("@@")(tsquery))
+    # ONLY the FTS predicate, nothing else: with other filter legs in the
+    # WHERE, a near-empty table (CI) lets the planner satisfy the query via
+    # some other index at trivial cost. Alone, no btree can serve a
+    # ``@@`` match, so with seq scans discouraged the plan uses the GIN iff
+    # the expression still matches the index tree; a drift shows as a forced
+    # Seq Scan. Matchability, not costing. Session-scoped toggle, reset below.
+    stmt = db.query(Event.id).filter(search_service._geo_tsvector().op("@@")(tsquery))
     compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
-    # ``enable_seqscan = off`` makes this a test of index MATCHABILITY, not of
-    # the planner's cost choice: on a near-empty table (CI) a seq scan is the
-    # correct plan even when the index matches, and that must not fail the
-    # pin. Session-scoped; reset below.
     db.execute(satext("SET enable_seqscan = off"))
     try:
         plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
