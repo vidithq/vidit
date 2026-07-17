@@ -866,3 +866,20 @@ def test_author_filter_is_exact_on_search(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
         db.commit()
+
+
+def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
+    """Browse mode (no FTS, plain title as its own highlight) still strips
+    planted STX/ETX bytes, same guarantee as the ts_headline branch: a
+    crafted title must not render fake <mark>s on the anonymous surface."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Planted {HIGHLIGHT_START}fake{HIGHLIGHT_STOP} {token}")
+    try:
+        response = client.get(f"/api/v1/search?author={caller.username}")
+        assert response.status_code == 200
+        hit = next(h for h in response.json()["geolocations"] if h["id"] == str(geo))
+        assert HIGHLIGHT_START not in hit["title_highlight"]
+        assert HIGHLIGHT_STOP not in hit["title_highlight"]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()

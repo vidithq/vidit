@@ -367,18 +367,43 @@ export function getImportJob(jobId: string): Promise<ArchiveImportJob> {
   return apiFetch<ArchiveImportJob>(`/events/import-archive/${jobId}`);
 }
 
+/** The poll gave up (transient errors piled up, or the run outlived the
+ *  window) while the job itself may still land: "we lost sight of it", never
+ *  "it failed". The completion email stays the durable signal. */
+export class ImportPollLost extends Error {}
+
 /**
  * Poll `jobId` until the worker lands it (`done` | `failed`); resolve with the
  * terminal job. Resolution can take minutes on a large archive: the completion
  * email is the durable signal, this keeps the upload page live while it's open.
+ * A transient poll failure (network blip, a stray 429) is retried, not
+ * surfaced as an import failure; only `maxErrors` consecutive misses or the
+ * overall `timeoutMs` give up, with `ImportPollLost`.
  */
 export async function awaitImportJob(
   jobId: string,
-  { intervalMs = 2500 }: { intervalMs?: number } = {}
+  {
+    intervalMs = 2500,
+    maxErrors = 8,
+    timeoutMs = 15 * 60_000,
+  }: { intervalMs?: number; maxErrors?: number; timeoutMs?: number } = {}
 ): Promise<ArchiveImportJob> {
+  const deadline = Date.now() + timeoutMs;
+  let consecutiveErrors = 0;
   for (;;) {
-    const job = await getImportJob(jobId);
-    if (job.status === "done" || job.status === "failed") return job;
+    try {
+      const job = await getImportJob(jobId);
+      consecutiveErrors = 0;
+      if (job.status === "done" || job.status === "failed") return job;
+    } catch {
+      consecutiveErrors += 1;
+      if (consecutiveErrors >= maxErrors) {
+        throw new ImportPollLost("import job polling lost after repeated errors");
+      }
+    }
+    if (Date.now() >= deadline) {
+      throw new ImportPollLost("import job polling timed out");
+    }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }

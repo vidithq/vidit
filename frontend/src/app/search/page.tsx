@@ -13,7 +13,7 @@ import Link from "next/link";
 import { MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
-import { search, splitHighlights } from "@/lib/search";
+import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
@@ -89,7 +89,12 @@ function SearchPageBody() {
     captureSources: searchParams.getAll("capture_source"),
     tags: searchParams.getAll("tag"),
     mediaTypes: searchParams.getAll("media"),
-    author: searchParams.get("author") ?? "",
+    // A crafted URL can carry anything; the shared gate keeps an ineligible
+    // value from 422ing every fetch on the page.
+    author: (() => {
+      const raw = searchParams.get("author") ?? "";
+      return AUTHOR_FILTER_RE.test(raw) ? raw : "";
+    })(),
     trustedOnly: searchParams.get("trusted_only") === "true",
   };
   const initialDates: DateWindows = {

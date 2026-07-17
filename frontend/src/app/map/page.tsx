@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
+import { AUTHOR_FILTER_RE } from "@/lib/search";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -64,11 +65,11 @@ export default function HomePage() {
     selectedMediaTypes.forEach((m) => params.append("media", m));
     if (trustedOnly) params.set("trusted_only", "true");
     if (hideDemo) params.set("hide_demo", "true");
-    // Strip chars outside the backend whitelist (`[A-Za-z0-9_-]{1,50}`) so
-    // a stray `%` or space doesn't trip the LIKE-injection guard's 422.
-    // Drop the param entirely if nothing's left (an empty value also 422s).
-    const cleanAuthor = authorFilter.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
-    if (cleanAuthor) params.set("author", cleanAuthor);
+    // The commit-style Author section only applies gated values, but the
+    // context could carry a stale one; the shared gate (same source as the
+    // section's commit) keeps an ineligible value from 422ing the fetch.
+    const cleanAuthor = authorFilter.trim();
+    if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
 
     setLoading(true);
     apiFetch<MapPoint[]>(`/events/points?${params.toString()}`, {

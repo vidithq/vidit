@@ -47,6 +47,14 @@ export function search(opts: {
 }
 
 /**
+ * The `?author=` charset gate, mirroring the backend's
+ * `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`): the single frontend
+ * source for "is this a committable author value". Anything else would 422
+ * server-side and surface as a broken-looking error banner.
+ */
+export const AUTHOR_FILTER_RE = /^[A-Za-z0-9_-]{1,50}$/;
+
+/**
  * Username typeahead for the author filter: `GET /search/authors`. The
  * author filter is an exact match, so this picker is how a partial name
  * becomes a real handle (prefix matches first, capped server-side).

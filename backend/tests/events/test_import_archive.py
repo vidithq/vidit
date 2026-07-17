@@ -11,6 +11,7 @@ media, so a ``detected`` row lands with zero S3 work.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import uuid
 import zipfile
@@ -252,3 +253,35 @@ def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_em
     assert job.status == "failed"
     assert job.error == "attempt budget spent"
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
+
+
+def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypatch):
+    """While a job runs, the worker re-stamps ``started_at`` so a legitimately
+    long import never crosses the stale-reclaim window (and a second worker
+    can't double-run it)."""
+    from datetime import timedelta
+
+    monkeypatch.setattr(archive_jobs, "HEARTBEAT_INTERVAL", timedelta(milliseconds=10))
+
+    async def _slow_backfill(*args, **kwargs):
+        await asyncio.sleep(0.08)  # several heartbeat ticks
+        raise RuntimeError("stop after heartbeats")
+
+    monkeypatch.setattr(archive_jobs, "backfill_from_archive", _slow_backfill)
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+
+    claimed_at = None
+
+    async def _run():
+        nonlocal claimed_at
+        claimed = archive_jobs.claim_next(db)
+        claimed_at = claimed.started_at
+        with contextlib.suppress(RuntimeError):
+            await archive_jobs.process(db, claimed)
+
+    asyncio.run(_run())
+    db.expire_all()
+    refreshed = db.get(ArchiveImportJob, job.id)
+    assert refreshed.started_at is not None and claimed_at is not None
+    assert refreshed.started_at > claimed_at

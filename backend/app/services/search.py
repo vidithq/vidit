@@ -131,7 +131,12 @@ def _search_events(
     else:
         stmt = db.query(
             Event.id,
-            Event.title.label("title_highlight"),
+            # The plain title stands in for the highlight, but still through
+            # the sentinel strip: a title with planted STX/ETX bytes must not
+            # render fake <mark>s just because this branch skips ts_headline.
+            func.translate(
+                Event.title, literal_column("chr(2) || chr(3)"), literal_column("''")
+            ).label("title_highlight"),
             func.count().over().label("total_count"),
         )
         stmt = filters.apply(stmt, view=view).filter(*extra_criteria)

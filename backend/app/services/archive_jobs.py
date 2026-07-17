@@ -10,15 +10,21 @@ emails the owner. Postgres is the queue: no broker, jobs survive API and
 worker restarts, and two worker processes can't double-run a job.
 
 A worker killed mid-job leaves the row ``running``; a later pass reclaims it
-once ``started_at`` is older than ``STALE_RUNNING_AFTER``. ``MAX_ATTEMPTS``
-bounds the reclaim loop: a job that keeps dying lands ``failed`` (poison-pill
-guard, e.g. an archive that OOMs the worker every time). The backfill itself
-is idempotent (re-import skips existing pairs), so a reclaimed half-applied
-run never duplicates rows.
+once ``started_at`` is older than ``STALE_RUNNING_AFTER``. ``started_at``
+doubles as a liveness heartbeat: the processing worker re-stamps it every
+``HEARTBEAT_INTERVAL`` while the job runs, so a legitimately long import (a
+large archive with ``chase=True`` network fetches) never crosses the stale
+window while alive, and a reclaim never races a still-running first run
+(e.g. two worker instances overlapping during a rolling deploy).
+``MAX_ATTEMPTS`` bounds the reclaim loop: a job that keeps dying lands
+``failed`` (poison-pill guard, e.g. an archive that OOMs the worker every
+time). The backfill itself is idempotent (re-import skips existing pairs),
+so a reclaimed half-applied run never duplicates rows.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 import uuid
@@ -31,6 +37,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import SessionLocal
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.user import User
 from app.services import email
@@ -42,6 +49,10 @@ logger = logging.getLogger(__name__)
 
 STAGING_PREFIX = "archive-imports/"
 STALE_RUNNING_AFTER = timedelta(minutes=30)
+# Liveness re-stamp cadence while a job runs; far under the stale window so a
+# live job can miss several beats (a long sync parse stretch blocks the loop)
+# and still never read as dead.
+HEARTBEAT_INTERVAL = timedelta(minutes=5)
 MAX_ATTEMPTS = 3
 
 
@@ -106,20 +117,45 @@ def claim_next(db: Session) -> ArchiveImportJob | None:
     return job
 
 
+async def _heartbeat(job_id: uuid.UUID) -> None:
+    """Re-stamp ``started_at`` every ``HEARTBEAT_INTERVAL`` while a job runs.
+
+    Its own short-lived session per beat: the processing session is busy
+    inside the backfill transaction and can't be shared across tasks. A beat
+    that fails (transient DB blip) is logged and retried on the next tick,
+    never fatal to the job.
+    """
+    while True:
+        await asyncio.sleep(HEARTBEAT_INTERVAL.total_seconds())
+        hb = SessionLocal()
+        try:
+            hb.query(ArchiveImportJob).filter(ArchiveImportJob.id == job_id).update(
+                {"started_at": datetime.now(UTC)}, synchronize_session=False
+            )
+            hb.commit()
+        except Exception:  # noqa: BLE001
+            logger.warning("archive import heartbeat failed for job %s", job_id)
+        finally:
+            hb.close()
+
+
 async def process(db: Session, job: ArchiveImportJob) -> None:
     """Run one claimed job to a terminal state.
 
     Downloads the staged zip, extracts under the same hardened allowlist as
     before, runs the backfill attributed to the job's owner, stamps the
-    counts, and emails. A failure lands the row ``failed`` with the reason,
-    notifies the owner, and re-raises for the caller's Sentry capture; the
-    staged object is deleted on both outcomes.
+    counts, and emails. A liveness heartbeat re-stamps ``started_at`` for the
+    whole run so the stale-reclaim window never fires on a job that is merely
+    long. A failure lands the row ``failed`` with the reason, notifies the
+    owner, and re-raises for the caller's Sentry capture; the staged object
+    is deleted on both outcomes.
     """
     owner = db.get(User, job.owner_id)
     if owner is None or owner.deleted_at is not None:
         _finish(db, job, status="failed", error="owner gone")
         return
 
+    heartbeat = asyncio.create_task(_heartbeat(job.id))
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -137,6 +173,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
         _finish(db, job, status="failed", error=f"{type(exc).__name__}: {exc}")
         _notify_failure_best_effort(db, job)
         raise
+    finally:
+        heartbeat.cancel()
     job.created_count = len(outcome.created)
     job.skipped_count = outcome.skipped
     job.recreated_count = outcome.recreated

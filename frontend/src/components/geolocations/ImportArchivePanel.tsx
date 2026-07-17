@@ -22,7 +22,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { stripArchive } from "@/lib/archive";
-import { awaitImportJob, importArchive } from "@/lib/events";
+import { ImportPollLost, awaitImportJob, importArchive } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
 
 /** X's official walkthrough for requesting the data archive. */
@@ -94,6 +94,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportJob | null>(null);
+  // The poll lost sight of the job (transient errors, or a very long run):
+  // the import is still running server-side, so this renders a calm
+  // "check your email" state, never the failure banner.
+  const [pollLost, setPollLost] = useState(false);
 
   // Strip to the allowlisted entries in the browser first, then upload, so the
   // sensitive rest of the export never leaves the device (and the upload is a
@@ -101,9 +105,15 @@ export function ImportArchivePanel({ username }: { username: string }) {
   // worker service runs it and emails the outcome, and the poll below keeps
   // this page live for the analyst who stayed.
   const { run, loading, error } = useMutation(
-    async (archive: File) => {
+    async (archive: File): Promise<ArchiveImportJob | null> => {
       const queued = await importArchive(await stripArchive(archive));
-      const job = await awaitImportJob(queued.id);
+      let job: ArchiveImportJob;
+      try {
+        job = await awaitImportJob(queued.id);
+      } catch (err) {
+        if (err instanceof ImportPollLost) return null; // still running
+        throw err;
+      }
       if (job.status === "failed") {
         throw new Error(
           "The import failed on our side; nothing from this upload was published. Try again, and reach out on Discord if it keeps failing."
@@ -114,6 +124,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
     {
       onSuccess: (res) => {
         refreshDetectionCount();
+        if (res === null) {
+          setPollLost(true);
+          return;
+        }
         // Bridge straight to the review queue when there's fresh work to triage;
         // only stay here when nothing landed (retry) or it was all already imported.
         if (res.created > 0) {
@@ -125,6 +139,26 @@ export function ImportArchivePanel({ username }: { username: string }) {
       onError: importErrorMessage,
     }
   );
+
+  if (pollLost) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-neutral-200">
+          Your archive is uploaded and the import is still running in the background.
+          You can leave this page: we&apos;ll email you when it finishes, and new
+          detections land in your review queue as they&apos;re created.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Link
+            href={`/profile/${username}/detections`}
+            className={buttonClasses("primary")}
+          >
+            Open the detections queue
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Reached only when the import created nothing. Three cases: some posts failed
   // to persist (retry the same file), the archive was already fully imported

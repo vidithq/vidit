@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { suggestAuthors } from "@/lib/search";
+import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
@@ -139,7 +139,9 @@ export function EventFilterSections({
   const [authorSuggestions, setAuthorSuggestions] = useState<string[]>([]);
   const commitAuthor = (name: string) => {
     const v = name.trim();
-    if (!v) return;
+    // Same gate as the server's ?author= pattern: an ineligible draft (space,
+    // @, too long) is silently not committed instead of 422ing the surface.
+    if (!AUTHOR_FILTER_RE.test(v)) return;
     onPatch({ author: v });
     setAuthorDraft("");
     setAuthorSuggestions([]);
@@ -149,7 +151,7 @@ export function EventFilterSections({
   // characters the ?author= gate rejects) clear the list instead of 422ing.
   useEffect(() => {
     const v = authorDraft.trim();
-    if (!/^[A-Za-z0-9_-]{2,50}$/.test(v)) {
+    if (v.length < 2 || !AUTHOR_FILTER_RE.test(v)) {
       setAuthorSuggestions([]);
       return;
     }

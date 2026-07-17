@@ -178,8 +178,12 @@ def archive_import_complete_email(
     failed: int,
     detections_link: str,
 ) -> Email:
-    detections = created + recreated
-    lines = [f"  {detections} new detection{'s' if detections != 1 else ''} created"]
+    # ``created`` already includes the re-created rows (the assemble outcome
+    # appends them to ``created`` and bumps ``recreated`` on top), so the
+    # headline count is ``created`` alone; recreated is a subset callout.
+    lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
+    if recreated:
+        lines.append(f"  {recreated} of them re-created after an earlier dismissal")
     if skipped:
         lines.append(f"  {skipped} already imported (skipped)")
     if failed:
@@ -193,8 +197,8 @@ def archive_import_complete_email(
             "\n"
             f"{counts}\n"
             "\n"
-            "Each detection is a draft only you can see attributed like this;\n"
-            "review them and geolocate the ones you vouch for:\n"
+            "Each detection is a draft attributed to you; review them and\n"
+            "geolocate the ones you vouch for:\n"
             "\n"
             f"  {detections_link}\n"
             "\n"

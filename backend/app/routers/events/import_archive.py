@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.dependencies import get_current_user, get_db
 from app.models.archive_import_job import ArchiveImportJob
@@ -76,9 +77,13 @@ async def import_archive(
         except archive_zip.ArchiveIntakeError as exc:
             raise_typed_error(exc, _ARCHIVE_STATUS)
 
-        # One bounded read: the staged object is capped by MAX_UPLOAD_BYTES, so
-        # the transient buffer is bounded too.
-        job = archive_jobs.enqueue(db, owner=current_user, zip_bytes=zip_path.read_bytes())
+        # One bounded read (the staged object is capped by MAX_UPLOAD_BYTES),
+        # in a worker thread: the read + the storage put are blocking I/O, and
+        # a multi-second stall on the single-process event loop is the exact
+        # failure mode this endpoint's async rework removed.
+        job = await run_in_threadpool(
+            lambda: archive_jobs.enqueue(db, owner=current_user, zip_bytes=zip_path.read_bytes())
+        )
 
     logger.info("Archive import staged for user %s: job %s", current_user.id, job.id)
     return job
