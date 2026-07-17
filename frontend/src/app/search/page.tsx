@@ -159,7 +159,9 @@ function SearchPageBody() {
         ]
       : []),
   ];
-  const hasActiveFilters = activeFilters.length > 0;
+  // The author narrows the view without carrying a pill (its chip lives in
+  // the Author section), so it counts as active on its own.
+  const hasActiveFilters = activeFilters.length > 0 || !!values.author.trim();
   const onEventScope = EVENT_TYPES.includes(typeFilter);
 
   // Monotonic request token: each fetch increments it, late responses

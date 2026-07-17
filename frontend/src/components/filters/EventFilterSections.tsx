@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { User } from "lucide-react";
 
 import { suggestAuthors } from "@/lib/search";
 
@@ -74,7 +73,10 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
 const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** The removable-pill entries for the common filter values; the surfaces
- *  append their date-window entries to the same array. */
+ *  append their date-window entries to the same array. The author is NOT a
+ *  pill: its committed chip already lives inside the Author section, and a
+ *  second "by @x" above it was pure duplication. Surfaces that show an
+ *  active-filter total count it on top of these entries. */
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
@@ -102,16 +104,6 @@ export function buildActiveFilterPills(
       label: capitalize(n),
       onRemove: () => drop("mediaTypes", n),
     })),
-    ...(values.author.trim()
-      ? [
-          {
-            key: "author",
-            label: `by @${values.author.trim()}`,
-            icon: <User size={11} />,
-            onRemove: () => onPatch({ author: "" }),
-          },
-        ]
-      : []),
     ...(values.trustedOnly
       ? [{ key: "trusted", label: "Trusted only", onRemove: () => onPatch({ trustedOnly: false }) }]
       : []),

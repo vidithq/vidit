@@ -144,7 +144,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
       ? [{ key: "hide-demo", label: "Demo hidden", onRemove: () => setHideDemo(false) }]
       : []),
   ];
-  const hasActiveFilters = activeFilters.length > 0;
+  // The author narrows the view without carrying a pill (its chip lives in
+  // the Author section), so the badge counts it on top of the pill entries:
+  // a filtered map must never read as unfiltered.
+  const activeFilterCount = activeFilters.length + (values.author.trim() ? 1 : 0);
+  const hasActiveFilters = activeFilterCount > 0;
 
   return (
     <div className="absolute top-4 left-[72px] z-1000 w-72">
@@ -157,7 +161,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
           <span className="text-neutral-300 font-medium">Filters</span>
           {hasActiveFilters && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-medium">
-              {activeFilters.length}
+              {activeFilterCount}
             </span>
           )}
         </div>
@@ -172,9 +176,10 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
         </div>
       </button>
 
-      {hasActiveFilters && (
+      {activeFilters.length > 0 && (
         // Solid strip: the pills' accent surface is translucent, and bare over
-        // the canvas the map labels bled through the row.
+        // the canvas the map labels bled through the row. Only when there are
+        // pill entries: an author-only filter shows in its section, not here.
         <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 py-2">
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         </div>
