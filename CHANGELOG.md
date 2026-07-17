@@ -8,6 +8,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+---
+
+## v0.4.0, 2026-07-17
+
 ### Added
 - **Durable worker for the archive import + completion email** ([`backend/app/services/archive_jobs.py`](backend/app/services/archive_jobs.py), [`backend/scripts/run_import_worker.py`](backend/scripts/run_import_worker.py), [`docs/ingestion.md`](docs/ingestion.md)). `POST /events/import-archive` no longer runs the backfill in the request (the unzip + parse of a large export froze the single-process event loop and held the response open for minutes): it validates the zip metadata-only, stages it to storage, and returns a `queued` job (202) from the new `archive_import_jobs` table. The always-on worker service claims jobs with `FOR UPDATE SKIP LOCKED` (stale-`running` reclaim with a `started_at` liveness heartbeat so long imports are never double-run, a 3-attempt poison-pill cap; staged zips deleted at terminal states), runs the same hardened backfill, and emails the analyst the counts with a link to their Detections queue (failure gets a retry-safe notice; the upload page's poll retries transient errors and degrades to a "still running, check your email" state instead of a false failure). The import panel polls the new owner-only `GET /events/import-archive/{job_id}` while it stays open, and tells the analyst they can leave.
 
