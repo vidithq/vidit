@@ -7,6 +7,7 @@ import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { Pill } from "@/components/ui/Pill";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -134,6 +135,18 @@ export function EventFilterSections({
   extraToggles?: ReactNode;
 }) {
   const [showAllTags, setShowAllTags] = useState(false);
+  // The author input is commit-style, like picking a tag chip: typing stays
+  // local, Enter applies it (one server-side author at a time, so a commit
+  // replaces), and the committed value renders as a removable chip below.
+  // Live-filtering per keystroke refetched the surface on every letter and
+  // flashed partial "by @a" pills.
+  const [authorDraft, setAuthorDraft] = useState("");
+  const commitAuthor = () => {
+    const v = authorDraft.trim();
+    if (!v) return;
+    onPatch({ author: v });
+    setAuthorDraft("");
+  };
   // Accordion open-state lives here (not per-section) so a re-render never
   // resets which sections are expanded. Curated buckets open by default.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -258,14 +271,36 @@ export function EventFilterSections({
         open={!!openSections["Author"]}
         onToggle={() => toggleSection("Author")}
       >
-        <input
-          type="text"
-          value={values.author}
-          onChange={(e) => onPatch({ author: e.target.value })}
-          placeholder="Username..."
-          aria-label="Author username"
-          className="w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
-        />
+        <div className="space-y-2">
+          {values.author.trim() && (
+            <div className="flex flex-wrap gap-1.5">
+              <Pill
+                tone="accent"
+                title="Remove the author filter"
+                onClick={() => onPatch({ author: "" })}
+              >
+                @{values.author.trim()}
+              </Pill>
+            </div>
+          )}
+          <input
+            type="text"
+            value={authorDraft}
+            onChange={(e) => setAuthorDraft(e.target.value)}
+            // Enter-only commit (no blur commit): clicking away mid-typing
+            // must not apply a partial username, the accidental-filter
+            // behavior the commit style exists to prevent.
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitAuthor();
+              }
+            }}
+            placeholder="Username… (Enter to apply)"
+            aria-label="Author username"
+            className="w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
+          />
+        </div>
       </FilterSection>
 
       <ToggleRow

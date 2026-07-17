@@ -173,7 +173,9 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
       </button>
 
       {hasActiveFilters && (
-        <div className="mt-1.5">
+        // Solid strip: the pills' accent surface is translucent, and bare over
+        // the canvas the map labels bled through the row.
+        <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 py-2">
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         </div>
       )}
