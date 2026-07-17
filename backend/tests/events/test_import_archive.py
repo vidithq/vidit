@@ -149,8 +149,7 @@ def test_presign_is_rate_limited(author):
                 == 200
             )
         assert (
-            client.post("/api/v1/events/import-archive/presign", headers=headers).status_code
-            == 429
+            client.post("/api/v1/events/import-archive/presign", headers=headers).status_code == 429
         )
     finally:
         limiter.enabled = False
