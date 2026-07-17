@@ -11,11 +11,13 @@ worker restarts, and two worker processes can't double-run a job.
 
 A worker killed mid-job leaves the row ``running``; a later pass reclaims it
 once ``started_at`` is older than ``STALE_RUNNING_AFTER``. ``started_at``
-doubles as a liveness heartbeat: the processing worker re-stamps it every
-``HEARTBEAT_INTERVAL`` while the job runs, so a legitimately long import (a
-large archive with ``chase=True`` network fetches) never crosses the stale
-window while alive, and a reclaim never races a still-running first run
-(e.g. two worker instances overlapping during a rolling deploy).
+doubles as a liveness heartbeat: a dedicated thread re-stamps it every
+``HEARTBEAT_INTERVAL`` while the job runs (a thread, not an asyncio task, so
+beats land even while the backfill sits in a long synchronous stretch), so a
+legitimately long import (a large archive with ``chase=True`` network
+fetches) never crosses the stale window while alive, and a reclaim never
+races a still-running first run (e.g. two worker instances overlapping
+during a rolling deploy).
 ``MAX_ATTEMPTS`` bounds the reclaim loop: a job that keeps dying lands
 ``failed`` (poison-pill guard, e.g. an archive that OOMs the worker every
 time). The backfill itself is idempotent (re-import skips existing pairs),
@@ -24,9 +26,9 @@ so a reclaimed half-applied run never duplicates rows.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import tempfile
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -97,44 +99,48 @@ def claim_next(db: Session) -> ArchiveImportJob | None:
     stamp and releases the row lock (the work itself runs unlocked, the stale
     window is what guards a crash after this point).
     """
-    now = datetime.now(UTC)
-    job = (
-        db.query(ArchiveImportJob)
-        .filter(
-            or_(
-                ArchiveImportJob.status == "queued",
-                (ArchiveImportJob.status == "running")
-                & (ArchiveImportJob.started_at < now - STALE_RUNNING_AFTER),
-            )
-        )
-        .order_by(ArchiveImportJob.created_at)
-        .with_for_update(skip_locked=True)
-        .first()
-    )
-    if job is None:
-        return None
-    if job.attempts >= MAX_ATTEMPTS:
-        _finish(db, job, status="failed", error="attempt budget spent")
-        _notify_failure_best_effort(db, job)
-        return claim_next(db)
-    job.status = "running"
-    job.attempts += 1
-    job.started_at = now
-    db.commit()
-    db.refresh(job)
-    return job
-
-
-async def _heartbeat(job_id: uuid.UUID) -> None:
-    """Re-stamp ``started_at`` every ``HEARTBEAT_INTERVAL`` while a job runs.
-
-    Its own short-lived session per beat: the processing session is busy
-    inside the backfill transaction and can't be shared across tasks. A beat
-    that fails (transient DB blip) is logged and retried on the next tick,
-    never fatal to the job.
-    """
     while True:
-        await asyncio.sleep(HEARTBEAT_INTERVAL.total_seconds())
+        now = datetime.now(UTC)
+        job = (
+            db.query(ArchiveImportJob)
+            .filter(
+                or_(
+                    ArchiveImportJob.status == "queued",
+                    (ArchiveImportJob.status == "running")
+                    & (ArchiveImportJob.started_at < now - STALE_RUNNING_AFTER),
+                )
+            )
+            .order_by(ArchiveImportJob.created_at)
+            .with_for_update(skip_locked=True)
+            .first()
+        )
+        if job is None:
+            return None
+        if job.attempts >= MAX_ATTEMPTS:
+            # Bury the poison row and keep looking: a loop, not recursion, so
+            # a large backlog of budget-spent rows can't deepen the stack.
+            _finish(db, job, status="failed", error="attempt budget spent")
+            _notify_failure_best_effort(db, job)
+            continue
+        job.status = "running"
+        job.attempts += 1
+        job.started_at = now
+        db.commit()
+        db.refresh(job)
+        return job
+
+
+def _heartbeat_loop(job_id: uuid.UUID, stop: threading.Event) -> None:
+    """Re-stamp ``started_at`` every ``HEARTBEAT_INTERVAL`` until ``stop``.
+
+    A plain thread, not an asyncio task: the backfill has long synchronous
+    stretches (unzip, the tweets.js parse) that starve the event loop, and a
+    starved loop must not read as a dead worker. Its own short-lived session
+    per beat (the processing session is busy inside the backfill
+    transaction). A beat that fails (transient DB blip) is logged and retried
+    on the next tick, never fatal to the job.
+    """
+    while not stop.wait(HEARTBEAT_INTERVAL.total_seconds()):
         hb = SessionLocal()
         try:
             hb.query(ArchiveImportJob).filter(ArchiveImportJob.id == job_id).update(
@@ -163,7 +169,9 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
         _finish(db, job, status="failed", error="owner gone")
         return
 
-    heartbeat = asyncio.create_task(_heartbeat(job.id))
+    stop_heartbeat = threading.Event()
+    heartbeat = threading.Thread(target=_heartbeat_loop, args=(job.id, stop_heartbeat), daemon=True)
+    heartbeat.start()
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -188,11 +196,23 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     except Exception as exc:
         db.rollback()
         logger.exception("archive import job %s failed", job.id)
-        _finish(db, job, status="failed", error=f"{type(exc).__name__}: {exc}")
-        _notify_failure_best_effort(db, job)
+        # Land the terminal state on a FRESH session: if the original failure
+        # was the DB connection itself, the processing session may be beyond
+        # rollback, and the failure email contract must not die with it. The
+        # stored reason stays a terse class name; the full story is in the
+        # log line above and the caller's Sentry capture.
+        fs = SessionLocal()
+        try:
+            fs_job = fs.get(ArchiveImportJob, job.id)
+            if fs_job is not None:
+                _finish(fs, fs_job, status="failed", error=type(exc).__name__)
+                _notify_failure_best_effort(fs, fs_job)
+        finally:
+            fs.close()
         raise
     finally:
-        heartbeat.cancel()
+        stop_heartbeat.set()
+        heartbeat.join(timeout=5)
     job.created_count = len(outcome.created)
     job.skipped_count = outcome.skipped
     job.recreated_count = outcome.recreated

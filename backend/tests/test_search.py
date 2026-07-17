@@ -823,28 +823,45 @@ def test_type_event_returns_both_event_groups_without_users(db, caller):
 
 def test_author_suggestions_substring_prefix_first(db, caller, other_author):
     """The picker matches a substring but surfaces prefix matches first; the
-    filter itself stays exact, so this is how a fragment becomes a handle."""
-    fragment = caller.username[:6]  # "caller" prefix shared by the fixture pool
-    response = client.get(f"/api/v1/search/authors?q={fragment}")
-    assert response.status_code == 200
-    authors = response.json()["authors"]
-    assert caller.username in authors
-    assert other_author.username not in authors
-    # A mid-string fragment still matches (substring, not prefix-only).
-    mid = caller.username[2:8]
-    response = client.get(f"/api/v1/search/authors?q={mid}")
-    assert caller.username in response.json()["authors"]
+    filter itself stays exact, so this is how a fragment becomes a handle.
+    Only analysts owning >=1 live event are suggested: that is all the filter
+    can match, and it keeps the anonymous endpoint from doubling as an
+    account-enumeration oracle."""
+    geo = _seed_geo(db, caller, f"Suggestable {_unique_token()}")
+    try:
+        fragment = caller.username[:6]  # "caller" prefix shared by the fixture pool
+        response = client.get(f"/api/v1/search/authors?q={fragment}")
+        assert response.status_code == 200
+        authors = response.json()["authors"]
+        assert caller.username in authors
+        assert other_author.username not in authors
+        # A mid-string fragment still matches (substring, not prefix-only).
+        mid = caller.username[2:8]
+        response = client.get(f"/api/v1/search/authors?q={mid}")
+        assert caller.username in response.json()["authors"]
+        # An account with no live event is never suggested, even on an exact
+        # username probe (the enumeration guard).
+        response = client.get(f"/api/v1/search/authors?q={other_author.username}")
+        assert response.json()["authors"] == []
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
 
 
 def test_author_suggestions_exclude_soft_deleted(db, caller):
     from datetime import UTC as _UTC
     from datetime import datetime as _dt
 
+    geo = _seed_geo(db, caller, f"Deleted owner {_unique_token()}")
     caller.deleted_at = _dt.now(_UTC)
     db.commit()
-    response = client.get(f"/api/v1/search/authors?q={caller.username}")
-    assert response.status_code == 200
-    assert caller.username not in response.json()["authors"]
+    try:
+        response = client.get(f"/api/v1/search/authors?q={caller.username}")
+        assert response.status_code == 200
+        assert caller.username not in response.json()["authors"]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
 
 
 def test_author_suggestions_empty_and_invalid_q(caller):
@@ -883,3 +900,21 @@ def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
         db.commit()
+
+
+def test_fts_query_uses_the_gin_index(db):
+    """The ORM-built tsvector expression must stay expression-tree-equal to
+    the migration's GIN index expression, or the whole anonymous search
+    surface silently degrades to sequential scans. Pin it with EXPLAIN."""
+    from sqlalchemy import func as safunc
+    from sqlalchemy import text as satext
+
+    from app.services import search as search_service
+    from app.services.event_filters import EventFilters
+
+    tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
+    stmt = EventFilters().apply(db.query(Event.id), view="located")
+    stmt = stmt.filter(search_service._geo_tsvector().op("@@")(tsquery))
+    compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
+    plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+    assert "ix_events_search_fts" in plan, plan

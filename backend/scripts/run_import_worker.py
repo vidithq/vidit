@@ -3,8 +3,10 @@
 The always-on Railway service behind ``POST /events/import-archive``: claims
 ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a second worker
 is safe), runs the backfill off the API process, and emails the owner the
-outcome (see ``services/archive_jobs``). Each pass opens a fresh session, so
-a poisoned transaction never outlives the job that broke it.
+outcome (see ``services/archive_jobs``). Each drain pass opens a fresh
+session (shared across that pass's jobs; per-job failure isolation is the
+rollback inside ``process``), and a pass that dies outside job processing is
+captured and retried with a backoff instead of killing the service.
 
     uv run python scripts/run_import_worker.py
 
@@ -27,6 +29,7 @@ from app.database import SessionLocal
 from app.services.archive_jobs import run_once
 
 _IDLE_SLEEP_SECONDS = 5.0
+_ERROR_BACKOFF_SECONDS = 15.0
 
 
 def _drain() -> int:
@@ -54,7 +57,16 @@ def main() -> None:
 
     print("Import worker up; polling the queue.")
     while True:
-        handled = _drain()
+        # A pass that dies OUTSIDE process() (claim_next on a transient DB
+        # outage, session construction) must not kill the always-on service:
+        # capture, back off, try again. Job-level failures are already landed
+        # and captured inside run_once.
+        try:
+            handled = _drain()
+        except Exception:  # noqa: BLE001
+            sentry_sdk.capture_exception()
+            time.sleep(_ERROR_BACKOFF_SECONDS)
+            continue
         if handled == 0:
             time.sleep(_IDLE_SLEEP_SECONDS)
 

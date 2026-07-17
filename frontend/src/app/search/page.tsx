@@ -180,7 +180,13 @@ function SearchPageBody() {
   // intermediate states.
   useEffect(() => {
     const t = setTimeout(() => {
-      setCommitted({ q: queryInput, values, dates });
+      // Identity-preserving commit: if nothing changed (e.g. the chip click
+      // already committed synchronously), keep the previous object so the
+      // fetch effect doesn't refire on a content-identical snapshot.
+      setCommitted((prev) => {
+        const next = { q: queryInput, values, dates };
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
@@ -264,9 +270,16 @@ function SearchPageBody() {
   const onChipClick = (t: SearchType) => {
     // The filters are event predicates: leaving the Events scope while some
     // are active would silently keep constraining the event groups, so they
-    // clear with the scope.
+    // clear with the scope. The committed snapshot updates in the same
+    // render: the fetch effect keys on it plus the type, and letting the
+    // debounce catch up 300 ms later would fire one request with the STALE
+    // filters first (type=user&conflict=… flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       clearFilters();
+      const cleared: DateWindows = { eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" };
+      setCommitted({ q: queryInput, values: EMPTY_EVENT_FILTERS, dates: cleared });
+    } else {
+      setCommitted({ q: queryInput, values, dates });
     }
     setTypeFilter(t);
   };

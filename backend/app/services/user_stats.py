@@ -7,7 +7,7 @@ zero-filled 12-month activity row. Every query filters live rows only
 """
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -84,7 +84,9 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
 
-    months = _last_months(date.today(), ACTIVITY_MONTHS)
+    # UTC-anchored like every other timestamp: a local-time month boundary
+    # could disagree with the UTC-stamped data by a day.
+    months = _last_months(datetime.now(UTC).date(), ACTIVITY_MONTHS)
     window_start = date.fromisoformat(f"{months[0]}-01")
     month_col = func.to_char(func.date_trunc("month", Event.event_date), "YYYY-MM")
     activity_rows = (

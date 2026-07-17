@@ -7,6 +7,7 @@ import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
+import { Input } from "@/components/ui/Input";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
 import { Pill } from "@/components/ui/Pill";
 import { ToggleRow } from "@/components/ui/ToggleRow";
@@ -306,7 +307,7 @@ export function EventFilterSections({
               </Pill>
             </div>
           )}
-          <input
+          <Input
             type="text"
             value={authorDraft}
             onChange={(e) => setAuthorDraft(e.target.value)}
@@ -322,7 +323,7 @@ export function EventFilterSections({
             }}
             placeholder="Type a username…"
             aria-label="Author username"
-            className="w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
+            className="bg-neutral-800 text-[11px]"
           />
           {authorSuggestions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">

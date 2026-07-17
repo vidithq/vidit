@@ -119,8 +119,11 @@ export function ImportArchivePanel({ username }: { username: string }) {
         throw err;
       }
       if (job.status === "failed") {
+        // Same story as the failure email and the API doc: a failed job
+        // keeps whatever landed before the failure, and re-uploading skips
+        // it and continues.
         throw new Error(
-          "The import failed on our side; nothing from this upload was published. Try again, and reach out on Discord if it keeps failing."
+          "The import failed on our side. Anything imported before the failure is kept; upload the same archive again to continue from there, and reach out on Discord if it keeps failing."
         );
       }
       return job;

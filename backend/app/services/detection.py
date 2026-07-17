@@ -316,6 +316,10 @@ async def assemble_detections(
     cache_url: str | None = None
     media_cache: _MediaCache = {}
     total = len(detections)
+    if on_progress is not None:
+        # Announce the exact total up front (0 / N), so even a zero-detection
+        # archive stamps it and the caller's display leaves the estimate.
+        on_progress(0, total)
     for index, dto in enumerate(detections, start=1):
         if dto.detected_from_url != cache_url:
             cache_url, media_cache = dto.detected_from_url, {}

@@ -417,18 +417,30 @@ def search_all(
 def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     """Usernames matching ``query`` for the author-filter typeahead.
 
-    Case-insensitive substring over live users, prefix matches first then
-    alphabetical, so the picker surfaces real handles and the filter itself
-    can stay an exact match. ``query`` is gated by ``AUTHOR_FILTER_PATTERN``
-    at the router, so it is ilike-safe here.
+    Case-insensitive substring, prefix matches first then alphabetical, so
+    the picker surfaces real handles and the filter itself can stay an exact
+    match. Scoped to live users **owning at least one live event**: that is
+    all the filter can ever match, and it keeps this anonymous endpoint from
+    doubling as an account-enumeration oracle (an analyst is only listed
+    once their work is public anyway). ``query`` is gated by
+    ``AUTHOR_FILTER_PATTERN`` at the router; ``_`` is escaped because the
+    pattern legitimately allows it and LIKE treats it as a wildcard.
     """
     q = query.strip()
     if not q:
         return []
+    like = q.replace("_", r"\_")
+    has_live_event = (
+        db.query(Event.id).filter(Event.owner_id == User.id, Event.deleted_at.is_(None)).exists()
+    )
     rows = (
         db.query(User.username)
-        .filter(User.deleted_at.is_(None), User.username.ilike(f"%{q}%"))
-        .order_by(User.username.ilike(f"{q}%").desc(), User.username)
+        .filter(
+            User.deleted_at.is_(None),
+            User.username.ilike(f"%{like}%", escape="\\"),
+            has_live_event,
+        )
+        .order_by(User.username.ilike(f"{like}%", escape="\\").desc(), User.username)
         .limit(limit)
         .all()
     )
