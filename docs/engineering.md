@@ -366,7 +366,7 @@ Hardening (forks make every workflow run attacker-reachable):
   },
   {
     "AllowedMethods": ["POST"],
-    "AllowedOrigins": ["https://vidit.app", "http://localhost:3000"],
+    "AllowedOrigins": ["https://vidit.app"],
     "AllowedHeaders": ["Content-Type"],
     "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3600
@@ -374,7 +374,9 @@ Hardening (forks make every workflow run attacker-reachable):
 ]
 ```
 
-A staged object normally lives minutes (the worker deletes it at terminal states); an uploaded-but-never-enqueued object has no job row to trigger that delete, so add an S3 lifecycle rule expiring the `archive-imports/` prefix after 7 days.
+(No localhost origin: local dev uses `LocalStorage` plus the dev upload endpoint and never reaches the bucket.)
+
+A staged object normally lives minutes (the worker deletes it at terminal states); an uploaded-but-never-enqueued object has no job row to trigger that delete, so add an S3 lifecycle rule on the `archive-imports/` prefix expiring current objects after 7 days **and noncurrent versions after 7 days** (`NoncurrentVersionExpiration`). The noncurrent half matters: the bucket has Versioning ON, so the worker's delete only writes a delete marker, and without it every raw personal X export would persist as a noncurrent version. The bucket-wide Object Lock default (GOVERNANCE, 365 days) still floors how early a version can truly disappear; accepted for now, revisit if staging volume or the privacy calculus changes.
 
 Naming: `<product>-<env>-<region>` for the bucket so a future `vidit-staging-eu-west-3` slots in. Service is just `backend` because Railway already nests it under `vidit/production`. Vercel project is `vidit-frontend` because the team scope is `vidithq`.
 

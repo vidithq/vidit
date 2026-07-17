@@ -85,17 +85,20 @@ async def import_archive(
     outcome. Poll ``GET /events/import-archive/{job_id}`` for the counts.
     """
     try:
-        # The verify does a storage HEAD (network I/O): a thread keeps the
-        # single-process event loop serving siblings meanwhile.
+        # Both steps block (a storage HEAD, then a DB commit): a thread keeps
+        # the single-process event loop serving siblings meanwhile.
         await run_in_threadpool(
             archive_jobs.verify_staged_upload, body.upload_key, owner_id=current_user.id
         )
+        job = await run_in_threadpool(
+            archive_jobs.enqueue,
+            db,
+            owner=current_user,
+            upload_key=body.upload_key,
+            post_estimate=body.post_estimate,
+        )
     except archive_jobs.StagedUploadError as exc:
         raise_typed_error(exc, _ARCHIVE_STATUS)
-
-    job = archive_jobs.enqueue(
-        db, owner=current_user, upload_key=body.upload_key, post_estimate=body.post_estimate
-    )
     logger.info("Archive import staged for user %s: job %s", current_user.id, job.id)
     return job
 

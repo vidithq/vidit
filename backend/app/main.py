@@ -25,7 +25,6 @@ from app.services import archive_jobs
 from app.services.storage import (
     DEV_STAGING_UPLOAD_PATH,
     LOCAL_STORAGE_MOUNT_PATH,
-    get_storage,
 )
 from app.services.tweet_ingest import archive_zip
 
@@ -165,14 +164,19 @@ if settings.storage_backend == "local":
     ) -> Response:
         if not archive_jobs.is_staging_key(key):
             raise HTTPException(status_code=400, detail="Not a staging key")
-        chunks: list[bytes] = []
+        # Chunked straight to disk, mirroring the streaming discipline of the
+        # real S3 target; only one chunk is ever in memory.
+        dest = local_dir / key
+        dest.parent.mkdir(parents=True, exist_ok=True)
         size = 0
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > archive_zip.MAX_UPLOAD_BYTES:
-                raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
-            chunks.append(chunk)
-        get_storage().put_bytes_sync(b"".join(chunks), key, "application/zip")
+        with dest.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > archive_zip.MAX_UPLOAD_BYTES:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
+                out.write(chunk)
         # 204 like S3's default POST-policy success response.
         return Response(status_code=204)
 

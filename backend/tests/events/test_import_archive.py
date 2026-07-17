@@ -179,6 +179,19 @@ def test_job_poll_is_owner_only(db, author, second_user):
     assert other.status_code == 404  # indistinguishable from unknown
 
 
+def test_enqueue_rejects_reused_upload_key(db, author):
+    # One key backs one job: a retry or replay of the same key would race the
+    # first job's terminal-state delete and end in a spurious failure email.
+    presign = _presign(author)
+    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
+    assert _upload(author, presign, zip_bytes).status_code == 204
+    first = _enqueue(author, presign["upload_key"])
+    assert first.status_code == 202
+    second = _enqueue(author, presign["upload_key"])
+    assert second.status_code == 400
+    assert second.json()["detail"]["code"] == "archive_upload_invalid"
+
+
 def test_enqueue_requires_auth():
     resp = client.post(
         "/api/v1/events/import-archive",

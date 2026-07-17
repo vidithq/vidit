@@ -130,6 +130,12 @@ def enqueue(
     ``post_estimate`` is the browser strip's cosmetic volume hint; the worker
     stamps the exact totals.
     """
+    # One key, one job: a client retry or replay would otherwise create a
+    # second row over the same object, and the first job's terminal-state
+    # delete would fail the second with a spurious "staged object missing"
+    # email.
+    if db.query(ArchiveImportJob.id).filter(ArchiveImportJob.zip_key == upload_key).first():
+        raise StagedUploadInvalidError("upload_key is already enqueued")
     job = ArchiveImportJob(
         id=uuid.uuid4(), owner_id=owner.id, zip_key=upload_key, post_estimate=post_estimate
     )
@@ -241,7 +247,9 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             zip_path = tmp_path / "upload.zip"
             archive_dir = tmp_path / "archive"
             archive_dir.mkdir()
-            zip_path.write_bytes(get_storage().get_bytes(job.zip_key))
+            # Streamed, never buffered: a staged zip can approach the 2 GB
+            # guard, far past what the worker process can hold in memory.
+            get_storage().get_to_path(job.zip_key, zip_path)
             archive_zip.extract_allowlisted(zip_path, archive_dir)
 
             def stamp_progress(done: int, total: int) -> None:

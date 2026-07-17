@@ -36,7 +36,9 @@ class ArchiveImportEnqueue(BaseModel):
     stamps the exact ``progress_total``)."""
 
     upload_key: str = Field(min_length=1, max_length=512)
-    post_estimate: int | None = Field(default=None, ge=1)
+    # Ceiling far above any real archive: an unbounded client int would blow
+    # the Integer column at commit (a 500) instead of a 422 here.
+    post_estimate: int | None = Field(default=None, ge=1, le=10_000_000)
 
 
 class ArchiveImportJobRead(BaseModel):

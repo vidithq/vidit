@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import shutil
 import unicodedata
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, Protocol
@@ -105,7 +106,10 @@ def _safe_storage_extension(content_type: str | None) -> str:
 
 
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
-LOCAL_STORAGE_URL_PREFIX = f"http://localhost:8000{LOCAL_STORAGE_MOUNT_PATH}"
+# One home for the dev API origin: the static mount URL and the dev staging
+# upload URL both derive from it, so a port change has one spot to touch.
+LOCAL_DEV_BASE_URL = "http://localhost:8000"
+LOCAL_STORAGE_URL_PREFIX = f"{LOCAL_DEV_BASE_URL}{LOCAL_STORAGE_MOUNT_PATH}"
 
 # The dev/CI stand-in for the S3 POST-policy target (see ``main.py``, mounted
 # only when STORAGE_BACKEND=local): accepts the same field + file form the
@@ -155,6 +159,7 @@ class Storage(Protocol):
     def delete_many(self, keys: list[str]) -> None: ...
     def list_keys(self, prefix: str) -> list[str]: ...
     def get_bytes(self, key: str) -> bytes: ...
+    def get_to_path(self, key: str, dest: Path) -> None: ...
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None: ...
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str
@@ -168,7 +173,12 @@ class LocalStorage:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        path = self.root / key
+        # Containment check at the single chokepoint every read/write funnels
+        # through: keys are internally minted today, but an absolute or
+        # dot-dot key must never escape the storage root.
+        path = (self.root / key).resolve()
+        if not path.is_relative_to(self.root.resolve()):
+            raise ValueError(f"Storage key escapes the root: {key!r}")
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -252,13 +262,19 @@ class LocalStorage:
         """
         del max_bytes
         return PresignedUpload(
-            url=f"http://localhost:8000{DEV_STAGING_UPLOAD_PATH}",
+            url=f"{LOCAL_DEV_BASE_URL}{DEV_STAGING_UPLOAD_PATH}",
             fields={"key": key, "Content-Type": content_type},
         )
 
     def head_size(self, key: str) -> int | None:
-        path = self.root / key
+        try:
+            path = self._path(key)
+        except ValueError:
+            return None
         return path.stat().st_size if path.is_file() else None
+
+    def get_to_path(self, key: str, dest: Path) -> None:
+        shutil.copyfile(self._path(key), dest)
 
 
 class S3Storage:
@@ -375,6 +391,14 @@ class S3Storage:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
 
+    def get_to_path(self, key: str, dest: Path) -> None:
+        """Stream the object at ``key`` to ``dest`` without buffering it in
+        memory: the staged archive guard is 2 GB, far past what a worker
+        process can hold, so the whole-object ``get_bytes`` is off-limits for
+        staged zips.
+        """
+        self.client.download_file(self.bucket, key, str(dest))
+
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None:
         """Sync sibling of ``upload_bytes`` for callers (seed) that don't
         need the sha256 / UploadResult.
@@ -417,7 +441,12 @@ class S3Storage:
             response = self.client.head_object(Bucket=self.bucket, Key=key)
         except ClientError as exc:
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-            if status == 404:
+            # 403 is also a miss here: without s3:ListBucket, S3 answers
+            # HeadObject on a nonexistent key with 403, not 404 (the runtime
+            # IAM user carries object-level permissions only). Every key we
+            # HEAD is one we minted under a writable prefix, so a forbidden
+            # answer can only mean the object does not exist.
+            if status in (403, 404):
                 return None
             raise
         return int(response["ContentLength"])

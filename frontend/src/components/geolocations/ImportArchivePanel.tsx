@@ -79,7 +79,7 @@ function importErrorMessage(err: unknown): string | undefined {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "archive_too_large":
-        return "That archive is over the size limit. Very large archives aren't supported yet.";
+        return "That archive is over the 2 GB safety limit. Get in touch and we'll find a way to import it.";
       case "archive_no_tweets":
         return "That zip isn't an X data export (no tweets.js inside).";
       case "archive_malformed":
