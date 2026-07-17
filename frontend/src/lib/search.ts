@@ -24,6 +24,8 @@ export function search(opts: {
   media?: string[];
   eventDateFrom?: string;
   eventDateTo?: string;
+  submittedFrom?: string;
+  submittedTo?: string;
   trustedOnly?: boolean;
 }): Promise<SearchResponse> {
   const params = new URLSearchParams({
@@ -38,6 +40,8 @@ export function search(opts: {
   opts.media?.forEach((n) => params.append("media", n));
   if (opts.eventDateFrom) params.set("event_date_from", opts.eventDateFrom);
   if (opts.eventDateTo) params.set("event_date_to", opts.eventDateTo);
+  if (opts.submittedFrom) params.set("submitted_from", opts.submittedFrom);
+  if (opts.submittedTo) params.set("submitted_to", opts.submittedTo);
   if (opts.trustedOnly) params.set("trusted_only", "true");
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }

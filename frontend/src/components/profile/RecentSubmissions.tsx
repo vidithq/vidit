@@ -40,7 +40,7 @@ export function RecentSubmissions({
         </div>
         {submissions.length > 0 && (
           <Link
-            href={`/search?author=${encodeURIComponent(profile.username)}`}
+            href={`/search?type=event&author=${encodeURIComponent(profile.username)}`}
             className={`text-xs ${TEXT_LINK}`}
           >
             Show more

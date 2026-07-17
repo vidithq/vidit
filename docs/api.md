@@ -889,7 +889,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
-| `type` | enum | `all` (default), `geolocation`, `request`, or `user`. Anything else → 422. |
+| `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 | *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `trusted_only`, `hide_demo`. Scopes the two event groups. |
 

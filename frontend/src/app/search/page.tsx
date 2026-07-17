@@ -2,7 +2,6 @@
 
 import {
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,7 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Filter, MapPin, Megaphone, Search as SearchIcon, User, Users } from "lucide-react";
+import { Filter, MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
@@ -31,30 +30,42 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
-import { ChipBucket } from "@/components/ui/ChipBucket";
-import { FilterSection, chipSummary, rangeSummary } from "@/components/ui/FilterSection";
-import { ToggleRow } from "@/components/ui/ToggleRow";
+import { rangeSummary } from "@/components/ui/FilterSection";
+import {
+  EMPTY_EVENT_FILTERS,
+  EventFilterSections,
+  buildActiveFilterPills,
+  type EventFilterPatch,
+  type EventFilterValues,
+} from "@/components/filters/EventFilterSections";
 import { useApiResource } from "@/hooks/useApiResource";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 
+// The reader-facing type picker: the two event groups are one "Events" entry
+// (the filter set below only applies to events, so the picker doesn't force
+// the geolocation vs request split; results still render as two groups).
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
-  { value: "geolocation", label: "Geolocations", icon: <MapPin size={11} /> },
-  { value: "request", label: "Requests", icon: <Megaphone size={11} /> },
+  { value: "event", label: "Events", icon: <MapPin size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 
-// Fixed media-presence options (Media.media_type values), same as the map.
-const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
-  ["image", "Image"],
-  ["video", "Video"],
-];
+// The type values that scope to events (the legacy singletons stay valid in
+// a shared URL even though the picker no longer offers them).
+const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request"];
 
 // Debounce window: reactive enough to feel live, long enough not to fire
 // on every keystroke of a long phrase.
 const DEBOUNCE_MS = 300;
+
+interface DateWindows {
+  eventFrom: string;
+  eventTo: string;
+  addedFrom: string;
+  addedTo: string;
+}
 
 export default function SearchPage() {
   // `useSearchParams` opts out of static prerender, so the body lives
@@ -71,39 +82,44 @@ function SearchPageBody() {
   const searchParams = useSearchParams();
 
   // URL is the source of truth so shared links land in the same view;
-  // the input binds to local state so typing isn't gated on URL round-trips.
+  // the inputs bind to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
-  const initialType = (searchParams.get("type") as SearchType) || "all";
+  const initialValues: EventFilterValues = {
+    conflicts: searchParams.getAll("conflict"),
+    captureSources: searchParams.getAll("capture_source"),
+    tags: searchParams.getAll("tag"),
+    mediaTypes: searchParams.getAll("media"),
+    author: searchParams.get("author") ?? "",
+    trustedOnly: searchParams.get("trusted_only") === "true",
+  };
+  const initialDates: DateWindows = {
+    eventFrom: searchParams.get("event_date_from") ?? "",
+    eventTo: searchParams.get("event_date_to") ?? "",
+    addedFrom: searchParams.get("submitted_from") ?? "",
+    addedTo: searchParams.get("submitted_to") ?? "",
+  };
+  const arrivedFiltered =
+    Object.values(initialDates).some(Boolean) ||
+    initialValues.conflicts.length > 0 ||
+    initialValues.captureSources.length > 0 ||
+    initialValues.tags.length > 0 ||
+    initialValues.mediaTypes.length > 0 ||
+    !!initialValues.author ||
+    initialValues.trustedOnly;
+  // A filtered link without an explicit type (the profile's "Show more")
+  // lands on the Events scope: filters are event predicates.
+  const initialType =
+    (searchParams.get("type") as SearchType) || (arrivedFiltered ? "event" : "all");
 
   const [queryInput, setQueryInput] = useState(initialQ);
-  const [activeQuery, setActiveQuery] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
-  // The standard event filter set (the map's vocabulary), URL-synced. The
-  // author leg has no input on this page: it arrives via the URL (the
-  // profile's "Show more" link) and clears via its pill.
-  const [authorFilter, setAuthorFilter] = useState<string | null>(searchParams.get("author"));
-  const [selectedConflicts, setSelectedConflicts] = useState<string[]>(
-    searchParams.getAll("conflict")
-  );
-  const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>(
-    searchParams.getAll("capture_source")
-  );
-  const [selectedTags, setSelectedTags] = useState<string[]>(searchParams.getAll("tag"));
-  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>(
-    searchParams.getAll("media")
-  );
-  const [eventFrom, setEventFrom] = useState(searchParams.get("event_date_from") ?? "");
-  const [eventTo, setEventTo] = useState(searchParams.get("event_date_to") ?? "");
-  const [trustedOnly, setTrustedOnly] = useState(searchParams.get("trusted_only") === "true");
-
+  const [values, setValues] = useState<EventFilterValues>(initialValues);
+  const [dates, setDates] = useState<DateWindows>(initialDates);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // Accordion open-state, like the map panel: curated buckets open first.
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    Conflict: true,
-    "Capture source": true,
-  });
-  const toggleSection = (title: string) =>
-    setOpenSections((s) => ({ ...s, [title]: !s[title] }));
+
+  // The debounced snapshot the fetch + URL run on, so typing (the query or
+  // the author field) doesn't fire a request per keystroke.
+  const [committed, setCommitted] = useState({ q: initialQ, values: initialValues, dates: initialDates });
 
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,84 +127,41 @@ function SearchPageBody() {
 
   // Same pickers as the map: the live taxonomy + the used-conflict list.
   const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const tags = tagsData ?? [];
   const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
-  const conflicts = conflictsData ?? [];
-  const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
-  const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
-  const freeTags = tags.filter((t) => t.category === "free").sort(byName);
 
-  const toggleInBucket = (
-    name: string,
-    set: (v: string[] | ((prev: string[]) => string[])) => void
-  ) => set((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
-  const removeFromBucket = (
-    name: string,
-    set: (v: string[] | ((prev: string[]) => string[])) => void
-  ) => set((prev) => prev.filter((n) => n !== name));
-
+  const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => {
-    setAuthorFilter(null);
-    setSelectedConflicts([]);
-    setSelectedCaptureSources([]);
-    setSelectedTags([]);
-    setSelectedMediaTypes([]);
-    setEventFrom("");
-    setEventTo("");
-    setTrustedOnly(false);
+    setValues(EMPTY_EVENT_FILTERS);
+    setDates({ eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" });
   };
 
-  const eventActive = !!(eventFrom || eventTo);
+  const eventWindowActive = !!(dates.eventFrom || dates.eventTo);
+  const addedWindowActive = !!(dates.addedFrom || dates.addedTo);
 
-  // The shared removable-pill row (same pattern as the map's overlay).
+  // The shared pill entries plus this surface's two window entries.
   const activeFilters: ActiveFilter[] = [
-    ...selectedConflicts.map((n) => ({
-      key: `conflict:${n}`,
-      label: n,
-      onRemove: () => removeFromBucket(n, setSelectedConflicts),
-    })),
-    ...selectedCaptureSources.map((n) => ({
-      key: `capture:${n}`,
-      label: n,
-      onRemove: () => removeFromBucket(n, setSelectedCaptureSources),
-    })),
-    ...selectedTags.map((n) => ({
-      key: `tag:${n}`,
-      label: n,
-      onRemove: () => removeFromBucket(n, setSelectedTags),
-    })),
-    ...selectedMediaTypes.map((n) => ({
-      key: `media:${n}`,
-      label: n[0].toUpperCase() + n.slice(1),
-      onRemove: () => removeFromBucket(n, setSelectedMediaTypes),
-    })),
-    ...(eventActive
+    ...buildActiveFilterPills(values, onPatch),
+    ...(eventWindowActive
       ? [
           {
             key: "event-window",
-            label: `Event: ${rangeSummary(eventFrom, eventTo)}`,
-            onRemove: () => {
-              setEventFrom("");
-              setEventTo("");
-            },
+            label: `Event: ${rangeSummary(dates.eventFrom, dates.eventTo)}`,
+            onRemove: () => setDates((d) => ({ ...d, eventFrom: "", eventTo: "" })),
           },
         ]
       : []),
-    ...(authorFilter
+    ...(addedWindowActive
       ? [
           {
-            key: "author",
-            label: `by @${authorFilter}`,
-            icon: <User size={11} />,
-            onRemove: () => setAuthorFilter(null),
+            key: "added-window",
+            label: `Added: ${rangeSummary(dates.addedFrom, dates.addedTo)}`,
+            onRemove: () => setDates((d) => ({ ...d, addedFrom: "", addedTo: "" })),
           },
         ]
-      : []),
-    ...(trustedOnly
-      ? [{ key: "trusted", label: "Trusted only", onRemove: () => setTrustedOnly(false) }]
       : []),
   ];
   const hasActiveFilters = activeFilters.length > 0;
+  const onEventScope = EVENT_TYPES.includes(typeFilter);
 
   // Monotonic request token: each fetch increments it, late responses
   // apply only if their token is still latest. Comparing on `response.query`
@@ -196,46 +169,47 @@ function SearchPageBody() {
   // land an older response over a newer one.
   const latestRequestId = useRef<number>(0);
 
-  // Debounced commit: input → activeQuery + URL via `replace` (not `push`)
-  // so the back button doesn't fill with intermediate query states.
+  // Debounced commit: inputs → the committed snapshot + the URL via
+  // `replace` (not `push`) so the back button doesn't fill with
+  // intermediate states.
   useEffect(() => {
     const t = setTimeout(() => {
-      setActiveQuery(queryInput);
+      setCommitted({ q: queryInput, values, dates });
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
-      if (authorFilter) params.set("author", authorFilter);
-      selectedConflicts.forEach((n) => params.append("conflict", n));
-      selectedCaptureSources.forEach((n) => params.append("capture_source", n));
-      selectedTags.forEach((n) => params.append("tag", n));
-      selectedMediaTypes.forEach((n) => params.append("media", n));
-      if (eventFrom) params.set("event_date_from", eventFrom);
-      if (eventTo) params.set("event_date_to", eventTo);
-      if (trustedOnly) params.set("trusted_only", "true");
+      if (values.author.trim()) params.set("author", values.author.trim());
+      values.conflicts.forEach((n) => params.append("conflict", n));
+      values.captureSources.forEach((n) => params.append("capture_source", n));
+      values.tags.forEach((n) => params.append("tag", n));
+      values.mediaTypes.forEach((n) => params.append("media", n));
+      if (dates.eventFrom) params.set("event_date_from", dates.eventFrom);
+      if (dates.eventTo) params.set("event_date_to", dates.eventTo);
+      if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
+      if (dates.addedTo) params.set("submitted_to", dates.addedTo);
+      if (values.trustedOnly) params.set("trusted_only", "true");
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [
-    queryInput,
-    typeFilter,
-    authorFilter,
-    selectedConflicts,
-    selectedCaptureSources,
-    selectedTags,
-    selectedMediaTypes,
-    eventFrom,
-    eventTo,
-    trustedOnly,
-    router,
-  ]);
+  }, [queryInput, typeFilter, values, dates, router]);
 
-  // Issue the API call whenever the committed query / type / filters change.
+  // Issue the API call whenever the committed snapshot / type changes.
   // Any active filter with an empty query is a valid search (browse mode:
   // the filtered view, the profile's "Show more" landing).
   useEffect(() => {
-    const q = activeQuery.trim();
-    if (!q && !hasActiveFilters) {
+    const q = committed.q.trim();
+    const v = committed.values;
+    const d = committed.dates;
+    const filtersActive =
+      v.conflicts.length > 0 ||
+      v.captureSources.length > 0 ||
+      v.tags.length > 0 ||
+      v.mediaTypes.length > 0 ||
+      !!v.author.trim() ||
+      v.trustedOnly ||
+      Object.values(d).some(Boolean);
+    if (!q && !filtersActive) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -247,14 +221,16 @@ function SearchPageBody() {
     search({
       q,
       type: typeFilter,
-      author: authorFilter ?? undefined,
-      conflict: selectedConflicts,
-      captureSource: selectedCaptureSources,
-      tag: selectedTags,
-      media: selectedMediaTypes,
-      eventDateFrom: eventFrom || undefined,
-      eventDateTo: eventTo || undefined,
-      trustedOnly,
+      author: v.author.trim() || undefined,
+      conflict: v.conflicts,
+      captureSource: v.captureSources,
+      tag: v.tags,
+      media: v.mediaTypes,
+      eventDateFrom: d.eventFrom || undefined,
+      eventDateTo: d.eventTo || undefined,
+      submittedFrom: d.addedFrom || undefined,
+      submittedTo: d.addedTo || undefined,
+      trustedOnly: v.trustedOnly,
     })
       .then((response) => {
         // Stale response (a newer request started since) — drop so the
@@ -268,19 +244,9 @@ function SearchPageBody() {
         setError(err.message);
         setLoading(false);
       });
-  }, [
-    activeQuery,
-    typeFilter,
-    authorFilter,
-    selectedConflicts,
-    selectedCaptureSources,
-    selectedTags,
-    selectedMediaTypes,
-    eventFrom,
-    eventTo,
-    trustedOnly,
-    hasActiveFilters,
-  ]);
+  }, [committed, typeFilter]);
+
+  const activeQuery = committed.q;
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -289,12 +255,22 @@ function SearchPageBody() {
     );
   }, [results]);
 
-  const onChipClick = useCallback((t: SearchType) => {
+  const onChipClick = (t: SearchType) => {
+    // The filters are event predicates: leaving the Events scope while some
+    // are active would silently keep constraining the event groups, so they
+    // clear with the scope.
+    if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
+      clearFilters();
+      setFiltersOpen(false);
+    }
     setTypeFilter(t);
-  }, []);
+  };
 
-  const showGroup = (group: SearchType): boolean =>
-    typeFilter === "all" || typeFilter === group;
+  const showGroup = (group: "geolocation" | "request" | "user"): boolean => {
+    if (typeFilter === "all") return true;
+    if (typeFilter === "event") return group !== "user";
+    return typeFilter === group;
+  };
 
   return (
     <PageShell
@@ -312,133 +288,70 @@ function SearchPageBody() {
         />
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {TYPE_FILTERS.filter(
-            // The users group empties while any event filter is active, so
-            // its chip would be a dead toggle.
-            (opt) => !hasActiveFilters || opt.value !== "user"
-          ).map((opt) => (
+          {TYPE_FILTERS.map((opt) => (
             <Pill
               key={opt.value}
-              tone={typeFilter === opt.value ? "accent" : "neutral"}
+              tone={
+                typeFilter === opt.value || (opt.value === "event" && onEventScope)
+                  ? "accent"
+                  : "neutral"
+              }
               icon={opt.icon}
               onClick={() => onChipClick(opt.value)}
             >
               {opt.label}
             </Pill>
           ))}
-          <Pill
-            tone={filtersOpen ? "accent" : "secondary"}
-            icon={<Filter size={11} />}
-            onClick={() => setFiltersOpen((o) => !o)}
-          >
-            Filters
-          </Pill>
+          {(onEventScope || hasActiveFilters) && (
+            <Pill
+              tone={filtersOpen ? "accent" : "secondary"}
+              icon={<Filter size={11} />}
+              onClick={() => setFiltersOpen((o) => !o)}
+            >
+              Filters
+            </Pill>
+          )}
         </div>
 
         <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
 
         {filtersOpen && (
-          <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-            {conflicts.length > 0 && (
-              <FilterSection
-                title="Conflict"
-                concept="conflict"
-                summary={chipSummary(selectedConflicts)}
-                active={selectedConflicts.length > 0}
-                open={!!openSections["Conflict"]}
-                onToggle={() => toggleSection("Conflict")}
-              >
-                <ChipBucket
-                  options={conflicts}
-                  selected={selectedConflicts}
-                  onToggle={(n) => toggleInBucket(n, setSelectedConflicts)}
-                />
-              </FilterSection>
-            )}
-
-            {captureSourceTags.length > 0 && (
-              <FilterSection
-                title="Capture source"
-                concept="capture_source"
-                summary={chipSummary(selectedCaptureSources)}
-                active={selectedCaptureSources.length > 0}
-                open={!!openSections["Capture source"]}
-                onToggle={() => toggleSection("Capture source")}
-              >
-                <ChipBucket
-                  options={captureSourceTags}
-                  selected={selectedCaptureSources}
-                  onToggle={(n) => toggleInBucket(n, setSelectedCaptureSources)}
-                />
-              </FilterSection>
-            )}
-
-            <FilterSection
-              title="Source media"
-              concept="source_media"
-              summary={chipSummary(
-                selectedMediaTypes.map((m) => m[0].toUpperCase() + m.slice(1))
-              )}
-              active={selectedMediaTypes.length > 0}
-              open={!!openSections["Source media"]}
-              onToggle={() => toggleSection("Source media")}
-            >
-              <ChipBucket
-                options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
-                selected={selectedMediaTypes}
-                onToggle={(n) => toggleInBucket(n, setSelectedMediaTypes)}
-              />
-            </FilterSection>
-
-            <FilterSection
-              title="Event date"
-              concept="event_date"
-              summary={rangeSummary(eventFrom, eventTo)}
-              active={eventActive}
-              open={!!openSections["Event date"]}
-              onToggle={() => toggleSection("Event date")}
-            >
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  value={eventFrom}
-                  onChange={(e) => setEventFrom(e.target.value)}
-                  aria-label="Event date from"
-                  className="bg-neutral-800 text-[11px]"
-                />
-                <span className="text-neutral-500 text-xs">–</span>
-                <Input
-                  type="date"
-                  value={eventTo}
-                  onChange={(e) => setEventTo(e.target.value)}
-                  aria-label="Event date to"
-                  className="bg-neutral-800 text-[11px]"
-                />
-              </div>
-            </FilterSection>
-
-            {freeTags.length > 0 && (
-              <FilterSection
-                title="Tags"
-                summary={chipSummary(selectedTags)}
-                active={selectedTags.length > 0}
-                open={!!openSections["Tags"]}
-                onToggle={() => toggleSection("Tags")}
-              >
-                <ChipBucket
-                  options={freeTags}
-                  selected={selectedTags}
-                  onToggle={(n) => toggleInBucket(n, setSelectedTags)}
-                />
-              </FilterSection>
-            )}
-
-            <ToggleRow
-              label="Trusted analysts only"
-              on={trustedOnly}
-              onToggle={() => setTrustedOnly((v) => !v)}
-            />
-          </div>
+          <EventFilterSections
+            tags={tagsData ?? []}
+            conflicts={conflictsData ?? []}
+            values={values}
+            onPatch={onPatch}
+            dateSections={[
+              {
+                title: "Event date",
+                concept: "event_date",
+                summary: rangeSummary(dates.eventFrom, dates.eventTo),
+                active: eventWindowActive,
+                children: (
+                  <DateRange
+                    label="Event date"
+                    from={dates.eventFrom}
+                    to={dates.eventTo}
+                    onChange={(from, to) => setDates((d) => ({ ...d, eventFrom: from, eventTo: to }))}
+                  />
+                ),
+              },
+              {
+                title: "Added",
+                concept: "added",
+                summary: rangeSummary(dates.addedFrom, dates.addedTo),
+                active: addedWindowActive,
+                children: (
+                  <DateRange
+                    label="Added"
+                    from={dates.addedFrom}
+                    to={dates.addedTo}
+                    onChange={(from, to) => setDates((d) => ({ ...d, addedFrom: from, addedTo: to }))}
+                  />
+                ),
+              },
+            ]}
+          />
         )}
 
         {(activeQuery.trim() || hasActiveFilters) && (
@@ -454,8 +367,8 @@ function SearchPageBody() {
                   &ldquo;{activeQuery.trim()}&rdquo;
                 </span>
               )}
-              {!loading && results && authorFilter && (
-                <span> by <span className="text-neutral-300 font-medium">@{authorFilter}</span></span>
+              {!loading && results && values.author.trim() && (
+                <span> by <span className="text-neutral-300 font-medium">@{values.author.trim()}</span></span>
               )}
             </span>
           </div>
@@ -467,7 +380,10 @@ function SearchPageBody() {
           </div>
         )}
 
-        {!activeQuery.trim() && !hasActiveFilters && (
+        {/* Emptiness gates read the LIVE inputs (not the debounced snapshot)
+            so clearing filters doesn't flash stale results under the
+            start-typing prompt for a debounce window. */}
+        {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
             Start typing to search across geolocations, requests and analysts.
           </EmptyState>
@@ -480,7 +396,7 @@ function SearchPageBody() {
               <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
             )}
             {hasActiveFilters && <> with the active filters</>}.
-            {typeFilter !== "all" && (
+            {typeFilter !== "all" && !hasActiveFilters && (
               <>
                 {" "}
                 <button
@@ -496,7 +412,7 @@ function SearchPageBody() {
           </EmptyState>
         )}
 
-        {results && (
+        {(queryInput.trim() || hasActiveFilters) && results && (
           <>
             {showGroup("geolocation") && results.geolocations.length > 0 && (
               <ResultGroup
@@ -527,6 +443,40 @@ function SearchPageBody() {
           </>
         )}
     </PageShell>
+  );
+}
+
+/** The search surface's date controls (the map uses its timeline scrubbers
+ *  for the same two sections): a from/to pair of native date inputs. */
+function DateRange({
+  label,
+  from,
+  to,
+  onChange,
+}: {
+  label: string;
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        aria-label={`${label} from`}
+        className="bg-neutral-800 text-[11px]"
+      />
+      <span className="text-neutral-500 text-xs">–</span>
+      <Input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        aria-label={`${label} to`}
+        className="bg-neutral-800 text-[11px]"
+      />
+    </div>
   );
 }
 

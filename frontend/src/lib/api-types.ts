@@ -2041,7 +2041,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "geolocation" | "request" | "user";
+            type: "all" | "event" | "geolocation" | "request" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };

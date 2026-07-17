@@ -798,3 +798,21 @@ def test_garbage_date_filter_returns_422(caller):
 def test_garbage_media_filter_returns_422(caller):
     response = client.get("/api/v1/search?q=x&media=hologram")
     assert response.status_code == 422
+
+
+def test_type_event_returns_both_event_groups_without_users(db, caller):
+    """``type=event`` is the unified reader chip: both event groups, no
+    analyst hits even when the query matches a username."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Event-type {token}")
+    try:
+        response = client.get(f"/api/v1/search?q={token}&type=event")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["type"] == "event"
+        assert [h["id"] for h in body["geolocations"]] == [str(geo)]
+        assert body["requests"] == []
+        assert body["users"] == [] and body["total"]["users"] == 0
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()

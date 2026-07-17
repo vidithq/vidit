@@ -410,16 +410,22 @@ def search_all(
 
 
 # Allowed ``type`` parameter values. Re-exported by the router for the 422
-# message so the spec stays in one place.
-ALLOWED_TYPES = {"all", "geolocation", "request", "user"}
+# message so the spec stays in one place. ``event`` is the reader-facing union
+# of the two event groups (the search page's unified "Events" chip: the filter
+# set only applies to events, so the picker doesn't force the geolocation vs
+# request split); the two singletons stay for callers that want one group.
+ALLOWED_TYPES = {"all", "event", "geolocation", "request", "user"}
 
 
 def types_from_param(param: str) -> set[str]:
     """Translate the ``type`` query parameter into the internal set.
 
-    ``"all"`` expands to the union; anything else is a singleton. The router
-    validates ``param in ALLOWED_TYPES`` first, so this trusts its input.
+    ``"all"`` expands to the union, ``"event"`` to the two event groups;
+    anything else is a singleton. The router validates
+    ``param in ALLOWED_TYPES`` first, so this trusts its input.
     """
     if param == "all":
         return {"geolocation", "request", "user"}
+    if param == "event":
+        return {"geolocation", "request"}
     return {param}
