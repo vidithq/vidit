@@ -2,34 +2,29 @@
 
 import Link from "next/link";
 import { Megaphone } from "lucide-react";
-import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { eventListPath } from "@/lib/events";
 import type { EventListItem } from "@/types";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
 
 export default function RequestsPage() {
-  const { user, loading } = useRequireAuth();
-
   // The board is the open queue: only ``requested`` events. A fulfilled request
   // becomes a ``geolocated`` event and moves to the map; a withdrawn one goes
   // ``closed`` and drops off here (still reachable by permalink). No status
   // filter: "closed" here would mean "withdrawn", which reads as "done" on a
   // work queue and misleads. Enriching this into a triage board (sort, filters,
   // activity signals) is a v1.0 item, gated on request volume (see next.md).
+  // Public read: no auth gate; "Post request" routes through /submit, which
+  // bounces a signed-out visitor to login.
   const { data: requests, error } = useApiResource<EventListItem[]>(
-    user ? eventListPath({ view: "requested", status: "requested" }) : null
+    eventListPath({ view: "requested", status: "requested" })
   );
-
-  if (loading || !user) {
-    return <PageLoading />;
-  }
 
   return (
     <PageShell

@@ -1,8 +1,8 @@
 """``GET /search``: full-text search across geolocations, requests, users.
 
 Single endpoint, single query box, grouped response. See
-``services/search.py`` for the FTS plumbing. Auth matches the rest of the
-read surface (logged-in user required); public reads are a likely future.
+``services/search.py`` for the FTS plumbing. Anonymous, like the rest of the
+read surface; the 60/min per-IP limit is the abuse floor.
 """
 
 from __future__ import annotations
@@ -13,8 +13,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import get_db
 from app.ratelimit import limiter
 from app.schemas.search import SearchResponse, SearchTotals, SearchType
 from app.services import search as search_service
@@ -35,7 +34,6 @@ def search(
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> SearchResponse:
     """Grouped FTS across the three first-class entity types.
 

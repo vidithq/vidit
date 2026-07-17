@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -23,30 +22,27 @@ import { useDetectionsCount } from "@/contexts/DetectionsContext";
 
 export default function ProfilePage() {
   const params = useParams();
-  const router = useRouter();
   const { user: currentUser, loading: authLoading, logout, refresh } = useAuth();
 
+  // Public read surface: the profile and its submissions load without a
+  // session (`GET /users/{username}` is anonymous); only the owner
+  // affordances below gate on `currentUser`.
   const username = typeof params.username === "string" ? params.username : "";
   const {
     data: profile,
     error,
     refetch: refetchProfile,
-  } = useApiResource<PublicProfile>(
-    username && currentUser ? `/users/${username}` : null
-  );
+  } = useApiResource<PublicProfile>(username ? `/users/${username}` : null);
   // Error deliberately unread: a failed submissions list renders empty
   // rather than blocking the profile card.
   const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
-    username && currentUser
-      ? `/users/${username}/events?per_page=5`
-      : null
+    username ? `/users/${username}/events?per_page=5` : null
   );
   const submissions = submissionsData?.items ?? [];
   // Shared with the sidebar dot via the provider — owner-scoped server-side, so
   // it's the signed-in user's pending count regardless of whose profile this is
   // (gated to the own-profile render below).
   const { count: detectionCount } = useDetectionsCount();
-  const [signingOut, setSigningOut] = useState(false);
 
   const edit = useProfileEdit({
     username,
@@ -56,24 +52,18 @@ export default function ProfilePage() {
   });
 
   // Two-click confirm so an accidental tap doesn't end the session;
-  // auto-reverts after 3s.
+  // auto-reverts after 3s. Signing out just re-renders this page in its
+  // anonymous shape (the profile is public); no redirect needed.
   const signOut = useConfirmAction(
     () => {
-      setSigningOut(true);
       logout();
     },
     { timeoutMs: 3000 }
   );
 
-  // Auth guard
-  useEffect(() => {
-    if (signingOut) return;
-    if (!authLoading && !currentUser) {
-      router.push("/login");
-    }
-  }, [authLoading, currentUser, router, signingOut]);
-
-  if (authLoading || !currentUser) {
+  // Wait for auth to resolve before rendering, so the owner affordances
+  // (edit, sign-out) don't pop in after an anonymous-looking first paint.
+  if (authLoading) {
     return <PageLoading />;
   }
 
@@ -85,14 +75,14 @@ export default function ProfilePage() {
     return <PageLoading />;
   }
 
-  const isOwn = profile.username === currentUser.username;
+  const isOwn = !!currentUser && profile.username === currentUser.username;
 
   return (
     <PageShell back title="Profile">
         <ProfileHeader
           profile={profile}
           isOwn={isOwn}
-          email={currentUser.email}
+          email={currentUser?.email}
           edit={edit}
         />
 

@@ -224,12 +224,13 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 6  # [id, lat, lng, event_date, submitted_date, detected]
+    assert len(row) == 7  # [id, lat, lng, event_date, submitted_date, detected, demo]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
     assert row[5] == 0  # submitted row → not marked detected
+    assert row[6] == 0  # not a demo row
 
 
 def test_points_excludes_soft_deleted(db, author):
@@ -344,6 +345,12 @@ def test_points_filters_media_trusted_and_demo(db, author):
     nodemo_ids = ids("?hide_demo=true")
     assert str(plain.id) in nodemo_ids
     assert str(demo.id) not in nodemo_ids
+
+    # The unfiltered payload marks the demo row so the filter panel knows
+    # whether to offer its hide-demo toggle at all.
+    all_rows = client.get("/api/v1/events/points").json()
+    assert next(r for r in all_rows if r[0] == str(demo.id))[6] == 1
+    assert next(r for r in all_rows if r[0] == str(plain.id))[6] == 0
 
     # A junk media value is rejected (422), not silently treated as "no match".
     assert client.get("/api/v1/events/points?media=bogus").status_code == 422

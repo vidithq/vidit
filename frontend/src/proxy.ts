@@ -11,14 +11,21 @@ const CANONICAL_HOST = "vidit.app";
 const CSRF_COOKIE = "vidit_csrf";
 
 // Paths reachable WITHOUT a session; everything else is default-deny below.
-// `/` and `/about` let a skeptic evaluate Vidit before signing up, and the
-// auth-flow pages must stay reachable to sign in or register. The invite
-// code gates registration only (at `POST /auth/register`) — no site-wide
-// gate cookie. When anonymous read opens, content routes (`/map`,
-// `/events/[id]`, `/profile/[username]`, `/requests`) join this set.
+// Anonymous read is open: the content routes (map, events, requests,
+// profiles, search) are public. Write and account surfaces (`/submit`,
+// `/import`, `/settings`, `/admin`, `/timeline`) stay behind the wall;
+// write sub-routes living under a public prefix (`/events/[id]/edit`,
+// `/profile/[username]/detections`) are bounced client-side by
+// `useRequireAuth`. The invite code gates registration only (at
+// `POST /auth/register`) — no site-wide gate cookie.
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
+  "/map",
+  "/events",
+  "/requests",
+  "/profile",
+  "/search",
   "/login",
   "/register",
   "/registration-pending",
@@ -74,7 +81,7 @@ export function proxy(request: NextRequest) {
 
   // 2. Default-deny auth wall — DEV AND PROD. Anything outside the public
   // set requires a session, redirected at the edge BEFORE the page renders
-  // so closed-beta content never renders for a signed-out visitor. Runs in
+  // so gated surfaces never render for a signed-out visitor. Runs in
   // dev too so local matches production (log in as the seeded admin).
   if (!isPublic(pathname) && !hasSession) {
     return redirectToLogin(request);
