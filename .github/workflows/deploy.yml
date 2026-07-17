@@ -77,10 +77,26 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy to Railway
+      - name: Deploy API to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --service backend --ci
+
+      # The scheduler services (always-on import worker, conflict-sync cron)
+      # have no GitHub source connected — this workflow is their only deploy
+      # path, so they ship the same ref as the API. Each service carries its
+      # own dashboard config (Root Directory ``backend``, Config-as-code
+      # ``backend/railway.scheduler.json``, start command); the upload is the
+      # same repo-root snapshot as the API's.
+      - name: Deploy import worker to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend-import-worker --ci
+
+      - name: Deploy conflict-sync cron to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend-conflicts --ci
 
   deploy-frontend:
     name: Deploy frontend (Vercel)
