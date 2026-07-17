@@ -164,9 +164,14 @@ if settings.storage_backend == "local":
     ) -> Response:
         if not archive_jobs.is_staging_key(key):
             raise HTTPException(status_code=400, detail="Not a staging key")
+        # Containment check on top of the key-shape gate: the regex already
+        # forbids traversal, but the resolve + is_relative_to pair is the
+        # explicit barrier (same as ``LocalStorage._path``).
+        dest = (local_dir / key).resolve()
+        if not dest.is_relative_to(local_dir.resolve()):
+            raise HTTPException(status_code=400, detail="Not a staging key")
         # Chunked straight to disk, mirroring the streaming discipline of the
         # real S3 target; only one chunk is ever in memory.
-        dest = local_dir / key
         dest.parent.mkdir(parents=True, exist_ok=True)
         size = 0
         with dest.open("wb") as out:
