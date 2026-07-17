@@ -916,5 +916,13 @@ def test_fts_query_uses_the_gin_index(db):
     stmt = EventFilters().apply(db.query(Event.id), view="located")
     stmt = stmt.filter(search_service._geo_tsvector().op("@@")(tsquery))
     compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
-    plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+    # ``enable_seqscan = off`` makes this a test of index MATCHABILITY, not of
+    # the planner's cost choice: on a near-empty table (CI) a seq scan is the
+    # correct plan even when the index matches, and that must not fail the
+    # pin. Session-scoped; reset below.
+    db.execute(satext("SET enable_seqscan = off"))
+    try:
+        plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+    finally:
+        db.execute(satext("RESET enable_seqscan"))
     assert "ix_events_search_fts" in plan, plan
