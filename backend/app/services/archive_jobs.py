@@ -83,7 +83,22 @@ class StagedUploadTooLargeError(StagedUploadError):
 
 
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-_STAGING_KEY_RE = re.compile(rf"^{re.escape(STAGING_PREFIX)}(?P<owner>{_UUID})/{_UUID}\.zip$")
+_STAGING_KEY_RE = re.compile(
+    rf"^{re.escape(STAGING_PREFIX)}(?P<owner>{_UUID})/(?P<name>{_UUID})\.zip$"
+)
+
+
+def parse_staging_key(key: str) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """``(owner_id, object_id)`` for a well-formed staging key, else ``None``.
+
+    The dev upload endpoint rebuilds its destination path from these parsed
+    UUIDs rather than the raw key string, so no user-provided path fragment
+    ever reaches the filesystem.
+    """
+    match = _STAGING_KEY_RE.fullmatch(key)
+    if match is None:
+        return None
+    return uuid.UUID(match.group("owner")), uuid.UUID(match.group("name"))
 
 
 def mint_staging_key(owner_id: uuid.UUID) -> str:

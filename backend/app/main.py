@@ -162,14 +162,14 @@ if settings.storage_backend == "local":
         key: str = Form(...),
         file: UploadFile = File(...),
     ) -> Response:
-        if not archive_jobs.is_staging_key(key):
+        parsed = archive_jobs.parse_staging_key(key)
+        if parsed is None:
             raise HTTPException(status_code=400, detail="Not a staging key")
-        # Containment check on top of the key-shape gate: the regex already
-        # forbids traversal, but the resolve + is_relative_to pair is the
-        # explicit barrier (same as ``LocalStorage._path``).
-        dest = (local_dir / key).resolve()
-        if not dest.is_relative_to(local_dir.resolve()):
-            raise HTTPException(status_code=400, detail="Not a staging key")
+        # The destination is rebuilt from the parsed UUIDs, never from the
+        # raw key string: no user-provided path fragment reaches the
+        # filesystem, so traversal is impossible by construction.
+        owner_id, object_id = parsed
+        dest = local_dir / archive_jobs.STAGING_PREFIX / str(owner_id) / f"{object_id}.zip"
         # Chunked straight to disk, mirroring the streaming discipline of the
         # real S3 target; only one chunk is ever in memory.
         dest.parent.mkdir(parents=True, exist_ok=True)
