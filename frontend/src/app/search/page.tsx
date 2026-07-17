@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Filter, MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import TrustBadge from "@/components/profile/TrustBadge";
 import { search, splitHighlights } from "@/lib/search";
@@ -115,7 +115,6 @@ function SearchPageBody() {
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
   const [values, setValues] = useState<EventFilterValues>(initialValues);
   const [dates, setDates] = useState<DateWindows>(initialDates);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // The debounced snapshot the fetch + URL run on, so typing (the query or
   // the author field) doesn't fire a request per keystroke.
@@ -261,7 +260,6 @@ function SearchPageBody() {
     // clear with the scope.
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       clearFilters();
-      setFiltersOpen(false);
     }
     setTypeFilter(t);
   };
@@ -302,20 +300,13 @@ function SearchPageBody() {
               {opt.label}
             </Pill>
           ))}
-          {(onEventScope || hasActiveFilters) && (
-            <Pill
-              tone={filtersOpen ? "accent" : "secondary"}
-              icon={<Filter size={11} />}
-              onClick={() => setFiltersOpen((o) => !o)}
-            >
-              Filters
-            </Pill>
-          )}
         </div>
 
         <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
 
-        {filtersOpen && (
+        {/* Picking the Events scope surfaces the filter panel directly (the
+            sections collapse individually); no separate toggle to find. */}
+        {onEventScope && (
           <EventFilterSections
             tags={tagsData ?? []}
             conflicts={conflictsData ?? []}
