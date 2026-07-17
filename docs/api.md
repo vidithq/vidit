@@ -77,7 +77,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 
 ## Rate limits
 
-One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP, the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev).
+One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP, the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev). Every read limit in this table is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)); write limits have wiring-level coverage only.
 
 | Endpoint | Limit (per IP) |
 |---|---|
