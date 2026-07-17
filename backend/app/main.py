@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -21,7 +21,12 @@ from app.routers import (
     tags,
     users,
 )
-from app.services.storage import LOCAL_STORAGE_MOUNT_PATH
+from app.services import archive_jobs
+from app.services.storage import (
+    DEV_STAGING_UPLOAD_PATH,
+    LOCAL_STORAGE_MOUNT_PATH,
+)
+from app.services.tweet_ingest import archive_zip
 
 # Error tracking. Boots only when SENTRY_DSN is set; safe to leave unset.
 if settings.sentry_dsn:
@@ -60,7 +65,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # file (bounded by the stream-reader, no worse than the per-file cap).
 #
 # Ceiling admits the largest legitimate request: one source file
-# (``max_video_size``, 100 MB, the bigger of the two per-file caps) plus a
+# (``max_video_size``, 95 MiB, the bigger of the two per-file caps) plus a
 # full ``max_proof_images_per_event`` proof batch at ``max_image_size``
 # (10 × 10 MB), plus 10 MB for multipart envelope and form fields. All three
 # caps read from ``settings`` so this module never imports a router (the old
@@ -144,6 +149,41 @@ if settings.storage_backend == "local":
     local_dir = Path(settings.local_storage_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     app.mount(LOCAL_STORAGE_MOUNT_PATH, StaticFiles(directory=local_dir), name="local-storage")
+
+    # Dev/CI stand-in for the S3 POST-policy target the presign returns in
+    # prod (see ``LocalStorage.presign_staging_upload``): same form contract
+    # (fields + file), so the frontend has one upload code path. Never mounted
+    # when STORAGE_BACKEND=s3. Enforces the strict staging-key shape (a free
+    # ``key`` field could otherwise traverse out of the storage root) and the
+    # same size guard the S3 policy carries; the body-size middleware above
+    # caps it lower in dev, which local archives never reach.
+    @app.post(DEV_STAGING_UPLOAD_PATH, include_in_schema=False)
+    async def dev_staging_upload(
+        key: str = Form(...),
+        file: UploadFile = File(...),
+    ) -> Response:
+        parsed = archive_jobs.parse_staging_key(key)
+        if parsed is None:
+            raise HTTPException(status_code=400, detail="Not a staging key")
+        # The destination is rebuilt from the parsed UUIDs, never from the
+        # raw key string: no user-provided path fragment reaches the
+        # filesystem, so traversal is impossible by construction.
+        owner_id, object_id = parsed
+        dest = local_dir / archive_jobs.STAGING_PREFIX / str(owner_id) / f"{object_id}.zip"
+        # Chunked straight to disk, mirroring the streaming discipline of the
+        # real S3 target; only one chunk is ever in memory.
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        size = 0
+        with dest.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > archive_zip.MAX_UPLOAD_BYTES:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
+                out.write(chunk)
+        # 204 like S3's default POST-policy success response.
+        return Response(status_code=204)
 
 
 @app.get("/health")

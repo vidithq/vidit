@@ -1,6 +1,9 @@
 """Endpoint + worker tests for the ``import-archive`` job pipeline.
 
-``POST /geolocations/import-archive`` now stages the zip and returns a
+The upload is presigned direct-to-storage: ``POST /import-archive/presign``
+mints the key, the client POSTs the zip to the returned URL (the dev upload
+endpoint against ``LocalStorage``, standing in for S3's POST policy), and the
+JSON ``POST /import-archive`` verifies the staged object and returns a
 ``queued`` job (202); the worker (``services/archive_jobs``) claims it and
 drives the real backfill (extract guard → read_tweets → stitch → detect →
 assemble). Tests drain the queue inline with ``run_once``, so the whole
@@ -18,6 +21,7 @@ import zipfile
 
 import pytest
 
+from app.main import app
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.services import archive_jobs
@@ -57,12 +61,39 @@ def _zip_bytes(entries: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
-def _post(author, zip_bytes: bytes):
+def _presign(author) -> dict:
+    resp = client.post("/api/v1/events/import-archive/presign", headers=login_as(client, author))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _upload(author, presign: dict, zip_bytes: bytes):
+    """POST the zip to the presigned target, as the browser would (fields
+    first, then the file). The URL is absolute (the browser needs it); the
+    TestClient takes its path."""
+    path = presign["upload"]["url"].removeprefix("http://localhost:8000")
+    return client.post(
+        path,
+        headers=login_as(client, author),
+        data=presign["upload"]["fields"],
+        files={"file": ("archive.zip", zip_bytes, "application/zip")},
+    )
+
+
+def _enqueue(author, upload_key: str, post_estimate: int | None = 3):
     return client.post(
         "/api/v1/events/import-archive",
         headers=login_as(client, author),
-        files={"file": ("archive.zip", zip_bytes, "application/zip")},
+        json={"upload_key": upload_key, "post_estimate": post_estimate},
     )
+
+
+def _post(author, zip_bytes: bytes):
+    """The whole two-step client flow: presign → direct upload → JSON enqueue."""
+    presign = _presign(author)
+    uploaded = _upload(author, presign, zip_bytes)
+    assert uploaded.status_code == 204, uploaded.text
+    return _enqueue(author, presign["upload_key"])
 
 
 def _drain(db) -> int:
@@ -84,19 +115,58 @@ def _counts(job: dict) -> dict:
     return {k: job[k] for k in ("created", "skipped", "recreated", "failed")}
 
 
-# ── The endpoint: enqueue + poll ────────────────────────────────────────────
+# ── The endpoints: presign + upload + enqueue + poll ───────────────────────
 
 
-def test_upload_returns_queued_job_and_stages_the_zip(db, author):
+def test_presign_mints_owner_bound_key_and_upload_target(author):
+    presign = _presign(author)
+    key = presign["upload_key"]
+    assert key.startswith(f"{archive_jobs.STAGING_PREFIX}{author.id}/")
+    assert key.endswith(".zip")
+    assert archive_jobs.parse_staging_key(key) is not None
+    # The upload half carries the URL + the form fields the browser must POST
+    # ahead of the file; against LocalStorage the fields pin the same key.
+    assert presign["upload"]["url"]
+    assert presign["upload"]["fields"]["key"] == key
+    assert presign["upload"]["fields"]["Content-Type"] == "application/zip"
+
+
+def test_presign_requires_auth():
+    assert client.post("/api/v1/events/import-archive/presign").status_code == 401
+
+
+def test_presign_is_rate_limited(author):
+    # conftest's autouse fixture disables the limiter; re-enable it for the
+    # wiring check (10/hour on presign: the 11th call in the window is a 429).
+    limiter = app.state.limiter
+    limiter.reset()
+    limiter.enabled = True
+    try:
+        headers = login_as(client, author)
+        for _ in range(10):
+            assert (
+                client.post("/api/v1/events/import-archive/presign", headers=headers).status_code
+                == 200
+            )
+        assert (
+            client.post("/api/v1/events/import-archive/presign", headers=headers).status_code == 429
+        )
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+
+def test_enqueue_returns_queued_job_for_staged_upload(db, author):
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
     assert accepted.status_code == 202, accepted.text
     body = accepted.json()
     assert body["status"] == "queued"
+    assert body["post_estimate"] == 3  # the client-supplied strip estimate
     assert _counts(body) == {"created": 0, "skipped": 0, "recreated": 0, "failed": 0}
 
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
     assert job is not None and job.owner_id == author.id
-    # The zip is staged for the worker under the job's key.
+    # The staged object is where the job row points.
     assert get_storage().get_bytes(job.zip_key)
 
 
@@ -109,35 +179,64 @@ def test_job_poll_is_owner_only(db, author, second_user):
     assert other.status_code == 404  # indistinguishable from unknown
 
 
-def test_requires_auth():
+def test_enqueue_rejects_reused_upload_key(db, author):
+    # One key backs one job: a retry or replay of the same key would race the
+    # first job's terminal-state delete and end in a spurious failure email.
+    presign = _presign(author)
+    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
+    assert _upload(author, presign, zip_bytes).status_code == 204
+    first = _enqueue(author, presign["upload_key"])
+    assert first.status_code == 202
+    second = _enqueue(author, presign["upload_key"])
+    assert second.status_code == 400
+    assert second.json()["detail"]["code"] == "archive_upload_invalid"
+
+
+def test_enqueue_requires_auth():
     resp = client.post(
         "/api/v1/events/import-archive",
-        files={"file": ("a.zip", _zip_bytes({"tweets.js": _TWEETS}), "application/zip")},
+        json={"upload_key": "archive-imports/x/y.zip", "post_estimate": 1},
     )
     assert resp.status_code == 401
 
 
-def test_rejects_non_zip(author):
-    resp = client.post(
-        "/api/v1/events/import-archive",
-        headers=login_as(client, author),
-        files={"file": ("a.zip", b"not a zip at all", "application/zip")},
-    )
-    assert resp.status_code == 400
-    assert resp.json()["detail"]["code"] == "archive_malformed"
+def test_enqueue_rejects_key_with_no_staged_object(author):
+    presign = _presign(author)  # minted but never uploaded
+    resp = _enqueue(author, presign["upload_key"])
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "archive_upload_missing"
 
 
-def test_rejects_archive_without_tweets(author):
-    resp = _post(author, _zip_bytes({"account.js": b"x"}))
-    assert resp.status_code == 400
-    assert resp.json()["detail"]["code"] == "archive_no_tweets"
-
-
-def test_rejects_oversize_upload(author, monkeypatch):
+def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
+    key = archive_jobs.mint_staging_key(author.id)
+    get_storage().put_bytes_sync(_zip_bytes({"tweets.js": _TWEETS}), key, "application/zip")
     monkeypatch.setattr(archive_zip, "MAX_UPLOAD_BYTES", 10)
-    resp = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    resp = _enqueue(author, key)
     assert resp.status_code == 413
     assert resp.json()["detail"]["code"] == "archive_too_large"
+
+
+def test_enqueue_rejects_foreign_and_malformed_keys(author, second_user):
+    # Someone else's staged object: minted + uploaded by second_user, enqueued
+    # by author.
+    presign = _presign(second_user)
+    assert _upload(second_user, presign, _zip_bytes({"tweets.js": _TWEETS})).status_code == 204
+    resp = _enqueue(author, presign["upload_key"])
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "archive_upload_invalid"
+
+    # Arbitrary bucket keys and traversal shapes never reach storage.
+    for key in ("../../etc/passwd", "uploads/anything.zip", f"archive-imports/{author.id}.zip"):
+        resp = _enqueue(author, key)
+        assert resp.status_code == 400, key
+        assert resp.json()["detail"]["code"] == "archive_upload_invalid"
+
+
+def test_dev_upload_rejects_non_staging_key(author):
+    presign = _presign(author)
+    presign["upload"]["fields"]["key"] = "uploads/escape.zip"
+    resp = _upload(author, presign, _zip_bytes({"tweets.js": _TWEETS}))
+    assert resp.status_code == 400
 
 
 # ── The worker: backfill + terminal states + email ──────────────────────────
@@ -156,8 +255,9 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     # The owner got the completion email; the staged zip is gone.
     assert [e.subject for e in sent_emails] == ["Your X archive import is done"]
     assert author.email == sent_emails[0].to
+    row = db.get(ArchiveImportJob, uuid.UUID(job["id"]))
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(archive_jobs.staging_key(uuid.UUID(job["id"])))
+        get_storage().get_bytes(row.zip_key)
 
 
 def test_reimport_is_idempotent(db, author, sent_emails):
@@ -204,6 +304,36 @@ def test_reimport_recreates_after_the_detection_is_closed_through_the_api(db, au
     # The recreated row is a fresh, live detection at the same coordinate pair.
     assert rows[1].status == STATUS_DETECTED
     assert rows[1].detected_from_url == detected.detected_from_url
+
+
+def test_malformed_staged_zip_fails_in_the_worker(db, author, sent_emails):
+    """Zip-shape validation moved off the enqueue (the endpoint never opens
+    the staged object): a non-zip upload lands as a ``failed`` job + the
+    failure email, not a synchronous 4xx."""
+    accepted = _post(author, b"not a zip at all")
+    assert accepted.status_code == 202
+    assert _drain(db) == 1
+
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "MalformedArchiveError"
+    assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
+
+
+def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
+    """The claim-time guard: an object deleted (or never re-verifiable)
+    between enqueue and claim fails the job cleanly instead of raising out
+    of the download."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    get_storage().delete_many([job.zip_key])
+
+    assert _drain(db) == 1
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "staged object missing"
+    assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
 
 
 def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypatch):

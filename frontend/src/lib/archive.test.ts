@@ -16,9 +16,11 @@ describe("stripArchive", () => {
       "data/direct-messages.js": strToU8("private dms"),
     });
     const stripped = await stripArchive(file);
-    const out = unzipSync(new Uint8Array(await stripped.arrayBuffer()));
+    const out = unzipSync(new Uint8Array(await stripped.file.arrayBuffer()));
     // The sensitive files are gone; the data/ prefix is flattened.
     expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
+    // A tiny tweets.js still yields a nonzero cosmetic estimate.
+    expect(stripped.postEstimate).toBe(1);
   });
 
   it("never emits deleted-tweets.js (a loose tweets.js match would catch it)", async () => {
@@ -28,7 +30,7 @@ describe("stripArchive", () => {
       "data/deleted-tweets.js": strToU8("window.YTD.deleted_tweets.part0 = []"),
     });
     const stripped = await stripArchive(file);
-    const out = unzipSync(new Uint8Array(await stripped.arrayBuffer()));
+    const out = unzipSync(new Uint8Array(await stripped.file.arrayBuffer()));
     expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
   });
 

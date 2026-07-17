@@ -3,6 +3,7 @@ import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
   ArchiveImportJob,
+  ArchiveImportPresign,
   EventDetail,
   EventStatus,
   TagCategory,
@@ -346,19 +347,72 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
 }
 
 /**
- * Backfill the caller's profile from their X "Download your data" zip:
- * `POST /events/import-archive` (multipart). Only the allowlisted entries
- * (`tweets.js` + `tweets_media/`) are read server-side; the rest of the export
- * is never extracted. Returns the `queued` job (202): the worker service runs
- * the import (every row lands `detected` for the caller to submit) and emails
- * the outcome; poll the job for the counts.
+ * Step 1 of the archive import: `POST /events/import-archive/presign` mints
+ * the staging key and the presigned direct-to-storage upload target (S3's
+ * POST policy in prod, the dev upload endpoint locally, one shape).
  */
-export function importArchive(file: File): Promise<ArchiveImportJob> {
-  const fd = new FormData();
-  fd.append("file", file);
+export function presignArchiveUpload(): Promise<ArchiveImportPresign> {
+  return apiFetch<ArchiveImportPresign>("/events/import-archive/presign", {
+    method: "POST",
+  });
+}
+
+/** The upload leg failed in transit (network drop, an expired presign, a
+ *  storage-side reject): nothing is staged or enqueued, so a retry of the
+ *  same import is always safe. Distinct from an enqueue `ApiError`. */
+export class ArchiveUploadError extends Error {
+  constructor() {
+    super("The upload didn't complete. Check your connection and try again.");
+    this.name = "ArchiveUploadError";
+  }
+}
+
+/**
+ * Step 2: POST the stripped zip straight to storage (never through the API).
+ * XHR rather than fetch for its upload progress events; `fields` go ahead of
+ * the file part (S3 ignores fields after it), and no credentials ride along
+ * (the presigned policy is the authorization). `onProgress` gets 0..1.
+ */
+export function uploadArchive(
+  upload: ArchiveImportPresign["upload"],
+  file: File,
+  onProgress?: (fraction: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    for (const [name, value] of Object.entries(upload.fields)) {
+      fd.append(name, value);
+    }
+    fd.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", upload.url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new ArchiveUploadError());
+    xhr.onerror = () => reject(new ArchiveUploadError());
+    xhr.send(fd);
+  });
+}
+
+/**
+ * Step 3: `POST /events/import-archive` (JSON) verifies the staged object and
+ * enqueues the backfill. Only the allowlisted entries (`tweets.js` +
+ * `tweets_media/`) are ever extracted server-side. Returns the `queued` job
+ * (202): the worker service runs the import (every row lands `detected` for
+ * the caller to submit) and emails the outcome; poll the job for the counts.
+ * `postEstimate` is the strip's cosmetic volume hint for the queued display.
+ */
+export function enqueueArchiveImport(
+  uploadKey: string,
+  postEstimate: number
+): Promise<ArchiveImportJob> {
   return apiFetch<ArchiveImportJob>("/events/import-archive", {
     method: "POST",
-    body: fd,
+    body: JSON.stringify({ upload_key: uploadKey, post_estimate: postEstimate }),
   });
 }
 

@@ -7,6 +7,18 @@ import { ApiError } from "./api";
 const TWEETS_FILE = "tweets.js";
 const MEDIA_DIR = "tweets_media/";
 
+/** Rough bytes per `tweets.js` record across real exports (JSON envelope +
+ *  text + entities). Feeds only the cosmetic pre-import post estimate the
+ *  enqueue carries; the worker's parse stamps the exact totals. */
+const BYTES_PER_TWEET_ESTIMATE = 1500;
+
+export interface StrippedArchive {
+  file: File;
+  /** Cosmetic volume hint for the queued-job display: `tweets.js` bytes over
+   *  the per-record average, never below 1. */
+  postEstimate: number;
+}
+
 /**
  * Strip an X "Download your data" zip to only the entries we read (`tweets.js`
  * and `tweets_media/`) and re-zip them, in the browser, before upload.
@@ -23,7 +35,7 @@ const MEDIA_DIR = "tweets_media/";
  * carrying the same `code` the backend would (`archive_malformed` /
  * `archive_no_tweets`) so the page maps it to one message.
  */
-export async function stripArchive(file: File): Promise<File> {
+export async function stripArchive(file: File): Promise<StrippedArchive> {
   const buf = new Uint8Array(await file.arrayBuffer());
 
   let kept: Unzipped;
@@ -74,5 +86,8 @@ export async function stripArchive(file: File): Promise<File> {
   const zipped = await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
     zip(out, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
   });
-  return new File([zipped], "vidit-archive.zip", { type: "application/zip" });
+  return {
+    file: new File([zipped], "vidit-archive.zip", { type: "application/zip" }),
+    postEstimate: Math.max(1, Math.round(kept[tweetsKey].length / BYTES_PER_TWEET_ESTIMATE)),
+  };
 }

@@ -37,7 +37,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
-| POST | `/events/import-archive` | 🔒 | Enqueue your X data archive (zip) for the backfill worker |
+| POST | `/events/import-archive/presign` | 🔒 | Mint a presigned direct-to-storage upload for your X data archive |
+| POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + assemble counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
@@ -99,6 +100,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /events/possible-duplicates` | 60/min |
 | `POST /events/import-from-tweet` | 30/min |
 | `GET /events/import-from-tweet/media` | 60/min |
+| `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
@@ -555,17 +557,41 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 
 ---
 
+### `POST /events/import-archive/presign` 🔒
+
+Step one of the archive import: mint a staging key and a presigned direct-to-storage upload for the caller's (browser-stripped) zip. The archive never transits the API. The target is an S3 POST policy (or the dev upload endpoint against local storage, same shape): POST a `multipart/form-data` form to `upload.url` carrying every `upload.fields` entry ahead of the file part, no credentials. The policy pins the exact key, `application/zip`, and the size guard (2 GB), and expires after 15 minutes. No content validation here.
+
+**Request:** empty body.
+
+**Response 200:**
+```json
+{
+  "upload_key": "archive-imports/<user-id>/<uuid>.zip",
+  "upload": {
+    "url": "https://<bucket>.s3.<region>.amazonaws.com/",
+    "fields": { "key": "…", "Content-Type": "application/zip", "policy": "…", "…": "…" }
+  }
+}
+```
+
+**Errors:** 401 not authenticated.
+
+---
+
 ### `POST /events/import-archive` 🔒
 
-Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The request validates and stages the zip, then returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails the caller the outcome. Poll the job (below) for the counts.
+Step two: enqueue the staged archive for the backfill worker. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The request verifies the staged object (the caller's own `upload_key`, present, under the size guard; a storage HEAD, the zip is never opened here) and returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails the caller the outcome. Poll the job (below) for the counts. A malformed zip therefore surfaces as a `failed` job + failure email, not a synchronous 4xx; the browser strip catches the common shapes before upload.
 
-**Tweets-only intake guard.** Only the allowlisted entries are extracted (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs.
+**Tweets-only intake guard.** Only the allowlisted entries are extracted (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs; the per-media caps at assemble time are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
 
 Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete (the owner adds media before submitting).
 
 A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication; an unreachable status still lands the tweet, just source-less. A tweet whose footage is a Telegram post (`Source: t.me/<channel>/<id>`) has that post's public embed chased for its date and, when the embed serves it, its media; a sensitive post degrades to link + date.
 
-**Request:** `multipart/form-data` with a single `file` (the `.zip`).
+**Request:** JSON. `upload_key` from the presign; `post_estimate` (optional, ≥ 1) is the browser strip's cosmetic volume hint for the queued display (the worker stamps the exact totals).
+```json
+{ "upload_key": "archive-imports/<user-id>/<uuid>.zip", "post_estimate": 1240 }
+```
 
 **Response 202:**
 ```json
@@ -586,9 +612,10 @@ A tweet that references its footage only through a linked status (`Source: x.com
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `archive_malformed` (not a valid zip), `archive_no_tweets` (no `tweets.js` inside), or `archive_invalid` (any other archive-intake failure) |
+| 400 | `archive_upload_invalid` (not a staging key the caller minted: wrong shape, or another user's) |
 | 401 | Not authenticated |
-| 413 | `archive_too_large` (the upload, or the declared contents, over the cap) |
+| 404 | `archive_upload_missing` (nothing uploaded at `upload_key`) |
+| 413 | `archive_too_large` (the staged object is over the size guard) |
 
 ---
 
@@ -1546,4 +1573,4 @@ All errors follow this shape:
 | Type | Extensions | Max size |
 |------|------------|----------|
 | Image | jpg, png, webp | 10 MB |
-| Video | mp4, webm | 100 MB |
+| Video | mp4, webm | 95 MiB |

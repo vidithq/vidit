@@ -35,6 +35,10 @@ export type TagCategory = components["schemas"]["TagRead"]["category"];
  *  counts, final once `status` is `done`. */
 export type ArchiveImportJob = components["schemas"]["ArchiveImportJobRead"];
 
+/** `POST /events/import-archive/presign`: the staging `upload_key` to enqueue
+ *  with, plus the direct-to-storage upload target (`url` + form `fields`). */
+export type ArchiveImportPresign = components["schemas"]["ArchiveImportPresignRead"];
+
 export type Tag = components["schemas"]["TagRead"];
 
 /** One row of the conflicts referential (`GET /conflicts`). `ongoing` drives
