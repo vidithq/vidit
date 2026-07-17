@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Operations
+- **Shared Railway scheduler config** ([`backend/railway.scheduler.json`](backend/railway.scheduler.json), [`docs/ingestion.md`](docs/ingestion.md)). The scheduler services (conflict sync, import worker, bot) build with Root Directory `backend` and therefore auto-discovered the API's [`railway.json`](backend/railway.json): every run replayed the alembic pre-deploy, and the inherited `/health` healthcheck failed the always-on import worker's deploy outright (a cron service skips healthchecks; a normal service does not). Each scheduler service now points its Config-as-code path at the shared file (Dockerfile build, no pre-deploy, no healthcheck, restart on failure). The ingestion.md scheduler configs also gain the `JWT_SECRET=${{backend.JWT_SECRET}}` reference each service needs to boot against the production database. ([#143](https://github.com/vidithq/vidit/pull/143))
 
 ---
 
