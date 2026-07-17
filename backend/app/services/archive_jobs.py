@@ -2,10 +2,12 @@
 
 ``POST /events/import-archive`` used to run the whole backfill inside the
 request; a large export held its response open for minutes and its unzip +
-parse froze the single-process event loop. Now the endpoint stages the zip to
-storage and inserts an ``archive_import_jobs`` row; the worker service
+parse froze the single-process event loop. Now the browser uploads the zip
+straight to storage under a presigned POST (``/import-archive/presign`` mints
+the key), the JSON enqueue verifies the staged object and inserts an
+``archive_import_jobs`` row, and the worker service
 (``scripts/run_import_worker.py``) claims rows with ``FOR UPDATE SKIP LOCKED``,
-runs the same backfill, stamps the counts, deletes the staged object, and
+runs the backfill, stamps the counts, deletes the staged object, and
 emails the owner. Postgres is the queue: no broker, jobs survive API and
 worker restarts, and two worker processes can't double-run a job.
 
@@ -27,6 +29,7 @@ so a reclaimed half-applied run never duplicates rows.
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 import threading
 import uuid
@@ -61,29 +64,75 @@ MAX_ATTEMPTS = 3
 PROGRESS_EVERY = 10
 
 
-def staging_key(job_id: uuid.UUID) -> str:
-    return f"{STAGING_PREFIX}{job_id}.zip"
+class StagedUploadError(Exception):
+    """Base: the ``upload_key`` handed to the enqueue can't back a job."""
+
+    code = "archive_upload_invalid"
+
+
+class StagedUploadInvalidError(StagedUploadError):
+    code = "archive_upload_invalid"
+
+
+class StagedUploadMissingError(StagedUploadError):
+    code = "archive_upload_missing"
+
+
+class StagedUploadTooLargeError(StagedUploadError):
+    code = "archive_too_large"
+
+
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_STAGING_KEY_RE = re.compile(rf"^{re.escape(STAGING_PREFIX)}(?P<owner>{_UUID})/{_UUID}\.zip$")
+
+
+def mint_staging_key(owner_id: uuid.UUID) -> str:
+    """A fresh staging key for one presigned upload, bound to its owner.
+
+    The owner id lives in the key path: :func:`verify_staged_upload` accepts
+    only keys under the caller's own segment, so a leaked or crafted foreign
+    key can't enqueue someone else's staged object, and the strict shape
+    (prefix + two UUIDs) keeps arbitrary bucket keys out, with no minted-key
+    table or signed token to maintain.
+    """
+    return f"{STAGING_PREFIX}{owner_id}/{uuid.uuid4()}.zip"
+
+
+def is_staging_key(key: str) -> bool:
+    return _STAGING_KEY_RE.fullmatch(key) is not None
+
+
+def verify_staged_upload(key: str, *, owner_id: uuid.UUID) -> int:
+    """Gate an enqueue's ``upload_key``: shape, ownership, presence, size.
+
+    Returns the staged object's byte size. Raises a typed
+    :class:`StagedUploadError`; the router maps the codes to statuses. Does a
+    storage HEAD, so callers on the event loop run it in a thread.
+    """
+    match = _STAGING_KEY_RE.fullmatch(key)
+    if match is None or match.group("owner") != str(owner_id):
+        raise StagedUploadInvalidError("upload_key is not a staging key of yours")
+    size = get_storage().head_size(key)
+    if size is None:
+        raise StagedUploadMissingError("No uploaded object at upload_key")
+    if size > archive_zip.MAX_UPLOAD_BYTES:
+        raise StagedUploadTooLargeError("Staged archive exceeds the size guard")
+    return size
 
 
 def enqueue(
-    db: Session, *, owner: User, zip_bytes: bytes, post_estimate: int | None = None
+    db: Session, *, owner: User, upload_key: str, post_estimate: int | None = None
 ) -> ArchiveImportJob:
-    """Stage the validated upload and insert its ``queued`` row.
+    """Insert the ``queued`` row for an already-staged upload.
 
-    The zip was already streamed to disk under ``MAX_UPLOAD_BYTES`` and passed
-    :func:`archive_zip.inspect_archive`, so everything staged here is worth a
-    worker pass (``post_estimate`` is that inspection's free volume hint).
-    Staging happens before the insert: a row without its object would fail
-    the worker, an object without its row is a harmless orphan under the
-    bounded upload cap.
+    The caller (the enqueue endpoint) has run :func:`verify_staged_upload`,
+    so the key is the owner's own and the object exists under the size guard.
+    ``post_estimate`` is the browser strip's cosmetic volume hint; the worker
+    stamps the exact totals.
     """
-    # Mint the id up front (the column default only fires at flush): the
-    # staging key embeds it, and staging must precede the insert.
-    job_id = uuid.uuid4()
     job = ArchiveImportJob(
-        id=job_id, owner_id=owner.id, zip_key=staging_key(job_id), post_estimate=post_estimate
+        id=uuid.uuid4(), owner_id=owner.id, zip_key=upload_key, post_estimate=post_estimate
     )
-    get_storage().put_bytes_sync(zip_bytes, job.zip_key, "application/zip")
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -167,6 +216,20 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     owner = db.get(User, job.owner_id)
     if owner is None or owner.deleted_at is not None:
         _finish(db, job, status="failed", error="owner gone")
+        return
+
+    # Claim-time re-check of the enqueue's HEAD gate: the presign window stays
+    # open ~15 min after enqueue, so the staged object can have been replaced
+    # (or deleted) between the two. Fail the job here rather than buffer an
+    # over-guard object into memory below.
+    size = get_storage().head_size(job.zip_key)
+    if size is None:
+        _finish(db, job, status="failed", error="staged object missing")
+        _notify_failure_best_effort(db, job)
+        return
+    if size > archive_zip.MAX_UPLOAD_BYTES:
+        _finish(db, job, status="failed", error="staged object oversized")
+        _notify_failure_best_effort(db, job)
         return
 
     stop_heartbeat = threading.Event()

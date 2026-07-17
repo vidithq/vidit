@@ -111,3 +111,13 @@ def test_malformed_zip_raises(tmp_path):
     dest.mkdir()
     with pytest.raises(MalformedArchiveError):
         extract_allowlisted(src, dest)
+
+
+def test_guard_values_are_sanity_caps_not_product_limits():
+    """Pin the guard sizes: the zip cap and the total-uncompressed cap are
+    anti-abuse ceilings sized far above any legitimate export (the product
+    limits are the per-media caps at assemble time), and the per-file cap
+    stays at 200 MB."""
+    assert archive_zip.MAX_UPLOAD_BYTES == 2 * 1024**3
+    assert archive_zip.MAX_TOTAL_UNCOMPRESSED_BYTES == 8 * 1024**3
+    assert archive_zip.MAX_FILE_UNCOMPRESSED_BYTES == 200 * 1024**2

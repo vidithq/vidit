@@ -12,6 +12,33 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 
+class PresignedUploadRead(BaseModel):
+    """One browser direct-to-storage upload: POST a multipart form to ``url``
+    with every ``fields`` entry ahead of the file part (S3 ignores fields
+    after the file). The same shape whether the target is S3 or the dev
+    upload endpoint."""
+
+    url: str
+    fields: dict[str, str]
+
+
+class ArchiveImportPresignRead(BaseModel):
+    """Response of ``POST /events/import-archive/presign``: where to upload
+    the stripped zip, and the ``upload_key`` to hand back to the enqueue."""
+
+    upload_key: str
+    upload: PresignedUploadRead
+
+
+class ArchiveImportEnqueue(BaseModel):
+    """Body of the JSON enqueue. ``upload_key`` is the presign's minted key;
+    ``post_estimate`` is the browser strip's cosmetic volume hint (the worker
+    stamps the exact ``progress_total``)."""
+
+    upload_key: str = Field(min_length=1, max_length=512)
+    post_estimate: int | None = Field(default=None, ge=1)
+
+
 class ArchiveImportJobRead(BaseModel):
     """One archive-import job as the owner polls it.
 

@@ -7,6 +7,7 @@ from typing import NamedTuple, Protocol
 from uuid import UUID, uuid4
 
 import boto3
+from botocore.exceptions import ClientError
 from fastapi import UploadFile
 
 from app.config import settings
@@ -42,7 +43,7 @@ def _hash_uploadfile(file: UploadFile) -> str:
 
     Bounded memory (one chunk regardless of file size) over
     ``hashlib.sha256(await file.read())``, which would pin up to
-    ``max_video_size = 100 MB`` per concurrent upload on the Railway worker.
+    ``max_video_size`` (95 MiB) per concurrent upload on the Railway worker.
     Seeks back to 0 so the caller can hand the same file to a streaming
     uploader.
     """
@@ -106,6 +107,20 @@ def _safe_storage_extension(content_type: str | None) -> str:
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 LOCAL_STORAGE_URL_PREFIX = f"http://localhost:8000{LOCAL_STORAGE_MOUNT_PATH}"
 
+# The dev/CI stand-in for the S3 POST-policy target (see ``main.py``, mounted
+# only when STORAGE_BACKEND=local): accepts the same field + file form the
+# browser would send S3 and writes the key through ``LocalStorage``.
+DEV_STAGING_UPLOAD_PATH = "/dev/staging-upload"
+
+
+class PresignedUpload(NamedTuple):
+    """One browser-side direct-to-storage upload: POST a multipart form to
+    ``url`` carrying every ``fields`` entry ahead of the file part. The same
+    shape for both backends, so the frontend has a single upload code path."""
+
+    url: str
+    fields: dict[str, str]
+
 
 def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
     """Resolve an allowed MIME to ``(media_type, max byte size)``.
@@ -141,6 +156,10 @@ class Storage(Protocol):
     def list_keys(self, prefix: str) -> list[str]: ...
     def get_bytes(self, key: str) -> bytes: ...
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None: ...
+    def presign_staging_upload(
+        self, key: str, *, max_bytes: int, content_type: str
+    ) -> PresignedUpload: ...
+    def head_size(self, key: str) -> int | None: ...
 
 
 class LocalStorage:
@@ -222,6 +241,25 @@ class LocalStorage:
         del content_type
         self._path(key).write_bytes(data)
 
+    def presign_staging_upload(
+        self, key: str, *, max_bytes: int, content_type: str
+    ) -> PresignedUpload:
+        """Point the browser at the dev upload endpoint with the same field
+        shape S3's POST policy would return, so the frontend upload code is
+        identical against either backend. ``max_bytes`` is unused here: the
+        dev endpoint re-reads the guard itself (a form field would be
+        client-tamperable, and dev/CI archives are small anyway).
+        """
+        del max_bytes
+        return PresignedUpload(
+            url=f"http://localhost:8000{DEV_STAGING_UPLOAD_PATH}",
+            fields={"key": key, "Content-Type": content_type},
+        )
+
+    def head_size(self, key: str) -> int | None:
+        path = self.root / key
+        return path.stat().st_size if path.is_file() else None
+
 
 class S3Storage:
     def __init__(
@@ -250,8 +288,8 @@ class S3Storage:
         # ``_hash_uploadfile``); (2) hand the rewound file to
         # ``upload_fileobj`` for multipart-streamed PUTs without buffering.
         # The old ``put_object(Body=await file.read())`` pinned the entire
-        # video (up to 100 MB) per upload — an OOM line on the single Railway
-        # worker under a multi-file post.
+        # video (up to ``max_video_size``, 95 MiB) per upload, an OOM line on
+        # the single Railway worker under a multi-file post.
         sha256 = _hash_uploadfile(file)
         extra_args = {"ContentType": file.content_type} if file.content_type else {}
         # ``upload_fileobj`` is sync; ``to_thread`` keeps the event loop free
@@ -347,6 +385,42 @@ class S3Storage:
             Body=data,
             ContentType=content_type,
         )
+
+    def presign_staging_upload(
+        self, key: str, *, max_bytes: int, content_type: str
+    ) -> PresignedUpload:
+        """A POST policy, not a presigned PUT: only the POST form supports
+        ``content-length-range``, so S3 itself rejects an over-``max_bytes``
+        body instead of trusting the client. Conditions pin the exact key and
+        content type; 15 minutes covers a slow connection without leaving a
+        long-lived write grant in the wild. Local signing, no network call.
+        """
+        post = self.client.generate_presigned_post(
+            Bucket=self.bucket,
+            Key=key,
+            Fields={"Content-Type": content_type},
+            Conditions=[
+                {"key": key},
+                {"Content-Type": content_type},
+                ["content-length-range", 1, max_bytes],
+            ],
+            ExpiresIn=15 * 60,
+        )
+        return PresignedUpload(url=post["url"], fields=dict(post["fields"]))
+
+    def head_size(self, key: str) -> int | None:
+        """The object's size in bytes, or ``None`` when the key holds nothing.
+        Any error other than a miss propagates; callers must not read a
+        storage outage as an absent object.
+        """
+        try:
+            response = self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status == 404:
+                return None
+            raise
+        return int(response["ContentLength"])
 
 
 def get_storage() -> Storage:
@@ -545,7 +619,7 @@ async def _upload_with_optional_strip(
 
     * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
       derivatives; stream-hash + ``upload_fileobj`` via ``upload``, memory
-      bounded at one chunk. Buffering a 100 MB MP4 to strip it is the OOM line
+      bounded at one chunk. Buffering a max-size (95 MiB) MP4 to strip it is the OOM line
       a prior PR caught — which is why EXIF strip can't run on videos.
     """
     if file.content_type in ALLOWED_IMAGE_TYPES:

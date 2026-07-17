@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -21,7 +21,13 @@ from app.routers import (
     tags,
     users,
 )
-from app.services.storage import LOCAL_STORAGE_MOUNT_PATH
+from app.services import archive_jobs
+from app.services.storage import (
+    DEV_STAGING_UPLOAD_PATH,
+    LOCAL_STORAGE_MOUNT_PATH,
+    get_storage,
+)
+from app.services.tweet_ingest import archive_zip
 
 # Error tracking. Boots only when SENTRY_DSN is set; safe to leave unset.
 if settings.sentry_dsn:
@@ -60,7 +66,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # file (bounded by the stream-reader, no worse than the per-file cap).
 #
 # Ceiling admits the largest legitimate request: one source file
-# (``max_video_size``, 100 MB, the bigger of the two per-file caps) plus a
+# (``max_video_size``, 95 MiB, the bigger of the two per-file caps) plus a
 # full ``max_proof_images_per_event`` proof batch at ``max_image_size``
 # (10 × 10 MB), plus 10 MB for multipart envelope and form fields. All three
 # caps read from ``settings`` so this module never imports a router (the old
@@ -144,6 +150,31 @@ if settings.storage_backend == "local":
     local_dir = Path(settings.local_storage_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     app.mount(LOCAL_STORAGE_MOUNT_PATH, StaticFiles(directory=local_dir), name="local-storage")
+
+    # Dev/CI stand-in for the S3 POST-policy target the presign returns in
+    # prod (see ``LocalStorage.presign_staging_upload``): same form contract
+    # (fields + file), so the frontend has one upload code path. Never mounted
+    # when STORAGE_BACKEND=s3. Enforces the strict staging-key shape (a free
+    # ``key`` field could otherwise traverse out of the storage root) and the
+    # same size guard the S3 policy carries; the body-size middleware above
+    # caps it lower in dev, which local archives never reach.
+    @app.post(DEV_STAGING_UPLOAD_PATH, include_in_schema=False)
+    async def dev_staging_upload(
+        key: str = Form(...),
+        file: UploadFile = File(...),
+    ) -> Response:
+        if not archive_jobs.is_staging_key(key):
+            raise HTTPException(status_code=400, detail="Not a staging key")
+        chunks: list[bytes] = []
+        size = 0
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > archive_zip.MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
+            chunks.append(chunk)
+        get_storage().put_bytes_sync(b"".join(chunks), key, "application/zip")
+        # 204 like S3's default POST-policy success response.
+        return Response(status_code=204)
 
 
 @app.get("/health")

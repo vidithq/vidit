@@ -22,7 +22,6 @@ so the result is the flat ``archive_dir`` that ``archive.read_tweets`` expects.
 from __future__ import annotations
 
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
@@ -48,14 +47,17 @@ class ArchiveTooLargeError(ArchiveIntakeError):
 _TWEETS_FILE = "tweets.js"
 _MEDIA_DIR = "tweets_media"
 
-# Cap on the uploaded (compressed) zip. The import runs synchronously behind it;
-# a larger archive waits for the durable-worker upgrade. Enforced while streaming
-# the upload, before the zip is opened.
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+# Sanity guard on the staged (compressed) zip, not a product limit: the
+# presigned POST policy enforces it at upload, and the enqueue + worker
+# re-check it before reading the staged object. The product limits are the
+# per-media caps at assemble time (``settings.max_image_size`` /
+# ``settings.max_video_size``).
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 
-# Uncompressed-size caps (zip-bomb guard). The total bounds the disk a single
-# import can touch; the per-file bound stops one declared-huge member.
-MAX_TOTAL_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
+# Uncompressed-size caps: anti-zip-bomb only, sized far above any legitimate
+# export so they never bind a real archive. The total bounds the disk one
+# extraction can touch; the per-file bound stops one declared-huge member.
+MAX_TOTAL_UNCOMPRESSED_BYTES = 8 * 1024 * 1024 * 1024
 MAX_FILE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
 
 _CHUNK = 1024 * 1024
@@ -100,58 +102,6 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
         total = 0
         for name, target in plan:
             total += _extract_member(zf, name, target, running_total=total)
-
-
-# Rough declared bytes per ``tweets.js`` record across real exports: the JSON
-# envelope + text + entities. Only feeds the pre-import post estimate, never a
-# cap; the worker's parse produces the exact totals.
-_BYTES_PER_TWEET_ESTIMATE = 1500
-
-
-@dataclass(frozen=True)
-class ArchiveInspection:
-    """What the metadata-only pass could tell about the upload: a rough post
-    count (declared ``tweets.js`` size over the per-record average) and the
-    media entry count. Estimates for the analyst-facing progress display, not
-    contracts."""
-
-    post_estimate: int
-    media_entries: int
-
-
-def inspect_archive(zip_path: Path) -> ArchiveInspection:
-    """Cheap pre-enqueue validation: a metadata-only pass, no extraction.
-
-    Lets the upload endpoint reject an obviously bad file (not a zip, no
-    ``tweets.js``, declared contents over the cap) before staging it for the
-    worker, so the analyst gets the 4xx synchronously instead of a failure
-    email. Declared sizes can lie; :func:`extract_allowlisted` re-enforces the
-    caps against the bytes actually read when the worker runs. Returns the
-    volume estimates the same metadata gives for free.
-    """
-    try:
-        zf = zipfile.ZipFile(zip_path)
-    except zipfile.BadZipFile as exc:
-        raise MalformedArchiveError("Not a valid zip archive") from exc
-
-    with zf:
-        names = [n for n in zf.namelist() if not n.endswith("/")]
-        tweets_member = _find_tweets_member(names)
-        if tweets_member is None:
-            raise NoTweetsFileError("Archive has no tweets.js")
-        root = tweets_member[: -len(_TWEETS_FILE)]
-        media_prefix = f"{root}{_MEDIA_DIR}/"
-        media_entries = sum(1 for n in names if n.startswith(media_prefix))
-        tweets_bytes = zf.getinfo(tweets_member).file_size
-        declared = tweets_bytes + sum(
-            zf.getinfo(n).file_size for n in names if n.startswith(media_prefix)
-        )
-        if declared > MAX_TOTAL_UNCOMPRESSED_BYTES:
-            raise ArchiveTooLargeError("Archive contents exceed the size limit")
-        return ArchiveInspection(
-            post_estimate=max(1, round(tweets_bytes / _BYTES_PER_TWEET_ESTIMATE)),
-            media_entries=media_entries,
-        )
 
 
 def _find_tweets_member(names: list[str]) -> str | None:

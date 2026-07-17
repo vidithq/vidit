@@ -608,18 +608,40 @@ export interface paths {
         put?: never;
         /**
          * Import Archive
-         * @description Enqueue the caller's X "Download your data" zip for the backfill worker.
+         * @description Enqueue the caller's staged X "Download your data" zip for the worker.
          *
          *     The upload is the consent: every row lands ``detected``, attributed to the
-         *     caller (no handle-ownership check in this version, see ``planning``). Only the
-         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are ever read;
-         *     the rest of the export is never extracted. The request validates the zip
-         *     (shape + declared sizes, so a bad file 4xxs here, not in a failure email),
-         *     stages it, and returns the ``queued`` job; the worker service runs the
-         *     import and emails the outcome. Poll ``GET /events/import-archive/{job_id}``
-         *     for the counts.
+         *     caller (no handle-ownership check in this version, see ``planning``). The
+         *     request verifies the staged object (the caller's own key, present, under
+         *     the size guard) and returns the ``queued`` job; the worker service runs
+         *     the import (extracting only the allowlisted entries) and emails the
+         *     outcome. Poll ``GET /events/import-archive/{job_id}`` for the counts.
          */
         post: operations["import_archive_api_v1_events_import_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/import-archive/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Presign Import Archive
+         * @description Mint a staging key + presigned upload for the caller's stripped zip.
+         *
+         *     No content validation here: the browser strip already shaped the zip, and
+         *     the worker re-runs the hardened allowlist regardless. The key embeds the
+         *     caller's id, so only the caller's own enqueue can consume it.
+         */
+        post: operations["presign_import_archive_api_v1_events_import_archive_presign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1464,6 +1486,18 @@ export interface components {
             deleted_users: number;
         };
         /**
+         * ArchiveImportEnqueue
+         * @description Body of the JSON enqueue. ``upload_key`` is the presign's minted key;
+         *     ``post_estimate`` is the browser strip's cosmetic volume hint (the worker
+         *     stamps the exact ``progress_total``).
+         */
+        ArchiveImportEnqueue: {
+            /** Post Estimate */
+            post_estimate?: number | null;
+            /** Upload Key */
+            upload_key: string;
+        };
+        /**
          * ArchiveImportJobRead
          * @description One archive-import job as the owner polls it.
          *
@@ -1511,6 +1545,16 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "done" | "failed";
+        };
+        /**
+         * ArchiveImportPresignRead
+         * @description Response of ``POST /events/import-archive/presign``: where to upload
+         *     the stripped zip, and the ``upload_key`` to hand back to the enqueue.
+         */
+        ArchiveImportPresignRead: {
+            upload: components["schemas"]["PresignedUploadRead"];
+            /** Upload Key */
+            upload_key: string;
         };
         /**
          * AuthorRef
@@ -1637,11 +1681,6 @@ export interface components {
             tag_ids?: string | null;
             /** Title */
             title: string;
-        };
-        /** Body_import_archive_api_v1_events_import_archive_post */
-        Body_import_archive_api_v1_events_import_archive_post: {
-            /** File */
-            file: string;
         };
         /**
          * ChangePasswordRequest
@@ -1978,6 +2017,21 @@ export interface components {
             source_url: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * PresignedUploadRead
+         * @description One browser direct-to-storage upload: POST a multipart form to ``url``
+         *     with every ``fields`` entry ahead of the file part (S3 ignores fields
+         *     after the file). The same shape whether the target is S3 or the dev
+         *     upload endpoint.
+         */
+        PresignedUploadRead: {
+            /** Fields */
+            fields: {
+                [key: string]: string;
+            };
+            /** Url */
+            url: string;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -3427,7 +3481,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_import_archive_api_v1_events_import_archive_post"];
+                "application/json": components["schemas"]["ArchiveImportEnqueue"];
             };
         };
         responses: {
@@ -3438,6 +3492,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveImportJobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presign_import_archive_api_v1_events_import_archive_presign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveImportPresignRead"];
                 };
             };
             /** @description Validation Error */

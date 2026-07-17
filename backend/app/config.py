@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     local_storage_dir: str = ".local-storage"
     max_image_size: int = 10 * 1024 * 1024  # 10 MB
-    max_video_size: int = 100 * 1024 * 1024  # 100 MB
+    # 95 MiB, not 100: a max-size video plus multipart overhead must stay
+    # under Cloudflare's free-plan 100 MB request cap for the day `api` moves
+    # behind the proxy.
+    max_video_size: int = 95 * 1024 * 1024
     # Per-event cap on inline proof images (the ``proof_files`` batch a submit
     # carries). Above a legitimate analyst writeup (a dozen annotated frames is
     # rare), tight enough to refuse a pathological payload that would pin the

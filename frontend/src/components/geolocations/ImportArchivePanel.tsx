@@ -22,7 +22,13 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { stripArchive } from "@/lib/archive";
-import { ImportPollLost, awaitImportJob, importArchive } from "@/lib/events";
+import {
+  ImportPollLost,
+  awaitImportJob,
+  enqueueArchiveImport,
+  presignArchiveUpload,
+  uploadArchive,
+} from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
 
 /** X's official walkthrough for requesting the data archive. */
@@ -66,8 +72,9 @@ const STEPS = [
   },
 ];
 
-/** Map the backend's typed archive errors to a human message; fall back to the
- *  generic `errorMessage` for anything else. */
+/** Map the browser strip's and the enqueue's typed errors to a human message.
+ *  An upload-leg failure needs no case: `ArchiveUploadError` carries its own
+ *  retryable message, which the `errorMessage` fallback surfaces as-is. */
 function importErrorMessage(err: unknown): string | undefined {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -77,6 +84,9 @@ function importErrorMessage(err: unknown): string | undefined {
         return "That zip isn't an X data export (no tweets.js inside).";
       case "archive_malformed":
         return "That file isn't a valid .zip archive.";
+      case "archive_upload_missing":
+      case "archive_upload_invalid":
+        return "The uploaded archive couldn't be found on our side. Try the import again.";
     }
   }
   return undefined;
@@ -101,15 +111,23 @@ export function ImportArchivePanel({ username }: { username: string }) {
   // Latest polled snapshot while the import runs: the post estimate stamped
   // at enqueue, then the worker's live scan position (done / total).
   const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
+  // Direct-to-storage upload progress, 0..1; null outside the upload leg.
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-  // Strip to the allowlisted entries in the browser first, then upload, so the
-  // sensitive rest of the export never leaves the device (and the upload is a
-  // fraction of the size). The upload only enqueues the import (202); the
-  // worker service runs it and emails the outcome, and the poll below keeps
-  // this page live for the analyst who stayed.
+  // Strip to the allowlisted entries in the browser first, so the sensitive
+  // rest of the export never leaves the device (and the upload is a fraction
+  // of the size). Then the presigned three-step: mint the upload, POST the
+  // zip straight to storage (never through the API), enqueue by key (202).
+  // The worker service runs the import and emails the outcome, and the poll
+  // below keeps this page live for the analyst who stayed.
   const { run, loading, error } = useMutation(
     async (archive: File): Promise<ArchiveImportJob | null> => {
-      const queued = await importArchive(await stripArchive(archive));
+      setLiveJob(null);
+      setUploadProgress(null);
+      const stripped = await stripArchive(archive);
+      const presign = await presignArchiveUpload();
+      await uploadArchive(presign.upload, stripped.file, setUploadProgress);
+      const queued = await enqueueArchiveImport(presign.upload_key, stripped.postEstimate);
       setLiveJob(queued);
       let job: ArchiveImportJob;
       try {
@@ -305,7 +323,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
           <div className="space-y-1.5">
             <p className="text-xs text-neutral-300">
               {liveJob === null
-                ? "Keeping only your posts, then uploading…"
+                ? uploadProgress === null
+                  ? "Keeping only your posts, then uploading…"
+                  : `Uploading your posts… ${Math.round(uploadProgress * 100)}%`
                 : liveJob.progress_total !== null
                   ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`
                   : `Queued · ~${(liveJob.post_estimate ?? 1).toLocaleString()} post${(liveJob.post_estimate ?? 1) === 1 ? "" : "s"} in your archive, waiting for the importer.`}

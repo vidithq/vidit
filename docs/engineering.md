@@ -351,8 +351,30 @@ Hardening (forks make every workflow run attacker-reachable):
 | DNS | Cloudflare | `vidit.app` zone, **DNS-only** (gray cloud) | Apex + `www` A → Vercel `76.76.21.21`; `api` CNAME → Railway. Proxy mode (orange cloud) breaks Let's Encrypt cert provisioning. |
 | Database | Railway | managed Postgres + PostGIS, service `postgres-db` (image `postgis/postgis:16-3.4`) | `DATABASE_URL` (with internal `*.railway.internal` host) is auto-injected onto the **`backend`** service when the DB is attached. New consumers wire it as `${{backend.DATABASE_URL}}`. Public networking is **off**; admin scripts run inside the backend container via `railway ssh --service backend`. |
 | Migrations | Railway | N/A | Pre-deploy hook: `uv run alembic upgrade head` (in [`backend/railway.json`](../backend/railway.json)). Runs *before* the new container takes traffic. |
-| Media | AWS | bucket `<media-bucket>` (region `eu-west-3`), CloudFront `d10w3bld05vsky.cloudfront.net` (OAC, not OAI). Versioning ON; Object Lock ON with default rule GOVERNANCE / 365 days (bucket-wide; see CHANGELOG `v0.3.0`); CORS `GET`/`HEAD` from `https://vidit.app`. Every image upload lands **three** sibling objects: the original (post EXIF-strip), `<key>_hero.jpg` (max-dim 1280, JPEG q80), `<key>_thumb.jpg` (max-dim 400, JPEG q80). Frontend renderers derive the hero / thumbnail URL from `Media.storage_url` via [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts); keep that helper and the backend `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py) in sync. | Backend uploads via `boto3` as IAM user `<runtime-iam-user>` (object-level perms only, scoped to the `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, and `archive-imports/` key prefixes: a feature that introduces a new prefix must extend the user's policy or every write to it fails `AccessDenied`); bucket-level admin uses a separate `<s3-admin>` IAM principal. CloudFront serves the bucket. |
+| Media | AWS | bucket `<media-bucket>` (region `eu-west-3`), CloudFront `d10w3bld05vsky.cloudfront.net` (OAC, not OAI). Versioning ON; Object Lock ON with default rule GOVERNANCE / 365 days (bucket-wide; see CHANGELOG `v0.3.0`); CORS: `GET`/`HEAD` from `https://vidit.app`, plus the `POST` rule below for the presigned archive-import upload. Every image upload lands **three** sibling objects: the original (post EXIF-strip), `<key>_hero.jpg` (max-dim 1280, JPEG q80), `<key>_thumb.jpg` (max-dim 400, JPEG q80). Frontend renderers derive the hero / thumbnail URL from `Media.storage_url` via [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts); keep that helper and the backend `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py) in sync. | Backend uploads via `boto3` as IAM user `<runtime-iam-user>` (object-level perms only, scoped to the `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, and `archive-imports/` key prefixes: a feature that introduces a new prefix must extend the user's policy or every write to it fails `AccessDenied`); bucket-level admin uses a separate `<s3-admin>` IAM principal. CloudFront serves the bucket. |
 | Backups | Railway + AWS | Cron service `backend-backup` (image [`docker/backup/`](../docker/backup/), `0 0 * * MON`, Monday 00:00 UTC) → bucket `<backup-bucket>` (region `eu-west-3`). Versioning ON, SSE-S3, all public access blocked. Lifecycle: current objects expire 365d, noncurrent versions 30d, aborted multipart uploads 7d. | Writes through IAM user `<backup-iam-user>` with **write-only** S3 permissions (`PutObject`/`AbortMultipartUpload`/`ListMultipartUploadParts`) on the backup bucket: no `Get`, no `Delete`. Restore reads use the `<s3-admin>` profile, never the runtime user. Full runbook + restore drill: [`backups.md`](backups.md). |
+
+**Operator step: media-bucket CORS for presigned archive uploads.** The archive import POSTs the zip from the browser straight to the bucket (S3 POST policy, see [`ingestion.md`](ingestion.md#archive-import-worker)), so the bucket CORS must allow cross-origin `POST` from the app origins. Apply this configuration on `<media-bucket>` (S3 console → Permissions → CORS, or `aws s3api put-bucket-cors`), keeping the existing `GET`/`HEAD` rule:
+
+```json
+[
+  {
+    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedOrigins": ["https://vidit.app"],
+    "AllowedHeaders": [],
+    "MaxAgeSeconds": 3600
+  },
+  {
+    "AllowedMethods": ["POST"],
+    "AllowedOrigins": ["https://vidit.app", "http://localhost:3000"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+A staged object normally lives minutes (the worker deletes it at terminal states); an uploaded-but-never-enqueued object has no job row to trigger that delete, so add an S3 lifecycle rule expiring the `archive-imports/` prefix after 7 days.
 
 Naming: `<product>-<env>-<region>` for the bucket so a future `vidit-staging-eu-west-3` slots in. Service is just `backend` because Railway already nests it under `vidit/production`. Vercel project is `vidit-frontend` because the team scope is `vidithq`.
 

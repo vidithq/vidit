@@ -132,10 +132,23 @@ def test_gold_path_register_import_geolocate_publish(
                 "account.js": b"never read",
             }
         )
+        # The presigned two-step, all through public endpoints: mint the
+        # upload, POST the zip direct to storage (the dev stand-in for S3's
+        # POST policy), then enqueue by key.
+        presigned = client.post("/api/v1/events/import-archive/presign", headers=auth_headers)
+        assert presigned.status_code == 200, presigned.text
+        presign = presigned.json()
+        uploaded = client.post(
+            presign["upload"]["url"].removeprefix("http://localhost:8000"),
+            headers=auth_headers,
+            data=presign["upload"]["fields"],
+            files={"file": ("archive.zip", archive, "application/zip")},
+        )
+        assert uploaded.status_code == 204, uploaded.text
         accepted = client.post(
             "/api/v1/events/import-archive",
             headers=auth_headers,
-            files={"file": ("archive.zip", archive, "application/zip")},
+            json={"upload_key": presign["upload_key"], "post_estimate": 1},
         )
         assert accepted.status_code == 202, accepted.text
         assert accepted.json()["status"] == "queued"
