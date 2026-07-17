@@ -113,10 +113,6 @@ def mint_staging_key(owner_id: uuid.UUID) -> str:
     return f"{STAGING_PREFIX}{owner_id}/{uuid.uuid4()}.zip"
 
 
-def is_staging_key(key: str) -> bool:
-    return _STAGING_KEY_RE.fullmatch(key) is not None
-
-
 def verify_staged_upload(key: str, *, owner_id: uuid.UUID) -> int:
     """Gate an enqueue's ``upload_key``: shape, ownership, presence, size.
 

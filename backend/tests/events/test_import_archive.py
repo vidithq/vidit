@@ -123,7 +123,7 @@ def test_presign_mints_owner_bound_key_and_upload_target(author):
     key = presign["upload_key"]
     assert key.startswith(f"{archive_jobs.STAGING_PREFIX}{author.id}/")
     assert key.endswith(".zip")
-    assert archive_jobs.is_staging_key(key)
+    assert archive_jobs.parse_staging_key(key) is not None
     # The upload half carries the URL + the form fields the browser must POST
     # ahead of the file; against LocalStorage the fields pin the same key.
     assert presign["upload"]["url"]
