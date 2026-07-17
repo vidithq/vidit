@@ -1,9 +1,9 @@
-"""Paid X API v2 client — the bot's mentions read + reply write.
+"""Paid X API v2 client: the bot's mentions read, reply write, and like.
 
 The only consumer is the bot pipeline (``services/bot``): everything else on
 the platform reads X through the free syndication path
-(``tweet_ingest.syndication``). Kept deliberately minimal — two calls, no
-SDK — because every call is billed per resource on X's pay-per-use plan:
+(``tweet_ingest.syndication``). Kept deliberately minimal (three calls, no
+SDK) because every call is billed per resource on X's pay-per-use plan:
 
 * ``GET /2/users/:id/mentions`` — $ per post read. Incremental via
   ``since_id`` so a run only pays for mentions it has never seen.
@@ -11,9 +11,11 @@ SDK — because every call is billed per resource on X's pay-per-use plan:
   a URL (X bills link posts higher). The reply composer must therefore never
   include a URL or auto-linkable domain; the clickable link lives in the bot
   bio.
+* ``POST /2/users/:id/likes``: the cheap receipt ack on a linked analyst's
+  tag.
 
-Reading mentions works app-only (bearer token). Posting requires user
-context, wired as OAuth 1.0a signing (consumer key/secret + the bot
+Reading mentions works app-only (bearer token). Posting and liking require
+user context, wired as OAuth 1.0a signing (consumer key/secret + the bot
 account's access token/secret) — static credentials, no refresh flow.
 """
 
@@ -51,12 +53,17 @@ class XApiError(RuntimeError):
 
 @dataclass(frozen=True)
 class Mention:
-    """One tweet mentioning the bot, as returned by the mentions timeline."""
+    """One tweet mentioning the bot: the shared shape both the mentions
+    timeline (poll) and the Account Activity webhook payload reduce to."""
 
     tweet_id: str
     author_id: str
     author_handle: str  # normalized: lowercase, no leading @
     text: str
+    # Who the tagged tweet replies to, when it is a reply. The failure-reply
+    # loop guard reads it: a tag on the bot's own reply must not earn another
+    # reply.
+    in_reply_to_user_id: str | None = None
 
 
 def _get(
@@ -113,6 +120,7 @@ def fetch_mentions(
             "max_results": str(_MENTIONS_PAGE_SIZE),
             "expansions": "author_id",
             "user.fields": "username",
+            "tweet.fields": "in_reply_to_user_id",
         }
         if since_id is not None:
             params["since_id"] = since_id
@@ -157,12 +165,14 @@ def fetch_mentions(
                         author_id,
                     )
                     continue
+                reply_to = tweet.get("in_reply_to_user_id")
                 mentions.append(
                     Mention(
                         tweet_id=tweet_id,
                         author_id=author_id,
                         author_handle=handle,
                         text=text if isinstance(text, str) else "",
+                        in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
                     )
                 )
         meta = body.get("meta")
@@ -243,23 +253,19 @@ def _oauth1_header(
     return f"OAuth {header_params}"
 
 
-def post_reply(
+def _post_user_context(
+    url: str,
+    payload: dict[str, object],
     *,
-    text: str,
-    in_reply_to_tweet_id: str,
     consumer_key: str,
     consumer_secret: str,
     access_token: str,
     access_token_secret: str,
-    client: httpx.Client | None = None,
-) -> str:
-    """Post ``text`` as a reply to ``in_reply_to_tweet_id``; return the new
-    tweet's id.
-
-    The caller owns the linkless-text invariant (see module docstring) — this
-    function posts what it is given.
-    """
-    url = f"{_API_BASE}/tweets"
+    client: httpx.Client | None,
+) -> dict[str, object]:
+    """POST ``payload`` as JSON under OAuth 1.0a user context; return the
+    parsed body. A JSON body stays out of the signature base string (RFC
+    5849), so only the oauth_* params are signed."""
     headers = {
         "Authorization": _oauth1_header(
             "POST",
@@ -271,7 +277,6 @@ def post_reply(
         ),
         "User-Agent": _USER_AGENT,
     }
-    payload = {"text": text, "reply": {"in_reply_to_tweet_id": in_reply_to_tweet_id}}
     try:
         if client is None:
             with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own_client:
@@ -286,8 +291,64 @@ def post_reply(
         body = resp.json()
     except ValueError as exc:
         raise XApiError(f"unparseable upstream body: {exc}") from exc
-    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(body, dict):
+        raise XApiError("upstream returned non-object body")
+    return body
+
+
+def post_reply(
+    *,
+    text: str,
+    in_reply_to_tweet_id: str,
+    consumer_key: str,
+    consumer_secret: str,
+    access_token: str,
+    access_token_secret: str,
+    client: httpx.Client | None = None,
+) -> str:
+    """Post ``text`` as a reply to ``in_reply_to_tweet_id``; return the new
+    tweet's id.
+
+    The caller owns the linkless-text invariant (see module docstring); this
+    function posts what it is given.
+    """
+    body = _post_user_context(
+        f"{_API_BASE}/tweets",
+        {"text": text, "reply": {"in_reply_to_tweet_id": in_reply_to_tweet_id}},
+        consumer_key=consumer_key,
+        consumer_secret=consumer_secret,
+        access_token=access_token,
+        access_token_secret=access_token_secret,
+        client=client,
+    )
+    data = body.get("data")
     tweet_id = data.get("id") if isinstance(data, dict) else None
     if not isinstance(tweet_id, str):
         raise XApiError("reply created but no tweet id in response")
     return tweet_id
+
+
+def like_post(
+    *,
+    user_id: str,
+    tweet_id: str,
+    consumer_key: str,
+    consumer_secret: str,
+    access_token: str,
+    access_token_secret: str,
+    client: httpx.Client | None = None,
+) -> None:
+    """Like ``tweet_id`` as ``user_id`` (the bot account): the receipt ack
+    the bot gives a linked analyst's tag."""
+    body = _post_user_context(
+        f"{_API_BASE}/users/{user_id}/likes",
+        {"tweet_id": tweet_id},
+        consumer_key=consumer_key,
+        consumer_secret=consumer_secret,
+        access_token=access_token,
+        access_token_secret=access_token_secret,
+        client=client,
+    )
+    data = body.get("data")
+    if not isinstance(data, dict) or not data.get("liked"):
+        raise XApiError("like accepted but not confirmed in response")

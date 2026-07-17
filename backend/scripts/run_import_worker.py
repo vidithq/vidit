@@ -1,12 +1,15 @@
-"""The archive-import worker: drain the job queue, forever.
+"""The archive-import worker: drain the job queues, forever.
 
-The always-on Railway service behind ``POST /events/import-archive``: claims
-``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a second worker
-is safe), runs the backfill off the API process, and emails the owner the
-outcome (see ``services/archive_jobs``). Each drain pass opens a fresh
-session (shared across that pass's jobs; per-job failure isolation is the
-rollback inside ``process``), and a pass that dies outside job processing is
-captured and retried with a backoff instead of killing the service.
+The always-on Railway service behind ``POST /events/import-archive`` and the
+X webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``,
+so a second worker is safe), runs the backfill off the API process, and
+emails the owner the outcome (see ``services/archive_jobs``); each pass also
+drains the ``bot_webhook_events`` queue through the shared mention pipeline
+(see ``services/bot``); the webhook endpoint only inserts, this always-on
+process is what answers the tag. Each drain pass opens a fresh session
+(shared across that pass's jobs; per-job failure isolation is the rollback
+inside ``process``), and a pass that dies outside job processing is captured
+and retried with a backoff instead of killing the service.
 
     uv run python scripts/run_import_worker.py
 
@@ -27,15 +30,21 @@ import sentry_sdk
 from app.config import settings
 from app.database import SessionLocal
 from app.services.archive_jobs import run_once
+from app.services.bot import drain_webhook_events
 
 _IDLE_SLEEP_SECONDS = 5.0
 _ERROR_BACKOFF_SECONDS = 15.0
 
 
+async def _drain_both(db) -> int:
+    handled = await run_once(db)
+    return handled + (await drain_webhook_events(db)).mentions_seen
+
+
 def _drain() -> int:
     db = SessionLocal()
     try:
-        return asyncio.run(run_once(db))
+        return asyncio.run(_drain_both(db))
     finally:
         db.close()
 
@@ -52,7 +61,7 @@ def main() -> None:
 
     if os.environ.get("IMPORT_WORKER_ONCE"):
         handled = _drain()
-        print(f"Import worker pass OK: {handled} job(s) handled.")
+        print(f"Import worker pass OK: {handled} job(s) / webhook mention(s) handled.")
         return
 
     print("Import worker up; polling the queue.")

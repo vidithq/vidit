@@ -25,8 +25,9 @@ class BotMention(Base):
 
     A mention is recorded whatever its outcome, so a run never re-processes
     (and never re-bills) a tweet it has already seen: the next pull's
-    ``since_id`` is the max ``mention_tweet_id`` here, and mentions already
-    present are skipped even if the API re-serves them.
+    ``since_id`` derives from the max ``mention_tweet_id`` here (minus a
+    lookback overlap, see ``services/bot._SINCE_ID_OVERLAP``), and mentions
+    already present are skipped even if the API re-serves them.
     """
 
     __tablename__ = "bot_mentions"
@@ -45,6 +46,10 @@ class BotMention(Base):
     # created, reply credentials are absent, or the post failed (fail-soft:
     # the detection is durable even when the reply isn't).
     reply_tweet_id: Mapped[str | None] = mapped_column(String(25), nullable=True)
+    # When the bot liked the tagged tweet (the receipt ack), NULL otherwise.
+    # The gesture budget's like half reads it: likes in the trailing window
+    # count against the hourly caps, same as replies via ``reply_tweet_id``.
+    liked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

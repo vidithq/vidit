@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     x_api_consumer_secret: str = ""
     x_bot_access_token: str = ""
     x_bot_access_token_secret: str = ""
+    # Whether the X Account Activity webhook is registered and live in this
+    # deployment. Flipped true after ``scripts/manage_x_webhook.py`` register +
+    # subscribe succeed against prod. Gates the poll's gap detector: while
+    # false, a mention arriving via the cron is nominal and raises no warning.
+    x_webhook_enabled: bool = False
 
     model_config = {"env_file": ".env"}
 
