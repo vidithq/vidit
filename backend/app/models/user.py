@@ -14,18 +14,17 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    # Nullable because an assembled profile exists before anyone logs in: it is
-    # built from a consented X handle with no auth credentials, and gains an
-    # email only when its owner claims it. Every self-registered or claimed
-    # account still carries both (the registration + claim flows set them);
-    # `claimed_at IS NULL` marks the unclaimed, credential-less state.
+    # Nullable for historical credential-less rows (the retired assembled-
+    # profile mechanism minted users from an X handle alone); every account
+    # created today carries both, set by the registration flow, and
+    # `claimed_at IS NULL` marks the legacy unclaimed state.
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # The X handle an assembled profile was built from — its pre-claim identity
-    # (an unclaimed row has no email), stored lowercased without the leading
-    # `@`. UNIQUE so re-consent reuses the existing profile instead of minting a
-    # second. Distinct from `external_links["x"]`, a free-text display link the
-    # owner sets; this is the verified assembly anchor.
+    # The X handle the bot attributes mentions to, stored lowercased without
+    # the leading `@`. Admin-linked (`PATCH /admin/users/{id}/x-handle`, the
+    # only write path; self-serve verify-by-post linking is a later gate).
+    # UNIQUE: one account per handle. Distinct from `external_links["x"]`, a
+    # free-text display link the owner sets; this is the attribution anchor.
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -48,13 +47,14 @@ class User(Base):
         nullable=False,
     )
     # When an owner took control. Defaults to insert time via `server_default`,
-    # so every account that's owned at creation — self-registration, the demo
-    # seeder, the mock scripts, a future public sign-up — is correct without each
-    # path remembering to stamp it. The assembly pipeline is the sole exception:
-    # it creates an *unclaimed* profile by inserting an explicit `claimed_at=None`,
-    # so `claimed_at IS NULL` means "assembled, not yet claimed" (identified by
-    # `x_handle` alone). A timestamp, not a boolean / credential-nullness, because
-    # a profile claimed via OAuth has no password yet still counts as claimed.
+    # so every account that's owned at creation (self-registration, the demo
+    # seeder, the mock scripts, a future public sign-up) is correct without
+    # each path remembering to stamp it. NULL only on legacy rows from the
+    # retired assembled-profile mechanism, which inserted an explicit
+    # `claimed_at=None` for a credential-less unclaimed profile; no current
+    # path writes NULL. A timestamp, not a boolean / credential-nullness,
+    # because a profile claimed via OAuth has no password yet still counts as
+    # claimed.
     claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True
     )

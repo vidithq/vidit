@@ -120,6 +120,21 @@ def _bot_settings(monkeypatch):
     monkeypatch.setattr(settings, "x_bot_access_token_secret", "ats")
 
 
+@pytest.fixture
+def linked_owner(db):
+    """A live Vidit account whose ``x_handle`` an admin linked to HANDLE,
+    the only thing the bot will attribute to (it never mints users)."""
+    user = User(
+        username=f"analyst{uuid.uuid4().hex[:8]}",
+        email=f"analyst-{uuid.uuid4().hex}@example.com",
+        password_hash="x",
+        x_handle=HANDLE,
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
 @pytest.fixture(autouse=True)
 def _cleanup():
     yield
@@ -153,17 +168,13 @@ async def _run(db, mention_ids, seen_params=None, posted=None):
     return outcome, seen_params, posted
 
 
-async def test_mention_creates_detected_draft_with_self_only_rollup(db):
+async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_owner):
     outcome, _, posted = await _run(db, [TAGGED_ID])
 
     assert outcome.events_created == 1
     assert outcome.replies_posted == 1
 
-    owner = db.query(User).filter(User.x_handle == HANDLE).one()
-    assert owner.claimed_at is None
-    assert owner.email is None
-
-    event = db.query(Event).filter(Event.owner_id == owner.id).one()
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
     # The head of the rolled-up self-thread (the analyst's coordinate tweet),
     # canonicalised with the real handle even though the walk fetched it
@@ -188,7 +199,7 @@ async def test_mention_creates_detected_draft_with_self_only_rollup(db):
     assert "http" not in text and ".app" not in text and ".com" not in text
 
 
-async def test_rerun_is_idempotent_and_advances_since_id(db):
+async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
     await _run(db, [TAGGED_ID])
     outcome, seen_params, posted = await _run(db, [TAGGED_ID])
 
@@ -197,8 +208,23 @@ async def test_rerun_is_idempotent_and_advances_since_id(db):
     assert posted == []
     # The second pull resumed from the ledger's max mention id.
     assert seen_params[0]["since_id"] == TAGGED_ID
-    owner = db.query(User).filter(User.x_handle == HANDLE).one()
-    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
+
+
+async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
+    # No Vidit account carries HANDLE: the mention is ledgered and that is
+    # all. No user row minted, no draft, no reply.
+    outcome, _, posted = await _run(db, [TAGGED_ID])
+
+    assert outcome.no_account == 1
+    assert outcome.events_created == 0
+    assert outcome.replies_posted == 0
+    assert posted == []
+    assert db.query(User).filter(User.x_handle == HANDLE).first() is None
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    assert ledger.outcome == "no_account"
+    assert ledger.events_created == 0
+    assert ledger.reply_tweet_id is None
 
 
 async def test_coordinate_less_mention_records_silently(db):

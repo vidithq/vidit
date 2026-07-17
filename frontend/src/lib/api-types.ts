@@ -267,6 +267,28 @@ export interface paths {
         patch: operations["set_user_trust_api_v1_admin_users__user_id__trust_patch"];
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/x-handle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set User X Handle
+         * @description Link or clear the X handle the bot attributes mentions to. The only
+         *     write path for ``users.x_handle`` today; self-serve linking waits on
+         *     verify-by-post.
+         */
+        patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
+        trace?: never;
+    };
     "/api/v1/auth/change-password": {
         parameters: {
             query?: never;
@@ -1215,10 +1237,16 @@ export interface components {
          *     analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
          *     `invite_codes.max_uses INT` column stays for forward-compat with bulk
          *     invites, but the API doesn't expose it today.
+         *
+         *     ``x_handle`` optionally binds the code to an X handle: redemption copies
+         *     it onto the new account (the bot-attribution link). Same normalization
+         *     and alphabet as `PATCH /admin/users/{id}/x-handle`.
          */
         AdminInviteCodeCreate: {
             /** Expires In Days */
             expires_in_days?: number | null;
+            /** X Handle */
+            x_handle?: string | null;
         };
         /**
          * AdminInviteCodeRead
@@ -1258,6 +1286,8 @@ export interface components {
             used_at: string | null;
             /** Used By Username */
             used_by_username: string | null;
+            /** X Handle */
+            x_handle: string | null;
         };
         /**
          * AdminMaintenanceResponse
@@ -1393,9 +1423,9 @@ export interface components {
          * AdminUserRead
          * @description User shape returned by the admin search endpoint.
          *
-         *     Carries the bits the admin acts on (`is_trusted` + `trust_reason`) plus
-         *     `email` (NULL for an assembled profile not yet claimed), which the public
-         *     `UserProfile` omits.
+         *     Carries the bits the admin acts on (`is_trusted` + `trust_reason` +
+         *     the bot-attribution `x_handle`) plus `email` (NULL on legacy
+         *     credential-less rows), which the public `UserProfile` omits.
          */
         AdminUserRead: {
             /**
@@ -1418,6 +1448,8 @@ export interface components {
             trust_reason: string | null;
             /** Username */
             username: string;
+            /** X Handle */
+            x_handle: string | null;
         };
         /** AdminWipeDemoRequestsResponse */
         AdminWipeDemoRequestsResponse: {
@@ -2371,6 +2403,18 @@ export interface components {
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
         };
+        /**
+         * UserXHandleUpdate
+         * @description Body for `PATCH /admin/users/{id}/x-handle`.
+         *
+         *     ``None`` clears the link. A non-null value is normalized (a single leading
+         *     ``@`` stripped, lowercased) and must match the X handle alphabet
+         *     (``^[a-z0-9_]{1,15}$``); anything else is rejected with 422.
+         */
+        UserXHandleUpdate: {
+            /** X Handle */
+            x_handle: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2865,6 +2909,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AdminTrustUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserXHandleUpdate"];
             };
         };
         responses: {

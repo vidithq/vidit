@@ -1,8 +1,26 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# The X handle alphabet: letters, digits, underscore, 15 chars max. Matched
+# after normalization (leading ``@`` stripped, lowercased).
+X_HANDLE_PATTERN = re.compile(r"^[a-z0-9_]{1,15}$")
+
+
+def normalize_x_handle(v: str | None) -> str | None:
+    """Shared validator for every ``x_handle`` intake (invite mint, admin
+    link): strip a single leading ``@``, lowercase, then enforce the X handle
+    alphabet. Raises ``ValueError`` (Pydantic 422) on mismatch."""
+    if v is None:
+        return None
+    cleaned = v.strip().removeprefix("@").lower()
+    if not X_HANDLE_PATTERN.fullmatch(cleaned):
+        raise ValueError("x_handle must match ^[a-z0-9_]{1,15}$ after stripping a leading @")
+    return cleaned
+
 
 InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 
@@ -14,9 +32,19 @@ class AdminInviteCodeCreate(BaseModel):
     analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
     `invite_codes.max_uses INT` column stays for forward-compat with bulk
     invites, but the API doesn't expose it today.
+
+    ``x_handle`` optionally binds the code to an X handle: redemption copies
+    it onto the new account (the bot-attribution link). Same normalization
+    and alphabet as `PATCH /admin/users/{id}/x-handle`.
     """
 
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
+    x_handle: str | None = None
+
+    @field_validator("x_handle")
+    @classmethod
+    def _normalize_handle(cls, v: str | None) -> str | None:
+        return normalize_x_handle(v)
 
 
 class AdminInviteCodeRead(BaseModel):
@@ -37,6 +65,8 @@ class AdminInviteCodeRead(BaseModel):
     revoked_at: datetime | None
     created_at: datetime
     status: InviteCodeStatus
+    # The X handle the code binds, copied onto the account at redemption.
+    x_handle: str | None
     # Username of the *first* consumer, if any. For single-use codes (the
     # default) it's the only one; multi-use codes still surface only the first
     # — a full per-use audit would need an `invite_code_uses` junction table.
@@ -58,9 +88,9 @@ class AdminMeResponse(BaseModel):
 class AdminUserRead(BaseModel):
     """User shape returned by the admin search endpoint.
 
-    Carries the bits the admin acts on (`is_trusted` + `trust_reason`) plus
-    `email` (NULL for an assembled profile not yet claimed), which the public
-    `UserProfile` omits.
+    Carries the bits the admin acts on (`is_trusted` + `trust_reason` +
+    the bot-attribution `x_handle`) plus `email` (NULL on legacy
+    credential-less rows), which the public `UserProfile` omits.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -71,6 +101,7 @@ class AdminUserRead(BaseModel):
     is_admin: bool
     is_trusted: bool
     trust_reason: str | None
+    x_handle: str | None
     created_at: datetime
 
 
@@ -126,6 +157,22 @@ class AdminTrustUpdate(BaseModel):
             return None
         cleaned = v.strip()
         return cleaned or None
+
+
+class UserXHandleUpdate(BaseModel):
+    """Body for `PATCH /admin/users/{id}/x-handle`.
+
+    ``None`` clears the link. A non-null value is normalized (a single leading
+    ``@`` stripped, lowercased) and must match the X handle alphabet
+    (``^[a-z0-9_]{1,15}$``); anything else is rejected with 422.
+    """
+
+    x_handle: str | None
+
+    @field_validator("x_handle")
+    @classmethod
+    def _normalize_handle(cls, v: str | None) -> str | None:
+        return normalize_x_handle(v)
 
 
 class AdminSeedDemoRequest(BaseModel):
