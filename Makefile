@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev test clean init seed seed-demo seed-detections seed-timeline typology-weights mock-admin mock-demo-user promo gen-api-types check-dup vulture hygiene
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-demo seed-detections seed-timeline typology-weights mock-admin mock-demo-user promo gen-api-types check-dup vulture hygiene
 
 help:
 	@echo "Available commands:"
@@ -19,6 +19,7 @@ help:
 	@echo "  make mock-admin    - Create a mock admin user (admin@vidit.app / admin)"
 	@echo "  make dev-backend   - Run FastAPI dev server (port 8000)"
 	@echo "  make dev-frontend  - Run Next.js dev server (port 3000)"
+	@echo "  make dev-worker    - Run the archive-import worker (drains upload jobs)"
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
@@ -108,6 +109,9 @@ dev-backend:
 
 dev-frontend:
 	cd frontend && npm run dev
+
+dev-worker:
+	cd backend && uv run python scripts/run_import_worker.py
 
 dev:
 	@echo "Starting development servers... (Backend :8000, Frontend :3000)"

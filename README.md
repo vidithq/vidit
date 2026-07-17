@@ -109,6 +109,7 @@ The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.
 make init        # install + env + db-up + migrate (one-shot bootstrap)
 make seed        # mock-admin + 50 demo geolocations + admin follows every demo analyst
 make dev         # FastAPI :8000 + Next.js :3000 in parallel
+make dev-worker  # archive-import worker (optional; without it, archive uploads stay queued)
 make test        # backend pytest
 ```
 
