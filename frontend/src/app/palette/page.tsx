@@ -27,6 +27,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { ActivityBars } from "@/components/ui/ActivityBars";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -529,6 +530,27 @@ export default function PalettePage() {
                 <StatTile icon={UserPlus} label="Following" value={37} />
                 <StatTile icon={Calendar} label="Since" value="27 Jun 2026" small />
               </StatGrid>
+            </div>
+          </Item>
+
+          <Item name="<ActivityBars>" usage="Fixed-width monthly activity row (profile insights): one bar per bucket, heights relative to the max, accent for active months, neutral stub for empty ones. Hover a bar for month + count.">
+            <div className="w-full max-w-xs">
+              <ActivityBars
+                buckets={[
+                  { month: "2025-08", count: 0 },
+                  { month: "2025-09", count: 2 },
+                  { month: "2025-10", count: 5 },
+                  { month: "2025-11", count: 1 },
+                  { month: "2025-12", count: 0 },
+                  { month: "2026-01", count: 3 },
+                  { month: "2026-02", count: 8 },
+                  { month: "2026-03", count: 4 },
+                  { month: "2026-04", count: 0 },
+                  { month: "2026-05", count: 6 },
+                  { month: "2026-06", count: 2 },
+                  { month: "2026-07", count: 7 },
+                ]}
+              />
             </div>
           </Item>
 

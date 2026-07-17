@@ -157,6 +157,7 @@ _READ_LIMITS = [
     ("/api/v1/conflicts", 60),
     ("/api/v1/users/no-such-user", 120),
     ("/api/v1/users/no-such-user/events", 120),
+    ("/api/v1/users/no-such-user/stats", 120),
 ]
 
 

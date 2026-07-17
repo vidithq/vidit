@@ -42,6 +42,38 @@ export interface PublicProfile {
   is_following: boolean;
 }
 
+/** One (name, count) aggregation entry: a conflict or capture-source tally. */
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+/** One calendar-month activity bucket. `month` is `YYYY-MM`. */
+export interface MonthBucket {
+  month: string;
+  count: number;
+}
+
+/**
+ * Shape returned by `GET /users/{username}/stats` — the aggregated
+ * shape-of-work payload behind the profile insights section.
+ * `monthly_activity` is always 12 zero-filled buckets, oldest first.
+ */
+export interface UserStats {
+  geolocated_count: number;
+  detected_count: number;
+  closed_count: number;
+  total_events: number;
+  media_count: number;
+  top_conflicts: TagCount[];
+  capture_sources: TagCount[];
+  monthly_activity: MonthBucket[];
+}
+
+export function getUserStats(username: string): Promise<UserStats> {
+  return apiFetch<UserStats>(`/users/${encodeURIComponent(username)}/stats`);
+}
+
 /**
  * `<a href>` is only safe if the destination parses as http(s). The link
  * panel renders user-supplied strings; this sniff auto-links pasted URLs,

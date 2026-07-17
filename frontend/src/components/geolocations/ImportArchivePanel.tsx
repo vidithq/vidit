@@ -22,8 +22,8 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { stripArchive } from "@/lib/archive";
-import { importArchive } from "@/lib/events";
-import type { ArchiveImportResult } from "@/types";
+import { awaitImportJob, importArchive } from "@/lib/events";
+import type { ArchiveImportJob } from "@/types";
 
 /** X's official walkthrough for requesting the data archive. */
 const X_ARCHIVE_HELP =
@@ -93,13 +93,24 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<ArchiveImportResult | null>(null);
+  const [result, setResult] = useState<ArchiveImportJob | null>(null);
 
   // Strip to the allowlisted entries in the browser first, then upload, so the
   // sensitive rest of the export never leaves the device (and the upload is a
-  // fraction of the size).
+  // fraction of the size). The upload only enqueues the import (202); the
+  // worker service runs it and emails the outcome, and the poll below keeps
+  // this page live for the analyst who stayed.
   const { run, loading, error } = useMutation(
-    async (archive: File) => importArchive(await stripArchive(archive)),
+    async (archive: File) => {
+      const queued = await importArchive(await stripArchive(archive));
+      const job = await awaitImportJob(queued.id);
+      if (job.status === "failed") {
+        throw new Error(
+          "The import failed on our side; nothing from this upload was published. Try again, and reach out on Discord if it keeps failing."
+        );
+      }
+      return job;
+    },
     {
       onSuccess: (res) => {
         refreshDetectionCount();
@@ -251,8 +262,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
         </Button>
         {loading && (
           <p className="text-xs text-neutral-500">
-            Keeping only your posts, then uploading and detecting geolocations. A large
-            archive can take a moment.
+            Keeping only your posts, then uploading. The import runs in the background
+            and we email you when it finishes, so you can leave this page; a large
+            archive can take a few minutes.
           </p>
         )}
       </form>

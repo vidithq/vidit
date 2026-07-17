@@ -37,7 +37,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
-| POST | `/events/import-archive` | 🔒 | Backfill your profile from your X data archive (zip) |
+| POST | `/events/import-archive` | 🔒 | Enqueue your X data archive (zip) for the backfill worker |
+| GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + assemble counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
@@ -56,6 +57,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
 | **Users** | | | |
 | GET | `/users/{username}` | 🌐 | Public analyst profile |
+| GET | `/users/{username}/stats` | 🌐 | Aggregated shape of an analyst's work (status split, tags, activity) |
 | PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's geolocations |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -96,6 +98,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /events/import-from-tweet` | 30/min |
 | `GET /events/import-from-tweet/media` | 60/min |
 | `POST /events/import-archive` | 10/hour |
+| `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
 | `POST /events/{id}/geolocate` | 30/min |
 | `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
@@ -105,7 +108,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Timeline** | |
-| `GET /users/{username}`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
@@ -552,7 +555,7 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 
 ### `POST /events/import-archive` 🔒
 
-Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). Runs synchronously behind a size cap.
+Backfill the caller's profile from their official X "Download your data" export. The upload **is the consent**: every geolocation lands `detected`, attributed to the caller (no handle-ownership check in this version). The request validates and stages the zip, then returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails the caller the outcome. Poll the job (below) for the counts.
 
 **Tweets-only intake guard.** Only the allowlisted entries are extracted (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs.
 
@@ -562,18 +565,35 @@ A tweet that references its footage only through a linked status (`Source: x.com
 
 **Request:** `multipart/form-data` with a single `file` (the `.zip`).
 
-**Response 200:**
+**Response 202:**
 ```json
-{ "created": 12, "skipped": 3, "recreated": 0, "failed": 0 }
+{
+  "id": "uuid",
+  "status": "queued",
+  "created": 0, "skipped": 0, "recreated": 0, "failed": 0,
+  "error": null,
+  "created_at": "2026-07-17T12:00:00Z",
+  "started_at": null,
+  "finished_at": null
+}
 ```
-`created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land).
 
 **Errors:**
 | Code | Case |
 |------|------|
 | 400 | `archive_malformed` (not a valid zip), `archive_no_tweets` (no `tweets.js` inside), or `archive_invalid` (any other archive-intake failure) |
 | 401 | Not authenticated |
-| 413 | `archive_too_large` (the upload, or the extracted contents, over the cap) |
+| 413 | `archive_too_large` (the upload, or the declared contents, over the cap) |
+
+---
+
+### `GET /events/import-archive/{job_id}` 🔒
+
+One archive-import job, owner-only (someone else's job id reads as 404, indistinguishable from unknown). The upload page polls this until `status` is terminal; the completion email is the durable signal for an analyst who left.
+
+`status` walks `queued` → `running` → `done` | `failed`. The counts are final once `done`: `created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land). A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
+
+**Response 200:** the job payload above, counts and timestamps filled per status.
 
 ---
 
@@ -1046,6 +1066,33 @@ Public profile of an analyst.
 ```
 
 `is_trusted` toggles via `PATCH /admin/users/{id}/trust`; `trust_reason` is required when granting. `bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me`, defaults are `null` / `null` / `{}`. `is_following` is `true` only when the caller is authenticated and follows this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | User not found |
+
+---
+
+### `GET /users/{username}/stats`
+
+Aggregated shape of an analyst's work, over their live events only (`deleted_at IS NULL`). Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, 12-month activity).
+
+**Response 200:**
+```json
+{
+  "geolocated_count": 2,
+  "detected_count": 1,
+  "closed_count": 1,
+  "total_events": 4,
+  "media_count": 2,
+  "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
+  "capture_sources": [{ "name": "dashcam", "count": 1 }],
+  "monthly_activity": [{ "month": "2025-08", "count": 0 }, { "month": "2025-09", "count": 3 }]
+}
+```
+
+`total_events` is the sum of the three status counts (`requested` events are not part of the split). `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name. `monthly_activity` buckets `event_date` into the last 12 calendar months (current month last), zero-filled.
 
 **Errors:**
 | Code | Case |

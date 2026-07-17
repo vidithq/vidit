@@ -101,6 +101,36 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
             total += _extract_member(zf, name, target, running_total=total)
 
 
+def inspect_archive(zip_path: Path) -> None:
+    """Cheap pre-enqueue validation: a metadata-only pass, no extraction.
+
+    Lets the upload endpoint reject an obviously bad file (not a zip, no
+    ``tweets.js``, declared contents over the cap) before staging it for the
+    worker, so the analyst gets the 4xx synchronously instead of a failure
+    email. Declared sizes can lie; :func:`extract_allowlisted` re-enforces the
+    caps against the bytes actually read when the worker runs.
+    """
+    try:
+        zf = zipfile.ZipFile(zip_path)
+    except zipfile.BadZipFile as exc:
+        raise MalformedArchiveError("Not a valid zip archive") from exc
+
+    with zf:
+        names = [n for n in zf.namelist() if not n.endswith("/")]
+        tweets_member = _find_tweets_member(names)
+        if tweets_member is None:
+            raise NoTweetsFileError("Archive has no tweets.js")
+        root = tweets_member[: -len(_TWEETS_FILE)]
+        media_prefix = f"{root}{_MEDIA_DIR}/"
+        declared = sum(
+            zf.getinfo(n).file_size
+            for n in names
+            if n == tweets_member or n.startswith(media_prefix)
+        )
+        if declared > MAX_TOTAL_UNCOMPRESSED_BYTES:
+            raise ArchiveTooLargeError("Archive contents exceed the size limit")
+
+
 def _find_tweets_member(names: list[str]) -> str | None:
     """The member that is ``tweets.js`` under any prefix; the shortest path wins."""
     candidates = [n for n in names if n == _TWEETS_FILE or n.endswith(f"/{_TWEETS_FILE}")]

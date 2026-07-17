@@ -557,6 +557,24 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 
 ---
 
+### `archive_import_jobs`
+
+The durable queue behind `POST /events/import-archive`: the endpoint stages the uploaded zip to storage and inserts a row; the worker service claims rows with `FOR UPDATE SKIP LOCKED`, runs the backfill, stamps the assemble counts, and emails the owner. See [`ingestion.md`](ingestion.md#archive-import-worker) for the pipeline and recovery semantics.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `owner_id` | `UUID` | FK → `users.id`, ON DELETE CASCADE, NOT NULL, indexed. The uploader; every resulting row lands `detected` under this owner. |
+| `zip_key` | `TEXT` | NOT NULL. Storage key of the staged upload (`archive-imports/<id>.zip`); the object is deleted when the job reaches a terminal state. |
+| `status` | `VARCHAR(10)` | NOT NULL, indexed. `'queued'` → `'running'` → `'done'` \| `'failed'`. A `running` row whose `started_at` is past the stale window is reclaimable (worker died mid-job). |
+| `attempts` | `INTEGER` | NOT NULL, default 0. Claim counter; at the budget the job lands `failed` instead of looping (poison-pill guard). |
+| `created_count` / `skipped_count` / `recreated_count` / `failed_count` | `INTEGER` | NOT NULL, default 0. The assemble counts, final once `done`. |
+| `error` | `TEXT` | nullable. Terse operator-facing failure reason; the owner gets the story by email. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+| `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
+
+---
+
 ## Design decisions
 
 ### Why JSONB for `proof`?

@@ -13,6 +13,7 @@ the row freezes ``geolocated``, unmarks, and is anonymously visible.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import uuid
@@ -25,7 +26,7 @@ from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.pending_registration import PendingRegistration
 from app.routers import auth as auth_router
-from app.services import email
+from app.services import archive_jobs, email
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER
 from tests._fixtures import TINY_JPEG
 from tests.events._helpers import client, proof_file_part, proof_form_field
@@ -123,7 +124,7 @@ def test_gold_path_register_import_geolocate_publish(
         # jar; mutating calls echo the CSRF cookie as the double-submit header.
         auth_headers = {CSRF_HEADER: client.cookies[CSRF_COOKIE]}
 
-        # ── 2. Upload the archive; a detected draft lands ───────────────
+        # ── 2. Upload the archive; the worker turns it into a detection ──
         archive = _zip_bytes(
             {
                 "tweets.js": _TWEETS_JS,
@@ -131,13 +132,30 @@ def test_gold_path_register_import_geolocate_publish(
                 "account.js": b"never read",
             }
         )
-        imported = client.post(
+        accepted = client.post(
             "/api/v1/events/import-archive",
             headers=auth_headers,
             files={"file": ("archive.zip", archive, "application/zip")},
         )
-        assert imported.status_code == 200, imported.text
-        assert imported.json() == {"created": 1, "skipped": 0, "recreated": 0, "failed": 0}
+        assert accepted.status_code == 202, accepted.text
+        assert accepted.json()["status"] == "queued"
+        assert asyncio.run(archive_jobs.run_once(db)) == 1  # the worker pass
+
+        polled = client.get(
+            f"/api/v1/events/import-archive/{accepted.json()['id']}", headers=auth_headers
+        )
+        assert polled.status_code == 200
+        job = polled.json()
+        assert job["status"] == "done"
+        assert {k: job[k] for k in ("created", "skipped", "recreated", "failed")} == {
+            "created": 1,
+            "skipped": 0,
+            "recreated": 0,
+            "failed": 0,
+        }
+        # The registration mailer and the worker share the email module, so
+        # the recorder holds both sends: confirm link, then completion.
+        assert email_recorder[-1].subject == "Your X archive import is done"
 
         row = db.query(Event).filter(Event.owner_id == user_id).one()
         assert row.status == STATUS_DETECTED

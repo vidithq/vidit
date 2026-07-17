@@ -2,7 +2,7 @@ import { apiFetch } from "./api";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
-  ArchiveImportResult,
+  ArchiveImportJob,
   EventDetail,
   EventStatus,
   TagCategory,
@@ -349,15 +349,38 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
  * Backfill the caller's profile from their X "Download your data" zip:
  * `POST /events/import-archive` (multipart). Only the allowlisted entries
  * (`tweets.js` + `tweets_media/`) are read server-side; the rest of the export
- * is never extracted. Every row lands `detected` for the caller to submit.
+ * is never extracted. Returns the `queued` job (202): the worker service runs
+ * the import (every row lands `detected` for the caller to submit) and emails
+ * the outcome; poll the job for the counts.
  */
-export function importArchive(file: File): Promise<ArchiveImportResult> {
+export function importArchive(file: File): Promise<ArchiveImportJob> {
   const fd = new FormData();
   fd.append("file", file);
-  return apiFetch<ArchiveImportResult>("/events/import-archive", {
+  return apiFetch<ArchiveImportJob>("/events/import-archive", {
     method: "POST",
     body: fd,
   });
+}
+
+/** One import job, owner-only: `GET /events/import-archive/{job_id}`. */
+export function getImportJob(jobId: string): Promise<ArchiveImportJob> {
+  return apiFetch<ArchiveImportJob>(`/events/import-archive/${jobId}`);
+}
+
+/**
+ * Poll `jobId` until the worker lands it (`done` | `failed`); resolve with the
+ * terminal job. Resolution can take minutes on a large archive: the completion
+ * email is the durable signal, this keeps the upload page live while it's open.
+ */
+export async function awaitImportJob(
+  jobId: string,
+  { intervalMs = 2500 }: { intervalMs?: number } = {}
+): Promise<ArchiveImportJob> {
+  for (;;) {
+    const job = await getImportJob(jobId);
+    if (job.status === "done" || job.status === "failed") return job;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
 }
 
 /** Close an event: withdraw a request or reject a detection (owner-only).

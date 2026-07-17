@@ -586,16 +586,41 @@ export interface paths {
         put?: never;
         /**
          * Import Archive
-         * @description Backfill the caller's profile from their X "Download your data" zip.
+         * @description Enqueue the caller's X "Download your data" zip for the backfill worker.
          *
          *     The upload is the consent: every row lands ``detected``, attributed to the
          *     caller (no handle-ownership check in this version, see ``planning``). Only the
-         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are read; the
-         *     rest of the export is never extracted. The import runs synchronously behind a
-         *     size cap (``archive_zip.MAX_UPLOAD_BYTES``); a larger archive waits for the
-         *     durable-worker upgrade. Returns the assemble counts.
+         *     copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are ever read;
+         *     the rest of the export is never extracted. The request validates the zip
+         *     (shape + declared sizes, so a bad file 4xxs here, not in a failure email),
+         *     stages it, and returns the ``queued`` job; the worker service runs the
+         *     import and emails the outcome. Poll ``GET /events/import-archive/{job_id}``
+         *     for the counts.
          */
         post: operations["import_archive_api_v1_events_import_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/import-archive/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Job
+         * @description The caller's import job, for the upload page to poll until terminal.
+         *
+         *     Owner-only: someone else's job id reads as 404 (indistinguishable from
+         *     unknown, so ids don't leak whether an import exists).
+         */
+        get: operations["get_import_job_api_v1_events_import_archive__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1031,6 +1056,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{username}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Stats
+         * @description Aggregated shape-of-work stats for a public profile.
+         *
+         *     Anonymous like the rest of the profile read surface; live rows only.
+         *     All aggregation lives in ``services/user_stats``.
+         */
+        get: operations["get_user_stats_api_v1_users__username__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1356,23 +1404,47 @@ export interface components {
             deleted_users: number;
         };
         /**
-         * ArchiveImportResult
-         * @description Outcome of an archive backfill: how the detections landed.
+         * ArchiveImportJobRead
+         * @description One archive-import job as the owner polls it.
          *
-         *     The assemble counts. ``created`` is new ``detected`` rows; ``skipped`` a pair
-         *     a live row already held; ``recreated`` a previously rejected pair
-         *     re-detected; ``failed`` a detection that raised mid-persist and was
-         *     rolled back (the others still land).
+         *     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
+         *     counts are the assemble outcome, final once ``done`` (zero until then):
+         *     ``created`` is new ``detected`` rows; ``skipped`` a pair a live row
+         *     already held; ``recreated`` a previously rejected pair re-detected;
+         *     ``failed`` a detection that raised mid-persist and was rolled back (the
+         *     others still land). ``error`` stays operator-oriented and terse; the
+         *     owner gets the human story by email.
          */
-        ArchiveImportResult: {
+        ArchiveImportJobRead: {
             /** Created */
             created: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
             /** Failed */
             failed: number;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
             /** Recreated */
             recreated: number;
             /** Skipped */
             skipped: number;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
         };
         /**
          * AuthorRef
@@ -1766,6 +1838,16 @@ export interface components {
             storage_url: string;
         };
         /**
+         * MonthBucket
+         * @description One calendar-month activity bucket. ``month`` is ``YYYY-MM``.
+         */
+        MonthBucket: {
+            /** Count */
+            count: number;
+            /** Month */
+            month: string;
+        };
+        /**
          * PaginatedEventDetails
          * @description Full-detail paginated events: the owner Detections-queue payload.
          *
@@ -1993,6 +2075,16 @@ export interface components {
             /** Username Highlight */
             username_highlight: string;
         };
+        /**
+         * TagCount
+         * @description One (name, count) aggregation entry: a conflict or capture-source tally.
+         */
+        TagCount: {
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
+        };
         /** TagCreate */
         TagCreate: {
             /** Category */
@@ -2188,6 +2280,33 @@ export interface components {
             trust_reason: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * UserStatsRead
+         * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
+         *
+         *     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
+         *     three status counts. ``monthly_activity`` is always 12 buckets (the last 12
+         *     calendar months including the current one, zero-filled), so the frontend
+         *     renders a fixed-width bar row.
+         */
+        UserStatsRead: {
+            /** Capture Sources */
+            capture_sources: components["schemas"]["TagCount"][];
+            /** Closed Count */
+            closed_count: number;
+            /** Detected Count */
+            detected_count: number;
+            /** Geolocated Count */
+            geolocated_count: number;
+            /** Media Count */
+            media_count: number;
+            /** Monthly Activity */
+            monthly_activity: components["schemas"]["MonthBucket"][];
+            /** Top Conflicts */
+            top_conflicts: components["schemas"]["TagCount"][];
+            /** Total Events */
+            total_events: number;
         };
         /**
          * UserUpdate
@@ -3188,12 +3307,45 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveImportJobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_job_api_v1_events_import_archive__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArchiveImportResult"];
+                    "application/json": components["schemas"]["ArchiveImportJobRead"];
                 };
             };
             /** @description Validation Error */
@@ -3874,6 +4026,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_stats_api_v1_users__username__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatsRead"];
+                };
             };
             /** @description Validation Error */
             422: {

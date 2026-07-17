@@ -59,6 +59,14 @@ website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
+geolocated_count  # schemas/user.py UserStatsRead (wire field)
+detected_count  # schemas/user.py UserStatsRead
+closed_count  # schemas/user.py UserStatsRead
+total_events  # schemas/user.py UserStatsRead
+top_conflicts  # schemas/user.py UserStatsRead
+capture_sources  # schemas/user.py UserStatsRead
+monthly_activity  # schemas/user.py UserStatsRead
+finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc

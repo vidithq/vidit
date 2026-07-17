@@ -29,8 +29,11 @@ export interface User {
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 
-/** Result of an archive backfill (`POST /events/import-archive`). */
-export type ArchiveImportResult = components["schemas"]["ArchiveImportResult"];
+/** One archive-import job as the owner polls it
+ *  (`POST /events/import-archive` returns it queued;
+ *  `GET /events/import-archive/{job_id}` follows it). Carries the assemble
+ *  counts, final once `status` is `done`. */
+export type ArchiveImportJob = components["schemas"]["ArchiveImportJobRead"];
 
 export type Tag = components["schemas"]["TagRead"];
 

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { BioCard } from "@/components/profile/BioCard";
 import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
+import { ProfileInsights } from "@/components/profile/ProfileInsights";
 import { ProfileStats } from "@/components/profile/ProfileStats";
 import {
   RecentSubmissions,
@@ -87,6 +88,8 @@ export default function ProfilePage() {
         />
 
         <ProfileStats profile={profile} />
+
+        <ProfileInsights username={profile.username} />
 
         <BioCard profile={profile} edit={edit} />
 
