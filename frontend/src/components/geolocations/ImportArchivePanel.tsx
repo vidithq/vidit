@@ -304,7 +304,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
               {liveJob === null
                 ? "Keeping only your posts, then uploading…"
                 : liveJob.progress_total !== null
-                  ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} coordinate detections processed.`
+                  ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`
                   : `Queued · ~${(liveJob.post_estimate ?? 1).toLocaleString()} post${(liveJob.post_estimate ?? 1) === 1 ? "" : "s"} in your archive, waiting for the importer.`}
             </p>
             <p className="text-xs text-neutral-500">
