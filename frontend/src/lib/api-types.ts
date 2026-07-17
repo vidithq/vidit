@@ -1151,6 +1151,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/x": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Crc Challenge
+         * @description Answer X's Challenge-Response Check.
+         *
+         *     X sends one at registration and then hourly; a wrong or slow answer
+         *     deactivates the webhook. Pure HMAC over the token, no DB, so the answer
+         *     is immediate.
+         */
+        get: operations["crc_challenge_api_v1_webhooks_x_get"];
+        put?: never;
+        /**
+         * Receive Account Activity
+         * @description Verify, queue, answer. Anything valid-but-irrelevant (another
+         *     ``for_user_id``, non-mention events, retweets of the bot) still gets a
+         *     200: a non-2xx makes X retry and eventually deactivate the webhook.
+         */
+        post: operations["receive_account_activity_api_v1_webhooks_x_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -4319,6 +4349,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crc_challenge_api_v1_webhooks_x_get: {
+        parameters: {
+            query: {
+                crc_token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_account_activity_api_v1_webhooks_x_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

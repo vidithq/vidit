@@ -3,6 +3,7 @@ from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import AuthEvent
 from app.models.auth_token import AuthToken
 from app.models.bot_mention import BotMention
+from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event, EventGeolocator, EventInvestigator
 from app.models.follow import Follow
@@ -18,6 +19,7 @@ __all__ = [
     "AuthEvent",
     "AuthToken",
     "BotMention",
+    "BotWebhookEvent",
     "Conflict",
     "Follow",
     "Event",

@@ -1,9 +1,12 @@
-"""Run one pass of the @ViditBot mention pipeline.
+"""Run one reconciliation pass of the @ViditBot mention pipeline.
 
-Meant for a scheduler (e.g. a Railway cron), and runnable by hand. Pulls the
-bot's new mentions, turns each tagged tweet into ``detected`` drafts, replies
-in-thread, and records every mention in the ``bot_mentions`` ledger (see
-``services/bot``). Exits non-zero when the pass could not start (missing
+The hourly net behind the Account Activity webhook (the nominal delivery
+path, see ``routers/webhooks``): pulls the bot's new mentions and catches
+anything the webhook dropped, running each through the same pipeline
+(``services/bot``); a mention the webhook already handled just counts
+``already handled``, and while ``X_WEBHOOK_ENABLED`` is true a fresh one
+pages as a webhook gap. Meant for a scheduler (e.g. a Railway cron), and
+runnable by hand. Exits non-zero when the pass could not start (missing
 credentials, mentions pull failed); per-mention failures are recorded and
 counted, not fatal.
 
@@ -47,9 +50,10 @@ def main() -> None:
         db.close()
 
     print(
-        f"Bot pass OK: {result.mentions_seen} mentions seen, "
+        f"Bot reconciliation pass OK: {result.mentions_seen} mentions seen, "
         f"{result.events_created} events created, "
         f"{result.replies_posted} replies posted, "
+        f"{result.likes_posted} likes posted, "
         f"{result.no_detection} without detection, "
         f"{result.no_account} without a linked account, "
         f"{result.skipped} deduped, {result.already_handled} already handled, "

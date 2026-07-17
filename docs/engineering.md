@@ -67,12 +67,15 @@ Client pages load read-only API data through `useApiResource<T>(path)` ([`fronte
 
 | Service | Platform | Estimated cost |
 |---------|----------|----------------|
-| Backend (FastAPI) | **Railway** | ~0-5 €/month |
-| Frontend (Next.js) | **Vercel** | Free |
+| Backend (FastAPI API + always-on import worker + conflict-sync, bot, and backup crons) | **Railway** | ~10-15 $/month (the compute is the fixed floor) |
+| Frontend (Next.js) | **Vercel** | Free (Hobby tier; Pro at ~20 $/month past ~100 GB bandwidth) |
 | Database (PostgreSQL + PostGIS) | **Railway** | Included in the plan |
-| Media storage | **AWS S3 + CloudFront** | ~1-3 $/month at beta scale |
+| Media storage + CDN | **AWS S3 + CloudFront** | ~1-3 $/month at beta scale (CloudFront's free 1 TB egress tier covers beta traffic) |
+| DNS + bot floor | **Cloudflare** | Free plan |
+| X API (the bot) | **X pay-per-use** | ~2 $/month at beta mention volume, linear with mentions (roughly 0.035 $ per processed mention) |
+| Email (Resend), error tracking (Sentry), uptime (UptimeRobot) | — | Free tiers |
 
-**Beta total (10 users): ~5 €/month.**
+**Beta total: ~15-20 $/month.**
 
 ### Out of technical scope for the MVP
 

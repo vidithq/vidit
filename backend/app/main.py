@@ -20,6 +20,7 @@ from app.routers import (
     social,
     tags,
     users,
+    webhooks,
 )
 from app.services import archive_jobs
 from app.services.storage import (
@@ -143,6 +144,7 @@ app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 
 
 if settings.storage_backend == "local":

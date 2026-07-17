@@ -20,6 +20,7 @@ from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services.bot import (
     BotNotConfigured,
+    compose_failure_reply,
     compose_reply,
     run_bot_once,
 )
@@ -76,10 +77,19 @@ def _syndication_client() -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _mentions_client(mention_ids: list[str], seen_params: list[dict[str, str]]) -> httpx.Client:
+def _mentions_client(
+    mention_ids: list[str],
+    seen_params: list[dict[str, str]],
+    reply_to: dict[str, str] | None = None,
+) -> httpx.Client:
     def handler(req: httpx.Request) -> httpx.Response:
         seen_params.append(dict(req.url.params))
-        data = [{"id": mid, "author_id": "u1", "text": BODIES[mid]["text"]} for mid in mention_ids]
+        data: list[dict[str, str]] = []
+        for mid in mention_ids:
+            entry = {"id": mid, "author_id": "u1", "text": BODIES[mid]["text"]}
+            if reply_to and mid in reply_to:
+                entry["in_reply_to_user_id"] = reply_to[mid]
+            data.append(entry)
         return httpx.Response(
             200,
             json={
@@ -92,8 +102,11 @@ def _mentions_client(mention_ids: list[str], seen_params: list[dict[str, str]]) 
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _write_client(posted: list[dict[str, object]]) -> httpx.Client:
+def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
     def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/likes"):
+            liked.append(json.loads(req.content))
+            return httpx.Response(200, json={"data": {"liked": True}})
         posted.append(json.loads(req.content))
         return httpx.Response(201, json={"data": {"id": "777"}})
 
@@ -154,25 +167,29 @@ def _cleanup():
         session.close()
 
 
-async def _run(db, mention_ids, seen_params=None, posted=None):
+async def _run(db, mention_ids, seen_params=None, posted=None, liked=None, reply_to=None):
     seen_params = seen_params if seen_params is not None else []
     posted = posted if posted is not None else []
+    liked = liked if liked is not None else []
     with (
         _syndication_client() as syn,
-        _mentions_client(mention_ids, seen_params) as read,
-        _write_client(posted) as write,
+        _mentions_client(mention_ids, seen_params, reply_to) as read,
+        _write_client(posted, liked) as write,
     ):
         outcome = await run_bot_once(
             db, syndication_client=syn, x_read_client=read, x_write_client=write
         )
-    return outcome, seen_params, posted
+    return outcome, seen_params, posted, liked
 
 
 async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_owner):
-    outcome, _, posted = await _run(db, [TAGGED_ID])
+    outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.events_created == 1
     assert outcome.replies_posted == 1
+    # The receipt ack: the tagged tweet is liked because the author is linked.
+    assert outcome.likes_posted == 1
+    assert liked == [{"tweet_id": TAGGED_ID}]
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
@@ -201,11 +218,12 @@ async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_o
 
 async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
     await _run(db, [TAGGED_ID])
-    outcome, seen_params, posted = await _run(db, [TAGGED_ID])
+    outcome, seen_params, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.already_handled == 1
     assert outcome.events_created == 0
     assert posted == []
+    assert liked == []  # an already-handled mention earns no second gesture
     # The second pull resumed from the ledger's max mention id.
     assert seen_params[0]["since_id"] == TAGGED_ID
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
@@ -213,13 +231,15 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
 
 async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     # No Vidit account carries HANDLE: the mention is ledgered and that is
-    # all. No user row minted, no draft, no reply.
-    outcome, _, posted = await _run(db, [TAGGED_ID])
+    # all. No user row minted, no draft, no reply, no like.
+    outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
     assert outcome.events_created == 0
     assert outcome.replies_posted == 0
+    assert outcome.likes_posted == 0
     assert posted == []
+    assert liked == []
     assert db.query(User).filter(User.x_handle == HANDLE).first() is None
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
     assert ledger.outcome == "no_account"
@@ -228,26 +248,76 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
 
 
 async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
-    # A suspended account must not accrue drafts or billed replies.
+    # A suspended account must not accrue drafts or billed gestures.
     linked_owner.is_active = False
     db.commit()
 
-    outcome, _, posted = await _run(db, [TAGGED_ID])
+    outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
     assert outcome.events_created == 0
     assert posted == []
+    assert liked == []
 
 
-async def test_coordinate_less_mention_records_silently(db):
-    outcome, _, posted = await _run(db, [BARE_ID])
+async def test_coordinate_less_mention_from_unlinked_author_records_silently(db):
+    # No linked account: no failure reply, no like; a stranger's
+    # coordinate-less tag costs nothing.
+    outcome, _, posted, liked = await _run(db, [BARE_ID])
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
-    assert posted == []  # no reply: answering nothing-mentions would loop
+    assert posted == []
+    assert liked == []
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
     assert ledger.outcome == "no_detection"
     assert ledger.reply_tweet_id is None
+
+
+async def test_coordinate_less_mention_from_linked_author_gets_failure_reply(db, linked_owner):
+    outcome, _, posted, liked = await _run(db, [BARE_ID])
+
+    assert outcome.no_detection == 1
+    assert outcome.events_created == 0
+    assert outcome.replies_posted == 1
+    assert liked == [{"tweet_id": BARE_ID}]  # the receipt ack still lands
+    (payload,) = posted
+    assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert "no coordinates" in text.lower()
+    assert "48.858370, 2.294481" in text  # the expected-format hint
+    # Same linkless contract as the success reply.
+    assert "http" not in text and ".app" not in text and ".com" not in text
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
+    assert ledger.outcome == "no_detection"
+    assert ledger.reply_tweet_id == "777"
+
+
+async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
+    # The tagged tweet is itself a reply to the bot (a courtesy answer to the
+    # bot's own reply auto-mentions it): the failure reply must not fire, or
+    # every thanks would earn an answer forever. The like still lands: it
+    # can't loop.
+    outcome, _, posted, liked = await _run(db, [BARE_ID], reply_to={BARE_ID: BOT_USER_ID})
+
+    assert outcome.no_detection == 1
+    assert posted == []
+    assert liked == [{"tweet_id": BARE_ID}]
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
+    assert ledger.reply_tweet_id is None
+
+
+async def test_like_budget_cap_skips_like_but_draft_still_lands(db, linked_owner, monkeypatch):
+    import app.services.bot as bot_service
+
+    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_PASS", 0)
+    outcome, _, posted, liked = await _run(db, [TAGGED_ID])
+
+    assert liked == []
+    assert outcome.likes_posted == 0
+    assert outcome.events_created == 1  # detection is unbilled; only the gesture is skipped
+    assert len(posted) == 1
 
 
 async def test_self_mention_is_ledgered_so_cursor_advances(db):
@@ -276,6 +346,31 @@ async def test_self_mention_is_ledgered_so_cursor_advances(db):
     assert ledger.reply_tweet_id is None
 
 
+async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):
+    # While the webhook is live, the poll is a reconciliation net: a mention
+    # it processes fresh means the webhook missed it, and that must page.
+    import app.services.bot as bot_service
+
+    captured: list[str] = []
+    monkeypatch.setattr(settings, "x_webhook_enabled", True)
+    monkeypatch.setattr(bot_service.sentry_sdk, "capture_message", captured.append)
+
+    await _run(db, [TAGGED_ID])
+
+    assert any("webhook gap" in m and TAGGED_ID in m for m in captured)
+
+
+async def test_poll_stays_gap_silent_while_webhook_disabled(db, linked_owner, monkeypatch):
+    import app.services.bot as bot_service
+
+    captured: list[str] = []
+    monkeypatch.setattr(bot_service.sentry_sdk, "capture_message", captured.append)
+
+    await _run(db, [TAGGED_ID])
+
+    assert captured == []
+
+
 async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
     monkeypatch.setattr(settings, "x_bot_bearer_token", "")
     with pytest.raises(BotNotConfigured):
@@ -290,6 +385,13 @@ def test_compose_reply_is_linkless_and_carries_warnings():
     assert "already exists" in text
     assert "link in bio" in text
     assert "http" not in text and "vidit.app" not in text
+    assert len(text) <= 280
+
+
+def test_compose_failure_reply_is_linkless_and_short():
+    text = compose_failure_reply()
+    assert "48.858370, 2.294481" in text
+    assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
 
 

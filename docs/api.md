@@ -66,6 +66,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Timeline** | | | |
 | GET | `/timeline` | 🔒 | Activity feed from followed analysts |
+| **Webhooks** | | | |
+| GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
+| POST | `/webhooks/x` | 🌐 | X Account Activity delivery; signature-verified, queues bot mentions |
 | **Admin** (collapsed below) | | | |
 | GET | `/admin/me` | 🛡️ | `is_admin` probe |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
@@ -121,7 +124,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit.
+`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: a request is either X's (HMAC-signed with the consumer secret) or rejected at the cost of one HMAC, cheaper than any limiter bookkeeping.
 
 ---
 
@@ -1540,6 +1543,34 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 ```
 
 </details>
+
+---
+
+## Webhooks
+
+The X Account Activity webhook, the bot's nominal mention delivery (see [`ingestion.md`](ingestion.md#bot-format)). **Unauthenticated by design**: X calls it, and the HMAC signature over the raw body (the app's consumer secret, held only by X and the deployment) is the gate.
+
+### `GET /webhooks/x`
+
+X's Challenge-Response Check (CRC), sent at registration and then hourly; a wrong or slow answer deactivates the webhook. Answered in-request, no DB.
+
+**Query:** `crc_token` (required).
+
+**Response 200:**
+```json
+{ "response_token": "sha256=<base64(HMAC-SHA256(consumer_secret, crc_token))>" }
+```
+
+**Response 503:** the X credentials are not configured on this deployment.
+
+### `POST /webhooks/x`
+
+One Account Activity delivery. The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`; compared constant-time, mismatch → `401`. A valid signature always answers `200`, whatever the payload: a foreign `for_user_id`, non-mention events, or the bot's own posts are ignored (a non-2xx would make X retry and eventually deactivate the webhook). Mentions are reduced to the internal shape and queued in [`bot_webhook_events`](data-model.md#bot_webhook_events); the import worker runs the pipeline, never the request.
+
+**Response 200:**
+```json
+{ "queued": 1 }
+```
 
 ---
 
