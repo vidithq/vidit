@@ -162,6 +162,68 @@ def test_create_invite_code_ignores_max_uses_in_body(admin_user, db):
     assert response.json()["max_uses"] == 1
 
 
+def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, db):
+    response = client.post(
+        "/api/v1/admin/invite-codes",
+        json={"x_handle": "@Invited_Analyst"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["x_handle"] == "invited_analyst"
+
+    invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).first()
+    assert invite is not None
+    assert invite.x_handle == "invited_analyst"
+
+    event = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_created")
+        .order_by(AdminEvent.created_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.target == {"invite_code_id": body["id"], "x_handle": "invited_analyst"}
+
+
+def test_create_invite_code_defaults_to_no_x_handle(admin_user):
+    response = client.post(
+        "/api/v1/admin/invite-codes",
+        json={},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 201
+    assert response.json()["x_handle"] is None
+
+
+def test_create_invite_code_409_when_x_handle_already_linked(admin_user, regular_user, db):
+    regular_user.x_handle = f"taken{uuid.uuid4().hex[:8]}"
+    db.commit()
+    try:
+        response = client.post(
+            "/api/v1/admin/invite-codes",
+            json={"x_handle": regular_user.x_handle},
+            headers=login_as(client, admin_user),
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == {
+            "code": "x_handle_conflict",
+            "message": "x_handle is already linked to another account",
+        }
+    finally:
+        regular_user.x_handle = None
+        db.commit()
+
+
+def test_create_invite_code_422_on_invalid_x_handle(admin_user):
+    response = client.post(
+        "/api/v1/admin/invite-codes",
+        json={"x_handle": "not a handle!"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 422
+
+
 def test_create_invite_code_403_for_regular_user(regular_user):
     response = client.post(
         "/api/v1/admin/invite-codes",
@@ -364,6 +426,132 @@ def test_set_trust_404_for_unknown_user(admin_user):
     }
 
 
+def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": "@OSINT_Hawk"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+    assert response.json()["x_handle"] == "osint_hawk"
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == regular_user.id).first()
+    assert refreshed.x_handle == "osint_hawk"
+
+    event = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_linked")
+        .order_by(AdminEvent.created_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.target == {"user_id": str(regular_user.id), "x_handle": "osint_hawk"}
+
+
+def test_set_x_handle_accepts_bare_handle(admin_user, regular_user):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": "plain_handle"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+    assert response.json()["x_handle"] == "plain_handle"
+
+
+def test_clear_x_handle_with_null(admin_user, regular_user, db):
+    client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": "to_clear"},
+        headers=login_as(client, admin_user),
+    )
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": None},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+    assert response.json()["x_handle"] is None
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == regular_user.id).first()
+    assert refreshed.x_handle is None
+
+    event = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_cleared")
+        .order_by(AdminEvent.created_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.target == {"user_id": str(regular_user.id)}
+
+
+def test_set_x_handle_409_when_linked_to_another_user(admin_user, regular_user, db):
+    holder = User(
+        username=f"holder{uuid.uuid4().hex[:8]}",
+        email=f"holder-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        x_handle=f"held{uuid.uuid4().hex[:8]}",
+    )
+    db.add(holder)
+    db.commit()
+    holder_id = holder.id
+    held_handle = holder.x_handle
+
+    try:
+        response = client.patch(
+            f"/api/v1/admin/users/{regular_user.id}/x-handle",
+            json={"x_handle": held_handle},
+            headers=login_as(client, admin_user),
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == {
+            "code": "x_handle_conflict",
+            "message": "x_handle is already linked to another account",
+        }
+        db.expire_all()
+        refreshed = db.query(User).filter(User.id == regular_user.id).first()
+        assert refreshed.x_handle is None
+    finally:
+        db.query(User).filter(User.id == holder_id).delete(synchronize_session=False)
+        db.commit()
+
+
+@pytest.mark.parametrize(
+    "bad_handle",
+    ["", "@", "with space", "hyphen-ated", "waytoolonghandle1", "@@double", "émoji"],
+)
+def test_set_x_handle_422_on_invalid_handle(admin_user, regular_user, bad_handle):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": bad_handle},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 422
+
+
+def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
+    regular_user.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": "some_handle"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 404
+
+
+def test_set_x_handle_403_for_regular_user(regular_user):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        json={"x_handle": "some_handle"},
+        headers=login_as(client, regular_user),
+    )
+    assert response.status_code == 403
+
+
 @pytest.fixture
 def geolocation(db, regular_user):
     geo = Event(
@@ -529,6 +717,9 @@ def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
 def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     admin_user, regular_user, geolocation, db
 ):
+    regular_user.x_handle = f"freed{uuid.uuid4().hex[:8]}"
+    db.commit()
+
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
         headers=login_as(client, admin_user),
@@ -542,6 +733,9 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     db.expire_all()
     refreshed_user = db.query(User).filter(User.id == regular_user.id).first()
     assert refreshed_user.deleted_at is not None
+    # The handle is released with the tombstone, so it stays linkable (the
+    # UNIQUE spans tombstoned rows and the PATCH refuses them).
+    assert refreshed_user.x_handle is None
     refreshed_geo = db.query(Event).filter(Event.id == geolocation.id).first()
     assert refreshed_geo.deleted_at is not None
 

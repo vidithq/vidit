@@ -142,7 +142,7 @@ def maybe_promote_admin(user: User) -> bool:
     """
     if user.is_admin:
         return False
-    # An assembled profile (no email until claimed) can't match the admin list.
+    # A credential-less legacy row (no email) can't match the admin list.
     if user.email is None or user.email.lower() not in settings.admin_emails_list:
         return False
     user.is_admin = True

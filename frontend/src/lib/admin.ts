@@ -14,10 +14,14 @@ export interface InviteCode {
   status: InviteCodeStatus;
   used_by_username: string | null;
   used_at: string | null;
+  /** The X handle the code binds; redemption copies it onto the new
+   *  account as its bot-attribution link. */
+  x_handle: string | null;
 }
 
 export interface CreateInviteCodeBody {
   expires_in_days: number | null;
+  x_handle?: string | null;
 }
 
 export function listInviteCodes(): Promise<InviteCode[]> {
@@ -46,6 +50,9 @@ export interface AdminUser {
   is_admin: boolean;
   is_trusted: boolean;
   trust_reason: string | null;
+  /** The X handle the bot attributes mentions to; admin-linked, null when
+   *  no handle is linked. */
+  x_handle: string | null;
   created_at: string;
 }
 
@@ -61,6 +68,16 @@ export function setUserTrust(
   body: { is_trusted: boolean; trust_reason: string | null }
 ): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/trust`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function setUserXHandle(
+  userId: string,
+  body: { x_handle: string | null }
+): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/x-handle`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });

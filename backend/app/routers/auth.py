@@ -285,9 +285,9 @@ def login(
     # so the unknown-email and soft-deleted branches take the same time as
     # the wrong-password branch. Without the dummy verify, response time is
     # a free oracle for "is this email a known-but-deleted user?".
-    # A credential-less profile (password_hash NULL — an unclaimed assembled
-    # profile, or a future OAuth-only claim) takes the dummy-verify branch: it
-    # can't authenticate by password, and the constant-time path is preserved.
+    # A credential-less profile (password_hash NULL — a legacy assembled row,
+    # or a future OAuth-only account) takes the dummy-verify branch: it can't
+    # authenticate by password, and the constant-time path is preserved.
     password_hash = (
         user.password_hash
         if user is not None and user.deleted_at is None and user.password_hash is not None
@@ -461,7 +461,7 @@ def forgot_password(
         return
 
     # No email = nothing to send to (a found user always has one — lookup is by
-    # email — but the column is nullable for assembled profiles).
+    # email — but the column stays nullable for legacy assembled rows).
     if user.email is not None:
         background_tasks.add_task(_process_forgot_password, user.id, user.email)
 

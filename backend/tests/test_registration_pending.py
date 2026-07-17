@@ -26,6 +26,7 @@ right address" without coupling to the prose of the email body.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -760,3 +761,60 @@ def test_reap_pending_registrations_keeps_live_rows(db, invite_code):
     finally:
         db.delete(row)
         db.commit()
+
+
+# ── Invite-bound X handle ─────────────────────────────────────────────────
+
+
+def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, email_recorder, db):
+    bound = f"bh{uuid.uuid4().hex[:10]}"
+    invite_code.x_handle = bound
+    db.commit()
+
+    payload = _unique_payload(invite_code)
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 202
+    token = _extract_token(email_recorder[0].text)
+    response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
+    assert response.status_code == 200, response.text
+
+    user = db.query(User).filter(User.email == payload["email"]).first()
+    assert user is not None
+    assert user.x_handle == bound
+
+    db.delete(user)
+    db.commit()
+
+
+def test_confirm_survives_taken_x_handle_and_skips_link(
+    client, invite_code, email_recorder, db, caplog
+):
+    """The handle got linked to another account between mint and redemption:
+    registration must still succeed, without the link (logged warning); the
+    admin x-handle endpoint is the repair path."""
+    bound = f"bh{uuid.uuid4().hex[:10]}"
+    holder = User(
+        username=f"holder{uuid.uuid4().hex[:8]}",
+        email=f"holder-{uuid.uuid4().hex}@example.com",
+        password_hash="x",
+        x_handle=bound,
+    )
+    db.add(holder)
+    invite_code.x_handle = bound
+    db.commit()
+    holder_id = holder.id
+
+    payload = _unique_payload(invite_code)
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 202
+    token = _extract_token(email_recorder[0].text)
+    with caplog.at_level(logging.WARNING, logger="app.services.registration"):
+        response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
+    assert response.status_code == 200, response.text
+    assert any("without the link" in record.getMessage() for record in caplog.records)
+
+    user = db.query(User).filter(User.email == payload["email"]).first()
+    assert user is not None
+    assert user.x_handle is None
+
+    db.delete(user)
+    db.query(User).filter(User.id == holder_id).delete(synchronize_session=False)
+    db.commit()

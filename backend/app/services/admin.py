@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
@@ -41,6 +42,10 @@ class TrustReasonRequiredError(AdminError):
     code = "trust_reason_required"
 
 
+class XHandleConflictError(AdminError):
+    code = "x_handle_conflict"
+
+
 def _invite_code_status(invite: InviteCode) -> InviteCodeStatus:
     if invite.revoked_at is not None:
         return "revoked"
@@ -63,7 +68,23 @@ def serialize_invite_code(invite: InviteCode) -> AdminInviteCodeRead:
         status=_invite_code_status(invite),
         used_by_username=invite.used_by_user.username if invite.used_by_user else None,
         used_at=invite.used_at,
+        x_handle=invite.x_handle,
     )
+
+
+def _assert_x_handle_free(
+    db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
+) -> None:
+    """Raise the typed conflict when any user row already carries the handle.
+
+    Soft-deleted rows count too: ``users.x_handle`` is UNIQUE across every
+    row, so a link that ignored a tombstoned holder would fail the constraint.
+    """
+    query = db.query(User).filter(User.x_handle == x_handle)
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+    if query.first() is not None:
+        raise XHandleConflictError("x_handle is already linked to another account")
 
 
 def log_admin_event(
@@ -84,27 +105,38 @@ def create_invite_code(
     *,
     actor_id: uuid.UUID,
     expires_in_days: int | None,
+    x_handle: str | None = None,
 ) -> InviteCode:
-    """Mint a single-use invite code.
+    """Mint a single-use invite code, optionally bound to an X handle.
 
     ``max_uses`` is locked to 1 so every code's audit trail (``used_by`` /
     ``used_at``) names exactly one analyst. The column accepts higher
     values; the admin API doesn't expose them.
+
+    A bound ``x_handle`` (already normalized by the schema) is copied onto
+    the account at redemption; minting against a handle a user already
+    carries raises the same conflict as the direct link endpoint.
     """
+    if x_handle is not None:
+        _assert_x_handle_free(db, x_handle)
     expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
     invite = InviteCode(
         code=generate_invite_code(),
         created_by=actor_id,
         max_uses=1,
         expires_at=expires_at,
+        x_handle=x_handle,
     )
     db.add(invite)
     db.flush()
+    target: dict[str, Any] = {"invite_code_id": str(invite.id)}
+    if x_handle is not None:
+        target["x_handle"] = x_handle
     log_admin_event(
         db,
         actor_id=actor_id,
         action="invite_created",
-        target={"invite_code_id": str(invite.id)},
+        target=target,
     )
     db.commit()
     db.refresh(invite)
@@ -208,6 +240,48 @@ def set_user_trust(
 
     log_admin_event(db, actor_id=actor_id, action=action, target=target)
     db.commit()
+    db.refresh(user)
+    return user
+
+
+def set_user_x_handle(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    user_id: uuid.UUID,
+    x_handle: str | None,
+) -> User:
+    """Link or clear the X handle the bot attributes mentions to, with audit.
+
+    The schema validator already normalized the value (lowercased, no leading
+    ``@``). A handle held by any other user raises the conflict error.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or user.deleted_at is not None:
+        # Same guard as trust: mutating a tombstoned account would plant a
+        # stale link that resurrects with the row.
+        raise UserNotFoundError("User not found")
+
+    if x_handle is not None:
+        _assert_x_handle_free(db, x_handle, exclude_user_id=user_id)
+        user.x_handle = x_handle
+        action = "x_handle_linked"
+        target = {"user_id": str(user.id), "x_handle": x_handle}
+    else:
+        user.x_handle = None
+        action = "x_handle_cleared"
+        target = {"user_id": str(user.id)}
+
+    log_admin_event(db, actor_id=actor_id, action=action, target=target)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # The pre-check above races the UNIQUE: a concurrent link (another
+        # admin call, or a registration redeeming an invite bound to the same
+        # handle) can land between check and commit. Surface the same typed
+        # 409 as the pre-check instead of a 500.
+        db.rollback()
+        raise XHandleConflictError("X handle already linked to another user") from exc
     db.refresh(user)
     return user
 
@@ -325,6 +399,12 @@ def soft_delete_user(
     # `deleted_at`, and stops a later un-soft-delete (column is recoverable)
     # from reviving old sessions.
     bump_token_version(user)
+    # Release the X handle: the UNIQUE constraint spans tombstoned rows, so a
+    # kept link would 409 every future re-link of this handle while the PATCH
+    # endpoint refuses tombstoned targets. The audit target records the freed
+    # value.
+    freed_x_handle = user.x_handle
+    user.x_handle = None
 
     # Cascade to every live event (located + requested). ``WHERE deleted_at IS
     # NULL`` leaves earlier soft-delete timestamps untouched, so the count
@@ -346,6 +426,7 @@ def soft_delete_user(
             "user_id": str(user.id),
             "username": user.username,
             "cascaded_geolocations": cascaded_geolocations,
+            "freed_x_handle": freed_x_handle,
         },
     )
     db.commit()

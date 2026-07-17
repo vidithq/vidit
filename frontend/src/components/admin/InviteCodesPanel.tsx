@@ -93,6 +93,13 @@ function InviteCodeRow({
           <span className="text-neutral-600">—</span>
         )}
       </td>
+      <td className="py-2 pr-3">
+        {invite.x_handle ? (
+          <Pill>@{invite.x_handle}</Pill>
+        ) : (
+          <span className="text-xs text-neutral-600">—</span>
+        )}
+      </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
         {formatDate(invite.expires_at)}
       </td>
@@ -127,6 +134,7 @@ export function InviteCodesPanel() {
   const [codes, setCodes] = useState<InviteCode[] | null>(null);
 
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
+  const [xHandle, setXHandle] = useState("");
 
   // The mint action owns the one error slot; the loader and revoke (which has
   // no loading of its own — the row owns that) write to it via `setError`, so
@@ -135,10 +143,14 @@ export function InviteCodesPanel() {
     () =>
       createInviteCode({
         expires_in_days: expiresInDays === "" ? null : expiresInDays,
+        x_handle: xHandle.trim() === "" ? null : xHandle.trim(),
       }),
     {
       fallback: "Failed to mint invite code",
-      onSuccess: () => refresh(),
+      onSuccess: () => {
+        setXHandle("");
+        refresh();
+      },
     }
   );
   const { error, setError } = createMutation;
@@ -185,7 +197,7 @@ export function InviteCodesPanel() {
 
       <form
         onSubmit={onCreate}
-        className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
+        className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end"
       >
         <div>
           <label className={FORM_LABEL} htmlFor="expires">
@@ -203,6 +215,20 @@ export function InviteCodesPanel() {
               const v = e.target.value;
               setExpiresInDays(v === "" ? "" : Number(v));
             }}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <label className={FORM_LABEL} htmlFor="invite-x-handle">
+            X handle (optional, linked to the account at redemption)
+          </label>
+          <Input
+            variant="compact"
+            id="invite-x-handle"
+            type="text"
+            placeholder="e.g. @osint_hawk"
+            value={xHandle}
+            onChange={(e) => setXHandle(e.target.value)}
             className="mt-1"
           />
         </div>
@@ -224,6 +250,7 @@ export function InviteCodesPanel() {
               <th className="py-2 pr-3 font-medium">Code</th>
               <th className="py-2 pr-3 font-medium">Status</th>
               <th className="py-2 pr-3 font-medium">Used by</th>
+              <th className="py-2 pr-3 font-medium">X handle</th>
               <th className="py-2 pr-3 font-medium">Expires</th>
               <th className="py-2 pr-3 font-medium">Created</th>
               <th className="py-2"></th>
@@ -232,13 +259,13 @@ export function InviteCodesPanel() {
           <tbody>
             {codes === null ? (
               <tr>
-                <td colSpan={6} className="py-4 text-center text-xs text-neutral-500">
+                <td colSpan={7} className="py-4 text-center text-xs text-neutral-500">
                   Loading…
                 </td>
               </tr>
             ) : codes.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-4 text-center text-xs text-neutral-500">
+                <td colSpan={7} className="py-4 text-center text-xs text-neutral-500">
                   No invite codes yet.
                 </td>
               </tr>

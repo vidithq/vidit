@@ -25,6 +25,7 @@ from app.schemas.admin import (
     AdminUserRead,
     AdminWipeDemoRequestsResponse,
     AdminWipeDemoResponse,
+    UserXHandleUpdate,
 )
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
@@ -36,6 +37,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
     "trust_reason_required": 422,
+    "x_handle_conflict": 409,
 }
 
 
@@ -75,11 +77,15 @@ def create_invite_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminInviteCodeRead:
-    invite = admin_service.create_invite_code(
-        db,
-        actor_id=current_user.id,
-        expires_in_days=body.expires_in_days,
-    )
+    try:
+        invite = admin_service.create_invite_code(
+            db,
+            actor_id=current_user.id,
+            expires_in_days=body.expires_in_days,
+            x_handle=body.x_handle,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
     return admin_service.serialize_invite_code(invite)
 
 
@@ -135,6 +141,29 @@ def set_user_trust(
             user_id=user_id,
             is_trusted=body.is_trusted,
             trust_reason=body.trust_reason,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+
+
+@router.patch("/users/{user_id}/x-handle", response_model=AdminUserRead)
+@limiter.limit("60/hour")
+def set_user_x_handle(
+    request: Request,
+    user_id: uuid.UUID,
+    body: UserXHandleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> User:
+    """Link or clear the X handle the bot attributes mentions to. The only
+    write path for ``users.x_handle`` today; self-serve linking waits on
+    verify-by-post."""
+    try:
+        return admin_service.set_user_x_handle(
+            db,
+            actor_id=current_user.id,
+            user_id=user_id,
+            x_handle=body.x_handle,
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)

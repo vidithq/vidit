@@ -7,6 +7,7 @@ import {
   deleteUser,
   searchUsers,
   setUserTrust,
+  setUserXHandle,
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
@@ -35,6 +36,8 @@ function TrustUserRow({
 }) {
   const [reason, setReason] = useState(user.trust_reason ?? "");
   const [showReasonForm, setShowReasonForm] = useState(false);
+  const [xHandle, setXHandle] = useState(user.x_handle ?? "");
+  const [showXHandleForm, setShowXHandleForm] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"soft" | "hard" | null>(null);
 
   const grantMutation = useMutation(
@@ -67,6 +70,18 @@ function TrustUserRow({
     }
   );
 
+  const xHandleMutation = useMutation(
+    (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
+    {
+      fallback: "Failed to update the X handle",
+      onSuccess: (updated) => {
+        onUpdated(updated);
+        setXHandle(updated.x_handle ?? "");
+        setShowXHandleForm(false);
+      },
+    }
+  );
+
   const deleteMutation = useMutation(
     (hard: boolean) => deleteUser(user.id, { hard }),
     {
@@ -80,16 +95,21 @@ function TrustUserRow({
   );
 
   const granting = grantMutation.loading || revokeMutation.loading;
+  const linking = xHandleMutation.loading;
   const deleting = deleteMutation.loading;
-  // One shared error slot across the row's three actions; each action clears
+  // One shared error slot across the row's actions; each action clears
   // the others (mirrors the old single `setError(null)` per handler).
   const error =
-    grantMutation.error ?? revokeMutation.error ?? deleteMutation.error;
+    grantMutation.error ??
+    revokeMutation.error ??
+    xHandleMutation.error ??
+    deleteMutation.error;
 
   const trusted = user.is_trusted;
 
   const submitGrant = () => {
     revokeMutation.reset();
+    xHandleMutation.reset();
     deleteMutation.reset();
     if (!reason.trim()) {
       grantMutation.setError("A reason is required when granting trust.");
@@ -100,14 +120,34 @@ function TrustUserRow({
 
   const submitRevoke = () => {
     grantMutation.reset();
+    xHandleMutation.reset();
     deleteMutation.reset();
     void revokeMutation.run();
+  };
+
+  const submitXHandle = () => {
+    grantMutation.reset();
+    revokeMutation.reset();
+    deleteMutation.reset();
+    if (!xHandle.trim()) {
+      xHandleMutation.setError("An X handle is required (use Clear to unlink).");
+      return;
+    }
+    void xHandleMutation.run(xHandle.trim());
+  };
+
+  const submitXHandleClear = () => {
+    grantMutation.reset();
+    revokeMutation.reset();
+    deleteMutation.reset();
+    void xHandleMutation.run(null);
   };
 
   const submitDelete = () => {
     if (deleteMode === null) return;
     grantMutation.reset();
     revokeMutation.reset();
+    xHandleMutation.reset();
     void deleteMutation.run(deleteMode === "hard");
   };
 
@@ -118,6 +158,7 @@ function TrustUserRow({
     confirmDelete.cancel();
     grantMutation.reset();
     revokeMutation.reset();
+    xHandleMutation.reset();
     deleteMutation.reset();
   };
 
@@ -135,6 +176,11 @@ function TrustUserRow({
             )}
           </div>
           <div className="text-xs text-neutral-500 truncate">{user.email}</div>
+          {user.x_handle && (
+            <div className="mt-1">
+              <Pill>X: @{user.x_handle}</Pill>
+            </div>
+          )}
           {trusted && user.trust_reason && (
             <div className="text-xs text-neutral-400 mt-1 italic">
               “{user.trust_reason}”
@@ -160,7 +206,16 @@ function TrustUserRow({
               Grant trust
             </Button>
           )}
-          {deleteMode === null && !showReasonForm && (
+          {deleteMode === null && !showReasonForm && !showXHandleForm && (
+            <Button
+              variant="ghost"
+              onClick={() => setShowXHandleForm(true)}
+              className="whitespace-nowrap"
+            >
+              {user.x_handle ? "Edit X handle" : "Link X handle"}
+            </Button>
+          )}
+          {deleteMode === null && !showReasonForm && !showXHandleForm && (
             <div className="inline-flex gap-1">
               <Button
                 variant="ghost"
@@ -211,6 +266,54 @@ function TrustUserRow({
                 setReason(user.trust_reason ?? "");
                 grantMutation.reset();
                 revokeMutation.reset();
+                deleteMutation.reset();
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {showXHandleForm && (
+        <div className="space-y-2">
+          <label className={FORM_LABEL} htmlFor={`x-handle-${user.id}`}>
+            X handle (the bot attributes mentions from this handle to this
+            account)
+          </label>
+          <Input
+            variant="compact"
+            id={`x-handle-${user.id}`}
+            type="text"
+            value={xHandle}
+            onChange={(e) => setXHandle(e.target.value)}
+            placeholder="e.g. @osint_hawk"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              onClick={submitXHandle}
+              disabled={linking}
+            >
+              {linking ? "Saving…" : "Confirm link"}
+            </Button>
+            {user.x_handle && (
+              <Button
+                variant="danger"
+                onClick={submitXHandleClear}
+                disabled={linking}
+              >
+                Clear link
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowXHandleForm(false);
+                setXHandle(user.x_handle ?? "");
+                grantMutation.reset();
+                revokeMutation.reset();
+                xHandleMutation.reset();
                 deleteMutation.reset();
               }}
             >
@@ -308,10 +411,11 @@ export function TrustPanel() {
       <header>
         <SectionEyebrow title="Manage analysts" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Find an analyst by username or email, then act on the row. Three
-          actions per analyst: <span className="text-orange-400">grant or
-          revoke trust</span> (the orange checkmark, with a public reason
-          surfaced in the badge tooltip),{" "}
+          Find an analyst by username or email, then act on the row:{" "}
+          <span className="text-orange-400">grant or revoke trust</span> (the
+          orange checkmark, with a public reason surfaced in the badge
+          tooltip), link or clear the X handle the bot attributes mentions
+          to,{" "}
           <span className="text-amber-300">soft delete</span> (hide them and
           everything they&apos;ve posted from public view), or{" "}
           <span className="text-red-300">hard delete</span> (GDPR erasure —

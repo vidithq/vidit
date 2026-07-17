@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -73,6 +73,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/trust` | 🛡️ | Grant / revoke `is_trusted` + `trust_reason` |
+| PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 
@@ -114,7 +115,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` | 30/hour |
-| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `DELETE /admin/events/{id}` | 60/hour |
+| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
@@ -1239,7 +1240,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>15 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, trust toggle, demo seeding, maintenance reapers). Expand for full contracts.</summary>
+<summary>16 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, trust toggle, X handle link, demo seeding, maintenance reapers). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1280,11 +1281,12 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 **Request body:**
 ```json
 {
-  "expires_in_days": 14
+  "expires_in_days": 14,
+  "x_handle": "@osint_hawk"
 }
 ```
 
-`max_uses` is server-fixed at `1` and is not accepted in the request body. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`.
+`max_uses` is server-fixed at `1` and is not accepted in the request body. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`. `x_handle` is optional: it binds the code to an X handle, normalized like `PATCH /admin/users/{id}/x-handle` (single leading `@` stripped, lowercased, `^[a-z0-9_]{1,15}$`); redemption copies it onto the new account as its bot-attribution link (fail-soft: if the handle got linked elsewhere meanwhile, the account is still created without it).
 
 **Response 201:**
 ```json
@@ -1298,11 +1300,16 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
   "created_at": "2026-05-09T10:00:00Z",
   "status": "active",
   "used_by_username": null,
-  "used_at": null
+  "used_at": null,
+  "x_handle": "osint_hawk"
 }
 ```
 
 `status` is one of `active | exhausted | revoked | expired`, computed at read time.
+
+**Response 409:** `x_handle` already linked to a user (`{"code": "x_handle_conflict", …}`).
+
+**Response 422:** `x_handle` outside the handle alphabet.
 
 ### `GET /admin/invite-codes` 🛡️
 
@@ -1311,7 +1318,7 @@ List every invite code (newest first), including exhausted / revoked / expired o
 **Response 200:**
 ```json
 [
-  { "id": "…", "code": "…", "status": "active", "max_uses": 1, "use_count": 0, "expires_at": null, "revoked_at": null, "created_at": "…", "used_by_username": null, "used_at": null }
+  { "id": "…", "code": "…", "status": "active", "max_uses": 1, "use_count": 0, "expires_at": null, "revoked_at": null, "created_at": "…", "used_by_username": null, "used_at": null, "x_handle": null }
 ]
 ```
 
@@ -1337,6 +1344,7 @@ Case-insensitive substring match on username or email. Empty `q` returns `[]`. C
     "is_admin": false,
     "is_trusted": true,
     "trust_reason": "Established OSINT track record",
+    "x_handle": "tester2",
     "created_at": "…"
   }
 ]
@@ -1403,6 +1411,23 @@ Grant or revoke `is_trusted`. Granting requires a non-empty `trust_reason` (reje
 **Response 422:** granting trust without a reason.
 
 **Response 404:** unknown user id.
+
+### `PATCH /admin/users/{id}/x-handle` 🛡️
+
+Link or clear the X handle the bot attributes mentions to; the interactive write path for `users.x_handle` (registration also copies an invite-bound handle, and self-serve linking waits on verify-by-post), and the repair path when an invite-bound handle failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited via `admin_events` (`action = "x_handle_linked"` / `"x_handle_cleared"`).
+
+**Request body:**
+```json
+{ "x_handle": "@osint_hawk" }
+```
+
+**Response 200:** the updated `AdminUserRead`.
+
+**Response 409:** the handle is already linked to another account (`{"code": "x_handle_conflict", …}`).
+
+**Response 422:** value outside the handle alphabet.
+
+**Response 404:** unknown or soft-deleted user id.
 
 ### `POST /admin/seed-demo-requests` 🛡️
 

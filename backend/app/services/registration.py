@@ -19,6 +19,7 @@ Revisit when self-registration opens to anonymous traffic.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -38,6 +39,8 @@ from app.services.auth import (
     maybe_promote_admin,
     validate_invite_code,
 )
+
+logger = logging.getLogger(__name__)
 
 CONFIRMATION_TOKEN_MINUTES = 60 * 24  # 24h — matches old verification TTL.
 _TOKEN_BYTES = 32
@@ -385,6 +388,37 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         raise EmailAlreadyRegisteredError(
             "An account with this email already exists. Sign in or reset your password."
         ) from exc
+
+    if invite.x_handle is not None:
+        # The invite binds an X handle: copy it onto the fresh account (the
+        # bot-attribution link). Fail-soft either way the handle got taken
+        # between mint and redemption: registration must still succeed, and
+        # the admin x-handle endpoint is the repair path.
+        if db.query(User).filter(User.x_handle == invite.x_handle).first() is not None:
+            logger.warning(
+                "Invite %s bound x_handle %s but a user already carries it; "
+                "account %s created without the link",
+                invite.id,
+                invite.x_handle,
+                user.id,
+            )
+        else:
+            user.x_handle = invite.x_handle
+            try:
+                # Savepoint so a lost race against the users_x_handle_key
+                # UNIQUE (two invites can bind the same handle) discards only
+                # the link, not the freshly-inserted account.
+                with db.begin_nested():
+                    db.flush()
+            except IntegrityError:
+                logger.warning(
+                    "Invite %s bound x_handle %s but linking raced a concurrent "
+                    "holder; account %s created without the link",
+                    invite.id,
+                    invite.x_handle,
+                    user.id,
+                )
+                user.x_handle = None
 
     if not consume_invite_code(db, invite, user.id):
         # We checked ``use_count < max_uses`` above; reaching here means a

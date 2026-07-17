@@ -7,7 +7,9 @@ An analyst tags the bot on the tweet that carries the coordinate. One run:
 2. rebuilds each tagged tweet's *self*-thread through the free syndication
    path (see :func:`_self_thread_records`),
 3. runs the shared detection spine (``stitch → detect``) and persists through
-   ``assemble_detections`` — owned by the tagged author's assembled profile,
+   ``assemble_detections``, owned by the existing Vidit account whose
+   admin-linked ``x_handle`` matches the tagged author (the bot never mints
+   users: an unknown handle is ledgered ``no_account`` and produces nothing),
 4. replies in-thread with a bare event ref plus warnings, then records the
    mention in the ``bot_mentions`` ledger.
 
@@ -31,7 +33,7 @@ from dataclasses import dataclass
 
 import httpx
 import sentry_sdk
-from sqlalchemy import Numeric, cast, func, null
+from sqlalchemy import Numeric, cast, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -87,6 +89,7 @@ class BotRunOutcome:
     events_created: int = 0
     replies_posted: int = 0
     no_detection: int = 0
+    no_account: int = 0
     skipped: int = 0
     failed: int = 0
 
@@ -141,37 +144,23 @@ def _self_thread_records(
     return records
 
 
-def _assembled_owner(db: Session, handle: str) -> User:
-    """The ``users`` row for ``handle``, minting an unclaimed profile if none.
+def _linked_owner(db: Session, handle: str) -> User | None:
+    """The live Vidit account linked to ``handle``, or ``None``.
 
-    ``x_handle`` is the assembly anchor (UNIQUE, so re-tagging reuses the same
-    profile — claimed or not). A fresh row carries no credentials and an
-    explicit ``claimed_at=None``: assembled, not yet claimed. The username
-    defaults to the handle, suffixed on collision with an existing account.
+    The bot never mints users: attribution requires an existing account whose
+    ``x_handle`` was linked (invite-bound at registration, or the admin PATCH).
+    A soft-deleted or deactivated account doesn't count: its work is hidden or
+    suspended, so new drafts and billed replies must not land under it.
     """
-    normalized = handle.lower()
-    user = db.query(User).filter(User.x_handle == normalized).first()
-    if user is not None:
-        return user
-    username = normalized
-    suffix = 1
-    while db.query(User).filter(User.username == username).first() is not None:
-        suffix += 1
-        username = f"{normalized}{suffix}"
-    user = User(
-        username=username,
-        x_handle=normalized,
-        email=None,
-        password_hash=None,
-        # An explicit SQL NULL: the column carries ``server_default=now()`` (a
-        # Python ``None`` would be dropped from the INSERT and the default
-        # would stamp the row claimed), and NULL is precisely the unclaimed
-        # marker.
-        claimed_at=null(),
+    return (
+        db.query(User)
+        .filter(
+            User.x_handle == handle.lower(),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .first()
     )
-    db.add(user)
-    db.commit()
-    return user
 
 
 def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
@@ -273,7 +262,12 @@ async def _process_mention(
     detections = [d for thread in stitch(records) for d in detect(thread)]
     if not detections:
         return "no_detection", 0, None
-    owner = _assembled_owner(db, records[0].handle)
+    # After the detection step on purpose: an unknown handle with no coordinate
+    # ledgers ``no_detection``, so ``no_account`` isolates the mentions where a
+    # link would actually have produced a draft.
+    owner = _linked_owner(db, records[0].handle)
+    if owner is None:
+        return "no_account", 0, None
     assembled = await assemble_detections(
         db, owner=owner, detections=detections, fetch_media=fetch_cdn_media
     )
@@ -379,6 +373,8 @@ async def run_bot_once(
             author_replies[mention.author_handle] = author_replies.get(mention.author_handle, 0) + 1
         if verdict == "no_detection":
             outcome.no_detection += 1
+        elif verdict == "no_account":
+            outcome.no_account += 1
         elif verdict == "skipped":
             outcome.skipped += 1
         elif verdict == "failed":

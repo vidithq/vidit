@@ -7,15 +7,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# What one mention pull did with a tagged tweet. ``created`` — at least one
-# ``detected`` row landed; ``no_detection`` — the thread yielded no coordinate
+# What one mention pull did with a tagged tweet. ``created``: at least one
+# ``detected`` row landed. ``no_detection``: the thread yielded no coordinate
 # (recorded silently, no reply, so a courtesy reply to the bot can't loop it
-# into answering itself); ``skipped`` — every detection deduped against an
-# existing row; ``self`` — the bot's own post surfaced in its mentions
-# timeline (recorded so the ``since_id`` cursor advances past it instead of
-# re-billing it every pull); ``failed`` — processing raised (captured to
-# Sentry; delete the row to retry that mention on the next run).
-BotMentionOutcome = Literal["created", "no_detection", "skipped", "self", "failed"]
+# into answering itself). ``no_account``: no live Vidit account carries the
+# tagged author's ``x_handle`` (admin-linked), so nothing was created and no
+# reply posted. ``skipped``: every detection deduped against an existing row.
+# ``self``: the bot's own post surfaced in its mentions timeline (recorded so
+# the ``since_id`` cursor advances past it instead of re-billing it every
+# pull). ``failed``: processing raised (captured to Sentry; delete the row to
+# retry that mention on the next run).
+BotMentionOutcome = Literal["created", "no_detection", "no_account", "skipped", "self", "failed"]
 
 
 class BotMention(Base):
@@ -34,7 +36,8 @@ class BotMention(Base):
     # idempotency guarantee; max() over the numeric cast is the poll cursor.
     mention_tweet_id: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
     # The tagging analyst's handle, normalized (lowercase, no leading @) —
-    # operator forensics, not a FK: the assembled profile lives in ``users``.
+    # operator forensics, not a FK: attribution resolves through the
+    # admin-linked ``users.x_handle``.
     author_handle: Mapped[str] = mapped_column(String(50), nullable=False)
     outcome: Mapped[BotMentionOutcome] = mapped_column(String(20), nullable=False)
     events_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

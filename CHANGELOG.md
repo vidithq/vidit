@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+- **Bot attribution goes to admin-linked accounts only; assembled profiles cut** ([`backend/app/services/bot.py`](backend/app/services/bot.py), [`backend/app/routers/admin.py`](backend/app/routers/admin.py), [`backend/app/services/registration.py`](backend/app/services/registration.py), [`frontend/src/components/admin/TrustPanel.tsx`](frontend/src/components/admin/TrustPanel.tsx), [`docs/ingestion.md`](docs/ingestion.md)). The bot no longer mints an unclaimed credential-less `users` row when a tagged author's handle matches no account: it attributes detections only to an existing account whose `x_handle` an admin linked, and a mention from an unknown handle is recorded in the `bot_mentions` ledger with the new `no_account` outcome (no user row, no draft, no reply). The nominal link rides the invite code: `POST /admin/invite-codes` accepts an optional `x_handle` (normalized and validated like every handle intake, 409 when a user already carries it), delivery of the code over X DM is the implicit possession proof in closed beta, and redemption copies the handle onto the new account (fail-soft with a logged warning if it got linked elsewhere meanwhile). The new `PATCH /admin/users/{id}/x-handle` endpoint (typed `x_handle_conflict` 409, audited as `x_handle_linked` / `x_handle_cleared`) is the repair and backfill path, surfaced in the admin Manage analysts panel next to the trust controls; the invite panel gains the bind input and shows the bound handle per code. Self-serve linking stays deferred to the verify-by-post gate.
 
 ---
 

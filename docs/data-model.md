@@ -7,9 +7,9 @@ erDiagram
     users {
         UUID id PK
         VARCHAR username
-        VARCHAR email "nullable until claimed"
-        VARCHAR password_hash "nullable until claimed"
-        VARCHAR x_handle "nullable, UNIQUE, assembled-profile anchor"
+        VARCHAR email "nullable, legacy credential-less rows"
+        VARCHAR password_hash "nullable, legacy credential-less rows"
+        VARCHAR x_handle "nullable, UNIQUE, admin-linked bot-attribution handle"
         BOOLEAN is_active
         BOOLEAN is_admin
         BOOLEAN is_trusted
@@ -21,7 +21,7 @@ erDiagram
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}, linktree-style"
-        TIMESTAMPTZ claimed_at "nullable; NULL = unclaimed assembled profile"
+        TIMESTAMPTZ claimed_at "nullable; NULL only on legacy unclaimed rows"
         TIMESTAMPTZ created_at
     }
 
@@ -60,6 +60,7 @@ erDiagram
         INT max_uses
         INT use_count
         TIMESTAMPTZ revoked_at "nullable"
+        VARCHAR x_handle "nullable, bound handle copied at redemption"
         TIMESTAMPTZ created_at
     }
 
@@ -188,9 +189,9 @@ erDiagram
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
-| `email` | `VARCHAR(255)` | UNIQUE, nullable, NULL on an assembled profile (built from an X handle before login); set when its owner claims it. Every self-registered / claimed account carries it. |
-| `password_hash` | `VARCHAR(255)` | nullable, NULL until claimed, same reason as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable, the X handle an assembled profile was built from (lowercased, no `@`). Pre-claim identity anchor and the dedup key so re-consent reuses the existing profile. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
+| `email` | `VARCHAR(255)` | UNIQUE, nullable. NULL only on legacy credential-less rows from the retired assembled-profile mechanism; every account created today carries it. |
+| `password_hash` | `VARCHAR(255)` | nullable, same legacy reason as `email`. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable, the X handle the bot attributes mentions to (lowercased, no `@`). Set at registration from an invite-bound handle, or admin-linked via `PATCH /admin/users/{id}/x-handle`; never self-serve, and the bot never mints rows for it. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`, auto-flipped on login/register if email matches `ADMIN_EMAILS` |
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false`, substantiated trust mark (toggle UI lands later; column ships now) |
@@ -202,17 +203,17 @@ erDiagram
 | `bio` | `TEXT` | nullable, short plain-text blurb shown on the public profile, edited via `PATCH /users/me`. Capped at 500 chars at the API layer (no DB constraint, so cap changes don't need migrations). |
 | `avatar_url` | `TEXT` | nullable, public avatar URL. Validated as http(s) at the API layer to keep `javascript:` URLs out of the `<img src>` render path. No upload pipeline yet (free-form URL, analysts paste a Gravatar / CDN link). |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`, Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). Default `{}` (never NULL) so the read path is always a dict. `PATCH /users/me` replaces the column wholesale; partial-merge conflicts with the whole-panel form submit. |
-| `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()`, the moment an owner took control. Defaults to insert time so owned-at-creation paths (registration, seeder, future sign-up) are correct without stamping it; the assembly pipeline inserts an explicit NULL for an unclaimed profile, so `claimed_at IS NULL` means "assembled, not yet claimed" (identified by `x_handle` alone). Existing rows backfilled to `created_at`. |
+| `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()`, the moment an owner took control. Defaults to insert time so owned-at-creation paths (registration, seeder, future sign-up) are correct without stamping it. NULL only on legacy rows from the retired assembled-profile mechanism (which inserted an explicit NULL for a credential-less unclaimed profile); no current path writes NULL. Existing rows backfilled to `created_at`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
-- `users_x_handle_key` UNIQUE on `(x_handle)`, one profile per X handle; Postgres allows the unlimited NULLs of handle-less (registered) rows
+- `users_x_handle_key` UNIQUE on `(x_handle)`, one account per X handle; Postgres allows the unlimited NULLs of handle-less rows
 - `ix_users_live` on `(created_at) WHERE deleted_at IS NULL`, partial; admin search and the auth path filter `deleted_at IS NULL`
 - `ix_users_demo` on `(id) WHERE is_demo = true`, partial; the wipe sweep runs `WHERE is_demo = true` and would otherwise full-scan the table
 - `ix_users_search_fts` GIN on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))`, backs `GET /search` (analyst branch); bio joins the indexed expression so `ts_headline` can return a fragment highlight
 
-The credential-less assembled-profile model (nullable `email` / `password_hash`, the `x_handle` anchor, `claimed_at IS NULL` for an unclaimed row); see [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
+The nullable `email` / `password_hash` / `claimed_at` columns are the footprint of the retired credential-less assembled-profile model (rows minted from an X handle alone, `claimed_at IS NULL`); no path mints such rows anymore, and `x_handle` is now the admin-linked bot-attribution anchor. See [CHANGELOG](../CHANGELOG.md) for the claim-flag-over-a-separate-`authors`-table rationale.
 
 ---
 
@@ -253,6 +254,7 @@ Lifecycle: created by `mint`, consumed by `consume`, force-revoked by `revoke_al
 | `max_uses` | `INTEGER` | NOT NULL, default `1`, quota; minted by the admin page (1 = single-use) |
 | `use_count` | `INTEGER` | NOT NULL, default `0`, incremented on each successful registration |
 | `revoked_at` | `TIMESTAMPTZ` | nullable, set by the admin page; non-null instantly invalidates the code |
+| `x_handle` | `VARCHAR(50)` | nullable, the X handle the code binds (normalized: lowercase, no `@`). Redemption copies it onto the new account's `users.x_handle` (the bot-attribution link), fail-soft if the handle got linked elsewhere between mint and redemption. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 A code is valid iff `revoked_at IS NULL AND use_count < max_uses AND (expires_at IS NULL OR expires_at > now())`. `used_by` / `used_at` are *not* part of the validity check.
@@ -278,7 +280,7 @@ Indexes:
 
 Why UNIQUE on `email` / `username` instead of a partial index? Partial-index predicates must be IMMUTABLE in Postgres, and `expires_at > now()` is STABLE. The plain UNIQUE keeps race-window protection without a predicate; the `/auth/register` path deletes expired rows inline before its INSERT and the admin Maintenance reaper sweeps the rest, so a recently-expired pending row does not permanently pin its address.
 
-Lifecycle: `POST /auth/register` inserts via `services/registration.py::create_pending_registration`. `POST /auth/confirm-registration` consumes via `confirm_pending_registration` (creates the `users` row, bumps `invite_codes.use_count`, deletes the pending row). `POST /auth/resend-confirmation` re-mints the token on the same row, invalidating the previous link. Cleanup: `services/maintenance.py::reap_pending_registrations`, exposed in the admin Maintenance panel.
+Lifecycle: `POST /auth/register` inserts via `services/registration.py::create_pending_registration`. `POST /auth/confirm-registration` consumes via `confirm_pending_registration` (creates the `users` row, copying a bound `invite_codes.x_handle` onto it when still free, bumps `invite_codes.use_count`, deletes the pending row). `POST /auth/resend-confirmation` re-mints the token on the same row, invalidating the previous link. Cleanup: `services/maintenance.py::reap_pending_registrations`, exposed in the admin Maintenance panel.
 
 ---
 
@@ -549,8 +551,8 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `mention_tweet_id` | `VARCHAR(25)` | UNIQUE, NOT NULL. The tagged tweet's id (X snowflake, numeric string). |
-| `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized (lowercase, no leading `@`). Forensics, not a FK; the assembled profile lives in `users.x_handle`. |
-| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
+| `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized (lowercase, no leading `@`). Forensics, not a FK; attribution resolves through the admin-linked `users.x_handle`. |
+| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`; nothing created, no reply), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
 | `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply; NULL when nothing was created, reply credentials are absent, or the post failed (the detection stays durable either way). |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
