@@ -123,21 +123,25 @@ def test_capture_source_filter_does_not_match_free_tag_of_same_name(db, author):
         db.commit()
 
 
-def test_list_filters_by_author_substring(db, author):
-    """`?author=` does a case-insensitive substring match on the
-    username-safe ASCII whitelist (`[A-Za-z0-9_-]{1,50}`)."""
+def test_list_filters_by_author_exact_case_insensitive(db, author):
+    """`?author=` matches the owner username exactly (case-insensitive): the
+    filter means "this analyst's work", and the surfaces pick real handles
+    via the typeahead, so a fragment must not sweep in every containing
+    handle."""
     geo = _make_geo(db, author=author)
-    needle = author.username[2:6]
-    response = client.get(f"/api/v1/events?author={needle}")
+    response = client.get(f"/api/v1/events?author={author.username.upper()}")
     assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(geo.id) in ids
+    assert str(geo.id) in {row["id"] for row in response.json()}
+    # A strict substring of the username no longer matches.
+    response = client.get(f"/api/v1/events?author={author.username[2:6]}")
+    assert response.status_code == 200
+    assert str(geo.id) not in {row["id"] for row in response.json()}
 
 
 def test_list_rejects_author_with_like_meta(author):
-    """LIKE-injection vectors (`%`, `\\`, `;`, …) and over-length input
-    are rejected at the input boundary so nothing outside
-    `[A-Za-z0-9_-]{1,50}` reaches the `ilike(f"%{author}%")` builder."""
+    """Junk vectors (`%`, `\\`, `;`, …) and over-length input are rejected
+    at the input boundary so nothing outside `[A-Za-z0-9_-]{1,50}` reaches
+    the SQL builder."""
     for bad in ("a%", "a\\b", "a;b", "a b", "a'b", "", "a" * 51):
         response = client.get("/api/v1/events", params={"author": bad})
         assert response.status_code == 422, (

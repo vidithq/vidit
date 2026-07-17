@@ -47,6 +47,19 @@ export function search(opts: {
 }
 
 /**
+ * Username typeahead for the author filter: `GET /search/authors`. The
+ * author filter is an exact match, so this picker is how a partial name
+ * becomes a real handle (prefix matches first, capped server-side).
+ */
+export async function suggestAuthors(q: string): Promise<string[]> {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const params = new URLSearchParams({ q: trimmed });
+  const res = await apiFetch<{ authors: string[] }>(`/search/authors?${params.toString()}`);
+  return res.authors;
+}
+
+/**
  * Split a sentinel-wrapped highlight string into alternating text + mark
  * segments. The backend (``services/search.py``) wraps matched fragments
  * with STX / ETX bytes (U+0002 / U+0003) — control bytes that never appear

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { User } from "lucide-react";
+
+import { suggestAuthors } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
@@ -136,17 +138,44 @@ export function EventFilterSections({
 }) {
   const [showAllTags, setShowAllTags] = useState(false);
   // The author input is commit-style, like picking a tag chip: typing stays
-  // local, Enter applies it (one server-side author at a time, so a commit
-  // replaces), and the committed value renders as a removable chip below.
-  // Live-filtering per keystroke refetched the surface on every letter and
-  // flashed partial "by @a" pills.
+  // local and fetches real usernames to pick from (the filter itself is an
+  // exact match server-side, so a fragment must become a handle), and the
+  // committed value renders as a removable chip below. Live-filtering per
+  // keystroke refetched the surface on every letter and flashed partial
+  // "by @a" pills.
   const [authorDraft, setAuthorDraft] = useState("");
-  const commitAuthor = () => {
-    const v = authorDraft.trim();
+  const [authorSuggestions, setAuthorSuggestions] = useState<string[]>([]);
+  const commitAuthor = (name: string) => {
+    const v = name.trim();
     if (!v) return;
     onPatch({ author: v });
     setAuthorDraft("");
+    setAuthorSuggestions([]);
   };
+
+  // Debounced typeahead over live usernames; ineligible drafts (empty, or
+  // characters the ?author= gate rejects) clear the list instead of 422ing.
+  useEffect(() => {
+    const v = authorDraft.trim();
+    if (!/^[A-Za-z0-9_-]{2,50}$/.test(v)) {
+      setAuthorSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      suggestAuthors(v)
+        .then((authors) => {
+          if (!cancelled) setAuthorSuggestions(authors);
+        })
+        .catch(() => {
+          if (!cancelled) setAuthorSuggestions([]);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [authorDraft]);
   // Accordion open-state lives here (not per-section) so a re-render never
   // resets which sections are expanded. Curated buckets open by default.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -287,19 +316,29 @@ export function EventFilterSections({
             type="text"
             value={authorDraft}
             onChange={(e) => setAuthorDraft(e.target.value)}
-            // Enter-only commit (no blur commit): clicking away mid-typing
-            // must not apply a partial username, the accidental-filter
-            // behavior the commit style exists to prevent.
+            // Enter commits the top suggestion (a real handle) when one is
+            // up, else the raw draft. No blur commit: clicking away
+            // mid-typing must not apply a partial username, the
+            // accidental-filter behavior the commit style exists to prevent.
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                commitAuthor();
+                commitAuthor(authorSuggestions[0] ?? authorDraft);
               }
             }}
-            placeholder="Username… (Enter to apply)"
+            placeholder="Type a username…"
             aria-label="Author username"
             className="w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded-sm text-[11px] text-neutral-300 placeholder-neutral-500 focus:outline-hidden focus:border-orange-500"
           />
+          {authorSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {authorSuggestions.map((name) => (
+                <Pill key={name} onClick={() => commitAuthor(name)}>
+                  @{name}
+                </Pill>
+              ))}
+            </div>
+          )}
         </div>
       </FilterSection>
 

@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Query as SAQuery
 
 from app.models.conflict import Conflict
@@ -31,10 +31,10 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 
-# Reject LIKE-injection at the input boundary: the value flows into
-# ``User.username.ilike(f"%{author}%")`` below. Restricting to the characters a
-# real username carries kills ``%`` / ``\`` vectors before the SQL builder. Used
-# as a ``Query(pattern=...)`` guard at every endpoint that accepts ``?author=``.
+# Reject junk at the input boundary: restrict ``?author=`` (and the suggestion
+# query it is picked from) to the characters a real username carries, killing
+# ``%`` / ``\`` LIKE vectors before any SQL builder. Used as a
+# ``Query(pattern=...)`` guard at every endpoint that accepts either param.
 AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
 # Accepted ``media`` filter values (the ``Media.media_type`` domain). Reject
@@ -50,13 +50,15 @@ VIEWS = frozenset({"located", "requested"})
 
 
 def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
-    """Join the owner and case-insensitively match a username substring.
+    """Join the owner and match the username exactly (case-insensitive).
 
-    Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN` (a
-    ``Query(pattern=...)``), so the ``ilike`` argument is already injection-safe
-    by the time it reaches here.
+    Exact, not substring: the filter means "this analyst's work", and the
+    surfaces pick the value from real usernames (the author typeahead, a
+    profile's "Show more"), so ``?author=ana`` must not sweep in every
+    handle containing "ana". Callers gate ``author`` through
+    :data:`AUTHOR_FILTER_PATTERN` (a ``Query(pattern=...)``).
     """
-    return query.join(Event.owner).filter(User.username.ilike(f"%{author}%"))
+    return query.join(Event.owner).filter(func.lower(User.username) == author.lower())
 
 
 def view_predicate(view: str):

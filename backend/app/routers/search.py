@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.ratelimit import limiter
-from app.schemas.search import SearchResponse, SearchTotals, SearchType
+from app.schemas.search import AuthorSuggestions, SearchResponse, SearchTotals, SearchType
 from app.services import search as search_service
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
@@ -51,7 +51,7 @@ def search(
     author: str | None = Query(
         None,
         pattern=AUTHOR_FILTER_PATTERN,
-        description="Scope the event groups to this owner username (substring match)",
+        description="Scope the event groups to this owner username (exact, case-insensitive)",
     ),
     media: list[str] | None = Query(None),
     trusted_only: bool = False,
@@ -110,3 +110,22 @@ def search(
         # membership, so the narrowing cast to the Literal is sound.
         type=cast(SearchType, type),
     )
+
+
+@router.get("/authors", response_model=AuthorSuggestions)
+@limiter.limit("60/minute")
+def suggest_authors(
+    request: Request,
+    q: str = Query(
+        "",
+        description="Username fragment; same charset gate as ?author=",
+        pattern=r"^$|" + AUTHOR_FILTER_PATTERN,
+    ),
+    db: Session = Depends(get_db),
+) -> AuthorSuggestions:
+    """Usernames for the author-filter typeahead (both filter surfaces).
+
+    The author filter is an exact match; this picker is how a partial name
+    becomes a real handle. Empty ``q`` short-circuits to an empty list.
+    """
+    return AuthorSuggestions(authors=search_service.suggest_authors(db, query=q))

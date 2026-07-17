@@ -50,6 +50,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
+| GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
@@ -103,7 +104,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /events/{id}/geolocate` | 30/min |
 | `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
 | **Search / Tags** | |
-| `GET /search` | 60/min |
+| `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
@@ -336,7 +337,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input, latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422 (used to silently 500 from Postgres `InvalidDatetimeFormat`). |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Same 422-on-malformed shape as the event-date filters. |
-| `author` | string | Substring match on owner username. Whitelisted to `[A-Za-z0-9_-]{1,50}`, any other character (including the LIKE meta-characters `%` and `\`) returns 422. |
+| `author` | string | Exact, case-insensitive match on owner username ("this analyst's work"; pick real handles via [`GET /search/authors`](#get-searchauthors)). Whitelisted to `[A-Za-z0-9_-]{1,50}`, any other character returns 422. |
 | `limit` | int | Default 200, must be in [1, 200], 422 otherwise. |
 
 **Response 200:**
@@ -959,6 +960,17 @@ Any active filter empties the users group (the filters are event predicates; an 
 |------|------|
 | 401 | Unauthenticated |
 | 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
+
+---
+
+### `GET /search/authors`
+
+Username typeahead for the author filter (the map's and the search page's Author section). The `author` filter is an **exact** match, so this picker is how a partial name becomes a real handle: case-insensitive substring over live users, prefix matches first then alphabetical, capped at 8. `q` takes the same `[A-Za-z0-9_-]{1,50}` gate as `?author=` (empty returns an empty list; anything else 422). Rate-limited to 60/min/IP.
+
+**Response 200:**
+```json
+{ "authors": ["ana-demo", "analyst2"] }
+```
 
 ---
 

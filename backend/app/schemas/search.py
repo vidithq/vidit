@@ -119,3 +119,11 @@ class SearchResponse(BaseModel):
     type: SearchType
 
     model_config = {"from_attributes": True}
+
+
+class AuthorSuggestions(BaseModel):
+    """``GET /search/authors``: usernames for the author-filter typeahead
+    (prefix matches first, then alphabetical). The filter itself is an exact
+    match, so the picker is how a partial name becomes a real handle."""
+
+    authors: list[str]

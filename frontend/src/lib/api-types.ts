@@ -917,6 +917,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/authors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Authors
+         * @description Usernames for the author-filter typeahead (both filter surfaces).
+         *
+         *     The author filter is an exact match; this picker is how a partial name
+         *     becomes a real handle. Empty ``q`` short-circuits to an empty list.
+         */
+        get: operations["suggest_authors_api_v1_search_authors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -1471,6 +1494,16 @@ export interface components {
             trust_reason: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * AuthorSuggestions
+         * @description ``GET /search/authors``: usernames for the author-filter typeahead
+         *     (prefix matches first, then alphabetical). The filter itself is an exact
+         *     match, so the picker is how a partial name becomes a real handle.
+         */
+        AuthorSuggestions: {
+            /** Authors */
+            authors: string[];
         };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
@@ -3758,7 +3791,7 @@ export interface operations {
                 event_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
-                /** @description Scope the event groups to this owner username (substring match) */
+                /** @description Scope the event groups to this owner username (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
                 trusted_only?: boolean;
@@ -3777,6 +3810,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_authors_api_v1_search_authors_get: {
+        parameters: {
+            query?: {
+                /** @description Username fragment; same charset gate as ?author= */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorSuggestions"];
                 };
             };
             /** @description Validation Error */

@@ -409,6 +409,27 @@ def search_all(
     return result
 
 
+def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
+    """Usernames matching ``query`` for the author-filter typeahead.
+
+    Case-insensitive substring over live users, prefix matches first then
+    alphabetical, so the picker surfaces real handles and the filter itself
+    can stay an exact match. ``query`` is gated by ``AUTHOR_FILTER_PATTERN``
+    at the router, so it is ilike-safe here.
+    """
+    q = query.strip()
+    if not q:
+        return []
+    rows = (
+        db.query(User.username)
+        .filter(User.deleted_at.is_(None), User.username.ilike(f"%{q}%"))
+        .order_by(User.username.ilike(f"{q}%").desc(), User.username)
+        .limit(limit)
+        .all()
+    )
+    return [r.username for r in rows]
+
+
 # Allowed ``type`` parameter values. Re-exported by the router for the 422
 # message so the spec stays in one place. ``event`` is the reader-facing union
 # of the two event groups (the search page's unified "Events" chip: the filter

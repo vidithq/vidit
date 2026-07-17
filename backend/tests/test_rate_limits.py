@@ -153,6 +153,7 @@ _READ_LIMITS = [
     (f"/api/v1/events/{uuid.UUID(int=0)}", 120),
     ("/api/v1/events/points", 60),
     ("/api/v1/search?q=vidit", 60),
+    ("/api/v1/search/authors?q=vidit", 60),
     ("/api/v1/tags", 60),
     ("/api/v1/conflicts", 60),
     ("/api/v1/users/no-such-user", 120),

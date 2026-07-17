@@ -816,3 +816,53 @@ def test_type_event_returns_both_event_groups_without_users(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
         db.commit()
+
+
+# ── Author typeahead ──────────────────────────────────────────────────────
+
+
+def test_author_suggestions_substring_prefix_first(db, caller, other_author):
+    """The picker matches a substring but surfaces prefix matches first; the
+    filter itself stays exact, so this is how a fragment becomes a handle."""
+    fragment = caller.username[:6]  # "caller" prefix shared by the fixture pool
+    response = client.get(f"/api/v1/search/authors?q={fragment}")
+    assert response.status_code == 200
+    authors = response.json()["authors"]
+    assert caller.username in authors
+    assert other_author.username not in authors
+    # A mid-string fragment still matches (substring, not prefix-only).
+    mid = caller.username[2:8]
+    response = client.get(f"/api/v1/search/authors?q={mid}")
+    assert caller.username in response.json()["authors"]
+
+
+def test_author_suggestions_exclude_soft_deleted(db, caller):
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    caller.deleted_at = _dt.now(_UTC)
+    db.commit()
+    response = client.get(f"/api/v1/search/authors?q={caller.username}")
+    assert response.status_code == 200
+    assert caller.username not in response.json()["authors"]
+
+
+def test_author_suggestions_empty_and_invalid_q(caller):
+    assert client.get("/api/v1/search/authors?q=").json()["authors"] == []
+    assert client.get("/api/v1/search/authors?q=bad%20name%21").status_code == 422
+
+
+def test_author_filter_is_exact_on_search(db, caller):
+    """`?author=` on /search matches exactly, never a fragment sweep."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Exact {token}")
+    try:
+        fragment = caller.username[:6]
+        response = client.get(f"/api/v1/search?q={token}&author={fragment}")
+        assert response.status_code == 200
+        assert response.json()["geolocations"] == []
+        response = client.get(f"/api/v1/search?q={token}&author={caller.username.upper()}")
+        assert [h["id"] for h in response.json()["geolocations"]] == [str(geo)]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
