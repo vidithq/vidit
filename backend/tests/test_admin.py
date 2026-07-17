@@ -199,17 +199,20 @@ def test_create_invite_code_defaults_to_no_x_handle(admin_user):
 def test_create_invite_code_409_when_x_handle_already_linked(admin_user, regular_user, db):
     regular_user.x_handle = f"taken{uuid.uuid4().hex[:8]}"
     db.commit()
-
-    response = client.post(
-        "/api/v1/admin/invite-codes",
-        json={"x_handle": regular_user.x_handle},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"] == {
-        "code": "x_handle_conflict",
-        "message": "x_handle is already linked to another account",
-    }
+    try:
+        response = client.post(
+            "/api/v1/admin/invite-codes",
+            json={"x_handle": regular_user.x_handle},
+            headers=login_as(client, admin_user),
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == {
+            "code": "x_handle_conflict",
+            "message": "x_handle is already linked to another account",
+        }
+    finally:
+        regular_user.x_handle = None
+        db.commit()
 
 
 def test_create_invite_code_422_on_invalid_x_handle(admin_user):
@@ -714,6 +717,9 @@ def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
 def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     admin_user, regular_user, geolocation, db
 ):
+    regular_user.x_handle = f"freed{uuid.uuid4().hex[:8]}"
+    db.commit()
+
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
         headers=login_as(client, admin_user),
@@ -727,6 +733,9 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     db.expire_all()
     refreshed_user = db.query(User).filter(User.id == regular_user.id).first()
     assert refreshed_user.deleted_at is not None
+    # The handle is released with the tombstone, so it stays linkable (the
+    # UNIQUE spans tombstoned rows and the PATCH refuses them).
+    assert refreshed_user.x_handle is None
     refreshed_geo = db.query(Event).filter(Event.id == geolocation.id).first()
     assert refreshed_geo.deleted_at is not None
 

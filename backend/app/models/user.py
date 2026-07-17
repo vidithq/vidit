@@ -21,8 +21,9 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # The X handle the bot attributes mentions to, stored lowercased without
-    # the leading `@`. Admin-linked (`PATCH /admin/users/{id}/x-handle`, the
-    # only write path; self-serve verify-by-post linking is a later gate).
+    # the leading `@`. Two write paths, neither self-serve: registration copies
+    # an invite-bound handle, and `PATCH /admin/users/{id}/x-handle` repairs
+    # or backfills (verify-by-post linking is a later gate).
     # UNIQUE: one account per handle. Distinct from `external_links["x"]`, a
     # free-text display link the owner sets; this is the attribution anchor.
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)

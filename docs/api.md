@@ -1414,7 +1414,7 @@ Grant or revoke `is_trusted`. Granting requires a non-empty `trust_reason` (reje
 
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
 
-Link or clear the X handle the bot attributes mentions to; the only write path for `users.x_handle` today (self-serve linking waits on verify-by-post), and the repair path when an invite-bound handle failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited via `admin_events` (`action = "x_handle_linked"` / `"x_handle_cleared"`).
+Link or clear the X handle the bot attributes mentions to; the interactive write path for `users.x_handle` (registration also copies an invite-bound handle, and self-serve linking waits on verify-by-post), and the repair path when an invite-bound handle failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited via `admin_events` (`action = "x_handle_linked"` / `"x_handle_cleared"`).
 
 **Request body:**
 ```json

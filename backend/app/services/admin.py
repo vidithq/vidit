@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
@@ -272,7 +273,15 @@ def set_user_x_handle(
         target = {"user_id": str(user.id)}
 
     log_admin_event(db, actor_id=actor_id, action=action, target=target)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # The pre-check above races the UNIQUE: a concurrent link (another
+        # admin call, or a registration redeeming an invite bound to the same
+        # handle) can land between check and commit. Surface the same typed
+        # 409 as the pre-check instead of a 500.
+        db.rollback()
+        raise XHandleConflictError("X handle already linked to another user") from exc
     db.refresh(user)
     return user
 
@@ -390,6 +399,12 @@ def soft_delete_user(
     # `deleted_at`, and stops a later un-soft-delete (column is recoverable)
     # from reviving old sessions.
     bump_token_version(user)
+    # Release the X handle: the UNIQUE constraint spans tombstoned rows, so a
+    # kept link would 409 every future re-link of this handle while the PATCH
+    # endpoint refuses tombstoned targets. The audit target records the freed
+    # value.
+    freed_x_handle = user.x_handle
+    user.x_handle = None
 
     # Cascade to every live event (located + requested). ``WHERE deleted_at IS
     # NULL`` leaves earlier soft-delete timestamps untouched, so the count
@@ -411,6 +426,7 @@ def soft_delete_user(
             "user_id": str(user.id),
             "username": user.username,
             "cascaded_geolocations": cascaded_geolocations,
+            "freed_x_handle": freed_x_handle,
         },
     )
     db.commit()

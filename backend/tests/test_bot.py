@@ -227,6 +227,18 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     assert ledger.reply_tweet_id is None
 
 
+async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
+    # A suspended account must not accrue drafts or billed replies.
+    linked_owner.is_active = False
+    db.commit()
+
+    outcome, _, posted = await _run(db, [TAGGED_ID])
+
+    assert outcome.no_account == 1
+    assert outcome.events_created == 0
+    assert posted == []
+
+
 async def test_coordinate_less_mention_records_silently(db):
     outcome, _, posted = await _run(db, [BARE_ID])
 

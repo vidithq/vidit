@@ -109,7 +109,7 @@ const ROADMAP: {
     version: "v0.4",
     current: false,
     title: "Curated onboarding",
-    body: "Read opens to everyone — the map and the archive go public. Analysts join by claiming a profile assembled from their own public geolocations on X, with no manual re-entry.",
+    body: "Read opens to everyone — the map and the archive go public. Invited analysts bring their existing work with them: upload your X archive or tag the bot, with no manual re-entry.",
   },
   {
     version: "v0.5",

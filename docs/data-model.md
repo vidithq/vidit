@@ -191,7 +191,7 @@ erDiagram
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
 | `email` | `VARCHAR(255)` | UNIQUE, nullable. NULL only on legacy credential-less rows from the retired assembled-profile mechanism; every account created today carries it. |
 | `password_hash` | `VARCHAR(255)` | nullable, same legacy reason as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable, the X handle the bot attributes mentions to (lowercased, no `@`). Admin-linked via `PATCH /admin/users/{id}/x-handle`, the only write path; the bot never mints rows for it. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable, the X handle the bot attributes mentions to (lowercased, no `@`). Set at registration from an invite-bound handle, or admin-linked via `PATCH /admin/users/{id}/x-handle`; never self-serve, and the bot never mints rows for it. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`, auto-flipped on login/register if email matches `ADMIN_EMAILS` |
 | `is_trusted` | `BOOLEAN` | NOT NULL, default `false`, substantiated trust mark (toggle UI lands later; column ships now) |

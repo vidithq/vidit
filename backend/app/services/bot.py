@@ -145,14 +145,22 @@ def _self_thread_records(
 
 
 def _linked_owner(db: Session, handle: str) -> User | None:
-    """The live Vidit account an admin linked to ``handle``, or ``None``.
+    """The live Vidit account linked to ``handle``, or ``None``.
 
     The bot never mints users: attribution requires an existing account whose
-    ``x_handle`` an admin set (``PATCH /admin/users/{id}/x-handle``). A
-    soft-deleted account doesn't count: its work is hidden, so new drafts
-    must not land under it.
+    ``x_handle`` was linked (invite-bound at registration, or the admin PATCH).
+    A soft-deleted or deactivated account doesn't count: its work is hidden or
+    suspended, so new drafts and billed replies must not land under it.
     """
-    return db.query(User).filter(User.x_handle == handle.lower(), User.deleted_at.is_(None)).first()
+    return (
+        db.query(User)
+        .filter(
+            User.x_handle == handle.lower(),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .first()
+    )
 
 
 def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
@@ -254,6 +262,9 @@ async def _process_mention(
     detections = [d for thread in stitch(records) for d in detect(thread)]
     if not detections:
         return "no_detection", 0, None
+    # After the detection step on purpose: an unknown handle with no coordinate
+    # ledgers ``no_detection``, so ``no_account`` isolates the mentions where a
+    # link would actually have produced a draft.
     owner = _linked_owner(db, records[0].handle)
     if owner is None:
         return "no_account", 0, None
