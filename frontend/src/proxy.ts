@@ -57,20 +57,19 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = !!request.cookies.get(CSRF_COOKIE);
 
-  // 1. Host redirect — PROD ONLY (would bounce localhost to vidit.app).
-  // Collapse non-canonical aliases (per-deploy hash URLs, the project alias,
-  // anything pointed at the build) onto the apex, killing duplicate-content
-  // surface. `www.vidit.app` is already 308'd by Vercel, so it passes
-  // through. Strip an optional `:port` before the equality check — a stray
+  // 1. Host redirect, PROD ONLY (would bounce localhost to vidit.app).
+  // Collapse EVERY non-canonical alias (www, per-deploy hash URLs, the
+  // project alias, anything pointed at the build) onto the apex, killing
+  // duplicate-content surface. www is deliberately NOT exempted: Vercel
+  // serves the app on it with a 200 (no domain-layer redirect), and a page
+  // loaded on www dies on the API's CORS allowlist (the login preflight
+  // 400s), so the middleware owns the 308 whatever the Vercel domain config
+  // says. Strip an optional `:port` before the equality check; a stray
   // `Host: vidit.app:443` would otherwise miss the match and redirect-loop.
   if (process.env.NODE_ENV !== "development") {
     const host = request.headers.get("host") ?? "";
     const hostOnly = host.split(":")[0];
-    if (
-      hostOnly &&
-      hostOnly !== CANONICAL_HOST &&
-      hostOnly !== `www.${CANONICAL_HOST}`
-    ) {
+    if (hostOnly && hostOnly !== CANONICAL_HOST) {
       const url = request.nextUrl.clone();
       url.protocol = "https:";
       url.hostname = CANONICAL_HOST;
