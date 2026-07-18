@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   // alias URL. Also silences the "metadata.metadataBase is not set" build
   // warning.
   metadataBase: new URL("https://vidit.app"),
-  title: "Vidit — OSINT/GEOINT Platform",
+  title: "Vidit: OSINT/GEOINT Platform",
   description:
     "Archive and visualize geolocations of conflict-related events worldwide.",
 };

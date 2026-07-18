@@ -38,7 +38,7 @@ export default function Error({ error, reset }: ErrorProps) {
         </h1>
         <p className="text-sm text-neutral-300">
           An unexpected error broke this page. The platform is still in closed
-          beta — please mention this to the team along with the digest below.
+          beta. Please mention this to the team along with the digest below.
         </p>
         {error.digest && (
           <div className="mt-2">

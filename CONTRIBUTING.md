@@ -2,9 +2,9 @@
 
 ## Open posture
 
-Vidit is **100% open source under [AGPL-3.0](LICENSE)** — no proprietary tier, no internal version. The rationale (open codebase, monetization via API rate limits on the maintainer's hosted instance) lives in [`roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Vidit is **100% open source under [AGPL-3.0](LICENSE)**: no proprietary tier, no internal version. The rationale and the funding posture live in [`roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
 
-Contributions that exist only to enable a competing hosted SaaS on top of this codebase are out of scope for the upstream — fork freely (AGPL allows it), but expect review to push back.
+Contributions that exist only to enable a competing hosted SaaS on top of this codebase are out of scope for the upstream. Fork freely (AGPL allows it), but expect review to push back.
 
 ## Before you start
 
@@ -20,7 +20,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 
 ## Pull request flow
 
-1. **Fork + branch.** Name the branch after the work, not the issue number — `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-request-claim`.
+1. **Fork + branch.** Name the branch after the work, not the issue number: `feat/capture-source-filter`, `fix/tweet-import-cache-leak`, `docs/api-request-claim`.
 2. **One coherent change per PR.** A bug fix shouldn't drag in surrounding cleanup; "while I was there" refactors land in their own PR.
 3. **Write the tests that lock in the change, and reproduce CI locally before pushing.** Backend, from `backend/` (CI's lint job stops at the first failing step, so a red `ruff` masks a `mypy` or `vulture` failure behind it: run all four, then the tests):
 
@@ -33,11 +33,11 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    ```
 
    Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`. `make hygiene` runs the cross-cutting gates (jscpd, knip, palette-coverage).
-4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
-5. **PR title is a Conventional Commit.** See *Commit conventions* below — the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
+4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
+5. **PR title is a Conventional Commit.** See *Commit conventions* below; the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
 6. **CI must be green.** The `ci` workflow (backend lint + backend tests + frontend + `docs-pairing` jobs), the PR-title workflow, and the `DCO` status check (Probot app) all need to pass.
 7. **Sign off every commit.** See *Contributor sign-off* below.
-8. **Read touched docs cold before requesting review** — if anything misleads a new contributor, the PR isn't ready.
+8. **Read touched docs cold before requesting review.** If anything misleads a new contributor, the PR isn't ready.
 
 ## Commit conventions
 
@@ -51,7 +51,7 @@ Scope is optional. Subject must start with a lowercase letter. Examples:
 
 ```
 feat(tags): required capture-source + conflict categories on submit
-fix(security): code-review follow-up — 11 of 15 findings
+fix(security): harden archive path validation against traversal
 docs: reorganize, consolidate, and code-verify documentation
 chore(repo): pre-invite dead-code cleanup + factorization pass
 ```
@@ -60,7 +60,7 @@ PR title is the commit message (squash-merge).
 
 ## Contributor sign-off
 
-Every commit on a PR must carry a `Signed-off-by:` trailer. This is the [Developer Certificate of Origin 1.1](https://developercertificate.org) — by signing off, you certify that you have the right to submit the code under [AGPL-3.0](LICENSE). It is **not** a CLA: there is no relicensing clause, inbound = outbound = AGPL-3.0 (the PostgreSQL / Mastodon shape).
+Every commit on a PR must carry a `Signed-off-by:` trailer. This is the [Developer Certificate of Origin 1.1](https://developercertificate.org): by signing off, you certify that you have the right to submit the code under [AGPL-3.0](LICENSE). It is **not** a CLA: there is no relicensing clause, inbound = outbound = AGPL-3.0 (the PostgreSQL / Mastodon shape).
 
 Add the trailer with `git commit -s`:
 
@@ -94,7 +94,7 @@ Touched a published surface → sync the matching doc:
 - Auth model, deploy URLs, env vars, dev workflow → [`../AGENTS.md`](AGENTS.md) and [`../README.md`](README.md)
 - Palette or shared style constant → [`design.md`](docs/design.md)
 
-CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` — see the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract. A PR that genuinely needs neither touch — a planning-only roadmap change, a CI/meta tweak — can carry the **`no-docs-needed`** label to pass the check (justify it in the PR description); Dependabot PRs are exempt automatically.
+CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract. A PR that genuinely needs neither touch (a planning-only roadmap change, a CI/meta tweak) can carry the **`no-docs-needed`** label to pass the check (justify it in the PR description); Dependabot PRs are exempt automatically.
 
 ## Security issues
 

@@ -75,7 +75,7 @@ DEMO_AUTHORS: list[dict[str, Any]] = [
         "username": "demo-analyst-1",
         "email": "demo-analyst-1@vidit.invalid",
         "is_trusted": True,
-        "trust_reason": "Demo account — established OSINT presence (synthetic).",
+        "trust_reason": "Demo account: established OSINT presence (synthetic).",
     },
     {
         "username": "demo-analyst-2",
@@ -87,7 +87,7 @@ DEMO_AUTHORS: list[dict[str, Any]] = [
         "username": "demo-analyst-3",
         "email": "demo-analyst-3@vidit.invalid",
         "is_trusted": True,
-        "trust_reason": "Demo account — long-standing contributor (synthetic).",
+        "trust_reason": "Demo account: long-standing contributor (synthetic).",
     },
     {
         "username": "demo-analyst-4",

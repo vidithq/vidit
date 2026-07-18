@@ -143,7 +143,7 @@ class Settings(BaseSettings):
         read_pair = (self.x_bot_bearer_token, self.x_bot_user_id)
         if any(read_pair) and not all(read_pair):
             raise ValueError(
-                "X_BOT_BEARER_TOKEN and X_BOT_USER_ID must be set together — "
+                "X_BOT_BEARER_TOKEN and X_BOT_USER_ID must be set together; "
                 "refusing a half-configured mentions read."
             )
         write_creds = (
@@ -156,7 +156,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "The four X OAuth 1.0a settings (X_API_CONSUMER_KEY, "
                 "X_API_CONSUMER_SECRET, X_BOT_ACCESS_TOKEN, "
-                "X_BOT_ACCESS_TOKEN_SECRET) must be set together — refusing a "
+                "X_BOT_ACCESS_TOKEN_SECRET) must be set together; refusing a "
                 "half-configured reply writer."
             )
         return self
@@ -175,7 +175,7 @@ class Settings(BaseSettings):
                 )
         elif self.s3_bucket:
             raise ValueError(
-                "S3_BUCKET is set but STORAGE_BACKEND is not 's3' — refusing to ship a "
+                "S3_BUCKET is set but STORAGE_BACKEND is not 's3'; refusing to ship a "
                 "half-configured storage layer. Set STORAGE_BACKEND=s3 or unset S3_BUCKET."
             )
         return self

@@ -23,7 +23,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 export const metadata: Metadata = {
   title: "About Vidit",
   description:
-    "Commitments, methodology, funding, and privacy posture behind Vidit — the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
+    "Commitments, methodology, funding, and privacy posture behind Vidit, the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
   openGraph: {
     type: "website",
     url: "https://vidit.app/about",

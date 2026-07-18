@@ -245,7 +245,7 @@ function TrustUserRow({
       {!trusted && showReasonForm && (
         <div className="space-y-2">
           <label className={FORM_LABEL} htmlFor={`reason-${user.id}`}>
-            Reason (public — surfaces in the badge tooltip)
+            Reason (public, surfaces in the badge tooltip)
           </label>
           <Input
             variant="compact"
@@ -418,7 +418,7 @@ export function TrustPanel() {
           to,{" "}
           <span className="text-amber-300">soft delete</span> (hide them and
           everything they&apos;ve posted from public view), or{" "}
-          <span className="text-red-300">hard delete</span> (GDPR erasure —
+          <span className="text-red-300">hard delete</span> (GDPR erasure:
           drops the user, their geolocations, and their S3 media).
         </p>
       </header>

@@ -11,7 +11,7 @@ Live at **[vidit.app](https://vidit.app)** (closed beta).
 
 ## Why open source
 
-**100% open source under [AGPL-3.0](LICENSE) — nothing proprietary.** Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. Monetization on the maintainer's hosted instance (`vidit.app`) is API rate limits + a small set of paid-only endpoints (alert webhooks, larger exports) — the analyst-facing platform is, and will stay, free. Strategy lives in [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+**100% open source under [AGPL-3.0](LICENSE), nothing proprietary.** Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. Today nothing on the maintainer's hosted instance (`vidit.app`) is paid. The analyst-facing platform is, and will stay, free; if the hosted instance ever charges for anything, it will be surfaces aimed at consumers of the community's work (alert webhooks, larger exports), never at the analysts producing it. Details in [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
 
 ---
 
@@ -23,7 +23,7 @@ Embed source: the README variant rendered by `make promo` (1280×720,
 inline on github.com. To swap in a re-render: drag the new
 `video/out/promo-readme.mp4` into any GitHub draft comment textarea,
 copy the `https://github.com/user-attachments/assets/<uuid>` URL it
-generates, and replace the URL on the bare line below — leaving the
+generates, and replace the URL on the bare line below; leaving the
 URL alone on its own line is what triggers GitHub's auto-player.
 The hero on [vidit.app](https://vidit.app) plays the matching 2K
 master (10 MB) from CloudFront.
@@ -117,7 +117,7 @@ make test        # backend pytest
 
 ### Prerequisites
 
-- Docker (for PostgreSQL + PostGIS — prod runs PG 16 on Railway; local is PG 18, see [`docs/backups.md`](docs/backups.md) for restore implications)
+- Docker (for PostgreSQL + PostGIS; prod runs PG 16 on Railway, local is PG 18, see [`docs/backups.md`](docs/backups.md) for restore implications)
 - Python 3.12+ and [uv](https://github.com/astral-sh/uv)
 - Node.js 20+ and npm
 
@@ -136,9 +136,9 @@ make test        # backend pytest
 
 ### Troubleshooting
 
-- **Database connection failed** — ensure `docker-compose up -d` is running and nothing else holds port 5432.
-- **Frontend can't reach the API** — check `NEXT_PUBLIC_API_URL` in `frontend/.env.local` is `http://localhost:8000/api/v1`.
-- **"Module not found"** — re-run `uv sync` (backend) / `npm install` (frontend), or `make install` for both.
+- **Database connection failed**: ensure `docker-compose up -d` is running and nothing else holds port 5432.
+- **Frontend can't reach the API**: check `NEXT_PUBLIC_API_URL` in `frontend/.env.local` is `http://localhost:8000/api/v1`.
+- **"Module not found"**: re-run `uv sync` (backend) / `npm install` (frontend), or `make install` for both.
 
 ---
 

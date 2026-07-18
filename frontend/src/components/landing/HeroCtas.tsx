@@ -31,7 +31,7 @@ export default function HeroCtas() {
         <ArrowRight size={15} />
       </Link>
       <p className="text-sm text-neutral-400">
-        No invite? Request access — DM{" "}
+        No invite? Request access: DM{" "}
         <a
           href="https://x.com/vidithq"
           target="_blank"

@@ -118,7 +118,7 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
             # / animated WebP); ``getattr`` covers single-frame inputs.
             if getattr(img, "is_animated", False):
                 raise EvidenceProcessingError(
-                    "Animated images are not supported — upload as a video instead"
+                    "Animated images are not supported. Upload as a video instead"
                 )
 
             img.load()
@@ -255,7 +255,7 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
 
             if getattr(img, "is_animated", False):
                 raise EvidenceProcessingError(
-                    "Animated images are not supported — upload as a video instead"
+                    "Animated images are not supported. Upload as a video instead"
                 )
 
             img.load()

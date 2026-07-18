@@ -37,7 +37,7 @@ function ResetPasswordInner() {
         body: JSON.stringify({ token, new_password: password }),
       }),
     {
-      fallback: "Reset failed — request a new link.",
+      fallback: "Reset failed. Request a new link.",
       onSuccess: () => {
         router.push("/login?reset=ok");
       },
