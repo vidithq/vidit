@@ -20,7 +20,7 @@ export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt =
-  "Vidit — an open platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.";
+  "Vidit, an open platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.";
 
 export default function OpenGraphImage() {
   return new ImageResponse(

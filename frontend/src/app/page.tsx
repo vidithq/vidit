@@ -102,14 +102,14 @@ const ROADMAP: {
     version: "v0.3",
     current: true,
     title: "Open source launch",
-    body: "Vidit is open source under AGPL-3.0 — the clearest answer to “closed / unknown tool”.",
+    body: "Vidit is open source under AGPL-3.0, the clearest answer to “closed / unknown tool”.",
     link: { href: GITHUB_URL, label: "View on GitHub" },
   },
   {
     version: "v0.4",
     current: false,
     title: "Curated onboarding",
-    body: "Read opens to everyone — the map and the archive go public. Invited analysts bring their existing work with them: upload your X archive or tag the bot, with no manual re-entry.",
+    body: "Read opens to everyone: the map and the archive go public. Invited analysts bring their existing work with them: upload your X archive or tag the bot, with no manual re-entry.",
   },
   {
     version: "v0.5",

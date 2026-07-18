@@ -46,7 +46,7 @@ export default function FollowButton({
       }
     } catch (e) {
       console.error("Failed to toggle follow", e);
-      setError(wasFollowing ? "Couldn't unfollow — try again" : "Couldn't follow — try again");
+      setError(wasFollowing ? "Couldn't unfollow, try again" : "Couldn't follow, try again");
     } finally {
       setLoading(false);
     }

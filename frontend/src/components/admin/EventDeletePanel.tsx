@@ -63,7 +63,7 @@ export function EventDeletePanel() {
         <SectionEyebrow title="Remove a geolocation" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Soft delete hides the row from every public read but preserves the
-          proof + S3 evidence — that&apos;s the default. Hard delete is the
+          proof + S3 evidence; that&apos;s the default. Hard delete is the
           GDPR escape hatch: drops the row, the media rows, and the S3
           objects. Audited either way.
         </p>

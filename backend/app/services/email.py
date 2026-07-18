@@ -122,14 +122,14 @@ def password_reset_email(*, to: str, link: str) -> Email:
         to=to,
         subject="Reset your Vidit password",
         text=(
-            "Someone — hopefully you — asked to reset the password on the Vidit\n"
+            "Someone (hopefully you) asked to reset the password on the Vidit\n"
             "account associated with this address.\n"
             "\n"
             f"To set a new password, follow this link within the next {ttl} minutes:\n"
             "\n"
             f"  {link}\n"
             "\n"
-            "If you didn't request a reset, ignore this email — your password is\n"
+            "If you didn't request a reset, ignore this email: your password is\n"
             "unchanged. The link only works once.\n"
             "\n"
             "— Vidit\n"
@@ -233,7 +233,7 @@ def registration_confirmation_email(*, to: str, link: str) -> Email:
             "\n"
             f"  {link}\n"
             "\n"
-            "Until you click the link, no account exists — the registration is\n"
+            "Until you click the link, no account exists; the registration is\n"
             "held aside, waiting on you. If you don't confirm, it expires and\n"
             "the address is released back to the pool.\n"
             "\n"

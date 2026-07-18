@@ -189,7 +189,7 @@ export function InviteCodesPanel() {
       <header>
         <SectionEyebrow title="Invite codes" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Every code is single-use — one code, one analyst — so the audit
+          Every code is single-use (one code, one analyst), so the audit
           trail names exactly who joined with what. Mint, share via a
           trusted channel, revoke once it&apos;s done its job.
         </p>

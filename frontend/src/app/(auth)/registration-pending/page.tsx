@@ -77,7 +77,7 @@ function PendingInner() {
         )}
         {resend === "sent" && (
           <p className="text-xs text-orange-300">
-            Sent — check your inbox in a moment.
+            Sent. Check your inbox in a moment.
           </p>
         )}
         {resend === "failed" && (
