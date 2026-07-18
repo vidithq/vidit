@@ -92,16 +92,24 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
 
         # ``tweets.js`` to the dest root, each media file to ``tweets_media/`` by
         # basename only (so a crafted path can't escape dest_dir).
-        plan: list[tuple[str, Path]] = [(tweets_member, dest_dir / _TWEETS_FILE)]
+        plan: list[tuple[str, Path, bool]] = [(tweets_member, dest_dir / _TWEETS_FILE, False)]
         for name in names:
             if name.startswith(media_prefix):
                 base = PurePosixPath(name).name
                 if base:
-                    plan.append((name, media_dir / base))
+                    plan.append((name, media_dir / base, True))
 
+        # A media member over the per-file cap is SKIPPED, not fatal: real
+        # exports carry the occasional long video (a 229 MB mp4 killed a
+        # 3790-post import), and downstream media intake enforces its own
+        # per-type caps anyway. The per-file cap stays fatal for tweets.js,
+        # and the total budget stays fatal for everyone (zip-bomb guard);
+        # skipped reads still count toward it.
         total = 0
-        for name, target in plan:
-            total += _extract_member(zf, name, target, running_total=total)
+        for name, target, skippable in plan:
+            total += _extract_member(
+                zf, name, target, running_total=total, skip_oversized=skippable
+            )
 
 
 def _find_tweets_member(names: list[str]) -> str | None:
@@ -110,22 +118,37 @@ def _find_tweets_member(names: list[str]) -> str | None:
     return min(candidates, key=len) if candidates else None
 
 
-def _extract_member(zf: zipfile.ZipFile, name: str, target: Path, *, running_total: int) -> int:
-    """Copy one member to ``target`` under the size caps; return bytes written.
+def _extract_member(
+    zf: zipfile.ZipFile,
+    name: str,
+    target: Path,
+    *,
+    running_total: int,
+    skip_oversized: bool = False,
+) -> int:
+    """Copy one member to ``target`` under the size caps; return bytes read.
 
     Caps are checked against the bytes actually read, so a member whose declared
     ``file_size`` understates its true size still trips the limit mid-copy.
+    With ``skip_oversized``, a member over the per-file cap is dropped (any
+    partial ``target`` removed) instead of raising; the total budget still
+    raises either way.
     """
     if zf.getinfo(name).file_size > MAX_FILE_UNCOMPRESSED_BYTES:
+        if skip_oversized:
+            return 0
         raise ArchiveTooLargeError("An archive file exceeds the size limit")
     written = 0
     with zf.open(name) as src, open(target, "wb") as out:
         while chunk := src.read(_CHUNK):
             written += len(chunk)
-            if (
-                written > MAX_FILE_UNCOMPRESSED_BYTES
-                or running_total + written > MAX_TOTAL_UNCOMPRESSED_BYTES
-            ):
+            if running_total + written > MAX_TOTAL_UNCOMPRESSED_BYTES:
+                raise ArchiveTooLargeError("Archive contents exceed the size limit")
+            if written > MAX_FILE_UNCOMPRESSED_BYTES:
+                if skip_oversized:
+                    out.close()
+                    target.unlink(missing_ok=True)
+                    return written
                 raise ArchiveTooLargeError("Archive contents exceed the size limit")
             out.write(chunk)
     return written
