@@ -104,6 +104,27 @@ def test_per_file_uncompressed_cap(tmp_path, monkeypatch):
         extract_allowlisted(src, dest)
 
 
+def test_oversized_media_is_skipped_not_fatal(tmp_path, monkeypatch):
+    # A real export can carry one long video past the per-file cap (a 229 MB
+    # mp4 killed a 3790-post import); the member is dropped, everything else
+    # extracts. tweets.js keeps the fatal cap (previous test).
+    monkeypatch.setattr(archive_zip, "MAX_FILE_UNCOMPRESSED_BYTES", 10)
+    src = _zip(
+        tmp_path,
+        {
+            "data/tweets.js": b"x" * 8,
+            "data/tweets_media/big.mp4": b"y" * 100,
+            "data/tweets_media/ok.jpg": b"z" * 5,
+        },
+    )
+    dest = tmp_path / "out"
+    dest.mkdir()
+    extract_allowlisted(src, dest)
+    assert (dest / "tweets.js").exists()
+    assert (dest / "tweets_media" / "ok.jpg").exists()
+    assert not (dest / "tweets_media" / "big.mp4").exists()
+
+
 def test_malformed_zip_raises(tmp_path):
     src = tmp_path / "bad.zip"
     src.write_bytes(b"this is not a zip")
