@@ -28,6 +28,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { ActivityBars } from "@/components/ui/ActivityBars";
+import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
@@ -571,6 +572,38 @@ export default function PalettePage() {
                   { month: "2026-07", count: 7 },
                 ]}
               />
+            </div>
+          </Item>
+
+          <Item name="<ProgressSteps>" usage="Vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc + bar for the active step (determinate when `progress` exists, pulse otherwise), muted for pending; `failed` turns the active step into the red failure marker.">
+            <div className="w-full max-w-sm">
+              <Variant label="running (determinate bar)">
+                <ProgressSteps
+                  steps={[
+                    { label: "Preparing your archive" },
+                    { label: "Uploading to secure storage", progress: 0.62, detail: "62% uploaded." },
+                    { label: "Waiting for a worker" },
+                    { label: "Scanning your posts" },
+                    { label: "Done" },
+                  ]}
+                  active={1}
+                />
+              </Variant>
+            </div>
+            <div className="w-full max-w-sm">
+              <Variant label="failed step">
+                <ProgressSteps
+                  steps={[
+                    { label: "Preparing your archive" },
+                    { label: "Uploading to secure storage" },
+                    { label: "Waiting for a worker" },
+                    { label: "Scanning your posts", detail: "The import failed on our side." },
+                    { label: "Done" },
+                  ]}
+                  active={3}
+                  failed
+                />
+              </Variant>
             </div>
           </Item>
 

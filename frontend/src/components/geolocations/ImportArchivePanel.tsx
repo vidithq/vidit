@@ -18,6 +18,7 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
+import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
@@ -92,6 +93,25 @@ function importErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
+/** Where the import run currently is; indexes `IMPORT_STEPS`. `strip` and
+ *  `upload` are client legs, `queued` and `scanning` follow the polled job. */
+type ImportPhase = "strip" | "upload" | "queued" | "scanning";
+
+const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
+  strip: 0,
+  upload: 1,
+  queued: 2,
+  scanning: 3,
+};
+
+const IMPORT_STEP_LABELS = [
+  "Preparing your archive",
+  "Uploading to secure storage",
+  "Waiting for a worker",
+  "Scanning your posts",
+  "Done",
+];
+
 /**
  * The bulk-import on-ramp: the "how to export from X" guide, the drop zone (via
  * `FileManager`), the in-browser strip, the upload, and the bridge to the owner
@@ -113,6 +133,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
   // Direct-to-storage upload progress, 0..1; null outside the upload leg.
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // The run's position in IMPORT_STEP_LABELS. Advanced as each leg starts,
+  // and kept after a failure so the error lands on the step that raised it.
+  const [phase, setPhase] = useState<ImportPhase>("strip");
 
   // Strip to the allowlisted entries in the browser first, so the sensitive
   // rest of the export never leaves the device (and the upload is a fraction
@@ -124,14 +147,22 @@ export function ImportArchivePanel({ username }: { username: string }) {
     async (archive: File): Promise<ArchiveImportJob | null> => {
       setLiveJob(null);
       setUploadProgress(null);
+      setPhase("strip");
       const stripped = await stripArchive(archive);
+      setPhase("upload");
       const presign = await presignArchiveUpload();
       await uploadArchive(presign.upload, stripped.file, setUploadProgress);
       const queued = await enqueueArchiveImport(presign.upload_key, stripped.postEstimate);
+      setPhase("queued");
       setLiveJob(queued);
+      const onUpdate = (job: ArchiveImportJob) => {
+        setLiveJob(job);
+        // The worker picked the job up: "waiting" is over, the scan is live.
+        if (job.status !== "queued") setPhase("scanning");
+      };
       let job: ArchiveImportJob;
       try {
-        job = await awaitImportJob(queued.id, { onUpdate: setLiveJob });
+        job = await awaitImportJob(queued.id, { onUpdate });
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
         throw err;
@@ -319,21 +350,49 @@ export function ImportArchivePanel({ username }: { username: string }) {
         >
           {loading ? "Importing…" : "Import archive"}
         </Button>
-        {loading && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-neutral-300">
-              {liveJob === null
-                ? uploadProgress === null
-                  ? "Keeping only your posts, then uploading…"
-                  : `Uploading your posts… ${Math.round(uploadProgress * 100)}%`
-                : liveJob.progress_total !== null
-                  ? `Scanning your posts… ${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`
-                  : `Queued · ~${(liveJob.post_estimate ?? 1).toLocaleString()} post${(liveJob.post_estimate ?? 1) === 1 ? "" : "s"} in your archive, waiting for the importer.`}
-            </p>
-            <p className="text-xs text-neutral-500">
-              You can close this page: the import keeps running and we email you
-              when it finishes.
-            </p>
+        {(loading || error) && (
+          <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+            <ProgressSteps
+              steps={[
+                { label: IMPORT_STEP_LABELS[0], detail: "Keeping only your posts and their media." },
+                {
+                  label: IMPORT_STEP_LABELS[1],
+                  ...(uploadProgress !== null
+                    ? {
+                        progress: uploadProgress,
+                        detail: `${Math.round(uploadProgress * 100)}% uploaded.`,
+                      }
+                    : {}),
+                },
+                {
+                  label: IMPORT_STEP_LABELS[2],
+                  detail: `~${(liveJob?.post_estimate ?? 1).toLocaleString()} post${
+                    (liveJob?.post_estimate ?? 1) === 1 ? "" : "s"
+                  } in your archive, waiting for the importer.`,
+                },
+                {
+                  label: IMPORT_STEP_LABELS[3],
+                  ...(liveJob && liveJob.progress_total !== null
+                    ? {
+                        progress:
+                          liveJob.progress_total > 0
+                            ? liveJob.progress_done / liveJob.progress_total
+                            : 1,
+                        detail: `${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`,
+                      }
+                    : {}),
+                },
+                { label: IMPORT_STEP_LABELS[4] },
+              ]}
+              active={IMPORT_PHASE_INDEX[phase]}
+              failed={!loading}
+            />
+            {loading && (
+              <p className="text-xs text-neutral-500">
+                You can close this page: the import keeps running and we email you
+                when it finishes.
+              </p>
+            )}
           </div>
         )}
       </form>
