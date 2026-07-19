@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Clock,
   Download,
@@ -93,24 +92,35 @@ function importErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
-/** Where the import run currently is; indexes `IMPORT_STEPS`. `strip` and
- *  `upload` are client legs, `queued` and `scanning` follow the polled job. */
-type ImportPhase = "strip" | "upload" | "queued" | "scanning";
+/** Where the import run currently is; indexes `IMPORT_STEP_LABELS`. `strip`
+ *  and `upload` are client legs, `queued` and `scanning` follow the polled
+ *  job, `done` is the terminal in-place state (the completed stepper stays
+ *  up, with the review CTA under it). */
+type ImportPhase = "strip" | "upload" | "queued" | "scanning" | "done";
 
 const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
   strip: 0,
   upload: 1,
   queued: 2,
   scanning: 3,
+  // Past the last index: every step renders complete.
+  done: 5,
 };
 
 const IMPORT_STEP_LABELS = [
-  "Preparing your archive",
-  "Uploading to secure storage",
-  "Waiting for a worker",
-  "Scanning your posts",
+  "Filtering out private data",
+  "Uploading your archive",
+  "Queued for import",
+  "Extracting geolocations",
   "Done",
 ];
+
+/** Real megabyte rendering for the upload counter: one decimal below 100 MB,
+ *  whole (locale-grouped) megabytes above. */
+function formatMB(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return `${mb < 100 ? mb.toFixed(1) : Math.round(mb).toLocaleString()} MB`;
+}
 
 /**
  * The bulk-import on-ramp: the "how to export from X" guide, the drop zone (via
@@ -120,7 +130,6 @@ const IMPORT_STEP_LABELS = [
  * detections queue is owner-scoped). Auth + the page chrome are the parent's job.
  */
 export function ImportArchivePanel({ username }: { username: string }) {
-  const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportJob | null>(null);
@@ -131,8 +140,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
   // Latest polled snapshot while the import runs: the post estimate stamped
   // at enqueue, then the worker's live scan position (done / total).
   const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
-  // Direct-to-storage upload progress, 0..1; null outside the upload leg.
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // Direct-to-storage upload position in raw bytes (multipart envelope
+  // included); null outside the upload leg.
+  const [uploadBytes, setUploadBytes] = useState<{ loaded: number; total: number } | null>(null);
   // The run's position in IMPORT_STEP_LABELS. Advanced as each leg starts,
   // and kept after a failure so the error lands on the step that raised it.
   const [phase, setPhase] = useState<ImportPhase>("strip");
@@ -146,18 +156,23 @@ export function ImportArchivePanel({ username }: { username: string }) {
   const { run, loading, error } = useMutation(
     async (archive: File): Promise<ArchiveImportJob | null> => {
       setLiveJob(null);
-      setUploadProgress(null);
+      setUploadBytes(null);
       setPhase("strip");
       const stripped = await stripArchive(archive);
       setPhase("upload");
+      // Real numbers from the first frame: the stripped size is the known
+      // payload, refined by the first XHR progress event (envelope included).
+      setUploadBytes({ loaded: 0, total: stripped.file.size });
       const presign = await presignArchiveUpload();
-      await uploadArchive(presign.upload, stripped.file, setUploadProgress);
+      await uploadArchive(presign.upload, stripped.file, (loaded, total) =>
+        setUploadBytes({ loaded, total })
+      );
       const queued = await enqueueArchiveImport(presign.upload_key, stripped.postEstimate);
       setPhase("queued");
       setLiveJob(queued);
       const onUpdate = (job: ArchiveImportJob) => {
         setLiveJob(job);
-        // The worker picked the job up: "waiting" is over, the scan is live.
+        // The worker picked the job up: "queued" is over, the extraction is live.
         if (job.status !== "queued") setPhase("scanning");
       };
       let job: ArchiveImportJob;
@@ -166,6 +181,12 @@ export function ImportArchivePanel({ username }: { username: string }) {
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
         throw err;
+      }
+      if (job.status === "done") {
+        // The completed stepper stays on screen as the receipt of the run;
+        // the CTA below it bridges to the review queue (no auto-redirect).
+        setPhase("done");
+        setLiveJob(job);
       }
       if (job.status === "failed") {
         // Same story as the failure email and the API doc: a failed job
@@ -184,13 +205,11 @@ export function ImportArchivePanel({ username }: { username: string }) {
           setPollLost(true);
           return;
         }
-        // Bridge straight to the review queue when there's fresh work to triage;
-        // only stay here when nothing landed (retry) or it was all already imported.
-        if (res.created > 0) {
-          router.push(`/profile/${username}/detections`);
-        } else {
-          setResult(res);
-        }
+        // Fresh drafts landed: stay on the page. The finished stepper is the
+        // receipt of the run and the CTA under it opens the review queue.
+        // Only the zero-created outcomes swap to the result view (retry, or
+        // it was all already imported).
+        if (res.created === 0) setResult(res);
       },
       onError: importErrorMessage,
     }
@@ -350,48 +369,92 @@ export function ImportArchivePanel({ username }: { username: string }) {
         >
           {loading ? "Importing…" : "Import archive"}
         </Button>
-        {(loading || error) && (
+        {(loading || error || phase === "done") && (
           <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
             <ProgressSteps
               steps={[
-                { label: IMPORT_STEP_LABELS[0], detail: "Keeping only your posts and their media." },
+                {
+                  label: IMPORT_STEP_LABELS[0],
+                  detail: "DMs, messages and account data never leave your device.",
+                  keepDetail: true,
+                  spinner: true,
+                },
                 {
                   label: IMPORT_STEP_LABELS[1],
-                  ...(uploadProgress !== null
+                  ...(uploadBytes !== null
                     ? {
-                        progress: uploadProgress,
-                        detail: `${Math.round(uploadProgress * 100)}% uploaded.`,
+                        progress:
+                          uploadBytes.total > 0 ? uploadBytes.loaded / uploadBytes.total : 0,
+                        detail: `${formatMB(uploadBytes.loaded)} of ${formatMB(uploadBytes.total)}`,
                       }
                     : {}),
                 },
                 {
                   label: IMPORT_STEP_LABELS[2],
+                  spinner: true,
                   detail: `~${(liveJob?.post_estimate ?? 1).toLocaleString()} post${
                     (liveJob?.post_estimate ?? 1) === 1 ? "" : "s"
-                  } in your archive, waiting for the importer.`,
+                  } in your archive.`,
                 },
                 {
                   label: IMPORT_STEP_LABELS[3],
+                  // The worker runs two legs: the parse over tweets.js (no
+                  // ratio yet, `progress_total` still null), then the
+                  // per-detection persist the polled counts measure.
                   ...(liveJob && liveJob.progress_total !== null
                     ? {
                         progress:
                           liveJob.progress_total > 0
                             ? liveJob.progress_done / liveJob.progress_total
                             : 1,
-                        detail: `${liveJob.progress_done} / ${liveJob.progress_total} detections processed.`,
+                        detail:
+                          `${liveJob.progress_done.toLocaleString()} of ${liveJob.progress_total.toLocaleString()} geolocation${
+                            liveJob.progress_total === 1 ? "" : "s"
+                          } extracted` +
+                          (liveJob.post_estimate !== null
+                            ? ` · from ~${liveJob.post_estimate.toLocaleString()} posts`
+                            : ""),
+                      }
+                    : { spinner: true, detail: "Reading your posts…" }),
+                },
+                {
+                  label: IMPORT_STEP_LABELS[4],
+                  keepDetail: true,
+                  ...(phase === "done" && liveJob
+                    ? {
+                        detail:
+                          `${liveJob.created.toLocaleString()} draft${
+                            liveJob.created === 1 ? "" : "s"
+                          } ready for review` +
+                          (liveJob.skipped > 0
+                            ? ` · ${liveJob.skipped.toLocaleString()} skipped (already imported)`
+                            : ""),
                       }
                     : {}),
                 },
-                { label: IMPORT_STEP_LABELS[4] },
               ]}
               active={IMPORT_PHASE_INDEX[phase]}
-              failed={!loading}
+              failed={!loading && error !== null}
             />
-            {loading && (
+            {/* Only once the enqueue has landed: from here the import runs
+                server-side, while closing during the strip or the upload
+                would abort the transfer. */}
+            {loading && (phase === "queued" || phase === "scanning") && (
               <p className="text-xs text-neutral-500">
-                You can close this page: the import keeps running and we email you
-                when it finishes.
+                You can close this page, we email you when it&apos;s done.
               </p>
+            )}
+            {/* Finished: the completed stepper above is the receipt, this is
+                the next step. In place on purpose (no auto-redirect). */}
+            {!loading && phase === "done" && (
+              <div className="pt-1">
+                <Link
+                  href={`/profile/${username}/detections`}
+                  className={buttonClasses("primary")}
+                >
+                  Review your detections
+                </Link>
+              </div>
             )}
           </div>
         )}

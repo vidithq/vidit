@@ -371,12 +371,14 @@ export class ArchiveUploadError extends Error {
  * Step 2: POST the stripped zip straight to storage (never through the API).
  * XHR rather than fetch for its upload progress events; `fields` go ahead of
  * the file part (S3 ignores fields after it), and no credentials ride along
- * (the presigned policy is the authorization). `onProgress` gets 0..1.
+ * (the presigned policy is the authorization). `onProgress` gets the raw
+ * uploaded/total byte counts (the multipart envelope included), so the caller
+ * can render real numbers, not just a fraction.
  */
 export function uploadArchive(
   upload: ArchiveImportPresign["upload"],
   file: File,
-  onProgress?: (fraction: number) => void
+  onProgress?: (loadedBytes: number, totalBytes: number) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
@@ -387,7 +389,7 @@ export function uploadArchive(
     const xhr = new XMLHttpRequest();
     xhr.open("POST", upload.url);
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded / e.total);
+      if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded, e.total);
     };
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300

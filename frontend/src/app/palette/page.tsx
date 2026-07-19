@@ -575,15 +575,19 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ProgressSteps>" usage="Vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc + bar for the active step (determinate when `progress` exists, pulse otherwise), muted for pending; `failed` turns the active step into the red failure marker.">
+          <Item name="<ProgressSteps>" usage="Vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc for the active step with a determinate bar only when a real `progress` ratio exists (a discreet `spinner` otherwise), muted for pending. `keepDetail` pins a step's detail after completion (a privacy guarantee, a final count); `failed` turns the active step into the red failure marker.">
             <div className="w-full max-w-sm">
-              <Variant label="running (determinate bar)">
+              <Variant label="determinate bar + persistent detail on a completed step">
                 <ProgressSteps
                   steps={[
-                    { label: "Preparing your archive" },
-                    { label: "Uploading to secure storage", progress: 0.62, detail: "62% uploaded." },
-                    { label: "Waiting for a worker" },
-                    { label: "Scanning your posts" },
+                    {
+                      label: "Filtering out private data",
+                      detail: "DMs, messages and account data never leave your device.",
+                      keepDetail: true,
+                    },
+                    { label: "Uploading your archive", progress: 0.62, detail: "381 MB of 612 MB" },
+                    { label: "Queued for import" },
+                    { label: "Extracting geolocations" },
                     { label: "Done" },
                   ]}
                   active={1}
@@ -591,13 +595,31 @@ export default function PalettePage() {
               </Variant>
             </div>
             <div className="w-full max-w-sm">
+              <Variant label="spinner (no measurable ratio)">
+                <ProgressSteps
+                  steps={[
+                    { label: "Filtering out private data" },
+                    { label: "Uploading your archive" },
+                    {
+                      label: "Queued for import",
+                      spinner: true,
+                      detail: "~3,790 posts in your archive.",
+                    },
+                    { label: "Extracting geolocations" },
+                    { label: "Done" },
+                  ]}
+                  active={2}
+                />
+              </Variant>
+            </div>
+            <div className="w-full max-w-sm">
               <Variant label="failed step">
                 <ProgressSteps
                   steps={[
-                    { label: "Preparing your archive" },
-                    { label: "Uploading to secure storage" },
-                    { label: "Waiting for a worker" },
-                    { label: "Scanning your posts", detail: "The import failed on our side." },
+                    { label: "Filtering out private data" },
+                    { label: "Uploading your archive" },
+                    { label: "Queued for import" },
+                    { label: "Extracting geolocations", detail: "The import failed on our side." },
                     { label: "Done" },
                   ]}
                   active={3}

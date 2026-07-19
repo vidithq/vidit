@@ -1,4 +1,4 @@
-import { Check, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 
 import { ACCENT_SURFACE } from "./styles";
 
@@ -6,20 +6,27 @@ import { ACCENT_SURFACE } from "./styles";
 export interface ProgressStep {
   label: string;
   /** Live one-liner under the label while the step is active or failed
-   *  (a percent, a counter, a failure hint). */
+   *  (a count, real byte numbers, a failure hint). */
   detail?: string;
-  /** 0..1 fills the active step's bar; omit for an indeterminate pulse. */
+  /** 0..1 fills a determinate bar under the active step. Only pass it when a
+   *  real ratio exists; a step without one shows no bar (pair with `spinner`). */
   progress?: number;
+  /** Discreet spinner next to the active label, for a step that is genuinely
+   *  in flight but has no measurable ratio (queued, a server-side parse). */
+  spinner?: boolean;
+  /** Keep the detail line visible after the step completes (a privacy
+   *  guarantee, a final count), not just while it is active. */
+  keepDetail?: boolean;
 }
 
 /**
  * Vertical stepper for a live multi-step operation (the archive import):
  * completed steps get a check, the active step a highlighted disc plus a
- * progress bar (determinate when `progress` exists, an indeterminate pulse
- * otherwise), pending steps stay muted. `active` is the running step's index;
- * pass `steps.length` when every step is complete. `failed` turns the active
- * step into the red failure marker (pair it with the form's error banner for
- * the message) and hides the bar.
+ * determinate bar when a real `progress` ratio exists (a `spinner` otherwise),
+ * pending steps stay muted. `active` is the running step's index; pass
+ * `steps.length` when every step is complete. `failed` turns the active step
+ * into the red failure marker (pair it with the form's error banner for the
+ * message) and hides the bar.
  */
 export function ProgressSteps({
   steps,
@@ -68,7 +75,7 @@ export function ProgressSteps({
             </div>
             <div className="min-w-0 flex-1 pb-3">
               <p
-                className={`pt-1 text-sm ${
+                className={`flex items-center gap-2 pt-1 text-sm ${
                   state === "active"
                     ? "text-neutral-100"
                     : state === "failed"
@@ -79,35 +86,36 @@ export function ProgressSteps({
                 }`}
               >
                 {step.label}
+                {state === "active" && step.spinner && (
+                  <Loader2
+                    size={13}
+                    strokeWidth={2}
+                    className="shrink-0 animate-spin text-orange-400"
+                    aria-label="In progress"
+                  />
+                )}
               </p>
-              {state === "active" && (
+              {state === "active" && step.progress !== undefined && (
                 <div
                   className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-neutral-800"
                   role="progressbar"
                   aria-label={step.label}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={
-                    step.progress !== undefined
-                      ? Math.round(step.progress * 100)
-                      : undefined
-                  }
+                  aria-valuenow={Math.round(step.progress * 100)}
                 >
                   <div
-                    className={`h-full rounded-full bg-orange-400/80 ${
-                      step.progress === undefined ? "w-1/3 animate-pulse" : ""
-                    }`}
-                    style={
-                      step.progress !== undefined
-                        ? { width: `${Math.min(100, Math.max(0, step.progress * 100))}%` }
-                        : undefined
-                    }
+                    className="h-full rounded-full bg-orange-400/80"
+                    style={{ width: `${Math.min(100, Math.max(0, step.progress * 100))}%` }}
                   />
                 </div>
               )}
-              {(state === "active" || state === "failed") && step.detail && (
-                <p className="mt-1 text-xs text-neutral-500">{step.detail}</p>
-              )}
+              {step.detail &&
+                (state === "active" ||
+                  state === "failed" ||
+                  (state === "done" && step.keepDetail)) && (
+                  <p className="mt-1 text-xs text-neutral-500">{step.detail}</p>
+                )}
             </div>
           </li>
         );
