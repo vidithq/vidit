@@ -235,50 +235,11 @@ export function ImportArchivePanel({ username }: { username: string }) {
     );
   }
 
-  // Reached only when the import created nothing. Three cases: some posts failed
-  // to persist (retry the same file), the archive was already fully imported
-  // (offer the queue), or it simply had no geolocatable posts (pick another).
-  if (result) {
-    const failedSome = result.failed > 0;
-    const alreadyImported = !failedSome && result.skipped > 0;
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-neutral-200">
-          {failedSome
-            ? `Some posts couldn't be imported (${result.failed} failed). Try the import again.`
-            : alreadyImported
-              ? `Everything in that archive was already imported (${result.skipped} ${
-                  result.skipped === 1 ? "geolocation" : "geolocations"
-                }).`
-              : "No geolocations found in that archive. Posts with a coordinate in their text become detections."}
-        </p>
-        <div className="flex flex-wrap gap-3 pt-1">
-          {alreadyImported ? (
-            <Link
-              href={`/profile/${username}/detections`}
-              className={buttonClasses("primary")}
-            >
-              Review detections
-            </Link>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setResult(null);
-                if (failedSome) {
-                  if (file) run(file);
-                } else {
-                  setFile(null);
-                }
-              }}
-            >
-              {failedSome ? "Try again" : "Choose a different file"}
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Zero-created outcomes (`result`) render UNDER the completed stepper like
+  // the happy path, never as a swapped-out bare view: the stepper stays as
+  // the receipt of what ran, the message + action below it say what's next.
+  const failedSome = (result?.failed ?? 0) > 0;
+  const alreadyImported = result !== null && !failedSome && result.skipped > 0;
 
   return (
     <div className="space-y-6">
@@ -445,15 +406,48 @@ export function ImportArchivePanel({ username }: { username: string }) {
               </p>
             )}
             {/* Finished: the completed stepper above is the receipt, this is
-                the next step. In place on purpose (no auto-redirect). */}
+                the next step. In place on purpose (no auto-redirect), for the
+                zero-created outcomes too: retry the same file after partial
+                failures, the queue when it was all already imported, another
+                file when nothing was geolocatable. */}
             {!loading && phase === "done" && (
-              <div className="pt-1">
-                <Link
-                  href={`/profile/${username}/detections`}
-                  className={buttonClasses("primary")}
-                >
-                  Review your detections
-                </Link>
+              <div className="space-y-3 pt-1">
+                {result && (
+                  <p className="text-sm text-neutral-200">
+                    {failedSome
+                      ? `Some posts couldn't be imported (${result.failed} failed). Try the import again.`
+                      : alreadyImported
+                        ? `Everything in that archive was already imported (${result.skipped} ${
+                            result.skipped === 1 ? "geolocation" : "geolocations"
+                          }).`
+                        : "No geolocations found in that archive. Posts with a coordinate in their text become detections."}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-3">
+                  {!result || alreadyImported ? (
+                    <Link
+                      href={`/profile/${username}/detections`}
+                      className={buttonClasses("primary")}
+                    >
+                      Review your detections
+                    </Link>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setResult(null);
+                        setPhase("strip");
+                        if (failedSome) {
+                          if (file) run(file);
+                        } else {
+                          setFile(null);
+                        }
+                      }}
+                    >
+                      {failedSome ? "Try again" : "Choose a different file"}
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
