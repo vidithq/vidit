@@ -80,6 +80,13 @@ _MAX_REQUEST_BODY_BYTES = (
 
 @app.middleware("http")
 async def enforce_request_body_size(request: Request, call_next):
+    # The dev staging upload stands in for the direct-to-S3 archive POST that
+    # bypasses the API entirely in prod, so it carries the archive cap, not
+    # the request cap (a real 772 MB export 413'd here in local dev). Local
+    # backend only: the route isn't mounted elsewhere.
+    cap = _MAX_REQUEST_BODY_BYTES
+    if settings.storage_backend == "local" and request.url.path == DEV_STAGING_UPLOAD_PATH:
+        cap = archive_zip.MAX_UPLOAD_BYTES + (10 * 1024 * 1024)
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
@@ -88,12 +95,10 @@ async def enforce_request_body_size(request: Request, call_next):
             announced = None
         # Reject negatives too: ``int("-1")`` parses cleanly but ``-1 > cap``
         # is False, so a negative header would otherwise slip past this gate.
-        if announced is not None and (announced < 0 or announced > _MAX_REQUEST_BODY_BYTES):
+        if announced is not None and (announced < 0 or announced > cap):
             return JSONResponse(
                 status_code=413,
-                content={
-                    "detail": (f"Request body too large (max {_MAX_REQUEST_BODY_BYTES} bytes)"),
-                },
+                content={"detail": (f"Request body too large (max {cap} bytes)")},
             )
     return await call_next(request)
 
@@ -158,7 +163,7 @@ if settings.storage_backend == "local":
     # when STORAGE_BACKEND=s3. Enforces the strict staging-key shape (a free
     # ``key`` field could otherwise traverse out of the storage root) and the
     # same size guard the S3 policy carries; the body-size middleware above
-    # caps it lower in dev, which local archives never reach.
+    # exempts this path up to the archive cap for the same reason.
     @app.post(DEV_STAGING_UPLOAD_PATH, include_in_schema=False)
     async def dev_staging_upload(
         key: str = Form(...),
