@@ -98,15 +98,6 @@ function importErrorMessage(err: unknown): string | undefined {
  *  up, with the review CTA under it). */
 type ImportPhase = "strip" | "upload" | "queued" | "scanning" | "done";
 
-const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
-  strip: 0,
-  upload: 1,
-  queued: 2,
-  scanning: 3,
-  // Past the last index: every step renders complete.
-  done: 5,
-};
-
 const IMPORT_STEP_LABELS = [
   "Filtering out private data",
   "Uploading your archive",
@@ -115,11 +106,22 @@ const IMPORT_STEP_LABELS = [
   "Done",
 ];
 
+const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
+  strip: 0,
+  upload: 1,
+  queued: 2,
+  scanning: 3,
+  // Past the last index: every step renders complete.
+  done: IMPORT_STEP_LABELS.length,
+};
+
 /** Real megabyte rendering for the upload counter: one decimal below 100 MB,
- *  whole (locale-grouped) megabytes above. */
+ *  whole megabytes above, one locale convention for both. */
 function formatMB(bytes: number): string {
   const mb = bytes / (1024 * 1024);
-  return `${mb < 100 ? mb.toFixed(1) : Math.round(mb).toLocaleString()} MB`;
+  return `${mb.toLocaleString(undefined, {
+    maximumFractionDigits: mb < 100 ? 1 : 0,
+  })} MB`;
 }
 
 /**
@@ -177,6 +179,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
       };
       let job: ArchiveImportJob;
       try {
+        // Resolves only on a terminal status (done / failed); anything else
+        // keeps polling or ends as ImportPollLost.
         job = await awaitImportJob(queued.id, { onUpdate });
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
@@ -306,13 +310,26 @@ export function ImportArchivePanel({ username }: { username: string }) {
                         </div>
                       </div>
                     ),
-                    onRemove: () => setFile(null),
+                    onRemove: () => {
+                      setFile(null);
+                      setPhase("strip");
+                      setResult(null);
+                      setLiveJob(null);
+                      setUploadBytes(null);
+                    },
                     removeLabel: "Remove file",
                   },
                 ]
               : []
           }
-          onAddFiles={(files) => setFile(files[0] ?? null)}
+          onAddFiles={(files) => {
+            // Composing the next run clears the previous run's receipt.
+            setFile(files[0] ?? null);
+            setPhase("strip");
+            setResult(null);
+            setLiveJob(null);
+            setUploadBytes(null);
+          }}
           accept=".zip,application/zip"
           addLabel="Choose your X archive (.zip)"
           addHint="or drag it onto this box"
@@ -353,15 +370,21 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[2],
                   spinner: true,
-                  detail: `~${(liveJob?.post_estimate ?? 1).toLocaleString()} post${
-                    (liveJob?.post_estimate ?? 1) === 1 ? "" : "s"
-                  } in your archive.`,
+                  // Real numbers only: no detail when the estimate is absent.
+                  ...(liveJob?.post_estimate != null
+                    ? {
+                        detail: `~${liveJob.post_estimate.toLocaleString()} post${
+                          liveJob.post_estimate === 1 ? "" : "s"
+                        } in your archive.`,
+                      }
+                    : {}),
                 },
                 {
                   label: IMPORT_STEP_LABELS[3],
                   // The worker runs two legs: the parse over tweets.js (no
                   // ratio yet, `progress_total` still null), then the
-                  // per-detection persist the polled counts measure.
+                  // per-detection persist the polled counts measure. A zero
+                  // total means nothing to persist: trivially complete.
                   ...(liveJob && liveJob.progress_total !== null
                     ? {
                         progress:
@@ -381,7 +404,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[4],
                   keepDetail: true,
-                  ...(phase === "done" && liveJob
+                  // Zero-created runs leave the receipt to the outcome message
+                  // below; a "0 drafts ready for review" line would fight it.
+                  ...(phase === "done" && liveJob && liveJob.created > 0
                     ? {
                         detail:
                           `${liveJob.created.toLocaleString()} draft${
@@ -393,7 +418,14 @@ export function ImportArchivePanel({ username }: { username: string }) {
                       }
                     : {}),
                 },
-              ]}
+              ].map((step, i) =>
+                // Under a failure, the raising step drops its in-flight
+                // detail and spinner: the red marker + the error banner
+                // carry the story, not a stale "Reading your posts".
+                !loading && error !== null && i === IMPORT_PHASE_INDEX[phase]
+                  ? { ...step, detail: undefined, spinner: false }
+                  : step
+              )}
               active={IMPORT_PHASE_INDEX[phase]}
               failed={!loading && error !== null}
             />

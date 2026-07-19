@@ -39,6 +39,33 @@ def test_oversized_content_length_returns_413():
     assert "too large" in response.json()["detail"].lower()
 
 
+def test_dev_staging_upload_admits_archive_sized_bodies():
+    """The dev staging upload stands in for the direct-to-S3 archive POST
+    that bypasses the API in prod, so the body-size middleware exempts it
+    up to the archive cap (a real 772 MB export 413'd here before this
+    carve-out). The middleware must pass a large announced body on that
+    one path (the request then fails in the route on the missing form,
+    not at the HTTP layer) while the same length still 413s elsewhere,
+    and anything above the archive cap still 413s on the dev path too.
+    """
+    from app.main import _MAX_REQUEST_BODY_BYTES
+    from app.services.storage import DEV_STAGING_UPLOAD_PATH
+    from app.services.tweet_ingest import archive_zip
+
+    large = str(_MAX_REQUEST_BODY_BYTES + 1)
+    passed = client.post(DEV_STAGING_UPLOAD_PATH, data=b"", headers={"Content-Length": large})
+    assert passed.status_code != 413
+
+    elsewhere = client.post("/api/v1/auth/login", data=b"", headers={"Content-Length": large})
+    assert elsewhere.status_code == 413
+
+    beyond_archive_cap = str(archive_zip.MAX_UPLOAD_BYTES + (10 * 1024 * 1024) + 1)
+    rejected = client.post(
+        DEV_STAGING_UPLOAD_PATH, data=b"", headers={"Content-Length": beyond_archive_cap}
+    )
+    assert rejected.status_code == 413
+
+
 def test_negative_content_length_returns_413():
     """Negative ``Content-Length`` must be rejected at the middleware
     layer too. ``int("-1") > _MAX_REQUEST_BODY_BYTES`` is False, so a

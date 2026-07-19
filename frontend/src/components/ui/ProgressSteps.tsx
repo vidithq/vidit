@@ -2,6 +2,12 @@ import { Check, Loader2, X } from "lucide-react";
 
 import { ACCENT_SURFACE } from "./styles";
 
+// Same disc shape as the numbered guide list in ImportArchivePanel; kept
+// inline on both sides because styles.ts is colour-only by contract and the
+// two lists are unrelated widgets that merely share the shape.
+const NUMBER_DISC =
+  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold";
+
 /** One step of a live multi-step operation. */
 export interface ProgressStep {
   label: string;
@@ -19,6 +25,8 @@ export interface ProgressStep {
   keepDetail?: boolean;
 }
 
+const clampPct = (fraction: number) => Math.min(100, Math.max(0, Math.round(fraction * 100)));
+
 /**
  * Vertical stepper for a live multi-step operation (the archive import):
  * completed steps get a check, the active step a highlighted disc plus a
@@ -27,6 +35,10 @@ export interface ProgressStep {
  * `steps.length` when every step is complete. `failed` turns the active step
  * into the red failure marker (pair it with the form's error banner for the
  * message) and hides the bar.
+ *
+ * Step state reaches assistive tech three ways: `aria-current="step"` on the
+ * active item, a visually hidden state suffix per step, and one polite status
+ * region announcing the active step as it changes.
  */
 export function ProgressSteps({
   steps,
@@ -37,17 +49,29 @@ export function ProgressSteps({
   active: number;
   failed?: boolean;
 }) {
+  const activeStep = steps[active];
+  const liveStatus = failed
+    ? `${activeStep?.label ?? "Step"} failed`
+    : activeStep
+      ? `Step ${active + 1} of ${steps.length}: ${activeStep.label}` +
+        (activeStep.progress !== undefined ? `, ${clampPct(activeStep.progress)}%` : "")
+      : "All steps complete";
   return (
     <ol className="space-y-1" aria-label="Progress">
+      <span role="status" className="sr-only">
+        {liveStatus}
+      </span>
       {steps.map((step, i) => {
         const state =
           i < active ? "done" : i === active ? (failed ? "failed" : "active") : "pending";
         return (
-          <li key={step.label} className="flex gap-3">
+          // Positional key on purpose: steps never reorder, and labels are
+          // not required to be unique.
+          <li key={i} className="flex gap-3" aria-current={state === "active" ? "step" : undefined}>
             {/* Marker column: the status disc + the connector to the next row. */}
             <div className="flex flex-col items-center">
               <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                className={`${NUMBER_DISC} ${
                   state === "done"
                     ? "bg-orange-500/15 text-orange-400"
                     : state === "active"
@@ -86,12 +110,21 @@ export function ProgressSteps({
                 }`}
               >
                 {step.label}
+                <span className="sr-only">
+                  {state === "done"
+                    ? ", completed"
+                    : state === "active"
+                      ? ", in progress"
+                      : state === "failed"
+                        ? ", failed"
+                        : ""}
+                </span>
                 {state === "active" && step.spinner && (
                   <Loader2
                     size={13}
                     strokeWidth={2}
                     className="shrink-0 animate-spin text-orange-400"
-                    aria-label="In progress"
+                    aria-hidden
                   />
                 )}
               </p>
@@ -102,11 +135,11 @@ export function ProgressSteps({
                   aria-label={step.label}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={Math.round(step.progress * 100)}
+                  aria-valuenow={clampPct(step.progress)}
                 >
                   <div
                     className="h-full rounded-full bg-orange-400/80"
-                    style={{ width: `${Math.min(100, Math.max(0, step.progress * 100))}%` }}
+                    style={{ width: `${clampPct(step.progress)}%` }}
                   />
                 </div>
               )}

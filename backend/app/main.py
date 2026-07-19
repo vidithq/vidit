@@ -83,7 +83,10 @@ async def enforce_request_body_size(request: Request, call_next):
     # The dev staging upload stands in for the direct-to-S3 archive POST that
     # bypasses the API entirely in prod, so it carries the archive cap, not
     # the request cap (a real 772 MB export 413'd here in local dev). Local
-    # backend only: the route isn't mounted elsewhere.
+    # backend only: the route isn't mounted elsewhere. The 10 MiB slack
+    # covers the multipart envelope + form fields around the zip, mirroring
+    # the request cap's own envelope allowance above; S3's POST policy caps
+    # the file part alone, while Content-Length spans the whole body.
     cap = _MAX_REQUEST_BODY_BYTES
     if settings.storage_backend == "local" and request.url.path == DEV_STAGING_UPLOAD_PATH:
         cap = archive_zip.MAX_UPLOAD_BYTES + (10 * 1024 * 1024)
