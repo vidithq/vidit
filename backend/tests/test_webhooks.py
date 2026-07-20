@@ -36,13 +36,28 @@ HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 COORD_ID = "9400000000000000001"
 BARE_ID = "9400000000000000002"
 BARE2_ID = "9400000000000000003"
+SOURCE_ID = "9400000000000000042"
 
 BODIES = {
+    # A strict-format mention: T: / C: / S: markers plus a proof line.
     COORD_ID: {
         "id_str": COORD_ID,
         "created_at": "2026-07-18T10:00:00.000Z",
         "user": {"screen_name": HANDLE},
-        "text": "@viditbot archive 55.751200, 37.617600 near the bridge",
+        "text": (
+            "@viditbot\n"
+            "T: Strike near the bridge\n"
+            "C: 55.751200, 37.617600\n"
+            "S: https://t.co/src\n"
+            "Shadows match the morning light"
+        ),
+        "entities": {"urls": [{"expanded_url": f"https://x.com/warfootage/status/{SOURCE_ID}"}]},
+    },
+    SOURCE_ID: {
+        "id_str": SOURCE_ID,
+        "created_at": "2026-07-17T09:00:00.000Z",
+        "user": {"screen_name": "warfootage"},
+        "text": "original footage",
     },
     BARE_ID: {
         "id_str": BARE_ID,
@@ -396,8 +411,9 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "no coordinates" in text.lower()
-    assert "48.858370, 2.294481" in text
+    assert "nothing saved" in text.lower()
+    assert "T: title" in text
+    assert "C: 48.858370, 2.294481" in text
 
 
 async def test_drain_unlinked_author_is_fully_silent(db):

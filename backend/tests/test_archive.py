@@ -160,7 +160,7 @@ def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, mon
     excluded via ``by_id`` (the archive's own tweets); among what's left, the
     single remaining status candidate is chased as the source, not the
     self-reference."""
-    import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.acquire as acquire_mod
 
     archive = tmp_path / "arc"
     archive.mkdir()
@@ -210,7 +210,7 @@ def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, mon
             "created_at": "2025-11-12T09:00:00.000Z",
         }
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     records = read_tweets(archive, handle="analyst", chase=True)
     geoloc = next(r for r in records if r.tweet_id == "222")
     assert geoloc.quoted is not None
@@ -223,7 +223,7 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
     is ambiguous, so nothing is chased and the record carries no source tweet
     (the source stays empty for review); the same id linked twice remains one
     candidate and is chased."""
-    import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.acquire as acquire_mod
 
     archive = tmp_path / "arc"
     archive.mkdir()
@@ -283,7 +283,7 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
             "created_at": "2025-11-12T09:00:00.000Z",
         }
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     records = read_tweets(archive, handle="ana", chase=True)
     ambiguous = next(r for r in records if r.tweet_id == "1")
     assert ambiguous.quoted is None
@@ -298,7 +298,7 @@ def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
     that merely carries ``x.com/<w>/status/<id>`` inside its path is not an X
     status link, so it is never chased. The candidate rule keys on the real host
     via ``classify_source_host``, not a raw substring match on the whole URL."""
-    import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.acquire as acquire_mod
 
     archive = tmp_path / "arc"
     archive.mkdir()
@@ -329,7 +329,7 @@ def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
     def fake_fetch(tweet_id, *, client=None):
         raise AssertionError("a non-X host must never be chased")
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert record.quoted is None
 
@@ -339,6 +339,7 @@ def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch
     resolve (two footage candidates across hosts), so neither is chased: the X
     status must not materialise as a quote and win precedence over the empty
     resolved source."""
+    import app.services.tweet_ingest.acquire as acquire_mod
     import app.services.tweet_ingest.archive as archive_mod
 
     archive = tmp_path / "arc"
@@ -368,7 +369,7 @@ def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch
     def fake_embed(url, *, client=None):
         raise AssertionError("ambiguous source must not chase the Telegram post")
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert record.quoted is None
@@ -381,7 +382,7 @@ def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
     URL-handle exclusions. Once chased, the syndication handle reveals it as the
     owner's own post, so the result is thrown out rather than materialised as
     third-party footage."""
-    import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.acquire as acquire_mod
 
     archive = tmp_path / "arc"
     archive.mkdir()
@@ -414,7 +415,7 @@ def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
             "created_at": "2025-11-12T09:00:00.000Z",
         }
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     [record] = read_tweets(archive, handle="analyst", chase=True)
     assert record.quoted is None
 

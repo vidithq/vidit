@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from .acquire import record_from_syndication
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .detect import DetectedGeoloc, detect
+from .detect import DetectedGeoloc, detect, detect_structured
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -68,6 +68,7 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "detect",
+    "detect_structured",
     "extract_coords",
     "fetch_cdn_media",
     "fetch_syndication",

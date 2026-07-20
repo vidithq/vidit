@@ -1,8 +1,12 @@
-"""Integration tests for the bot pipeline — mention → self-thread → detected.
+"""Integration tests for the bot pipeline: mention → strict format → detected.
 
 Every X surface is mocked: syndication bodies through one ``MockTransport``
 (dispatched by tweet id), the paid mentions read and reply write through
 another. The DB and the assemble step are real, same as ``test_detection``.
+
+The bot accepts only the strict single-tweet format (``T:`` / ``C:`` /
+``S:`` lines, everything else becomes the proof); the free-text coordinate
+vocabulary stays the archive path's and is proven NOT to work here.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import uuid
 
 import httpx
 import pytest
+from geoalchemy2.shape import to_shape
 
 from app.config import settings
 from app.database import SessionLocal
@@ -33,10 +38,27 @@ FOREIGN_ID = "9300000000000000001"
 PARENT_ID = "9300000000000000002"
 TAGGED_ID = "9300000000000000003"
 BARE_ID = "9300000000000000004"
+FREETEXT_ID = "9300000000000000005"
+MISSING_T_ID = "9300000000000000006"
+MISSING_C_ID = "9300000000000000007"
+MISSING_S_ID = "9300000000000000008"
+REPLY_BARE_ID = "9300000000000000010"
+SOURCE_ID = "9300000000000000042"
 
-# A three-hop chain: a foreign tweet (whose coordinate must never leak into
-# the detection), the analyst's coordinate-bearing reply to it, and the
-# analyst's tag on their own reply.
+_SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
+_STRUCT_TEXT = (
+    "@viditbot\n"
+    "t: Strike on the vehicle depot\n"
+    "C: 48.123456, 37.654321\n"
+    "s: https://t.co/src\n"
+    "Smoke plume matches the skyline"
+)
+_SOURCE_ENTITIES = {"urls": [{"expanded_url": _SOURCE_URL}]}
+
+# The chain: a foreign coordinate tweet, the analyst's free-text coordinate
+# reply to it, and the analyst's strict-format tag on their own reply. Neither
+# ancestor coordinate may leak into the detection: the bot reads exactly the
+# tagged tweet.
 BODIES = {
     FOREIGN_ID: {
         "id_str": FOREIGN_ID,
@@ -55,7 +77,8 @@ BODIES = {
         "id_str": TAGGED_ID,
         "created_at": "2026-03-11T12:00:00.000Z",
         "user": {"screen_name": HANDLE},
-        "text": "@viditbot archive this",
+        "text": _STRUCT_TEXT,
+        "entities": _SOURCE_ENTITIES,
         "in_reply_to_status_id_str": PARENT_ID,
     },
     BARE_ID: {
@@ -63,6 +86,52 @@ BODIES = {
         "created_at": "2026-03-11T13:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "@viditbot nothing to see here",
+    },
+    # The pre-strict-format shape: coordinate and source in free text, no
+    # markers. The archive vocabulary, deliberately rejected on the bot path.
+    FREETEXT_ID: {
+        "id_str": FREETEXT_ID,
+        "created_at": "2026-03-11T14:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot Geolocated 55.751200, 37.617600 near the bridge https://t.co/src",
+        "entities": _SOURCE_ENTITIES,
+    },
+    MISSING_T_ID: {
+        "id_str": MISSING_T_ID,
+        "created_at": "2026-03-11T15:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/src",
+        "entities": _SOURCE_ENTITIES,
+    },
+    MISSING_C_ID: {
+        "id_str": MISSING_C_ID,
+        "created_at": "2026-03-11T16:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot\nT: Strike on the depot\nS: https://t.co/src",
+        "entities": _SOURCE_ENTITIES,
+    },
+    MISSING_S_ID: {
+        "id_str": MISSING_S_ID,
+        "created_at": "2026-03-11T17:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot\nT: Strike on the depot\nC: 48.123456, 37.654321",
+    },
+    # A bare tag replying to the analyst's own coordinate tweet: under the old
+    # parent rollup this would have detected; single-tweet reading must not.
+    REPLY_BARE_ID: {
+        "id_str": REPLY_BARE_ID,
+        "created_at": "2026-03-11T18:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot see above",
+        "in_reply_to_status_id_str": PARENT_ID,
+    },
+    # The S: link's target, chased for its post date (no media, so the
+    # assemble step fetches nothing).
+    SOURCE_ID: {
+        "id_str": SOURCE_ID,
+        "created_at": "2026-03-10T09:00:00.000Z",
+        "user": {"screen_name": "warfootage"},
+        "text": "original footage",
     },
 }
 
@@ -182,7 +251,7 @@ async def _run(db, mention_ids, seen_params=None, posted=None, liked=None, reply
     return outcome, seen_params, posted, liked
 
 
-async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_owner):
+async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.events_created == 1
@@ -193,13 +262,27 @@ async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_o
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
-    # The head of the rolled-up self-thread (the analyst's coordinate tweet),
-    # canonicalised with the real handle even though the walk fetched it
-    # through the handle-less /i/web/ form.
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{PARENT_ID}"
-    assert event.source_url is None
-    # The foreign parent stayed out: its coordinate never became an event.
-    assert "11.111111" not in json.dumps(event.proof)
+    # Single-tweet read: provenance is the tagged tweet itself, never a parent.
+    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
+    # Title from T:, coordinate from C: (marker case-insensitive: t: / s:).
+    assert event.title == "Strike on the vehicle depot"
+    point = to_shape(event.event_coords)
+    assert point.y == pytest.approx(48.123456)
+    assert point.x == pytest.approx(37.654321)
+    # Source from S:, chased through syndication for its post date.
+    assert event.source_url == _SOURCE_URL
+    assert event.source_posted_at is not None
+    assert event.source_posted_at.date().isoformat() == "2026-03-10"
+
+    # Proof = the non-marker lines only: no markers, no raw coordinate, no
+    # bot tag, no shortlink, and nothing from the parent chain.
+    proof = json.dumps(event.proof)
+    assert "Smoke plume matches the skyline" in proof
+    assert "T:" not in proof and "t:" not in proof
+    assert "48.123456" not in proof
+    assert "viditbot" not in proof
+    assert "t.co" not in proof
+    assert "55.751200" not in proof and "11.111111" not in proof
 
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
     assert ledger.outcome == "created"
@@ -211,9 +294,52 @@ async def test_mention_creates_detected_draft_with_self_only_rollup(db, linked_o
     text = payload["text"]
     assert isinstance(text, str)
     assert str(event.id) in text
-    assert "No source" in text  # sourceless draft → warning surfaced
+    assert "No source" not in text  # the S: source landed, no warning
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
+
+
+async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
+    # The tagged tweet is a bare reply to the analyst's own coordinate tweet.
+    # The old self-thread walk would have rolled the parent in and detected;
+    # the strict single-tweet read must fail it instead.
+    outcome, _, posted, _ = await _run(db, [REPLY_BARE_ID])
+
+    assert outcome.no_detection == 1
+    assert outcome.events_created == 0
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
+    (payload,) = posted  # the linked author gets the format lesson
+    assert "T: title" in payload["text"]
+
+
+async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
+    # Coordinate + source, correct by the archive's free-text vocabulary,
+    # but no markers: the bot must refuse and teach the format.
+    outcome, _, posted, liked = await _run(db, [FREETEXT_ID])
+
+    assert outcome.no_detection == 1
+    assert outcome.events_created == 0
+    assert liked == [{"tweet_id": FREETEXT_ID}]
+    (payload,) = posted
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert "T: title" in text and "C: 48.858370, 2.294481" in text and "S: source link" in text
+    # Same linkless contract as the success reply.
+    assert "http" not in text and ".app" not in text and ".com" not in text
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
+    assert ledger.outcome == "no_detection"
+    assert ledger.reply_tweet_id == "777"
+
+
+@pytest.mark.parametrize("mention_id", [MISSING_T_ID, MISSING_C_ID, MISSING_S_ID])
+async def test_each_missing_marker_fails_the_mention(db, linked_owner, mention_id):
+    outcome, _, posted, _ = await _run(db, [mention_id])
+
+    assert outcome.no_detection == 1
+    assert outcome.events_created == 0
+    assert len(posted) == 1  # the failure reply teaching the format
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == mention_id).one()
+    assert ledger.outcome == "no_detection"
 
 
 async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
@@ -305,9 +431,9 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
     assert liked == []
 
 
-async def test_coordinate_less_mention_from_unlinked_author_records_silently(db):
-    # No linked account: no failure reply, no like; a stranger's
-    # coordinate-less tag costs nothing.
+async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
+    # No linked account: no failure reply, no like; a stranger's formatless
+    # tag costs nothing.
     outcome, _, posted, liked = await _run(db, [BARE_ID])
 
     assert outcome.no_detection == 1
@@ -319,7 +445,7 @@ async def test_coordinate_less_mention_from_unlinked_author_records_silently(db)
     assert ledger.reply_tweet_id is None
 
 
-async def test_coordinate_less_mention_from_linked_author_gets_failure_reply(db, linked_owner):
+async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [BARE_ID])
 
     assert outcome.no_detection == 1
@@ -330,8 +456,8 @@ async def test_coordinate_less_mention_from_linked_author_gets_failure_reply(db,
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert "no coordinates" in text.lower()
-    assert "48.858370, 2.294481" in text  # the expected-format hint
+    assert "nothing saved" in text.lower()
+    assert "T: title" in text  # the format lesson
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -488,9 +614,11 @@ def test_compose_reply_is_linkless_and_carries_warnings():
     assert len(text) <= 280
 
 
-def test_compose_failure_reply_is_linkless_and_short():
+def test_compose_failure_reply_teaches_the_format_linklessly():
     text = compose_failure_reply()
-    assert "48.858370, 2.294481" in text
+    assert "T: title" in text
+    assert "C: 48.858370, 2.294481" in text
+    assert "S: source link" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
 

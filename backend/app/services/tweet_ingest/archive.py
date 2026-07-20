@@ -18,16 +18,14 @@ from typing import Any
 
 import httpx
 
-from .errors import TweetFetchFailed, TweetNotAccessible
+from .acquire import quoted_from_syndication
 from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
 from .resolve import FootageCandidate, footage_candidates
 from .syndication import (
     _X_STATUS_URL_RE,
     MEDIA_FETCH_MAX_BYTES,
     ParsedMedia,
-    _extract_media,
     extract_source_links,
-    fetch_syndication,
     is_trusted_media_url,
 )
 from .telegram import fetch_telegram_embed
@@ -150,30 +148,6 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     return out
 
 
-def _quoted_from_syndication(quoted_id: str) -> QuotedTweet | None:
-    """Chase a third-party quoted tweet (not in the archive) via syndication.
-
-    Fail-soft: a fetch error degrades to "no quote" and never fails the backfill.
-    """
-    try:
-        body = fetch_syndication(quoted_id)
-    except (TweetFetchFailed, TweetNotAccessible):
-        return None
-    user = body.get("user")
-    handle = user.get("screen_name") if isinstance(user, dict) else None
-    if not isinstance(handle, str) or not handle:
-        return None
-    text = body.get("text")
-    created_at = body.get("created_at")
-    return QuotedTweet(
-        tweet_id=quoted_id,
-        handle=handle,
-        text=text if isinstance(text, str) else "",
-        created_at=created_at if isinstance(created_at, str) else "",
-        media=list(_extract_media(body, origin="quote")),
-    )
-
-
 def _linked_status_id(url: str) -> str | None:
     """The X status id in ``url`` (``_X_STATUS_URL_RE``), or ``None``."""
     match = _X_STATUS_URL_RE.search(url)
@@ -230,11 +204,11 @@ def _archive_quoted(
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 media=_archive_media(src, quoted_id),
             )
-        return _quoted_from_syndication(quoted_id) if chase else None
+        return quoted_from_syndication(quoted_id) if chase else None
     if chase:
         candidate = _sole_footage_candidate(tweet, by_id, owner_handle=handle)
         if candidate is not None and candidate.host == "x" and candidate.status_id is not None:
-            quoted = _quoted_from_syndication(candidate.status_id)
+            quoted = quoted_from_syndication(candidate.status_id)
             if quoted is not None and quoted.handle.lower() == handle.lower():
                 # A link to the owner's OWN status absent from the export (deleted
                 # tweet, truncated archive) slips the ``by_id`` exclusion; the
