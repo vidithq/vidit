@@ -172,6 +172,9 @@ def _mentions_client(
 
 
 def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
+    """``liked`` captures any call to the likes endpoint: the like ack was
+    removed from the response model, so tests assert it stays empty."""
+
     def handler(req: httpx.Request) -> httpx.Response:
         if req.url.path.endswith("/likes"):
             liked.append(json.loads(req.content))
@@ -256,9 +259,8 @@ async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
 
     assert outcome.events_created == 1
     assert outcome.replies_posted == 1
-    # The receipt ack: the tagged tweet is liked because the author is linked.
-    assert outcome.likes_posted == 1
-    assert liked == [{"tweet_id": TAGGED_ID}]
+    # The like ack is gone: the reply is the only gesture.
+    assert liked == []
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
@@ -319,11 +321,11 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
-    assert liked == [{"tweet_id": FREETEXT_ID}]
+    assert liked == []  # no like ack, on any path
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "T: title" in text and "C: 48.858370, 2.294481" in text and "S: source link" in text
+    assert "T: title" in text and "C: 22.703889, -83.297222" in text and "S: source link" in text
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -408,7 +410,6 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     assert outcome.no_account == 1
     assert outcome.events_created == 0
     assert outcome.replies_posted == 0
-    assert outcome.likes_posted == 0
     assert posted == []
     assert liked == []
     assert db.query(User).filter(User.x_handle == HANDLE).first() is None
@@ -451,7 +452,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     assert outcome.replies_posted == 1
-    assert liked == [{"tweet_id": BARE_ID}]  # the receipt ack still lands
+    assert liked == []
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
@@ -468,27 +469,26 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
 async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     # The tagged tweet is itself a reply to the bot (a courtesy answer to the
     # bot's own reply auto-mentions it): the failure reply must not fire, or
-    # every thanks would earn an answer forever. The like still lands: it
-    # can't loop.
+    # every thanks would earn an answer forever.
     outcome, _, posted, liked = await _run(db, [BARE_ID], reply_to={BARE_ID: BOT_USER_ID})
 
     assert outcome.no_detection == 1
     assert posted == []
-    assert liked == [{"tweet_id": BARE_ID}]
+    assert liked == []
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
     assert ledger.reply_tweet_id is None
 
 
-async def test_like_budget_cap_skips_like_but_draft_still_lands(db, linked_owner, monkeypatch):
+async def test_reply_budget_cap_skips_reply_but_draft_still_lands(db, linked_owner, monkeypatch):
     import app.services.bot as bot_service
 
-    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_HOUR", 0)
+    monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 0)
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
+    assert posted == []
     assert liked == []
-    assert outcome.likes_posted == 0
+    assert outcome.replies_posted == 0
     assert outcome.events_created == 1  # detection is unbilled; only the gesture is skipped
-    assert len(posted) == 1
 
 
 async def test_self_mention_is_ledgered_so_cursor_advances(db):
@@ -617,7 +617,7 @@ def test_compose_reply_is_linkless_and_carries_warnings():
 def test_compose_failure_reply_teaches_the_format_linklessly():
     text = compose_failure_reply()
     assert "T: title" in text
-    assert "C: 48.858370, 2.294481" in text
+    assert "C: 22.703889, -83.297222" in text
     assert "S: source link" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280

@@ -70,6 +70,9 @@ finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobR
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 
+# ── Retired column kept to skip a drop migration; nothing writes or reads it ──
+liked_at  # models/bot_mention.py BotMention
+
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc
 in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord

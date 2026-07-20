@@ -53,7 +53,6 @@ def main() -> None:
         f"Bot reconciliation pass OK: {result.mentions_seen} mentions seen, "
         f"{result.events_created} events created, "
         f"{result.replies_posted} replies posted, "
-        f"{result.likes_posted} likes posted, "
         f"{result.no_detection} without detection, "
         f"{result.no_account} without a linked account, "
         f"{result.skipped} deduped, {result.already_handled} already handled, "

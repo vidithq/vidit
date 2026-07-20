@@ -388,7 +388,7 @@ async def test_drain_creates_draft_likes_and_replies(db, linked_owner):
     outcome, posted, liked = await _drain(db)
 
     assert outcome.events_created == 1
-    assert liked == [{"tweet_id": COORD_ID}]  # the like HTTP call went out
+    assert liked == []  # the like ack is gone: the reply is the only gesture
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": COORD_ID}
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == COORD_ID).one()
@@ -407,13 +407,13 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     outcome, posted, liked = await _drain(db)
 
     assert outcome.no_detection == 1
-    assert liked == [{"tweet_id": BARE_ID}]
+    assert liked == []
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
     assert "nothing saved" in text.lower()
     assert "T: title" in text
-    assert "C: 48.858370, 2.294481" in text
+    assert "C: 22.703889, -83.297222" in text
 
 
 async def test_drain_unlinked_author_is_fully_silent(db):
@@ -515,14 +515,13 @@ async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
     import app.services.bot as bot_service
 
     monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 1)
-    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_HOUR", 1)
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}
     )
     _, posted, liked = await _drain(db)
     assert len(posted) == 1  # the failure reply spent the reply budget
-    assert len(liked) == 1
+    assert liked == []
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE2_ID)]}

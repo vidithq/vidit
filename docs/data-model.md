@@ -555,7 +555,7 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 | `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`; nothing created, no reply), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
 | `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply, success (event ref + warnings) or failure (no-coordinates format hint, linked authors only); NULL when no reply was earned, reply credentials are absent, or the post failed (the detection stays durable either way). |
-| `liked_at` | `TIMESTAMPTZ` | nullable. When the bot liked the tagged tweet (the receipt ack). The gesture budget counts likes in the trailing hour from it, as it counts replies via `reply_tweet_id` + `processed_at`. |
+| `liked_at` | `TIMESTAMPTZ` | nullable. Retired: the like ack was removed from the response model, so nothing writes or reads it; new rows keep it NULL (dropping the column is not worth a migration). |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
 
 ---
