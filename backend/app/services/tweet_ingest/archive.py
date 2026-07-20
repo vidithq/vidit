@@ -172,7 +172,7 @@ def _sole_footage_candidate(
     """
     links = [
         (url, host)
-        for url, host in extract_source_links(tweet)
+        for url, host, _shortlink in extract_source_links(tweet)
         if _linked_status_id(url) not in by_id
     ]
     candidates = footage_candidates(links, owner_handle=owner_handle)
@@ -290,7 +290,8 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
                 quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
                 telegram=_archive_telegram(tweet, by_id, handle=handle, chase=chase),
                 external_sources=[
-                    SourceLink(url=u, host=h) for u, h in extract_source_links(tweet)
+                    SourceLink(url=u, host=h, shortlink=t)
+                    for u, h, t in extract_source_links(tweet)
                 ],
             )
         )

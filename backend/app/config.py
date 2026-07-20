@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     # posts nothing.
     x_bot_bearer_token: str = ""
     x_bot_user_id: str = ""
+    # The bot account's handle, stripped from the strict mention format's
+    # stored proof text. Configurable so a staging bot or a rename cannot
+    # silently leak the tag into proofs.
+    x_bot_handle: str = "viditbot"
     x_api_consumer_key: str = ""
     x_api_consumer_secret: str = ""
     x_bot_access_token: str = ""

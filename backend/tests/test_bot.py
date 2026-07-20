@@ -53,7 +53,7 @@ _STRUCT_TEXT = (
     "s: https://t.co/src\n"
     "Smoke plume matches the skyline"
 )
-_SOURCE_ENTITIES = {"urls": [{"expanded_url": _SOURCE_URL}]}
+_SOURCE_ENTITIES = {"urls": [{"url": "https://t.co/src", "expanded_url": _SOURCE_URL}]}
 
 # The chain: a foreign coordinate tweet, the analyst's free-text coordinate
 # reply to it, and the analyst's strict-format tag on their own reply. Neither
@@ -619,6 +619,9 @@ def test_compose_failure_reply_teaches_the_format_linklessly():
     assert "T: title" in text
     assert "C: 22.703889, -83.297222" in text
     assert "S: source link" in text
+    # The source rule, for the analyst whose three lines are right but whose
+    # S: link is out of vocabulary.
+    assert "S must hold one link to an X, Telegram, or YouTube post" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
 

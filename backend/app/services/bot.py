@@ -75,15 +75,11 @@ from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
 logger = logging.getLogger(__name__)
 
-# The bot's own handle, as stripped from the strict format's proof text. The
-# account's user id (the read/write credential side) lives in settings.
-BOT_HANDLE = "viditbot"
-
 # X's classic post length. Replies are composed under it and hard-truncated
 # as a belt: an over-long reply would 403 the (billed) create call. The cap
 # counts Python code points while X counts weighted characters (the ⚠ glyph
 # weighs 2), so composed text must stay well under it — today's worst case is
-# ~210 code points / ~215 weighted.
+# ~230 code points / ~235 weighted.
 _REPLY_MAX_CHARS = 280
 
 # Billed-spend ceilings on the write side. The mention surface is public: any
@@ -255,14 +251,17 @@ def compose_failure_reply() -> str:
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the ``S: source link`` line is a placeholder phrase, not a link).
-    Only posted to linked authors, and never on a tag that is itself a reply
-    to the bot (the caller's loop guard).
+    The source-rule sentence covers the analyst whose three lines are right
+    but whose ``S:`` link is out of vocabulary. Only posted to linked
+    authors, and never on a tag that is itself a reply to the bot (the
+    caller's loop guard).
     """
     return (
         "Vidit: nothing saved. Tag me on one post holding three lines:\n"
         "T: title\n"
         "C: 22.703889, -83.297222\n"
         "S: source link\n"
+        "S must hold one link to an X, Telegram, or YouTube post. "
         "Media attached to that post; other lines become the proof note."
     )
 
@@ -326,7 +325,9 @@ async def _process_mention(
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None]:
     record = _tagged_record(mention, client=syndication_client)
-    detections = detect_structured(record, bot_handle=BOT_HANDLE, client=syndication_client)
+    detections = detect_structured(
+        record, bot_handle=settings.x_bot_handle, client=syndication_client
+    )
     if not detections:
         return "no_detection", 0, None
     # After the detection step on purpose: an unknown handle with a

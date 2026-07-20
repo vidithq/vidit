@@ -108,5 +108,7 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),
-        external_sources=[SourceLink(url=u, host=h) for u, h in extract_source_links(body)],
+        external_sources=[
+            SourceLink(url=u, host=h, shortlink=t) for u, h, t in extract_source_links(body)
+        ],
     )

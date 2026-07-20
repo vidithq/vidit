@@ -162,11 +162,24 @@ _QUOTE = QuotedTweet(
     ],
 )
 
-_CONFORMING = "@viditbot\nT: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q\nSmoke plume matches"
+# The quote's link entity: the raw text carries the ``t.co`` token, the entity
+# expands it, and the S: line designates the source by binding to it.
+_QUOTE_LINK = SourceLink(
+    url="https://x.com/warfootage/status/42", host="x", shortlink="https://t.co/q"
+)
+
+_CONFORMING = (
+    "@viditbot\nT: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q"
+    "\nSmoke plume matches"
+)
+
+
+def _quoted_rec(text: str = _CONFORMING, media: list[ParsedMedia] | None = None) -> TweetRecord:
+    return _struct_rec(text, quoted=_QUOTE, external_sources=[_QUOTE_LINK], media=media)
 
 
 def test_structured_conforming_tweet_maps_markers_to_fields():
-    out = detect_structured(_struct_rec(_CONFORMING, quoted=_QUOTE), bot_handle="viditbot")
+    out = detect_structured(_quoted_rec(), bot_handle="viditbot")
     assert len(out) == 1
     d = out[0]
     assert d.title == "Strike on the depot"
@@ -179,22 +192,35 @@ def test_structured_conforming_tweet_maps_markers_to_fields():
 
 
 def test_structured_proof_is_the_non_marker_lines_only():
-    record = _struct_rec(
-        "Context first\n" + _CONFORMING + "\nSecond proof line https://t.co/x",
-        quoted=_QUOTE,
-    )
+    record = _quoted_rec("Context first\n" + _CONFORMING + "\nSecond proof line https://t.co/x")
     (d,) = detect_structured(record, bot_handle="viditbot")
+    # https://t.co/x has no entity (the wrapper X appends for media): stripped.
     assert d.proof_text == "Context first\nSmoke plume matches\nSecond proof line"
-    # Markers, raw coordinate, the tag, and shortlinks are all gone.
+    # Markers, raw coordinate, the tag, and leftover shortlinks are all gone.
     assert "T:" not in d.proof_text
     assert "48.123456" not in d.proof_text
     assert "viditbot" not in d.proof_text
     assert "t.co" not in d.proof_text
 
 
+def test_structured_proof_reference_link_survives_expanded():
+    # A link on a proof line neither influences the source nor fails the
+    # mention; its opaque t.co token is expanded to the real URL in the proof.
+    ref = SourceLink(url="https://example.org/report", host="other", shortlink="https://t.co/ref")
+    record = _struct_rec(
+        _CONFORMING + "\nBackground reading https://t.co/ref",
+        quoted=_QUOTE,
+        external_sources=[_QUOTE_LINK, ref],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert "Background reading https://example.org/report" in d.proof_text
+    assert "t.co" not in d.proof_text
+
+
 def test_structured_markers_are_case_insensitive():
     text = "@ViditBot\nt: Strike on the depot\nc: 48.123456, 37.654321\ns: https://t.co/q"
-    out = detect_structured(_struct_rec(text, quoted=_QUOTE), bot_handle="viditbot")
+    out = detect_structured(_quoted_rec(text), bot_handle="viditbot")
     assert len(out) == 1
     assert out[0].title == "Strike on the depot"
 
@@ -204,14 +230,18 @@ def test_structured_markers_are_case_insensitive():
     [
         # Missing T
         "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/q",
-        # Empty T
+        # Empty T with no later value
         "@viditbot\nT:\nC: 48.123456, 37.654321\nS: https://t.co/q",
         # Missing C
         "@viditbot\nT: Strike\nS: https://t.co/q",
         # Missing S
         "@viditbot\nT: Strike\nC: 48.123456, 37.654321",
-        # S without a URL
-        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: see the quote",
+        # S without a URL token and without a quote
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: see my pinned post",
+        # Two URL tokens on the S line
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/q https://t.co/r",
+        # S token binding to no link entity
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/nope",
         # C is not a bare decimal pair
         "@viditbot\nT: Strike\nC: near the bridge\nS: https://t.co/q",
         # C carries trailing prose
@@ -225,15 +255,40 @@ def test_structured_markers_are_case_insensitive():
     ],
 )
 def test_structured_rejects_any_incomplete_or_invalid_format(text):
-    assert detect_structured(_struct_rec(text, quoted=_QUOTE), bot_handle="viditbot") == []
+    # No inline quote: the record carries the quote's link entity only, so
+    # every rejection here is the format's, not a missing-fixture artefact.
+    record = _struct_rec(text, external_sources=[_QUOTE_LINK])
+    assert detect_structured(record, bot_handle="viditbot") == []
 
 
-def test_structured_requires_a_resolvable_source():
-    # S: line present, but the only link is an article (host ``other``):
+@pytest.mark.parametrize(
+    "text",
+    [
+        # An empty marker line never shadows the real value further down.
+        "@viditbot\nT:\nT: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q",
+        "@viditbot\nT: Strike on the depot\nC:\nC: 48.123456, 37.654321\nS: https://t.co/q",
+        "@viditbot\nT: Strike on the depot\nC: 48.123456, 37.654321\nS:\nS: https://t.co/q",
+    ],
+)
+def test_structured_empty_marker_line_does_not_shadow_a_later_value(text):
+    out = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    assert len(out) == 1
+    d = out[0]
+    assert d.title == "Strike on the depot"
+    assert d.coordinate.lat == pytest.approx(48.123456)
+    # Both marker lines (the empty and the real one) are stripped from proof.
+    assert "Strike on the depot" not in d.proof_text
+    assert "T:" not in d.proof_text and "C:" not in d.proof_text and "S:" not in d.proof_text
+
+
+def test_structured_requires_a_footage_source():
+    # S: designates a link that binds, but to an article (host ``other``):
     # outside the source vocabulary, so the mention does not conform.
     record = _struct_rec(
         "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/a",
-        external_sources=[SourceLink(url="https://example.org/report", host="other")],
+        external_sources=[
+            SourceLink(url="https://example.org/report", host="other", shortlink="https://t.co/a")
+        ],
     )
     assert detect_structured(record, bot_handle="viditbot") == []
 
@@ -242,23 +297,75 @@ def test_structured_attached_media_is_proof_quote_media_is_source():
     own = ParsedMedia(
         kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
     )
-    (d,) = detect_structured(
-        _struct_rec(_CONFORMING, quoted=_QUOTE, media=[own]), bot_handle="viditbot"
-    )
+    (d,) = detect_structured(_quoted_rec(media=[own]), bot_handle="viditbot")
     assert [m.remote_url for m in d.proof_media] == ["https://pbs.twimg.com/own.jpg"]
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
 
 
 def test_structured_repeated_marker_keeps_first_value_and_strips_both():
     text = _CONFORMING + "\nT: A second title line"
-    (d,) = detect_structured(_struct_rec(text, quoted=_QUOTE), bot_handle="viditbot")
+    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert "second title" not in d.proof_text
 
 
-def test_structured_chases_the_sole_x_status_source():
-    # No inline quote: the sole S: candidate is an X status, chased through
-    # syndication for its media and post date.
+def test_structured_s_line_designates_among_several_links():
+    # Two footage links in the tweet: the S: token picks the Telegram one;
+    # the X status on a proof line neither competes nor fails the mention
+    # (under the old whole-record resolution two candidates were ambiguous).
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    other = SourceLink(
+        url="https://x.com/warfootage/status/77", host="x", shortlink="https://t.co/p"
+    )
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/s\nsee also https://t.co/p",
+        external_sources=[telegram, other],
+    )
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)  # embed unavailable: degrades to link-only
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+    assert d.source_url == "https://t.me/channel/5"
+    assert "see also https://x.com/warfootage/status/77" in d.proof_text
+
+
+def test_structured_non_designated_quote_does_not_steal_the_source():
+    # The tweet quotes one post but S: designates a Telegram link: the S:
+    # choice wins, and the quote's media must not land in the source slot.
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/s",
+        quoted=_QUOTE,
+        external_sources=[telegram],
+    )
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+    assert d.source_url == "https://t.me/channel/5"
+    assert d.source_media == []
+
+
+def test_structured_quote_card_without_token_designates_the_quote():
+    # X converted the pasted S: URL into the quote card and stripped the
+    # trailing t.co from the text: the quote IS the link that was on S:.
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: source below",
+        quoted=_QUOTE,
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
+
+
+def test_structured_chases_the_designated_x_status():
+    # No inline quote: the designated S: entity is an X status, chased
+    # through syndication for its media and post date.
     def handler(req: httpx.Request) -> httpx.Response:
         assert req.url.params["id"] == "77"
         return httpx.Response(
@@ -273,7 +380,11 @@ def test_structured_chases_the_sole_x_status_source():
 
     record = _struct_rec(
         _CONFORMING,
-        external_sources=[SourceLink(url="https://x.com/warfootage/status/77", host="x")],
+        external_sources=[
+            SourceLink(
+                url="https://x.com/warfootage/status/77", host="x", shortlink="https://t.co/q"
+            )
+        ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         (d,) = detect_structured(record, bot_handle="viditbot", client=client)
@@ -295,7 +406,9 @@ def test_structured_telegram_source_is_link_and_embed_date():
 
     record = _struct_rec(
         _CONFORMING,
-        external_sources=[SourceLink(url="https://t.me/channel/5", host="telegram")],
+        external_sources=[
+            SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/q")
+        ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         (d,) = detect_structured(record, bot_handle="viditbot", client=client)
@@ -310,11 +423,36 @@ def test_structured_failed_chase_degrades_to_link_only():
 
     record = _struct_rec(
         _CONFORMING,
-        external_sources=[SourceLink(url="https://x.com/warfootage/status/78", host="x")],
+        external_sources=[
+            SourceLink(
+                url="https://x.com/warfootage/status/78", host="x", shortlink="https://t.co/q"
+            )
+        ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         (d,) = detect_structured(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://x.com/warfootage/status/78"
+    assert d.source_posted_at is None
+    assert d.source_media == []
+
+
+def test_structured_chase_transport_error_degrades_to_link_only():
+    # A flaky network during the chase (raw httpx.ConnectError from the
+    # transport) must degrade to link-only, never ledger the mention failed.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    record = _struct_rec(
+        _CONFORMING,
+        external_sources=[
+            SourceLink(
+                url="https://x.com/warfootage/status/79", host="x", shortlink="https://t.co/q"
+            )
+        ],
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+    assert d.source_url == "https://x.com/warfootage/status/79"
     assert d.source_posted_at is None
     assert d.source_media == []
 

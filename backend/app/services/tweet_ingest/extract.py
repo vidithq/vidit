@@ -224,8 +224,8 @@ _MARKER_LINE_RE = re.compile(r"^\s*([TCS]):\s*(.*)$", re.IGNORECASE)
 class MarkerFields:
     """The strict-format split of one tweet's text.
 
-    Each marker value is the first matching line's payload, stripped;
-    ``None`` when the line is absent or empty. ``proof_text`` is every
+    Each marker value is the first matching line's non-empty payload,
+    stripped; ``None`` when no line carries one. ``proof_text`` is every
     non-marker line, order kept, raw (the caller cleans it).
     """
 
@@ -239,9 +239,10 @@ def split_marker_lines(text: str) -> MarkerFields:
     """Split ``text`` into its ``T:`` / ``C:`` / ``S:`` marker values and the
     remaining proof lines.
 
-    Every marker line is removed from the proof, including repeats; a repeated
-    marker keeps its first value. Validation (bounds, source vocabulary) is the
-    caller's job: this is the pure line split.
+    Every marker line is removed from the proof, including repeats and empty
+    ones; a marker keeps its first NON-EMPTY value, so an empty ``T:`` line
+    never shadows a real title further down. Validation (bounds, source
+    vocabulary) is the caller's job: this is the pure line split.
     """
     values: dict[str, str] = {}
     proof_lines: list[str] = []
@@ -251,12 +252,13 @@ def split_marker_lines(text: str) -> MarkerFields:
             proof_lines.append(line)
             continue
         key = match.group(1).upper()
-        if key not in values:
-            values[key] = match.group(2).strip()
+        payload = match.group(2).strip()
+        if key not in values and payload:
+            values[key] = payload
     return MarkerFields(
-        title=values.get("T") or None,
-        coords=values.get("C") or None,
-        source=values.get("S") or None,
+        title=values.get("T"),
+        coords=values.get("C"),
+        source=values.get("S"),
         proof_text="\n".join(proof_lines),
     )
 
