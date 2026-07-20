@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Feature } from "geojson";
 
 import {
+  SPIDER_MAX_DOTS,
   STACK_EPSILON,
+  groupStacks,
   isCoincidentStack,
   ringOffsets,
   ringRadius,
@@ -57,6 +59,50 @@ describe("stackCellKey", () => {
       stackCellKey(48.6459, 35.2078)
     );
   });
+
+  it("never emits -0 cells at the equator or meridian", () => {
+    expect(stackCellKey(-1e-6, -1e-6)).toBe(stackCellKey(0, 0));
+    expect(stackCellKey(0, 0)).toBe("0,0");
+  });
+});
+
+describe("groupStacks", () => {
+  const coord = (p: { lat: number; lng: number }) => p;
+
+  it("groups points sharing one cell", () => {
+    const a = { lat: 48.64570, lng: 35.20788 };
+    const b = { lat: 48.6457041, lng: 35.2078801 };
+    const groups = groupStacks([a, b], coord);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(2);
+  });
+
+  it("groups points within the epsilon straddling a grid line", () => {
+    // 4e-6 and 6e-6 round to different cells (0 and 1) but sit 2e-6 apart.
+    const a = { lat: 48.2, lng: 35.000004 };
+    const b = { lat: 48.2, lng: 35.000006 };
+    const groups = groupStacks([a, b], coord);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(2);
+  });
+
+  it("groups a stack straddling the equator", () => {
+    const a = { lat: -1e-6, lng: 35.2 };
+    const b = { lat: 1e-6, lng: 35.2 };
+    expect(groupStacks([a, b], coord)).toHaveLength(1);
+  });
+
+  it("keeps neighbor-cell points past the epsilon apart", () => {
+    const a = { lat: 48.2, lng: 35.000001 };
+    const b = { lat: 48.2, lng: 35.000014 };
+    expect(groupStacks([a, b], coord)).toHaveLength(2);
+  });
+
+  it("keeps far points apart", () => {
+    const a = { lat: 48.2, lng: 35.2 };
+    const b = { lat: 48.3, lng: 35.2 };
+    expect(groupStacks([a, b], coord)).toHaveLength(2);
+  });
 });
 
 describe("ring layout", () => {
@@ -64,6 +110,10 @@ describe("ring layout", () => {
     expect(ringRadius(2)).toBe(18);
     expect(ringRadius(4)).toBe(18);
     expect(ringRadius(20)).toBeGreaterThan(18);
+  });
+
+  it("stops growing past the dot cap", () => {
+    expect(ringRadius(100)).toBe(ringRadius(SPIDER_MAX_DOTS));
   });
 
   it("spaces n offsets evenly on the ring, first at the top", () => {
