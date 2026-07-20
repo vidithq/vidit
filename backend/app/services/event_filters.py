@@ -1,8 +1,8 @@
 """The standard event filter set, shared by every surface that lists events.
 
 `/events`, `/events/points` and `/search` all accept the same filter
-vocabulary (conflict / capture source / tag / dates / author / media /
-trusted / demo). Single-sourcing the predicates here keeps the surfaces from
+vocabulary (status / conflict / capture source / tag / dates / author /
+media / trusted / demo). Single-sourcing the predicates here keeps the surfaces from
 drifting; the anti-injection author pattern lives here for the same reason
 (it is a security boundary).
 
@@ -41,6 +41,12 @@ AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 # anything else at the boundary so a typo returns 422 instead of silently
 # matching nothing — parameterized, so never an injection risk.
 MEDIA_TYPES = frozenset({"image", "video"})
+
+# Accepted ``status`` filter values (the ``Event.status`` lifecycle domain).
+# Same boundary contract as ``MEDIA_TYPES``: a typo returns 422 instead of
+# silently matching nothing. The predicate only narrows within the caller's
+# view, so a value the view can't contain returns empty, not an error.
+STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_CLOSED})
 
 # The two read views over the one table. ``located`` is the catalog: vouched +
 # machine rows, keeping a rejected detection visible (``closed`` off
@@ -86,6 +92,15 @@ def validate_media_types(media: list[str] | None) -> None:
         raise HTTPException(
             status_code=422,
             detail=f"media must be one of: {', '.join(sorted(MEDIA_TYPES))}",
+        )
+
+
+def validate_status_filter(status: list[str] | None) -> None:
+    """422 on a ``status`` value outside the ``Event.status`` domain."""
+    if status and not set(status) <= STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"status must be one of: {', '.join(sorted(STATUSES))}",
         )
 
 
@@ -156,7 +171,7 @@ def apply_filters(
     query: SAQuery,
     *,
     view: str = "located",
-    status_filter: str | None = None,
+    status: list[str] | None = None,
     conflict: list[str] | None = None,
     capture_source: list[str] | None = None,
     tag: list[str] | None = None,
@@ -178,10 +193,12 @@ def apply_filters(
     bypasses this helper.
 
     ``view`` scopes to one of the two lifecycle views (see ``VIEWS``);
-    ``status_filter`` narrows within the view (e.g. ``?status=closed`` on the
-    requested queue). Status-scoping rather than a bare coordinate predicate:
+    ``status`` narrows within the view (any-match within the list, e.g.
+    ``?status=closed`` on the requested queue, ``?status=detected`` on the
+    located catalog). Status-scoping rather than a bare coordinate predicate:
     a ``requested`` event may carry an approximate guess now, and it must not
-    leak into the located catalog because of it.
+    leak into the located catalog because of it. Callers gate values through
+    :func:`validate_status_filter`.
 
     Filter semantics: ``conflict``, ``capture_source`` and ``tag`` each take
     a list of names. Within a list, **any-match (OR)**; across the lists,
@@ -194,8 +211,8 @@ def apply_filters(
     """
     query = query.filter(Event.deleted_at.is_(None), view_predicate(view))
 
-    if status_filter:
-        query = query.filter(Event.status == status_filter)
+    if status:
+        query = query.filter(Event.status.in_(status))
 
     if conflict:
         # ``.conflicts.any(...)`` lowers to EXISTS so a second relationship
@@ -262,6 +279,7 @@ class EventFilters:
     filter narrows the view (search uses it to flip into browse mode on an
     empty query)."""
 
+    status: list[str] | None = None
     conflict: list[str] | None = None
     capture_source: list[str] | None = None
     tag: list[str] | None = None

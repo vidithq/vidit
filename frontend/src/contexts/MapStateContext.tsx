@@ -33,6 +33,11 @@ interface MapState {
   // Filters — every tag bucket is multi-select. Within a bucket the server
   // applies OR (any-of); across buckets AND (a geo must satisfy each bucket
   // independently). See `routers/events::_apply_filters`.
+  // Lifecycle status — geolocated / detected, the two the map serves. The
+  // points payload already flags each row (point[5]), so the window filters
+  // client-side like the timelines: no refetch per chip.
+  selectedStatuses: string[];
+  setSelectedStatuses: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedConflicts: string[];
   setSelectedConflicts: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedCaptureSources: string[];
@@ -77,6 +82,7 @@ const MapStateContext = createContext<MapState | null>(null);
 export function MapStateProvider({ children }: { children: ReactNode }) {
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
   const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -102,6 +108,8 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setViewState,
       selectedId,
       setSelectedId,
+      selectedStatuses,
+      setSelectedStatuses,
       selectedConflicts,
       setSelectedConflicts,
       selectedCaptureSources,
@@ -134,6 +142,7 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
     [
       viewState,
       selectedId,
+      selectedStatuses,
       selectedConflicts,
       selectedCaptureSources,
       selectedTags,

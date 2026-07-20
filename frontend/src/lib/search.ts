@@ -18,6 +18,7 @@ export function search(opts: {
    *  group. With an empty `q` and any active filter the backend browses the
    *  filtered view (the profile's "Show more" entry point). */
   author?: string;
+  status?: string[];
   conflict?: string[];
   captureSource?: string[];
   tag?: string[];
@@ -34,6 +35,7 @@ export function search(opts: {
     limit: String(opts.limit ?? 20),
   });
   if (opts.author) params.set("author", opts.author);
+  opts.status?.forEach((n) => params.append("status", n));
   opts.conflict?.forEach((n) => params.append("conflict", n));
   opts.captureSource?.forEach((n) => params.append("capture_source", n));
   opts.tag?.forEach((n) => params.append("tag", n));

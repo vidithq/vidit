@@ -15,8 +15,8 @@ import type { Concept } from "@/lib/fieldHelp";
 
 /**
  * THE event filter panel, shared by the map overlay and the search page: one
- * component owns the section list (Conflict → Capture source → Source media →
- * the surface's date sections → Tags → Author → Trusted), so a change to the
+ * component owns the section list (Status → Conflict → Capture source →
+ * Source media → the surface's date sections → Tags → Author → Trusted), so a change to the
  * filter vocabulary lands on both surfaces at once. The surfaces differ only
  * in their date controls (the map's timeline scrubbers vs the search page's
  * date inputs), injected as data via `dateSections`, and in surface-only
@@ -31,6 +31,7 @@ import type { Concept } from "@/lib/fieldHelp";
 /** The common event filter values (the server vocabulary minus the
  *  surface-specific date windows). */
 export interface EventFilterValues {
+  statuses: string[];
   conflicts: string[];
   captureSources: string[];
   tags: string[];
@@ -40,6 +41,7 @@ export interface EventFilterValues {
 }
 
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
+  statuses: [],
   conflicts: [],
   captureSources: [],
   tags: [],
@@ -71,6 +73,17 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["video", "Video"],
 ];
 
+/** The lifecycle statuses this panel offers (Event.status values). Only the
+ *  two the served views can actually contain: the map and the search event
+ *  groups show geolocated + detected rows; requested lives in the requests
+ *  view and closed rows carry their own surfaces, so offering either here
+ *  would be a chip that can only empty the result. Exported so the search
+ *  page can gate crafted-URL values to the same vocabulary. */
+export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
+  ["geolocated", "Geolocated"],
+  ["detected", "Detected"],
+];
+
 const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** The removable-pill entries for the common filter values; the surfaces
@@ -85,6 +98,11 @@ export function buildActiveFilterPills(
   const drop = (key: keyof EventFilterValues, name: string) =>
     onPatch({ [key]: (values[key] as string[]).filter((n) => n !== name) });
   return [
+    ...values.statuses.map((n) => ({
+      key: `status:${n}`,
+      label: capitalize(n),
+      onRemove: () => drop("statuses", n),
+    })),
     ...values.conflicts.map((n) => ({
       key: `conflict:${n}`,
       label: n,
@@ -201,6 +219,25 @@ export function EventFilterSections({
 
   return (
     <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <FilterSection
+        title="Status"
+        concept="status"
+        summary={chipSummary(values.statuses.map(capitalize))}
+        active={values.statuses.length > 0}
+        open={!!openSections["Status"]}
+        onToggle={() => toggleSection("Status")}
+      >
+        <ChipBucket
+          options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({
+            id: value,
+            name: value,
+            label,
+          }))}
+          selected={values.statuses}
+          onToggle={(n) => toggleIn("statuses", n)}
+        />
+      </FilterSection>
+
       {conflicts.length > 0 && (
         <FilterSection
           title="Conflict"

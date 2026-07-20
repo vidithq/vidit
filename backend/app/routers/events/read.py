@@ -40,6 +40,7 @@ from app.services.event_filters import (
     VIEWS,
     apply_filters,
     validate_media_types,
+    validate_status_filter,
 )
 
 router = APIRouter()
@@ -247,7 +248,10 @@ def list_points(
 def list_events(
     request: Request,
     view: str = Query("located"),
-    status: str | None = None,
+    # ``status`` accepts multiple values (``?status=a&status=b``, any-match);
+    # a single ``?status=a`` parses to ``["a"]``, so older single-select
+    # callers keep working.
+    status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
@@ -273,12 +277,13 @@ def list_events(
         )
     if limit < 1 or limit > 200:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    validate_status_filter(status)
 
     # Step 1: get IDs with limit (no joins that inflate rows)
     id_query = apply_filters(
         db.query(Event.id),
         view=view,
-        status_filter=status,
+        status=status,
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,

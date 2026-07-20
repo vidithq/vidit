@@ -41,6 +41,8 @@ interface FilterPanelProps {
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
+    selectedStatuses,
+    setSelectedStatuses,
     selectedConflicts,
     setSelectedConflicts,
     selectedCaptureSources,
@@ -74,6 +76,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   // Adapter: the context keeps one state atom per filter (they predate the
   // shared panel); the shared component speaks one values object + patches.
   const values: EventFilterValues = {
+    statuses: selectedStatuses,
     conflicts: selectedConflicts,
     captureSources: selectedCaptureSources,
     tags: selectedTags,
@@ -82,6 +85,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     trustedOnly,
   };
   const onPatch: EventFilterPatch = (patch) => {
+    if (patch.statuses !== undefined) setSelectedStatuses(patch.statuses);
     if (patch.conflicts !== undefined) setSelectedConflicts(patch.conflicts);
     if (patch.captureSources !== undefined) setSelectedCaptureSources(patch.captureSources);
     if (patch.tags !== undefined) setSelectedTags(patch.tags);
@@ -92,6 +96,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
 
   const clearFilters = () => {
     onPatch({
+      statuses: [],
       conflicts: [],
       captureSources: [],
       tags: [],

@@ -790,6 +790,31 @@ def test_event_date_filter_scopes_search_and_browses(db, caller):
         db.commit()
 
 
+def test_status_filter_scopes_search(db, caller):
+    """`?status=` narrows the event groups server-side (the search page's
+    Status chips); an unknown value 422s at the boundary."""
+    token = _unique_token()
+    located = _seed_geo(db, caller, f"Located {token}")
+    detected = _seed_geo(db, caller, f"Detected {token}")
+    db.query(Event).filter(Event.id == detected).update(
+        {"status": "detected", "detected_at": datetime.now(UTC), "geolocated_at": None}
+    )
+    db.commit()
+    try:
+        response = client.get(f"/api/v1/search?q={token}&status=detected")
+        assert response.status_code == 200
+        body = response.json()
+        assert [h["id"] for h in body["geolocations"]] == [str(detected)]
+        # Any active event filter empties the users group.
+        assert body["users"] == [] and body["total"]["users"] == 0
+
+        response = client.get(f"/api/v1/search?q={token}&status=hallucinated")
+        assert response.status_code == 422
+    finally:
+        db.query(Event).filter(Event.id.in_([located, detected])).delete(synchronize_session=False)
+        db.commit()
+
+
 def test_garbage_date_filter_returns_422(caller):
     response = client.get("/api/v1/search?q=x&event_date_from=not-a-date")
     assert response.status_code == 422

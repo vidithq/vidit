@@ -336,7 +336,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 | Param | Type | Description |
 |-------|------|-------------|
 | `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
-| `status` | string | Narrows within the view, e.g. `?view=requested&status=closed`. |
+| `status` | string (repeatable) | Narrows within the view, e.g. `?view=requested&status=closed`. Repeat the param to OR within the bucket (`?status=geolocated&status=detected`). Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by conflict name, matched against the [`conflicts`](#conflicts) referential (`conflicts.name`), not tags. Repeat the param to OR within the conflict bucket (`?conflict=Russian invasion of Ukraine&conflict=Gaza war`). Combining with other buckets ANDs across them. |
 | `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
 | `tag` | string (repeatable) | Filter by tag name (any category). Repeat the param to OR within the tag bucket (`?tag=drone&tag=tank`). Combining buckets ANDs across them, the event must satisfy each bucket independently. |
@@ -926,7 +926,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
 | `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `trusted_only`, `hide_demo`. Scopes the two event groups. |
+| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `trusted_only`, `hide_demo`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
 Any active filter empties the users group (the filters are event predicates; an unfiltered analyst list next to a filtered event view would read as if the filter applied). With an empty `q` and at least one active filter, **browse mode**: the filtered view, newest first, plain titles as their own highlight (the profile's "Show more" entry point); typing then narrows within it.
 

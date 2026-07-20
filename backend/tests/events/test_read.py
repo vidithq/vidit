@@ -167,6 +167,30 @@ def test_list_filters_by_event_date_range(db, author):
     assert str(late.id) not in ids
 
 
+def test_list_filters_by_status(db, author):
+    """`?status=` narrows within the view; repeatable, any-match."""
+    located = _make_geo(db, author=author)
+    detected = _make_geo(db, author=author, status=STATUS_DETECTED)
+
+    response = client.get("/api/v1/events?status=detected")
+    assert response.status_code == 200
+    ids = {row["id"] for row in response.json()}
+    assert str(detected.id) in ids
+    assert str(located.id) not in ids
+
+    response = client.get("/api/v1/events?status=detected&status=geolocated")
+    assert response.status_code == 200
+    ids = {row["id"] for row in response.json()}
+    assert str(detected.id) in ids
+    assert str(located.id) in ids
+
+
+def test_list_rejects_unknown_status(author):
+    """A `?status=` typo returns 422 at the boundary, never a silent empty."""
+    response = client.get("/api/v1/events?status=located")
+    assert response.status_code == 422
+
+
 def test_list_filters_by_bbox(db, author):
     inside = _make_geo(db, author=author, lat=48.5, lng=34.5)
     outside = _make_geo(db, author=author, lat=10.0, lng=10.0)
