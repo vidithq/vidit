@@ -101,7 +101,7 @@ jobs:
       - name: Deploy bot cron to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend-bot --ci
+        run: railway up --service backend-x-bot --ci
 
   deploy-frontend:
     name: Deploy frontend (Vercel)
