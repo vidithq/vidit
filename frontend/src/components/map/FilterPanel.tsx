@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
+import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
@@ -22,7 +24,10 @@ interface FilterPanelProps {
   /** Conflicts carried by >=1 live event (`/conflicts?used=true`), driving the
    *  Conflict chip bucket. Server-ordered: ongoing first, then name. */
   conflicts: Conflict[];
-  /** Boundary-filtered points (pre-window) — feeds the timeline histograms. */
+  /** Boundary-filtered points, pre-window. The histograms read them through
+   *  the status pick (below) so they only count points a scrub can reveal;
+   *  the hide-demo gate reads them raw so an active filter can't strand the
+   *  toggle. */
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
@@ -41,6 +46,8 @@ interface FilterPanelProps {
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
+    selectedStatuses,
+    setSelectedStatuses,
     selectedConflicts,
     setSelectedConflicts,
     selectedCaptureSources,
@@ -74,6 +81,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   // Adapter: the context keeps one state atom per filter (they predate the
   // shared panel); the shared component speaks one values object + patches.
   const values: EventFilterValues = {
+    statuses: selectedStatuses,
     conflicts: selectedConflicts,
     captureSources: selectedCaptureSources,
     tags: selectedTags,
@@ -82,6 +90,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     trustedOnly,
   };
   const onPatch: EventFilterPatch = (patch) => {
+    if (patch.statuses !== undefined) setSelectedStatuses(patch.statuses);
     if (patch.conflicts !== undefined) setSelectedConflicts(patch.conflicts);
     if (patch.captureSources !== undefined) setSelectedCaptureSources(patch.captureSources);
     if (patch.tags !== undefined) setSelectedTags(patch.tags);
@@ -92,6 +101,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
 
   const clearFilters = () => {
     onPatch({
+      statuses: [],
       conflicts: [],
       captureSources: [],
       tags: [],
@@ -110,6 +120,14 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
 
   const eventActive = !!(eventStart || eventEnd);
   const submittedActive = !!(submittedStart || submittedEnd);
+
+  // The scrubbers histogram the same set the status chips leave on the map:
+  // feeding them raw points would count bars no scrub can reveal while a
+  // chip is active. Same helper as the map canvas, so the two can't drift.
+  const statusFilteredPoints = useMemo(
+    () => filterPointsByStatus(points, selectedStatuses),
+    [points, selectedStatuses]
+  );
 
   // The shared pill entries plus the map's two window + demo entries.
   const activeFilters: ActiveFilter[] = [
@@ -200,7 +218,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 active: eventActive,
                 children: (
                   <TimelineScrubber
-                    points={points}
+                    points={statusFilteredPoints}
                     dateIndex={3}
                     label="Event date"
                     start={eventStart}
@@ -219,7 +237,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 active: submittedActive,
                 children: (
                   <TimelineScrubber
-                    points={points}
+                    points={statusFilteredPoints}
                     dateIndex={4}
                     label="Added"
                     start={submittedStart}

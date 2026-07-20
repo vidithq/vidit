@@ -21,6 +21,7 @@ from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     EventFilters,
     validate_media_types,
+    validate_status_filter,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ def search(
     # The standard event filter set (same vocabulary as /events and
     # /events/points, see services/event_filters); scopes the two event
     # groups. List params accept multiple values (?tag=a&tag=b).
+    status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
@@ -76,9 +78,11 @@ def search(
             detail=(f"type must be one of: {', '.join(sorted(search_service.ALLOWED_TYPES))}"),
         )
     validate_media_types(media)
+    validate_status_filter(status)
 
     types = search_service.types_from_param(type)
     filters = EventFilters(
+        status=status,
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,

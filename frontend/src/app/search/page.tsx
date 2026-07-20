@@ -34,6 +34,7 @@ import { rangeSummary } from "@/components/ui/FilterSection";
 import {
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
+  STATUS_FILTER_OPTIONS,
   buildActiveFilterPills,
   type EventFilterPatch,
   type EventFilterValues,
@@ -85,6 +86,11 @@ function SearchPageBody() {
   // the inputs bind to local state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const initialValues: EventFilterValues = {
+    // Only the vocabulary the panel offers: a crafted `?status=` value the
+    // chips can't represent is dropped rather than carried as invisible state.
+    statuses: searchParams
+      .getAll("status")
+      .filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
     conflicts: searchParams.getAll("conflict"),
     captureSources: searchParams.getAll("capture_source"),
     tags: searchParams.getAll("tag"),
@@ -105,6 +111,7 @@ function SearchPageBody() {
   };
   const arrivedFiltered =
     Object.values(initialDates).some(Boolean) ||
+    initialValues.statuses.length > 0 ||
     initialValues.conflicts.length > 0 ||
     initialValues.captureSources.length > 0 ||
     initialValues.tags.length > 0 ||
@@ -191,6 +198,7 @@ function SearchPageBody() {
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (values.author.trim()) params.set("author", values.author.trim());
+      values.statuses.forEach((n) => params.append("status", n));
       values.conflicts.forEach((n) => params.append("conflict", n));
       values.captureSources.forEach((n) => params.append("capture_source", n));
       values.tags.forEach((n) => params.append("tag", n));
@@ -214,6 +222,7 @@ function SearchPageBody() {
     const v = committed.values;
     const d = committed.dates;
     const filtersActive =
+      v.statuses.length > 0 ||
       v.conflicts.length > 0 ||
       v.captureSources.length > 0 ||
       v.tags.length > 0 ||
@@ -234,6 +243,7 @@ function SearchPageBody() {
       q,
       type: typeFilter,
       author: v.author.trim() || undefined,
+      status: v.statuses,
       conflict: v.conflicts,
       captureSource: v.captureSources,
       tag: v.tags,
@@ -332,6 +342,12 @@ function SearchPageBody() {
             conflicts={conflictsData ?? []}
             values={values}
             onPatch={onPatch}
+            // The requests group serves status `requested` only, so on the
+            // legacy request scope (shared URLs; the picker no longer offers
+            // it) both offered chips could only empty the result: hide the
+            // section there. A URL-carried status still shows as a removable
+            // pill above, so it can't narrow the view invisibly.
+            showStatus={typeFilter !== "request"}
             dateSections={[
               {
                 title: "Event date",

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
@@ -22,6 +23,7 @@ export default function HomePage() {
     setViewState,
     selectedId,
     setSelectedId,
+    selectedStatuses,
     selectedConflicts,
     selectedCaptureSources,
     selectedTags,
@@ -130,18 +132,21 @@ export default function HomePage() {
     hydratedIdRef.current = null;
   };
 
-  // Apply both timeline windows client-side: each point carries its event and
-  // added dates, so scrubbing and playback filter the in-memory set
-  // instantly with no /points refetch. A point must fall inside both windows.
+  // Apply the status chips and both timeline windows client-side: each point
+  // carries its detected flag (`POINT_DETECTED_FLAG`) and its event and added
+  // dates, so chip clicks, scrubbing and playback filter the in-memory set
+  // instantly with no /points refetch. A point must match the status pick
+  // (any-of, empty = all) and fall inside both windows.
   const visiblePoints = useMemo(() => {
-    if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return points;
+    const statusFiltered = filterPointsByStatus(points, selectedStatuses);
+    if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return statusFiltered;
     const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
     const hi = (iso: string) => (iso ? Date.parse(`${iso}T23:59:59Z`) : Infinity);
     const evLo = lo(eventStart);
     const evHi = hi(eventEnd);
     const subLo = lo(submittedStart);
     const subHi = hi(submittedEnd);
-    return points.filter((p) => {
+    return statusFiltered.filter((p) => {
       // A missing/unparseable date must not silently drop the point (NaN fails
       // every comparison) — treat that dimension as unconstrained, matching the
       // histogram, which skips undated points rather than hiding them. Both
@@ -152,7 +157,7 @@ export default function HomePage() {
       const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
       return evOk && subOk;
     });
-  }, [points, eventStart, eventEnd, submittedStart, submittedEnd]);
+  }, [points, selectedStatuses, eventStart, eventEnd, submittedStart, submittedEnd]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-neutral-950">

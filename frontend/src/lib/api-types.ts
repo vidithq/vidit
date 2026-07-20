@@ -3394,7 +3394,7 @@ export interface operations {
         parameters: {
             query?: {
                 view?: string;
-                status?: string | null;
+                status?: string[] | null;
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
@@ -3987,6 +3987,7 @@ export interface operations {
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
+                status?: string[] | null;
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
