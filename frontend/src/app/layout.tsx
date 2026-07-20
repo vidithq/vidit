@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -54,6 +56,15 @@ export default function RootLayout({
           <ClosedBetaBanner />
           {children}
         </Providers>
+        {/* Vercel Web Analytics + Speed Insights. Cookieless aggregate
+            counters (no cross-site tracking, no consent banner needed), so
+            they fit the same privacy posture as the PII-stripped Sentry
+            setup. Both no-op outside Vercel deployments; the injected
+            /_vercel/insights and /_vercel/speed-insights scripts 404 softly
+            in local dev. Data only flows once the operator enables the two
+            toggles in the Vercel dashboard (see docs/engineering.md). */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
