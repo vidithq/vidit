@@ -464,6 +464,17 @@ def get_storage() -> Storage:
     return LocalStorage(settings.local_storage_dir)
 
 
+def scrub_log(value: str) -> str:
+    """Strip CR/LF before a user-supplied value enters a log line.
+
+    A crafted URL or filename carrying embedded newlines could otherwise
+    forge extra log entries (``py/log-injection``). Single home for the
+    scrubber: every log interpolation of a user-influenced string goes
+    through this first (``sweep_keys`` below, the tweet-import router).
+    """
+    return value.replace("\r", "").replace("\n", "")
+
+
 def sweep_keys(keys: list[str], *, context: str) -> None:
     """Best-effort delete a list of storage keys; swallow + log every failure.
 
@@ -477,6 +488,9 @@ def sweep_keys(keys: list[str], *, context: str) -> None:
     """
     if not keys:
         return
+    # ``context`` can embed user-influenced strings (a detection source URL,
+    # an event title): scrub before it reaches the log.
+    context = scrub_log(context)
     try:
         get_storage().delete_many(keys)
     except StorageDeleteError as exc:

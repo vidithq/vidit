@@ -24,6 +24,7 @@ from app.schemas.tweet_import import (
     TweetImportResponse,
 )
 from app.services.detection import preview_detection
+from app.services.storage import scrub_log
 from app.services.tweet_ingest import (
     MEDIA_FETCH_MAX_BYTES,
     InvalidTweetUrl,
@@ -35,17 +36,6 @@ from app.services.tweet_ingest import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def _scrub_log(value: str) -> str:
-    """Strip CR/LF before a user-supplied value enters a log line.
-
-    A crafted ``?u=`` / tweet URL carrying embedded newlines could otherwise
-    forge extra log entries (``py/log-injection``). Both the import and media
-    paths log the raw URL on failure, so every such interpolation goes through
-    this first.
-    """
-    return value.replace("\r", "").replace("\n", "")
 
 
 @router.post(
@@ -79,7 +69,7 @@ def import_from_tweet(
         # Hide transport / schema-drift detail from the client (the frontend
         # shows a fixed "fill the form manually" banner on 502); log it so
         # the operator can spot a syndication-endpoint outage.
-        logger.warning("Tweet syndication fetch failed for %s: %s", _scrub_log(body.url), exc)
+        logger.warning("Tweet syndication fetch failed for %s: %s", scrub_log(body.url), exc)
         raise HTTPException(
             status_code=502, detail="Couldn't read tweet, fill the form manually"
         ) from exc
@@ -191,7 +181,7 @@ def import_from_tweet_media(
                 logger.warning(
                     "Tweet media proxy got upstream %s for %s",
                     upstream.status_code,
-                    _scrub_log(u),
+                    scrub_log(u),
                 )
                 raise HTTPException(status_code=502, detail="Couldn't fetch media")
 
@@ -217,7 +207,7 @@ def import_from_tweet_media(
     except HTTPException:
         raise
     except httpx.HTTPError as exc:
-        logger.warning("Tweet media fetch failed for %s: %s", _scrub_log(u), exc)
+        logger.warning("Tweet media fetch failed for %s: %s", scrub_log(u), exc)
         raise HTTPException(status_code=502, detail="Couldn't fetch media") from exc
 
     return Response(

@@ -15,7 +15,6 @@
 const { chromium } = require("playwright");
 const crypto = require("crypto");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 
@@ -46,9 +45,15 @@ const REQUEST_SOURCE_URL = "https://t.me/intel_slava_z/14528";
 // URL actually produced the bytes. Using a single global path keyed off
 // `REQUEST_TWEET_URL` would let one run's fallback contaminate every
 // later run.
+// Repo-local cache dir (gitignored), not `os.tmpdir()`: the shared
+// world-writable temp dir with a predictable filename would let another
+// local user pre-plant or swap the file (CodeQL
+// js/insecure-temporary-file / js/file-system-race).
+const CACHE_DIR = path.join(__dirname, ".cache");
+
 const requestUploadCachePath = (url) =>
   path.join(
-    os.tmpdir(),
+    CACHE_DIR,
     `vidit-request-upload-${crypto
       .createHash("sha1")
       .update(url)
@@ -226,7 +231,7 @@ async function slowScrollToBottom(page, durationMs = 2200) {
 }
 
 // Pre-fetch a VIDEO file from one of the analyst's tweets via the
-// import-from-tweet media proxy, saved to `os.tmpdir()` so the
+// import-from-tweet media proxy, saved to `video/.cache/` so the
 // recording's `setInputFiles` call is instant. Tries the dedicated
 // request tweet first; falls back to a sibling tweet (`TWEET_URL`) if
 // the primary's video proxy 502s — X CDN behaviour is unreliable.
@@ -268,6 +273,7 @@ async function prepareRequestUpload(auth) {
       if (!res.ok) continue;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length < 10000) continue;
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
       fs.writeFileSync(cachePath, buf);
       console.log(
         `✓ cached request video at ${cachePath} (${(buf.length / 1024).toFixed(0)} KB) from ${url}`
