@@ -342,6 +342,12 @@ function SearchPageBody() {
             conflicts={conflictsData ?? []}
             values={values}
             onPatch={onPatch}
+            // The requests group serves status `requested` only, so on the
+            // legacy request scope (shared URLs; the picker no longer offers
+            // it) both offered chips could only empty the result: hide the
+            // section there. A URL-carried status still shows as a removable
+            // pill above, so it can't narrow the view invisibly.
+            showStatus={typeFilter !== "request"}
             dateSections={[
               {
                 title: "Event date",

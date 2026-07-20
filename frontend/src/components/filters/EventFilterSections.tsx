@@ -77,14 +77,21 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
  *  two the served views can actually contain: the map and the search event
  *  groups show geolocated + detected rows; requested lives in the requests
  *  view and closed rows carry their own surfaces, so offering either here
- *  would be a chip that can only empty the result. Exported so the search
- *  page can gate crafted-URL values to the same vocabulary. */
+ *  would be a chip that can only empty the result. Hand-kept mirror of the
+ *  backend status vocabulary (`event_filters.STATUSES`, see AGENTS.md), the
+ *  subset the filtered read views serve. Exported so the search page can
+ *  gate crafted-URL values to the same vocabulary. */
 export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
   ["geolocated", "Geolocated"],
   ["detected", "Detected"],
 ];
 
-const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
+// Value → chip label, so the pill row and the section summary reuse the
+// options' labels instead of re-deriving them from the raw value.
+const STATUS_FILTER_LABELS: Record<string, string> = Object.fromEntries(STATUS_FILTER_OPTIONS);
+const statusLabel = (value: string) => STATUS_FILTER_LABELS[value] ?? value;
+
+const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** The removable-pill entries for the common filter values; the surfaces
  *  append their date-window entries to the same array. The author is NOT a
@@ -100,7 +107,7 @@ export function buildActiveFilterPills(
   return [
     ...values.statuses.map((n) => ({
       key: `status:${n}`,
-      label: capitalize(n),
+      label: statusLabel(n),
       onRemove: () => drop("statuses", n),
     })),
     ...values.conflicts.map((n) => ({
@@ -136,6 +143,7 @@ export function EventFilterSections({
   onPatch,
   dateSections = [],
   extraToggles,
+  showStatus = true,
 }: {
   /** Live tag taxonomy driving the capture-source + free chip buckets. */
   tags: Tag[];
@@ -146,6 +154,11 @@ export function EventFilterSections({
   dateSections?: InjectedSection[];
   /** Surface-only toggle rows appended after Trusted (the map's hide-demo). */
   extraToggles?: ReactNode;
+  /** Whether to render the Status section. Default on; a surface scoped to a
+   *  view where neither offered status can match (the search page's legacy
+   *  request scope) hides it rather than offering chips that can only empty
+   *  the result. */
+  showStatus?: boolean;
 }) {
   const [showAllTags, setShowAllTags] = useState(false);
   // The author input is commit-style, like picking a tag chip: typing stays
@@ -219,24 +232,26 @@ export function EventFilterSections({
 
   return (
     <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <FilterSection
-        title="Status"
-        concept="status"
-        summary={chipSummary(values.statuses.map(capitalize))}
-        active={values.statuses.length > 0}
-        open={!!openSections["Status"]}
-        onToggle={() => toggleSection("Status")}
-      >
-        <ChipBucket
-          options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({
-            id: value,
-            name: value,
-            label,
-          }))}
-          selected={values.statuses}
-          onToggle={(n) => toggleIn("statuses", n)}
-        />
-      </FilterSection>
+      {showStatus && (
+        <FilterSection
+          title="Status"
+          concept="status"
+          summary={chipSummary(values.statuses.map(statusLabel))}
+          active={values.statuses.length > 0}
+          open={!!openSections["Status"]}
+          onToggle={() => toggleSection("Status")}
+        >
+          <ChipBucket
+            options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({
+              id: value,
+              name: value,
+              label,
+            }))}
+            selected={values.statuses}
+            onToggle={(n) => toggleIn("statuses", n)}
+          />
+        </FilterSection>
+      )}
 
       {conflicts.length > 0 && (
         <FilterSection

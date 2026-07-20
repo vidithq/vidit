@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
@@ -132,17 +133,12 @@ export default function HomePage() {
   };
 
   // Apply the status chips and both timeline windows client-side: each point
-  // carries its detected flag (point[5]) and its event and added dates, so
-  // chip clicks, scrubbing and playback filter the in-memory set instantly
-  // with no /points refetch. A point must match the status pick (any-of,
-  // empty = all) and fall inside both windows.
+  // carries its detected flag (`POINT_DETECTED_FLAG`) and its event and added
+  // dates, so chip clicks, scrubbing and playback filter the in-memory set
+  // instantly with no /points refetch. A point must match the status pick
+  // (any-of, empty = all) and fall inside both windows.
   const visiblePoints = useMemo(() => {
-    const statusFiltered =
-      selectedStatuses.length === 0
-        ? points
-        : points.filter((p) =>
-            selectedStatuses.includes(p[5] === 1 ? "detected" : "geolocated")
-          );
+    const statusFiltered = filterPointsByStatus(points, selectedStatuses);
     if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return statusFiltered;
     const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
     const hi = (iso: string) => (iso ? Date.parse(`${iso}T23:59:59Z`) : Infinity);

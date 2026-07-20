@@ -64,6 +64,30 @@ export type EventStatus = components["schemas"]["EventRead"]["status"];
  *  so every point has coordinates. */
 export type MapPoint = [string, number, number, string, string, 0 | 1, 0 | 1];
 
+/** Index of the ``detected`` flag in the `MapPoint` tuple. */
+export const POINT_DETECTED_FLAG = 5;
+
+/** Decode a point's lifecycle status from its ``detected`` flag.
+ *
+ *  The binary decode is total: `/events/points` serves live ``geolocated``
+ *  and ``detected`` rows only (a ``requested`` guess is not a confident pin,
+ *  and a ``closed`` row, whatever its ``before_closed_status``, is judged off
+ *  the map by the endpoint's own status predicate), so the flag never has to
+ *  encode a third state. The return type pins the two strings to the
+ *  generated `EventStatus` vocabulary. */
+export function pointLifecycleStatus(point: MapPoint): EventStatus {
+  return point[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated";
+}
+
+/** Narrow points to the picked lifecycle statuses (empty pick = all), the
+ *  client-side counterpart of the server's ``?status=`` any-match. Shared by
+ *  the map canvas and the filter panel's timeline histograms so the two can't
+ *  disagree about what a status chip hides. */
+export function filterPointsByStatus(points: MapPoint[], statuses: string[]): MapPoint[] {
+  if (statuses.length === 0) return points;
+  return points.filter((p) => statuses.includes(pointLifecycleStatus(p)));
+}
+
 /**
  * Pre-fill payload from POST /events/import-from-tweet. Best-effort:
  * any field can be empty if the tweet lacks the signal (e.g. no coords in

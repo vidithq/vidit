@@ -28,7 +28,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.event import STATUS_REQUESTED, Event
+from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -797,7 +797,7 @@ def test_status_filter_scopes_search(db, caller):
     located = _seed_geo(db, caller, f"Located {token}")
     detected = _seed_geo(db, caller, f"Detected {token}")
     db.query(Event).filter(Event.id == detected).update(
-        {"status": "detected", "detected_at": datetime.now(UTC), "geolocated_at": None}
+        {"status": STATUS_DETECTED, "detected_at": datetime.now(UTC), "geolocated_at": None}
     )
     db.commit()
     try:

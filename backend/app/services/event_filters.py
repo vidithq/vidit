@@ -46,6 +46,10 @@ MEDIA_TYPES = frozenset({"image", "video"})
 # Same boundary contract as ``MEDIA_TYPES``: a typo returns 422 instead of
 # silently matching nothing. The predicate only narrows within the caller's
 # view, so a value the view can't contain returns empty, not an error.
+# Hand-kept FE mirror: ``STATUS_FILTER_OPTIONS`` in
+# ``frontend/src/components/filters/EventFilterSections.tsx`` offers the
+# subset the filtered read views serve (geolocated / detected); change the
+# two together (see AGENTS.md).
 STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_CLOSED})
 
 # The two read views over the one table. ``located`` is the catalog: vouched +

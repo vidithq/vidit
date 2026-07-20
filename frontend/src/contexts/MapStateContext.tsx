@@ -33,9 +33,9 @@ interface MapState {
   // Filters — every tag bucket is multi-select. Within a bucket the server
   // applies OR (any-of); across buckets AND (a geo must satisfy each bucket
   // independently). See `routers/events::_apply_filters`.
-  // Lifecycle status — geolocated / detected, the two the map serves. The
-  // points payload already flags each row (point[5]), so the window filters
-  // client-side like the timelines: no refetch per chip.
+  // Lifecycle status: geolocated / detected, the two the map serves. The
+  // points payload already flags each row (`POINT_DETECTED_FLAG`), so the
+  // chips filter client-side like the timelines, no refetch per pick.
   selectedStatuses: string[];
   setSelectedStatuses: (v: string[] | ((prev: string[]) => string[])) => void;
   selectedConflicts: string[];
