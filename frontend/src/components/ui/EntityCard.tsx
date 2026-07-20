@@ -26,9 +26,9 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // The one fixed-ratio media slot on cards: the real media when there is one
 // (image thumbnail, or muted video first-frame via a `#t=0.1` media fragment +
 // `preload="metadata"` so it paints as a poster), else a marked "no media"
-// box. No generated stand-ins: a card without media says so. Private: the
-// card is its only consumer (the detail surfaces use MediaGallery).
-function MediaThumb({ media, className }: { media?: Media; className?: string }) {
+// box. No generated stand-ins: a card without media says so. Consumers: this
+// card and the map's pin preview (the detail surfaces use MediaGallery).
+export function MediaThumb({ media, className }: { media?: Media; className?: string }) {
   return (
     <div
       className={cn(
