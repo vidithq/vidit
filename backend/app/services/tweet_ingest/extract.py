@@ -210,6 +210,59 @@ def _strip_coords(text: str) -> str:
     return text
 
 
+# ── Structured mention markers ────────────────────────────────────────────
+
+
+# A marker line of the bot's strict mention format: ``T:`` (title), ``C:``
+# (decimal coordinates), or ``S:`` (source link) at the start of a line,
+# case-insensitive. Only the bot's mention path consumes these; the free-text
+# extractors above stay the archive / paste vocabulary.
+_MARKER_LINE_RE = re.compile(r"^\s*([TCS]):\s*(.*)$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class MarkerFields:
+    """The strict-format split of one tweet's text.
+
+    Each marker value is the first matching line's non-empty payload,
+    stripped; ``None`` when no line carries one. ``proof_text`` is every
+    non-marker line, order kept, raw (the caller cleans it).
+    """
+
+    title: str | None
+    coords: str | None
+    source: str | None
+    proof_text: str
+
+
+def split_marker_lines(text: str) -> MarkerFields:
+    """Split ``text`` into its ``T:`` / ``C:`` / ``S:`` marker values and the
+    remaining proof lines.
+
+    Every marker line is removed from the proof, including repeats and empty
+    ones; a marker keeps its first NON-EMPTY value, so an empty ``T:`` line
+    never shadows a real title further down. Validation (bounds, source
+    vocabulary) is the caller's job: this is the pure line split.
+    """
+    values: dict[str, str] = {}
+    proof_lines: list[str] = []
+    for line in text.splitlines():
+        match = _MARKER_LINE_RE.match(line)
+        if match is None:
+            proof_lines.append(line)
+            continue
+        key = match.group(1).upper()
+        payload = match.group(2).strip()
+        if key not in values and payload:
+            values[key] = payload
+    return MarkerFields(
+        title=values.get("T"),
+        coords=values.get("C"),
+        source=values.get("S"),
+        proof_text="\n".join(proof_lines),
+    )
+
+
 # ── Title heuristic ───────────────────────────────────────────────────────
 
 

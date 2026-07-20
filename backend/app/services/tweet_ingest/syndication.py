@@ -453,18 +453,22 @@ def classify_source_host(url: str) -> str:
     return "other"
 
 
-def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str]]:
-    """Every expanded, host-classified source URL from ``entities.urls``.
+def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, str | None]]:
+    """Every host-classified source URL from ``entities.urls``, as
+    ``(expanded_url, host, shortlink)`` triples.
 
-    The analyst's ``Source: <url>`` links. Skips the ``t.co`` wrapper (we trust
-    ``expanded_url``) and de-dupes, preserving order. Keeps X status links (a
-    status is a chaseable source; a bare profile link is not).
+    The analyst's ``Source: <url>`` links. Resolves through ``expanded_url``
+    (never a bare ``t.co`` target) and de-dupes, preserving order. Keeps X
+    status links (a status is a chaseable source; a bare profile link is not).
+    ``shortlink`` is the entity's ``url`` field, the ``t.co`` token as it sits
+    in the raw text; it lets a caller bind a token found in the text to its
+    expanded entity (the bot's ``S:`` line), ``None`` when absent.
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
         return []
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, str | None]] = []
     seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
@@ -479,5 +483,12 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str]]:
         if _T_CO_HOST_RE.match(host):
             continue
         seen.add(expanded)
-        out.append((expanded, classify_source_host(expanded)))
+        wrapper = entry.get("url")
+        out.append(
+            (
+                expanded,
+                classify_source_host(expanded),
+                wrapper if isinstance(wrapper, str) and wrapper else None,
+            )
+        )
     return out

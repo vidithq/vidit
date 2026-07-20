@@ -1,8 +1,8 @@
-"""Paid X API v2 client: the bot's mentions read, reply write, and like.
+"""Paid X API v2 client: the bot's mentions read and reply write.
 
 The only consumer is the bot pipeline (``services/bot``): everything else on
 the platform reads X through the free syndication path
-(``tweet_ingest.syndication``). Kept deliberately minimal (three calls, no
+(``tweet_ingest.syndication``). Kept deliberately minimal (two calls, no
 SDK) because every call is billed per resource on X's pay-per-use plan:
 
 * ``GET /2/users/:id/mentions`` — $ per post read. Incremental via
@@ -11,11 +11,9 @@ SDK) because every call is billed per resource on X's pay-per-use plan:
   a URL (X bills link posts higher). The reply composer must therefore never
   include a URL or auto-linkable domain; the clickable link lives in the bot
   bio.
-* ``POST /2/users/:id/likes``: the cheap receipt ack on a linked analyst's
-  tag.
 
-Reading mentions works app-only (bearer token). Posting and liking require
-user context, wired as OAuth 1.0a signing (consumer key/secret + the bot
+Reading mentions works app-only (bearer token). Posting requires user
+context, wired as OAuth 1.0a signing (consumer key/secret + the bot
 account's access token/secret) — static credentials, no refresh flow.
 """
 
@@ -326,29 +324,3 @@ def post_reply(
     if not isinstance(tweet_id, str):
         raise XApiError("reply created but no tweet id in response")
     return tweet_id
-
-
-def like_post(
-    *,
-    user_id: str,
-    tweet_id: str,
-    consumer_key: str,
-    consumer_secret: str,
-    access_token: str,
-    access_token_secret: str,
-    client: httpx.Client | None = None,
-) -> None:
-    """Like ``tweet_id`` as ``user_id`` (the bot account): the receipt ack
-    the bot gives a linked analyst's tag."""
-    body = _post_user_context(
-        f"{_API_BASE}/users/{user_id}/likes",
-        {"tweet_id": tweet_id},
-        consumer_key=consumer_key,
-        consumer_secret=consumer_secret,
-        access_token=access_token,
-        access_token_secret=access_token_secret,
-        client=client,
-    )
-    data = body.get("data")
-    if not isinstance(data, dict) or not data.get("liked"):
-        raise XApiError("like accepted but not confirmed in response")

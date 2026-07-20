@@ -12,30 +12,37 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
-The pipeline per mention: rebuild the tagged tweet's *self*-thread through
-the free syndication path (:func:`_self_thread_records`), run the shared
-detection spine (``stitch → detect``), persist through
-``assemble_detections`` owned by the existing Vidit account whose
+The pipeline per mention reads exactly one tweet, the tagged one (no parent
+walk: the archive backfill keeps its own self-thread stitching, the bot does
+not share it). The tweet must carry the strict inline format, all of:
+``T:`` a title, ``C:`` one decimal coordinate pair, ``S:`` a source link,
+with the remaining lines becoming the proof text
+(:func:`tweet_ingest.detect_structured`; at most one extra syndication fetch
+resolves the ``S:`` target's media and post date). Free-text coordinate
+detection is deliberately not a fallback here. The detection persists
+through ``assemble_detections`` owned by the existing Vidit account whose
 admin-linked ``x_handle`` matches the tagged author (the bot never mints
 users: an unknown handle is ledgered ``no_account`` and produces nothing),
-then record the mention in the ``bot_mentions`` ledger.
+then the mention lands in the ``bot_mentions`` ledger.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
 one interval behind the max (``_SINCE_ID_OVERLAP``) so a mention the webhook
 dropped is still re-read even after a newer one advanced the ledger.
 
-Response model: the bot **likes** the tagged tweet as a receipt ack when the
-author is a linked live account (``no_account`` stays fully silent); a
-created draft earns the in-thread success reply (event ref + warnings); a
-linked author whose thread yields no coordinate gets a failure reply stating
-the expected format, unless the tagged tweet is itself a reply to the bot
-(the loop guard: a courtesy answer to the bot's own reply auto-mentions the
-bot and must not earn another reply). All reply text is linkless by contract
-(a URL 13x's the per-post price; the clickable link lives in the bot bio); the
-composers own that invariant. Every like and reply spends the hourly
-and per-author budgets (:class:`GestureBudget`, seeded from the ledger's
-trailing window so the caps hold across passes, not per drain).
+Response model: the reply is the only gesture (a like at worker pickup,
+seconds before the reply, would signal nothing the reply does not, and it
+was the most expensive call of the mention). A created draft earns the
+in-thread success reply (event ref + warnings); a linked author whose
+tagged tweet misses any part of the format gets a failure reply teaching
+it, unless the tagged tweet is itself a reply to the bot (the loop guard:
+a courtesy answer to the bot's own reply auto-mentions the bot and must
+not earn another reply). An unlinked author stays fully silent
+(``no_account``). All reply text is linkless by contract (a URL 13x's the
+per-post price; the clickable link lives in the bot bio); the composers own
+that invariant. Every reply spends the hourly and per-author budgets
+(:class:`GestureBudget`, seeded from the ledger's trailing window so the
+caps hold across passes, not per drain).
 """
 
 from __future__ import annotations
@@ -59,42 +66,32 @@ from app.models.media import Media
 from app.models.user import User
 from app.services.detection import assemble_detections
 from app.services.tweet_ingest import (
-    TweetImportError,
     TweetRecord,
-    detect,
+    detect_structured,
     fetch_cdn_media,
     record_from_syndication,
-    stitch,
 )
-from app.services.x_api import Mention, XApiError, fetch_mentions, like_post, post_reply
+from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
 logger = logging.getLogger(__name__)
-
-# Bound on the parent chase: each hop is one syndication fetch, and a
-# legitimate self-thread deeper than this is vanishingly rare. Past the cap
-# the walk stops and the thread is what was gathered so far.
-_MAX_PARENT_WALK = 10
 
 # X's classic post length. Replies are composed under it and hard-truncated
 # as a belt: an over-long reply would 403 the (billed) create call. The cap
 # counts Python code points while X counts weighted characters (the ⚠ glyph
 # weighs 2), so composed text must stay well under it — today's worst case is
-# ~210 code points / ~215 weighted.
+# ~230 code points / ~235 weighted.
 _REPLY_MAX_CHARS = 280
 
 # Billed-spend ceilings on the write side. The mention surface is public: any
-# stranger can tag the bot on a coordinate tweet, and each posted gesture is
-# billed. The window posts at most this many replies (success + failure) and
-# this many likes, in total and per author; past a ceiling the draft still
-# lands (detection is unbilled) but the gesture is skipped and logged: a
-# flood burns nothing but its own posting effort. The window is wall-clock
-# (the trailing hour, read from the ledger), not per pass: the worker drains
-# every few seconds, so a per-pass budget would multiply the caps hundreds
-# of times an hour.
+# stranger can tag the bot on a coordinate tweet, and each posted reply is
+# billed. The window posts at most this many replies (success + failure), in
+# total and per author; past a ceiling the draft still lands (detection is
+# unbilled) but the reply is skipped and logged: a flood burns nothing but
+# its own posting effort. The window is wall-clock (the trailing hour, read
+# from the ledger), not per pass: the worker drains every few seconds, so a
+# per-pass budget would multiply the caps hundreds of times an hour.
 _MAX_REPLIES_PER_HOUR = 20
 _MAX_REPLIES_PER_AUTHOR_PER_HOUR = 3
-_MAX_LIKES_PER_HOUR = 20
-_MAX_LIKES_PER_AUTHOR_PER_HOUR = 3
 _GESTURE_WINDOW = timedelta(hours=1)
 
 # The reconciliation poll's cursor lookback, in snowflake id space (the
@@ -120,7 +117,7 @@ class BotNotConfigured(RuntimeError):
 
 @dataclass
 class GestureBudget:
-    """Windowed spend tracker for the billed gestures (replies + likes).
+    """Windowed spend tracker for the billed replies, the bot's only gesture.
 
     Seeded from the ledger's trailing hour (:meth:`from_ledger`) so the caps
     are wall-clock, surviving worker restarts and spanning drain passes; the
@@ -128,15 +125,12 @@ class GestureBudget:
     """
 
     replies_posted: int = 0
-    likes_posted: int = 0
     _replies_by_author: dict[str, int] = dataclasses.field(default_factory=dict)
-    _likes_by_author: dict[str, int] = dataclasses.field(default_factory=dict)
 
     @classmethod
     def from_ledger(cls, db: Session) -> GestureBudget:
-        """A budget pre-charged with the trailing window's ledgered gestures:
-        replies are rows with ``reply_tweet_id`` set, likes rows with
-        ``liked_at`` stamped."""
+        """A budget pre-charged with the trailing window's ledgered replies
+        (rows with ``reply_tweet_id`` set)."""
         cutoff = datetime.now(UTC) - _GESTURE_WINDOW
         budget = cls()
         for handle, count in (
@@ -146,13 +140,6 @@ class GestureBudget:
         ):
             budget.replies_posted += count
             budget._replies_by_author[handle] = count
-        for handle, count in (
-            db.query(BotMention.author_handle, func.count())
-            .filter(BotMention.liked_at >= cutoff)
-            .group_by(BotMention.author_handle)
-        ):
-            budget.likes_posted += count
-            budget._likes_by_author[handle] = count
         return budget
 
     def reply_allowed(self, author_handle: str) -> bool:
@@ -165,16 +152,6 @@ class GestureBudget:
         self.replies_posted += 1
         self._replies_by_author[author_handle] = self._replies_by_author.get(author_handle, 0) + 1
 
-    def like_allowed(self, author_handle: str) -> bool:
-        return (
-            self.likes_posted < _MAX_LIKES_PER_HOUR
-            and self._likes_by_author.get(author_handle, 0) < _MAX_LIKES_PER_AUTHOR_PER_HOUR
-        )
-
-    def note_like(self, author_handle: str) -> None:
-        self.likes_posted += 1
-        self._likes_by_author[author_handle] = self._likes_by_author.get(author_handle, 0) + 1
-
 
 @dataclass
 class BotRunOutcome:
@@ -184,61 +161,24 @@ class BotRunOutcome:
     already_handled: int = 0
     events_created: int = 0
     replies_posted: int = 0
-    likes_posted: int = 0
     no_detection: int = 0
     no_account: int = 0
     skipped: int = 0
     failed: int = 0
 
 
-def _self_thread_records(
-    mention: Mention, *, client: httpx.Client | None = None
-) -> list[TweetRecord]:
-    """The tagged tweet plus its same-author ancestors, one fetch per hop.
+def _tagged_record(mention: Mention, *, client: httpx.Client | None = None) -> TweetRecord:
+    """Exactly the tagged tweet, one syndication fetch.
 
-    The archive's self-threads are safe by construction (the export holds only
-    the analyst's own tweets); the bot has no such guarantee — its only source
-    is syndication walked one parent at a time. So each parent is fetched and
-    its author checked explicitly, and the walk stops at the first author that
-    differs from the tagged tweet's, *before* that parent's text is folded in
-    (the no-cross-author-rollup rule, see docs/ingestion.md). A parent that
-    fails to fetch also stops the walk: the thread gathered so far still
-    processes.
+    The strict mention format is single-tweet by contract, so the bot never
+    walks parents; a coordinate living in an ancestor tweet does not count.
+    The archive backfill keeps its own self-thread stitching untouched (its
+    threads are same-author by construction, see docs/ingestion.md).
     """
-    tagged = record_from_syndication(
+    return record_from_syndication(
         f"https://x.com/{mention.author_handle}/status/{mention.tweet_id}",
         client=client,
     )
-    records = [tagged]
-    author = tagged.handle.lower()
-    current = tagged
-    for _ in range(_MAX_PARENT_WALK):
-        parent_id = current.in_reply_to_status_id
-        if parent_id is None:
-            break
-        try:
-            parent = record_from_syndication(
-                f"https://x.com/i/web/status/{parent_id}", client=client
-            )
-        except TweetImportError:
-            break
-        if parent.handle.lower() != author:
-            # Also covers the degraded case where the syndication body carried
-            # no screen_name (handle stays the "i" URL sentinel): the author
-            # is never "i", so the walk stops rather than fold in a record it
-            # can't attribute.
-            break
-        # The /i/web/ acquire canonicalised a handle-less permalink; the
-        # response carried the real handle (it passed the author check), so
-        # rebuild the canonical form — the head's permalink anchors
-        # ``detected_from_url``.
-        parent = dataclasses.replace(
-            parent,
-            permalink=f"https://x.com/{parent.handle}/status/{parent.tweet_id}",
-        )
-        records.append(parent)
-        current = parent
-    return records
 
 
 def _linked_owner(db: Session, handle: str) -> User | None:
@@ -306,17 +246,23 @@ def compose_reply(created_ids: list[str], *, missing_source: bool, duplicate_med
 
 
 def compose_failure_reply() -> str:
-    """The in-thread reply for a linked author whose thread yielded no
-    coordinate: why nothing landed, plus the expected format.
+    """The in-thread reply for a linked author whose tagged tweet does not
+    carry the full strict format: why nothing landed, plus the format itself.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
-    domain. Only posted to linked authors, and never on a tag that is itself
-    a reply to the bot (the caller's loop guard).
+    domain (the ``S: source link`` line is a placeholder phrase, not a link).
+    The source-rule sentence covers the analyst whose three lines are right
+    but whose ``S:`` link is out of vocabulary. Only posted to linked
+    authors, and never on a tag that is itself a reply to the bot (the
+    caller's loop guard).
     """
     return (
-        "Vidit: no coordinates found in this thread. Write them in the post "
-        "text (like 48.858370, 2.294481), add the source as a quote, and tag "
-        "me again."
+        "Vidit: nothing saved. Tag me on one post holding three lines:\n"
+        "T: title\n"
+        "C: 22.703889, -83.297222\n"
+        "S: source link\n"
+        "S must hold one link to an X, Telegram, or YouTube post. "
+        "Media attached to that post; other lines become the proof note."
     )
 
 
@@ -327,7 +273,6 @@ def _record(
     outcome: BotMentionOutcome,
     events_created: int = 0,
     reply_tweet_id: str | None = None,
-    liked: bool = False,
 ) -> bool:
     """Insert the ledger row; ``False`` when the mention_tweet_id UNIQUE lost
     a race (another worker ledgered it between the existence check and here),
@@ -339,7 +284,6 @@ def _record(
             outcome=outcome,
             events_created=events_created,
             reply_tweet_id=reply_tweet_id,
-            liked_at=datetime.now(UTC) if liked else None,
         )
     )
     try:
@@ -372,29 +316,6 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         return None
 
 
-def _like_failsoft(mention: Mention, *, client: httpx.Client | None) -> bool:
-    """Like the tagged tweet if write credentials are configured; same
-    fail-soft contract as the reply: a lost like is a logged degradation,
-    never a reason to fail the mention."""
-    if not settings.x_api_consumer_key:
-        return False
-    try:
-        like_post(
-            user_id=settings.x_bot_user_id,
-            tweet_id=mention.tweet_id,
-            consumer_key=settings.x_api_consumer_key,
-            consumer_secret=settings.x_api_consumer_secret,
-            access_token=settings.x_bot_access_token,
-            access_token_secret=settings.x_bot_access_token_secret,
-            client=client,
-        )
-    except XApiError as exc:
-        logger.warning("Bot like failed for mention %s: %s", mention.tweet_id, exc)
-        sentry_sdk.capture_exception(exc)
-        return False
-    return True
-
-
 async def _process_mention(
     db: Session,
     mention: Mention,
@@ -403,14 +324,16 @@ async def _process_mention(
     x_write_client: httpx.Client | None,
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None]:
-    records = _self_thread_records(mention, client=syndication_client)
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    record = _tagged_record(mention, client=syndication_client)
+    detections = detect_structured(
+        record, bot_handle=settings.x_bot_handle, client=syndication_client
+    )
     if not detections:
         return "no_detection", 0, None
-    # After the detection step on purpose: an unknown handle with no coordinate
-    # ledgers ``no_detection``, so ``no_account`` isolates the mentions where a
-    # link would actually have produced a draft.
-    owner = _linked_owner(db, records[0].handle)
+    # After the detection step on purpose: an unknown handle with a
+    # non-conforming tweet ledgers ``no_detection``, so ``no_account`` isolates
+    # the mentions where a link would actually have produced a draft.
+    owner = _linked_owner(db, record.handle)
     if owner is None:
         return "no_account", 0, None
     assembled = await assemble_detections(
@@ -471,17 +394,9 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
-    # The receipt ack: like the tagged tweet, linked live authors only (an
-    # unlinked author stays fully silent, whatever the thread yields).
+    # Read once for the failure-reply gate: an unlinked author stays fully
+    # silent, whatever the tweet yields.
     author_linked = _linked_owner(db, mention.author_handle) is not None
-    liked = False
-    if author_linked and budget.like_allowed(mention.author_handle):
-        if _like_failsoft(mention, client=x_write_client):
-            liked = True
-            budget.note_like(mention.author_handle)
-            outcome.likes_posted += 1
-    elif author_linked:
-        logger.warning("Like budget reached; mention %s not liked", mention.tweet_id)
     try:
         verdict, created, reply_id = await _process_mention(
             db,
@@ -494,7 +409,7 @@ async def process_single_mention(
         db.rollback()
         logger.exception("Bot mention %s failed", mention.tweet_id)
         sentry_sdk.capture_exception(exc)
-        if not _record(db, mention, outcome="failed", liked=liked):
+        if not _record(db, mention, outcome="failed"):
             outcome.already_handled += 1
             return "already_handled"
         outcome.failed += 1
@@ -516,7 +431,6 @@ async def process_single_mention(
         outcome=verdict,
         events_created=created,
         reply_tweet_id=reply_id,
-        liked=liked,
     ):
         outcome.already_handled += 1
         return "already_handled"

@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from .errors import TweetFetchFailed, TweetNotAccessible
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import (
     _extract_media,
@@ -44,6 +45,35 @@ def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
         text=raw_text if isinstance(raw_text, str) else "",
         created_at=raw_created if isinstance(raw_created, str) else "",
         media=list(_extract_media(qt, origin="quote")),
+    )
+
+
+def quoted_from_syndication(
+    quoted_id: str, *, client: httpx.Client | None = None
+) -> QuotedTweet | None:
+    """Chase a source tweet by id via syndication into a ``QuotedTweet``.
+
+    The one chase both linked-source paths run: the archive backfill (a
+    ``Source: <x status>`` link with ``chase`` on) and the bot's strict
+    mention format (the ``S:`` link). Fail-soft: a fetch error degrades to
+    "no source tweet" and never fails the caller's pass.
+    """
+    try:
+        body = fetch_syndication(quoted_id, client=client)
+    except (TweetFetchFailed, TweetNotAccessible):
+        return None
+    user = body.get("user")
+    handle = user.get("screen_name") if isinstance(user, dict) else None
+    if not isinstance(handle, str) or not handle:
+        return None
+    text = body.get("text")
+    created_at = body.get("created_at")
+    return QuotedTweet(
+        tweet_id=quoted_id,
+        handle=handle,
+        text=text if isinstance(text, str) else "",
+        created_at=created_at if isinstance(created_at, str) else "",
+        media=list(_extract_media(body, origin="quote")),
     )
 
 
@@ -78,5 +108,7 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),
-        external_sources=[SourceLink(url=u, host=h) for u, h in extract_source_links(body)],
+        external_sources=[
+            SourceLink(url=u, host=h, shortlink=t) for u, h, t in extract_source_links(body)
+        ],
     )

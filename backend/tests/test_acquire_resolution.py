@@ -30,18 +30,18 @@ def test_extract_source_links_classifies_dedupes_skips_tco():
     body = {
         "entities": {
             "urls": [
-                {"expanded_url": "https://t.me/foo/123"},
-                {"expanded_url": "https://x.com/bar/status/456"},
-                {"expanded_url": "https://t.me/foo/123"},  # duplicate
+                {"url": "https://t.co/aaa", "expanded_url": "https://t.me/foo/123"},
+                {"url": "https://t.co/bbb", "expanded_url": "https://x.com/bar/status/456"},
+                {"url": "https://t.co/ccc", "expanded_url": "https://t.me/foo/123"},  # duplicate
                 {"expanded_url": "https://t.co/wrapped"},  # skipped (wrapper)
-                {"expanded_url": "https://youtu.be/xyz"},
+                {"expanded_url": "https://youtu.be/xyz"},  # no wrapper token supplied
             ]
         }
     }
     assert extract_source_links(body) == [
-        ("https://t.me/foo/123", "telegram"),
-        ("https://x.com/bar/status/456", "x"),
-        ("https://youtu.be/xyz", "youtube"),
+        ("https://t.me/foo/123", "telegram", "https://t.co/aaa"),
+        ("https://x.com/bar/status/456", "x", "https://t.co/bbb"),
+        ("https://youtu.be/xyz", "youtube", None),
     ]
 
 
@@ -59,8 +59,8 @@ def test_extract_source_links_profile_link_is_not_footage():
         }
     }
     assert extract_source_links(body) == [
-        ("https://x.com/Osinttechnical", "other"),
-        ("https://x.com/Osinttechnical/status/2028478401154084878", "x"),
+        ("https://x.com/Osinttechnical", "other", None),
+        ("https://x.com/Osinttechnical/status/2028478401154084878", "x", None),
     ]
 
 

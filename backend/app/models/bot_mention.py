@@ -46,9 +46,10 @@ class BotMention(Base):
     # created, reply credentials are absent, or the post failed (fail-soft:
     # the detection is durable even when the reply isn't).
     reply_tweet_id: Mapped[str | None] = mapped_column(String(25), nullable=True)
-    # When the bot liked the tagged tweet (the receipt ack), NULL otherwise.
-    # The gesture budget's like half reads it: likes in the trailing window
-    # count against the hourly caps, same as replies via ``reply_tweet_id``.
+    # Retired: the like ack was removed from the response model (it fired at
+    # worker pickup, seconds before the reply, and was the mention's most
+    # expensive gesture). Nothing writes or reads it anymore; the column stays
+    # NULL on new rows because dropping it is not worth a migration.
     liked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

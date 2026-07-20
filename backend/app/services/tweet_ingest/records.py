@@ -53,10 +53,16 @@ class SourceLink:
 
     ``host``: ``x`` (a status, chaseable for its media / date), ``telegram`` /
     ``youtube`` (off-platform, media not retrievable), or ``other``.
+
+    ``shortlink`` is the wrapper token as it appears in the raw tweet text
+    (the ``t.co`` form from the entity's ``url`` field), ``None`` when the
+    adapter had none. It binds a URL token found in the text to this entity:
+    the bot's ``S:`` line designates its source through it.
     """
 
     url: str
     host: str
+    shortlink: str | None = None
 
 
 @dataclass(frozen=True)

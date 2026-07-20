@@ -7,7 +7,7 @@ it against the test database, and asserts per typology: the ``detected`` status,
 ``media`` table, and the proof images injected into the proof JSON.
 
 Strictly offline: every media byte is written to disk from ``TINY_JPEG`` /
-``TINY_MP4``, and the one chased-source case stubs ``archive.fetch_syndication``
+``TINY_MP4``, and the one chased-source case stubs ``acquire.fetch_syndication``
 plus supplies synthetic bytes for the CDN media, so no request leaves the box.
 """
 
@@ -214,8 +214,9 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
     """The chase branch end to end: an X status link (no inline quote) is chased,
     and the chased tweet's video lands as the source media row while the OP photo
-    stays proof. Offline: ``archive.fetch_syndication`` is stubbed and the CDN
+    stays proof. Offline: ``acquire.fetch_syndication`` is stubbed and the CDN
     media bytes are supplied by a synthetic fetcher."""
+    import app.services.tweet_ingest.acquire as acquire_mod
     import app.services.tweet_ingest.archive as archive_mod
 
     typology = "x_status_link"
@@ -240,7 +241,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         # nothing leaves the box.
         return loader.TINY_MP4, parsed.content_type
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)

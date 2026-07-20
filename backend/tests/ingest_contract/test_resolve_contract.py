@@ -99,7 +99,8 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
     """The archive chase branch: an X status link with no inline quote resolves
     its source from the chased tweet (its canonical url, date, and media), while
     the OP's own photo stays proof. Exercises the ``from``-imported
-    ``archive.fetch_syndication`` seam the plan flags."""
+    ``acquire.fetch_syndication`` seam the plan flags."""
+    import app.services.tweet_ingest.acquire as acquire_mod
     import app.services.tweet_ingest.archive as archive_mod
 
     typology = "x_status_link"
@@ -120,7 +121,7 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
         assert tweet_id == chase["linked_status_id"]
         return chased_body
 
-    monkeypatch.setattr(archive_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
     records = archive_mod.read_tweets(archive, handle=body["user"]["screen_name"], chase=True)
 
     resolved = resolve_thread(records)

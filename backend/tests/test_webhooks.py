@@ -36,13 +36,35 @@ HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 COORD_ID = "9400000000000000001"
 BARE_ID = "9400000000000000002"
 BARE2_ID = "9400000000000000003"
+SOURCE_ID = "9400000000000000042"
 
 BODIES = {
+    # A strict-format mention: T: / C: / S: markers plus a proof line.
     COORD_ID: {
         "id_str": COORD_ID,
         "created_at": "2026-07-18T10:00:00.000Z",
         "user": {"screen_name": HANDLE},
-        "text": "@viditbot archive 55.751200, 37.617600 near the bridge",
+        "text": (
+            "@viditbot\n"
+            "T: Strike near the bridge\n"
+            "C: 55.751200, 37.617600\n"
+            "S: https://t.co/src\n"
+            "Shadows match the morning light"
+        ),
+        "entities": {
+            "urls": [
+                {
+                    "url": "https://t.co/src",
+                    "expanded_url": f"https://x.com/warfootage/status/{SOURCE_ID}",
+                }
+            ]
+        },
+    },
+    SOURCE_ID: {
+        "id_str": SOURCE_ID,
+        "created_at": "2026-07-17T09:00:00.000Z",
+        "user": {"screen_name": "warfootage"},
+        "text": "original footage",
     },
     BARE_ID: {
         "id_str": BARE_ID,
@@ -365,7 +387,7 @@ def test_reply_carries_in_reply_to_user_id(db):
 # ── Queue drain through the shared pipeline ────────────────────────────────
 
 
-async def test_drain_creates_draft_likes_and_replies(db, linked_owner):
+async def test_drain_creates_draft_and_replies(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )
@@ -373,7 +395,7 @@ async def test_drain_creates_draft_likes_and_replies(db, linked_owner):
     outcome, posted, liked = await _drain(db)
 
     assert outcome.events_created == 1
-    assert liked == [{"tweet_id": COORD_ID}]  # the like HTTP call went out
+    assert liked == []  # the like ack is gone: the reply is the only gesture
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": COORD_ID}
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == COORD_ID).one()
@@ -392,12 +414,14 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     outcome, posted, liked = await _drain(db)
 
     assert outcome.no_detection == 1
-    assert liked == [{"tweet_id": BARE_ID}]
+    assert liked == []
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "no coordinates" in text.lower()
-    assert "48.858370, 2.294481" in text
+    assert "nothing saved" in text.lower()
+    assert "T: title" in text
+    assert "C: 22.703889, -83.297222" in text
+    assert "S must hold one link" in text
 
 
 async def test_drain_unlinked_author_is_fully_silent(db):
@@ -499,14 +523,13 @@ async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
     import app.services.bot as bot_service
 
     monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 1)
-    monkeypatch.setattr(bot_service, "_MAX_LIKES_PER_HOUR", 1)
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}
     )
     _, posted, liked = await _drain(db)
     assert len(posted) == 1  # the failure reply spent the reply budget
-    assert len(liked) == 1
+    assert liked == []
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE2_ID)]}
