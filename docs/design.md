@@ -102,7 +102,7 @@ Constants (the pill tones live on `<Pill>` as `PILL_TONE`; these colour-only pai
 ## Map
 
 - **Style:** CARTO Dark Matter (with labels), `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`; the light theme swaps its matched counterpart Positron, `.../gl/positron-gl-style/style.json` (see [Theme](#theme)), with a faint `sepia` on the canvas (`globals.css`) warming Positron's cool grey to match the warm light surfaces
-- **Renderer:** MapLibre GL JS (vector tiles) with globe projection
+- **Renderer:** MapLibre GL JS (vector tiles) with globe projection; zoom floor 1.8 (`MIN_ZOOM` in [`Map.tsx`](../frontend/src/components/map/Map.tsx)), the lowest level that keeps the globe fully visible once without shrinking it into void
 - Map labels (cities, regions) are discreet light-gray
 - Point geometry: default radius 6px, selected 7px + 2px white border; opacity 1.0 (points), 0.85 (clusters); pointer cursor on hover
 - **Pin hover preview.** Hovering any single unclustered pin (or a ring dot, below) shows one shared preview card after a 150 ms hover-intent delay (`PinPreviewCard` in [`Map.tsx`](../frontend/src/components/map/Map.tsx)): title, `StatusBadge`, the fixed `MediaThumb` slot (source-media thumbnail, or its "no media" box), date and `AuthorByline`, composed on `Card`. The event detail is fetched only once the hover intent elapses (`GET /events/{id}`, bounded in-memory cache that also holds in-flight requests, stale responses ignored, a failed fetch shows a terse fallback) and the card clamps against the map edges after measuring, flipping left of the pin when the right side lacks room, so it always renders fully visible. Ordinary clusters get no preview. Touch has no hover; tap keeps opening the panel.

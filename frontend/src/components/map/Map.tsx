@@ -617,6 +617,10 @@ function SpiderRing({
     </div>
   );
 }
+// Zoom floor: at 1.8 the globe stays fully visible once with a small margin,
+// while lower values shrink it into empty void (2.1 already clips the poles
+// on a laptop viewport).
+const MIN_ZOOM = 1.8;
 
 interface MapProps {
   points: MapPoint[];
@@ -933,8 +937,9 @@ export default function Map({
       initialViewState={{
         latitude: center?.lat ?? 48.5,
         longitude: center?.lng ?? 35.0,
-        zoom: zoom ?? 5,
+        zoom: Math.max(zoom ?? 5, MIN_ZOOM),
       }}
+      minZoom={MIN_ZOOM}
       onMoveEnd={(evt) => {
         if (firstMoveEndRef.current) {
           firstMoveEndRef.current = false;
