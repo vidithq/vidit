@@ -940,6 +940,14 @@ export default function Map({
         zoom: Math.max(zoom ?? 5, MIN_ZOOM),
       }}
       minZoom={MIN_ZOOM}
+      // No symbol fade hold. MapLibre keeps an outgoing tile alive for
+      // fadeDuration (default 300 ms) when it carries symbol buckets: the
+      // tile's circles stop rendering immediately while its labels linger,
+      // fading, so every cluster recompute left count labels floating
+      // without their circles. Zero means labels and circles swap on the
+      // same frame; the ceiling handoff still eases via the zoom-based
+      // crossfade below. Costs the basemap its place-label fade-in.
+      fadeDuration={0}
       onMoveEnd={(evt) => {
         if (firstMoveEndRef.current) {
           firstMoveEndRef.current = false;
