@@ -107,6 +107,52 @@ const nextConfig = {
     // host and the guard stays on where it matters.
     dangerouslyAllowLocalIP: apiIsLocal(),
   },
+  // Security response headers, applied to every route (the authenticated
+  // /submit, /settings, /admin pages included). Defense-in-depth: these don't
+  // replace input validation, they limit what a bug (or a compromised
+  // dependency) can do to the browser.
+  //
+  // A full resource CSP (script-src / style-src / img-src, etc.) is a
+  // deliberate follow-up, not included here: Next's inline bootstrap scripts,
+  // the maplibre worker/blob usage in the map view, and Tiptap's proof editor
+  // all need directives worked out carefully, and getting them wrong breaks
+  // the app rather than just narrowing it. This only locks down framing.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            // Blocks the app from being rendered inside a frame/iframe on
+            // another origin, closing off clickjacking (an attacker
+            // overlaying invisible controls on top of the real UI).
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            // Stops the browser from guessing content types and executing,
+            // say, an uploaded image as if it were HTML/JS (MIME-sniffing).
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            // Sends the full referrer only to same-origin requests, and only
+            // the origin (no path/query) cross-origin, so URLs carrying
+            // sensitive path segments or tokens don't leak to third parties.
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            // frame-ancestors is the CSP-level equivalent of X-Frame-Options
+            // and is respected by browsers that ignore the older header;
+            // kept scoped to framing only, see the comment above.
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // `withSentryConfig` wraps `next build` to upload source maps to Sentry and

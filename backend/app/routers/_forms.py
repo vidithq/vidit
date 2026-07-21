@@ -7,10 +7,17 @@ contract for malformed input lives in one place instead of being recopied per fo
 """
 
 import json
+import uuid
 from datetime import UTC, date, datetime, time
 from typing import Any
 
 from fastapi import HTTPException
+
+# Sanity cap on a JSON-array form field (tag_ids / conflict_ids /
+# remove_media_ids): no legitimate submission attaches more than a handful of
+# tags or media, so this only bounds an attacker-sized array (an unbounded
+# list becomes an unbounded SQL IN clause downstream).
+MAX_ID_LIST_LENGTH = 100
 
 
 def parse_optional_json_object(raw: str | None, *, field: str) -> dict[str, Any] | None:
@@ -28,8 +35,16 @@ def parse_optional_json_object(raw: str | None, *, field: str) -> dict[str, Any]
     return value
 
 
-def parse_json_id_list(raw: str | None, *, field: str) -> list[Any]:
-    """Parse a JSON-array form field. ``None`` / empty → ``[]``; 400 on garbage."""
+def parse_json_id_list(raw: str | None, *, field: str, as_uuid: bool = False) -> list[Any]:
+    """Parse a JSON-array form field. ``None`` / empty → ``[]``; 400 on garbage.
+
+    Capped at :data:`MAX_ID_LIST_LENGTH` elements (422 over that): the list
+    feeds a SQL ``IN`` clause downstream, so an uncapped array is an
+    uncapped query. With ``as_uuid``, each element is coerced to
+    :class:`uuid.UUID` (422 on a non-UUID element) for the id columns that
+    are actually UUID-typed (``tag_ids`` / ``conflict_ids``); callers whose
+    column is compared as a string (``remove_media_ids``) leave it off.
+    """
     if not raw:
         return []
     try:
@@ -40,7 +55,16 @@ def parse_json_id_list(raw: str | None, *, field: str) -> list[Any]:
         ) from exc
     if not isinstance(value, list):
         raise HTTPException(status_code=400, detail=f"'{field}' must be a JSON array")
-    return value
+    if len(value) > MAX_ID_LIST_LENGTH:
+        raise HTTPException(
+            status_code=422, detail=f"'{field}' exceeds the {MAX_ID_LIST_LENGTH}-item limit"
+        )
+    if not as_uuid:
+        return value
+    try:
+        return [uuid.UUID(str(item)) for item in value]
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=f"'{field}' must contain only UUIDs") from exc
 
 
 def parse_iso_date(raw: str, *, field: str) -> date:
