@@ -2134,6 +2134,8 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Media */
+            media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
             /**
              * Status

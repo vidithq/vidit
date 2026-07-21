@@ -56,6 +56,9 @@ class SearchEventHit(BaseModel):
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
     owner: AuthorRef
+    # The ``source`` media rows only, same as the request hit and the list
+    # card: the card thumbnail must never show a proof image as the footage.
+    media: list[MediaRead]
     tags: list[TagRead]
 
     model_config = {"from_attributes": True}

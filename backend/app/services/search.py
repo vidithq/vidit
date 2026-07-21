@@ -187,6 +187,7 @@ def search_geolocations(
         )
         .options(
             joinedload(Event.owner),
+            joinedload(Event.media.and_(Media.role == "source")),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -211,6 +212,7 @@ def search_geolocations(
                 "is_demo": geo.is_demo,
                 "status": geo.status,
                 "owner": geo.owner,
+                "media": geo.media,
                 "tags": geo.tags,
             }
         )
