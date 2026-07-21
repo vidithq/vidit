@@ -8,6 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## v0.4.2, 2026-07-21
+
 ### Added
 - **Promo pipeline v0.4** ([`video/`](video/), [`frontend/src/components/map/Map.tsx`](frontend/src/components/map/Map.tsx)). The release video is code: `record-v04.js` drives one continuous in-app take over the seeded dev stack (probe pass for exact pin geometry, raw CDP capture at DPR 2, VFR frames resampled to a constant 60 fps), `PromoV04.tsx` cuts it into captioned beats in Remotion, and `gen-clips-manifest.js` projects the take's marks into `clips-manifest.ts` so a re-record needs no hand retiming. The map component gains a dev-only `__viditMap` handle (never mounted in production) so the take can drive smooth camera eases instead of synthetic wheel events. Recorded clips and fetched avatar stills stay out of git (regenerable), the maintainer's personal archive is ignored at the root.
 - **Frontend observability: Sentry ad-blocker tunnel + Vercel Analytics / Speed Insights** ([`frontend/next.config.mjs`](frontend/next.config.mjs), [`frontend/src/app/layout.tsx`](frontend/src/app/layout.tsx), [`docs/engineering.md`](docs/engineering.md)). `withSentryConfig` now sets `tunnelRoute: "/monitoring"`, proxying browser error envelopes through a same-origin route so uBlock / Brave / AdGuard no longer drop them with `ERR_BLOCKED_BY_CLIENT`. The root layout renders `<Analytics />` + `<SpeedInsights />` (cookieless aggregate page views and Core Web Vitals, no consent banner needed, no-ops outside Vercel); data flows once the operator enables the two dashboard toggles.
