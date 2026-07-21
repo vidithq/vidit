@@ -61,12 +61,15 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # multipart body to a SpooledTemporaryFile BEFORE the route runs, and only
 # then does ``services.storage.validate_file`` check size — so a multi-GB
 # body pins worker memory / tmp-disk long before the per-file cap fires.
-# ``Content-Length`` gives a clean, cheap 413 on the announced-too-large path;
-# a chunked (or otherwise length-less) body carries no such header to reject
-# up front, so it's read here chunk by chunk with a running total, aborting
-# the instant the total crosses the cap. That bounds every request to ``cap``
-# bytes read regardless of what it announced, closing the fall-through the
-# header check alone would miss.
+# ``Content-Length`` gives a clean, cheap 413 on the announced-too-large path
+# and, when it's present and in range, the route streams the body straight
+# through (no pre-buffering). A chunked (or otherwise length-less) body carries
+# no such header, so it's read here chunk by chunk with a running total that
+# aborts the instant the total crosses the cap. That path does buffer what it
+# reads into memory up to ``cap`` before replaying it to the route, so the
+# per-path ``cap`` below is also the pre-route memory bound for a length-less
+# body: the unauthenticated webhook pins its own small cap for exactly this
+# reason, and normal Content-Length uploads never take this branch.
 #
 # Ceiling admits the largest legitimate request: one source file
 # (``max_video_size``, 95 MiB, the bigger of the two per-file caps) plus a
@@ -79,6 +82,12 @@ _MAX_REQUEST_BODY_BYTES = (
     + settings.max_proof_images_per_event * settings.max_image_size
     + (10 * 1024 * 1024)
 )
+
+# The X webhook path (``webhooks.router`` mounted under this prefix below). The
+# body-size middleware pins the webhook's own small cap on it, so an
+# unauthenticated chunked delivery can't buffer up to the upload ceiling
+# pre-signature-check. Kept in sync with the ``include_router`` prefix below.
+_WEBHOOK_ACTIVITY_PATH = "/api/v1/webhooks/x"
 
 
 @app.middleware("http")
@@ -93,6 +102,14 @@ async def enforce_request_body_size(request: Request, call_next):
     cap = _MAX_REQUEST_BODY_BYTES
     if settings.storage_backend == "local" and request.url.path == DEV_STAGING_UPLOAD_PATH:
         cap = archive_zip.MAX_UPLOAD_BYTES + (10 * 1024 * 1024)
+    elif request.url.path == _WEBHOOK_ACTIVITY_PATH:
+        # The webhook is unauthenticated (HMAC-gated). This middleware runs
+        # ahead of the route, so on the length-less path the ``cap`` chosen
+        # here is what a chunked body may buffer before the signature check.
+        # Pin it to the route's own small cap so an oversized chunked delivery
+        # can't buffer up to the ~120 MiB upload ceiling pre-auth: the webhook
+        # payload is a few hundred KB, never an upload.
+        cap = webhooks.MAX_BODY_BYTES
     content_length = request.headers.get("content-length")
     announced = None
     if content_length is not None:

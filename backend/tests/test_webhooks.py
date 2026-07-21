@@ -286,7 +286,7 @@ def test_post_with_non_ascii_signature_is_401(db):
 def test_post_with_oversized_body_is_413(db):
     from app.routers import webhooks as webhooks_module
 
-    body = b"x" * (webhooks_module._MAX_BODY_BYTES + 1)
+    body = b"x" * (webhooks_module.MAX_BODY_BYTES + 1)
     resp = client.post(
         WEBHOOK_PATH,
         content=body,
@@ -298,12 +298,17 @@ def test_post_with_oversized_body_is_413(db):
 
 def test_post_with_chunked_oversized_body_is_413(db):
     """A ``Transfer-Encoding: chunked`` delivery (no ``Content-Length``) must
-    still 413 once it crosses ``_MAX_BODY_BYTES``. Sent as a generator so
+    still 413 once it crosses ``MAX_BODY_BYTES``. Sent as a generator so
     httpx/the ASGI transport streams it chunk by chunk with no announced
-    length, the exact shape a header-only check would miss."""
+    length, the exact shape a header-only check would miss.
+
+    The body-size middleware pins the webhook's own ``MAX_BODY_BYTES`` cap on
+    this path, so the streaming 413 fires there (its ``Request body too large``
+    detail), before the route ever runs. The pre-signature memory bound is the
+    512 KiB webhook cap, not the ~120 MiB upload ceiling."""
     from app.routers import webhooks as webhooks_module
 
-    total = webhooks_module._MAX_BODY_BYTES + 1
+    total = webhooks_module.MAX_BODY_BYTES + 1
     chunk = b"x" * 4096
 
     def _chunks():
@@ -322,7 +327,8 @@ def test_post_with_chunked_oversized_body_is_413(db):
         },
     )
     assert resp.status_code == 413
-    assert resp.json()["detail"] == "Payload too large"
+    assert "too large" in resp.json()["detail"].lower()
+    assert str(webhooks_module.MAX_BODY_BYTES) in resp.json()["detail"]
     assert _queued_mentions(db) == []
 
 

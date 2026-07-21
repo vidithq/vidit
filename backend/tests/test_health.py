@@ -148,20 +148,23 @@ def test_chunked_oversized_body_returns_413():
 
 def test_chunked_small_body_is_not_rejected():
     """The streaming cap must not break an ordinary, well-under-the-cap
-    request sent without a ``Content-Length`` header: the route should still
-    see the real body, not an empty one."""
+    request sent without a ``Content-Length`` header: the route must see the
+    real replayed body, not an empty one.
+
+    A schema-valid login body (unknown ``email`` + wrong password) is used on
+    purpose: it returns 401 only if the route actually parsed the body. An
+    empty or dropped body would fail ``LoginRequest`` validation with 422, so
+    asserting 401 proves the middleware replayed the streamed bytes intact."""
 
     def _chunks():
-        yield b'{"username": "nobody", "password": "wrong-password"}'
+        yield b'{"email": "nobody@example.com", "password": "wrong-password"}'
 
     response = client.post(
         "/api/v1/auth/login",
         content=_chunks(),
         headers={"content-type": "application/json"},
     )
-    # Not the point of this test whether login succeeds; it must not be a
-    # 413 (cap tripped) or a body-empty 4xx from the route seeing no data.
-    assert response.status_code != 413
+    assert response.status_code == 401
 
 
 def test_nosniff_header_present_on_normal_response():

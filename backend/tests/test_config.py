@@ -122,7 +122,3 @@ def test_default_jwt_secret_with_unparseable_host_fails(monkeypatch):
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)
-
-
-def _clear_cookie_env(monkeypatch):
-    monkeypatch.delenv("COOKIE_SECURE", raising=False)
