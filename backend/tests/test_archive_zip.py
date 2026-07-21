@@ -125,6 +125,21 @@ def test_oversized_media_is_skipped_not_fatal(tmp_path, monkeypatch):
     assert not (dest / "tweets_media" / "big.mp4").exists()
 
 
+def test_entry_count_cap(tmp_path, monkeypatch):
+    # Millions of distinct-named empty tweets_media/* entries pass every byte
+    # cap but would still write one inode each; the entry-count cap catches
+    # this before any file is written.
+    monkeypatch.setattr(archive_zip, "MAX_ENTRY_COUNT", 3)
+    entries = {"tweets.js": _TWEETS}
+    entries.update({f"tweets_media/{i}.jpg": b"" for i in range(5)})
+    src = _zip(tmp_path, entries)
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with pytest.raises(ArchiveTooLargeError):
+        extract_allowlisted(src, dest)
+    assert list(dest.iterdir()) == []
+
+
 def test_malformed_zip_raises(tmp_path):
     src = tmp_path / "bad.zip"
     src.write_bytes(b"this is not a zip")

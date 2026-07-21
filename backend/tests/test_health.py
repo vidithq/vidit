@@ -124,6 +124,54 @@ def test_413_response_carries_cors_headers():
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
+def test_chunked_oversized_body_returns_413():
+    """A length-less (``Transfer-Encoding: chunked``) body must 413 once its
+    running total crosses the cap, the fall-through a ``Content-Length``-only
+    check would miss entirely. Sent as a generator so httpx streams it with
+    no announced length."""
+    from app.main import _MAX_REQUEST_BODY_BYTES
+
+    total = _MAX_REQUEST_BODY_BYTES + 1
+    chunk = b"x" * (1024 * 1024)
+
+    def _chunks():
+        remaining = total
+        while remaining > 0:
+            step = min(len(chunk), remaining)
+            yield chunk[:step]
+            remaining -= step
+
+    response = client.post("/api/v1/auth/login", content=_chunks())
+    assert response.status_code == 413
+    assert "too large" in response.json()["detail"].lower()
+
+
+def test_chunked_small_body_is_not_rejected():
+    """The streaming cap must not break an ordinary, well-under-the-cap
+    request sent without a ``Content-Length`` header: the route should still
+    see the real body, not an empty one."""
+
+    def _chunks():
+        yield b'{"username": "nobody", "password": "wrong-password"}'
+
+    response = client.post(
+        "/api/v1/auth/login",
+        content=_chunks(),
+        headers={"content-type": "application/json"},
+    )
+    # Not the point of this test whether login succeeds; it must not be a
+    # 413 (cap tripped) or a body-empty 4xx from the route seeing no data.
+    assert response.status_code != 413
+
+
+def test_nosniff_header_present_on_normal_response():
+    """Every response carries ``X-Content-Type-Options: nosniff`` so a
+    mislabeled body (a stored MIME that drifted, an error page requested as
+    a script) is never sniffed and executed by the browser."""
+    response = client.get("/health")
+    assert response.headers.get("x-content-type-options") == "nosniff"
+
+
 def test_openapi_schema_is_served():
     response = client.get("/openapi.json")
     assert response.status_code == 200

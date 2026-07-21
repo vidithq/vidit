@@ -238,6 +238,32 @@ def test_local_storage_url_dropped_when_backend_is_s3(monkeypatch):
     assert cleaned["content"] == []
 
 
+def test_image_src_pinned_to_s3_bucket_when_no_cdn(monkeypatch):
+    """A bare-S3 deploy (no CloudFront) must pin image src to the bucket's
+    own endpoint, not fall through to any https host."""
+    monkeypatch.setattr(settings, "cloudfront_domain", "")
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    monkeypatch.setattr(settings, "s3_bucket", "vidit-prod")
+    monkeypatch.setattr(settings, "aws_region", "eu-west-3")
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "image", "attrs": {"src": "https://attacker.com/pixel.gif"}},
+            {
+                "type": "image",
+                "attrs": {"src": "https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/x.jpg"},
+            },
+        ],
+    }
+    cleaned = sanitize_tiptap_doc(doc)
+    assert cleaned["content"] == [
+        {
+            "type": "image",
+            "attrs": {"src": "https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/x.jpg"},
+        }
+    ]
+
+
 def test_local_storage_url_dropped_in_prod(monkeypatch):
     """The dev escape hatch is disabled when a CloudFront host is set."""
     monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")

@@ -80,3 +80,9 @@ in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
+
+# ── Starlette request-body cache, written by us, read by the framework ────────
+# The body-size middleware caches the streamed body onto ``request._body`` so
+# Starlette replays it to the route (same slot ``Request.body()`` fills). We
+# only write it; the read is inside Starlette, which the gate does not scan.
+_body  # main.py enforce_request_body_size

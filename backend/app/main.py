@@ -61,9 +61,12 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # multipart body to a SpooledTemporaryFile BEFORE the route runs, and only
 # then does ``services.storage.validate_file`` check size — so a multi-GB
 # body pins worker memory / tmp-disk long before the per-file cap fires.
-# Pre-checking ``Content-Length`` gives a clean 413 on the announced-too-large
-# path; the absent/chunked path still falls through to ``validate_file`` per
-# file (bounded by the stream-reader, no worse than the per-file cap).
+# ``Content-Length`` gives a clean, cheap 413 on the announced-too-large path;
+# a chunked (or otherwise length-less) body carries no such header to reject
+# up front, so it's read here chunk by chunk with a running total, aborting
+# the instant the total crosses the cap. That bounds every request to ``cap``
+# bytes read regardless of what it announced, closing the fall-through the
+# header check alone would miss.
 #
 # Ceiling admits the largest legitimate request: one source file
 # (``max_video_size``, 95 MiB, the bigger of the two per-file caps) plus a
@@ -91,18 +94,44 @@ async def enforce_request_body_size(request: Request, call_next):
     if settings.storage_backend == "local" and request.url.path == DEV_STAGING_UPLOAD_PATH:
         cap = archive_zip.MAX_UPLOAD_BYTES + (10 * 1024 * 1024)
     content_length = request.headers.get("content-length")
+    announced = None
     if content_length is not None:
         try:
             announced = int(content_length)
         except ValueError:
             announced = None
-        # Reject negatives too: ``int("-1")`` parses cleanly but ``-1 > cap``
-        # is False, so a negative header would otherwise slip past this gate.
-        if announced is not None and (announced < 0 or announced > cap):
+    if announced is not None:
+        # A well-formed Content-Length frames the body to exactly that many
+        # bytes (HTTP/1.1 length-delimited), so one check settles it and the
+        # route streams the body as before. Reject negatives too: ``int("-1")``
+        # parses cleanly but ``-1 > cap`` is False, so a negative header would
+        # otherwise slip past.
+        if announced < 0 or announced > cap:
             return JSONResponse(
                 status_code=413,
                 content={"detail": (f"Request body too large (max {cap} bytes)")},
             )
+        return await call_next(request)
+    # No usable Content-Length (chunked, or an unparseable header): nothing
+    # frames the size up front, so read the stream with a running cap and abort
+    # the instant it crosses. ``Request.stream()`` is Starlette's own
+    # dispatch-middleware hook; caching the result onto ``request._body``
+    # replays those bytes to the route exactly as ``call_next`` would have.
+    # Only this length-less path buffers, and only up to ``cap``: normal
+    # Content-Length uploads keep streaming straight through, no memory
+    # regression, while the fall-through a header check alone would miss is
+    # now bounded.
+    total = 0
+    chunks: list[bytes] = []
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > cap:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": (f"Request body too large (max {cap} bytes)")},
+            )
+        chunks.append(chunk)
+    request._body = b"".join(chunks)
     return await call_next(request)
 
 
@@ -138,6 +167,13 @@ app.add_middleware(
 async def add_hsts_header(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("Strict-Transport-Security", "max-age=15768000")
+    # Global content-sniffing gate: without it, a browser served a
+    # mislabeled response (an upload whose stored MIME drifted, an error
+    # body a client requested as a script) may still execute it as HTML/JS.
+    # ``setdefault`` so a route that already set its own value (the tweet
+    # media proxy pins the same header for the one place upstream bytes
+    # are echoed back) keeps it.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
     return response
 
 

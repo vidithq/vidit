@@ -304,6 +304,39 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
     assert response.json()["detail"] == "Media exceeded size cap"
 
 
+def test_media_proxy_disallowed_content_type_falls_back_to_octet_stream(author, monkeypatch):
+    """The proxy never forwards an arbitrary upstream ``content-type``
+    verbatim: only the image/video MIMEs this app accepts on upload are
+    passed through, so a spoofed or unexpected upstream type (here
+    ``text/html``, which a browser would happily sniff and execute) is
+    downgraded to a safe, inert default."""
+    import httpx
+
+    class _MockStream:
+        status_code = 200
+        headers = {"content-type": "text/html; charset=utf-8"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def iter_bytes(self):
+            yield b"<script>alert(1)</script>"
+
+    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
+
+    login_as(client, author)
+    response = client.get(
+        "/api/v1/events/import-from-tweet/media",
+        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
 def test_media_proxy_does_not_follow_redirects(author, monkeypatch):
     """SSRF guard: ``is_trusted_media_url`` only vets the first hop, so the proxy
     must refuse to chase a 3xx to an unvetted host. Locks ``follow_redirects``

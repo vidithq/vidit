@@ -152,6 +152,19 @@ def test_login_wrong_password_writes_failed_login_with_user_id(client, existing_
     assert len(matching) == 1, "matched user → row carries user_id for forensics"
 
 
+def test_login_deactivated_account_is_rejected(client, existing_user, db):
+    existing_user.is_active = False
+    db.add(existing_user)
+    db.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": existing_user.email, "password": "originalpassword1"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_login_unknown_email_writes_failed_login_with_null_user_id(client, db):
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     response = client.post(

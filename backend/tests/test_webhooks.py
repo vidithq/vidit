@@ -296,6 +296,36 @@ def test_post_with_oversized_body_is_413(db):
     assert _queued_mentions(db) == []
 
 
+def test_post_with_chunked_oversized_body_is_413(db):
+    """A ``Transfer-Encoding: chunked`` delivery (no ``Content-Length``) must
+    still 413 once it crosses ``_MAX_BODY_BYTES``. Sent as a generator so
+    httpx/the ASGI transport streams it chunk by chunk with no announced
+    length, the exact shape a header-only check would miss."""
+    from app.routers import webhooks as webhooks_module
+
+    total = webhooks_module._MAX_BODY_BYTES + 1
+    chunk = b"x" * 4096
+
+    def _chunks():
+        remaining = total
+        while remaining > 0:
+            step = min(len(chunk), remaining)
+            yield chunk[:step]
+            remaining -= step
+
+    resp = client.post(
+        WEBHOOK_PATH,
+        content=_chunks(),
+        headers={
+            "content-type": "application/json",
+            "x-twitter-webhooks-signature": "sha256=irrelevant",
+        },
+    )
+    assert resp.status_code == 413
+    assert resp.json()["detail"] == "Payload too large"
+    assert _queued_mentions(db) == []
+
+
 def test_post_without_bot_user_id_is_503(db, monkeypatch):
     # An empty x_bot_user_id would silently drop every delivery (no
     # for_user_id ever matches); it must be loud like the missing secret.

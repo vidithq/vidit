@@ -109,8 +109,8 @@ async def create_event(
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
     proof_data = parse_optional_json_object(proof, field="proof")
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
 
     try:
         geo = await events_service.create_with_evidence(
@@ -185,8 +185,8 @@ async def create_event_request(
     proof_files = proof_files or []
 
     proof_data = parse_optional_json_object(proof, field="proof")
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     # event_date is optional on a request, and event_time may stand alone: an
     # approximate hour-of-day (sun position / shadows) is knowable without the
     # date, so a time is NOT gated on a date.
