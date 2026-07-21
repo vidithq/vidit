@@ -8,6 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- **Search hits carry their media thumbnails** ([`backend/app/services/search.py`](backend/app/services/search.py), [`backend/app/schemas/search.py`](backend/app/schemas/search.py), [`frontend/src/app/search/page.tsx`](frontend/src/app/search/page.tsx), [`docs/api.md`](docs/api.md)). The geolocations group of `GET /search` never loaded or serialised media, so every event card on the search page (including the profile's "Show more" author-filtered view) rendered the "no media" placeholder. `SearchEventHit` now carries the event's `source` media rows, eager-loaded in the same hydration query as the other relationships (same `joinedload` shape as the requests group, no N+1), and the search card renders the thumbnail like the list card. `api-types.ts` regenerated.
+
 ## v0.4.2, 2026-07-21
 
 ### Added

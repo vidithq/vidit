@@ -949,6 +949,7 @@ Any active filter empties the users group (the filters are event predicates; an 
       "is_demo": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
       "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
     }
   ],
@@ -984,6 +985,8 @@ Any active filter empties the users group (the filters are event predicates; an 
   "type": "all"
 }
 ```
+
+`media` on both event groups carries the event's `source` attachments only (a `proof` image never appears here), the same contract as the [`GET /events`](#get-events) card thumbnail.
 
 `bio_highlight` is `null` when only the username matched, the UI uses this to hide the snippet block instead of rendering an un-highlighted bio. Groups the caller didn't request via `type=` come back as empty arrays.
 

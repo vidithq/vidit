@@ -144,6 +144,25 @@ def test_search_matches_geolocation_by_title(db, caller):
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
+    db.flush()
+    db.add(
+        Media(
+            event_id=geo.id,
+            role="source",
+            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/x.jpg",
+            media_type="image",
+        )
+    )
+    # A proof row must stay off the hit: the card thumbnail picks from the
+    # ``source`` rows only, same contract as the list card.
+    db.add(
+        Media(
+            event_id=geo.id,
+            role="proof",
+            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/p.jpg",
+            media_type="image",
+        )
+    )
     db.commit()
     geo_id = geo.id
     try:
@@ -160,6 +179,11 @@ def test_search_matches_geolocation_by_title(db, caller):
         # The highlight wraps the matched token with the agreed sentinels;
         # the frontend will turn those into <mark> elements.
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
+        # Regression: the located group must carry the source media like the
+        # list view does (the search cards render the same thumbnail), and
+        # only the source role.
+        assert [m["media_type"] for m in hit["media"]] == ["image"]
+        assert all(m["role"] == "source" for m in hit["media"])
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
