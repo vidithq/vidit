@@ -14,7 +14,10 @@ export const Caption: React.FC<{
   eyebrow?: string;
   title: string;
   durationInFrames: number;
-}> = ({ eyebrow, title, durationInFrames }) => {
+  /** Headline size; the v0.4 comp passes a smaller value so two-line
+   *  captions stay inside their reserved band below the recording. */
+  fontSize?: number;
+}> = ({ eyebrow, title, durationInFrames, fontSize = 48 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -69,7 +72,7 @@ export const Caption: React.FC<{
         <div
           style={{
             color: "#fafafa",
-            fontSize: 48,
+            fontSize,
             fontWeight: 600,
             letterSpacing: -0.6,
             lineHeight: 1.1,

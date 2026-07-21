@@ -215,7 +215,7 @@ vidit/
 │   ├── next.md                 # scheduled work + unscheduled candidates
 │   └── roadmap.md              # vision + openness commitment
 │
-├── video/                          # "Promo as code" pipeline, see video/README.md
+├── video/                          # "Promo as code" pipeline (Playwright takes + Remotion comps), see video/README.md
 │   ├── src/                        # Remotion composition (Demo.tsx) + components
 │   ├── seed-requests.js            # Seeds request list from analyst tweets (idempotent)
 │   ├── record-submit.js            # Playwright + DOM cursor overlay → recording-submit.mp4

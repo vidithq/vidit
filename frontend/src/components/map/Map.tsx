@@ -634,6 +634,22 @@ interface MapProps {
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
 }
 
+// Dev-only camera handle for the promo-recording pipeline (video/): exposes
+// the maplibre instance so a Playwright take can drive smooth easeTo camera
+// moves instead of synthetic wheel events. Never mounts in production.
+function DevMapHandle() {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" || !map) return;
+    const w = window as unknown as { __viditMap?: unknown };
+    w.__viditMap = map.getMap();
+    return () => {
+      delete w.__viditMap;
+    };
+  }, [map]);
+  return null;
+}
+
 export default function Map({
   points,
   selectedId,
@@ -971,6 +987,7 @@ export default function Map({
         onPinHover={hoverPin}
         spider={spider}
       />
+      {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
 
