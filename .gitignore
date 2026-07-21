@@ -43,3 +43,6 @@ tmp/
 
 # Raw X API timeline pulls / datasets — tweet content, large. Never commit.
 backend/datasets/
+
+# The maintainer's personal X archive used by the promo take (video/record-v04.js).
+/Vidit stuff.zip
