@@ -120,6 +120,12 @@ export default withSentryConfig(nextConfig, {
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: !process.env.CI,
+  // Proxy browser envelopes through a same-origin `/monitoring` route.
+  // uBlock, Brave shields, AdGuard, and most tracking-protection lists block
+  // direct POSTs to `*.ingest.sentry.io` with ERR_BLOCKED_BY_CLIENT, and an
+  // OSINT audience runs those blockers near-universally; without the tunnel
+  // most client errors would never arrive.
+  tunnelRoute: "/monitoring",
   // Don't expose source maps on the public CDN — Sentry needs them to
   // symbolicate, but anyone with curl shouldn't get them for free.
   hideSourceMaps: true,
