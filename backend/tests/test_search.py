@@ -153,8 +153,10 @@ def test_search_matches_geolocation_by_title(db, caller):
             media_type="image",
         )
     )
-    # A proof row must stay off the hit: the card thumbnail picks from the
-    # ``source`` rows only, same contract as the list card.
+    # With a source row present the proof row must stay off the hit: the
+    # thumbnail pick prefers ``source`` (``services.thumbnails``), the same
+    # contract as the list card. The proof image only steps in when the
+    # event has no source media (covered below).
     db.add(
         Media(
             event_id=geo.id,
@@ -179,13 +181,73 @@ def test_search_matches_geolocation_by_title(db, caller):
         # The highlight wraps the matched token with the agreed sentinels;
         # the frontend will turn those into <mark> elements.
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
-        # Regression: the located group must carry the source media like the
-        # list view does (the search cards render the same thumbnail), and
-        # only the source role.
+        # Regression: the located group must carry the picked thumbnail like
+        # the list view does (the search cards render the same thumbnail),
+        # and with a source row present the pick is the source, never proof.
         assert [m["media_type"] for m in hit["media"]] == ["image"]
         assert all(m["role"] == "source" for m in hit["media"])
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
+    """An event with no source media but a proof image (archive imports, bot
+    drafts) surfaces the proof image as its card thumbnail; a proof VIDEO is
+    never picked, so the video-only sibling ships an empty media list."""
+    token = _unique_token()
+    proof_only = Event(
+        owner_id=caller.id,
+        title=f"Proof-only {token} strike footage",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/post-proof-only",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+    )
+    video_only = Event(
+        owner_id=caller.id,
+        title=f"Video-proof {token} strike footage",
+        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
+        source_url="https://example.com/post-proof-video",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add_all([proof_only, video_only])
+    db.flush()
+    db.add(
+        Media(
+            event_id=proof_only.id,
+            role="proof",
+            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{proof_only.id}/p.jpg",
+            media_type="image",
+        )
+    )
+    # Defensive: a proof video should not exist (the proof document embeds
+    # images only) but must never be picked if one does.
+    db.add(
+        Media(
+            event_id=video_only.id,
+            role="proof",
+            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{video_only.id}/p.mp4",
+            media_type="video",
+        )
+    )
+    db.commit()
+    ids = [proof_only.id, video_only.id]
+    try:
+        response = client.get(
+            f"/api/v1/search?q={token}&type=geolocation",
+            headers=login_as(client, caller),
+        )
+        assert response.status_code == 200
+        hits = {h["id"]: h for h in response.json()["geolocations"]}
+        proof_hit = hits[str(ids[0])]
+        assert [(m["role"], m["media_type"]) for m in proof_hit["media"]] == [("proof", "image")]
+        assert hits[str(ids[1])]["media"] == []
+    finally:
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
 
 

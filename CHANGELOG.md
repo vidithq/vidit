@@ -8,6 +8,11 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## v0.4.4, 2026-07-21
+
+### Changed
+- **Card thumbnails fall back to the proof image** ([`backend/app/services/thumbnails.py`](backend/app/services/thumbnails.py), [`backend/app/routers/events/_common.py`](backend/app/routers/events/_common.py), [`backend/app/services/search.py`](backend/app/services/search.py), [`frontend/src/components/map/Map.tsx`](frontend/src/components/map/Map.tsx), [`frontend/src/components/event/DetectionCard.tsx`](frontend/src/components/event/DetectionCard.tsx), [`docs/design.md`](docs/design.md), [`docs/api.md`](docs/api.md)). Everywhere a card or preview shows a media thumbnail (events list, profile events, timeline, search hits, map pin hover, detections queue) the pick order is now: the event's `source` media, else its first `proof` image (a proof video is never picked). Many real events carry only a proof image (archive-imported detections, every bot-created draft) and rendered the "no media" placeholder despite holding a perfectly showable image; proof images already render publicly on the event detail page, so this is presentation only. The rule has one home, `services/thumbnails.py` (the eager-load predicate plus the pick), every backend card surface serialises the picked row, and the frontend renders what the payload carries without re-deriving it; `EventRead` gains a `thumbnail` field so the map pin hover and the detections queue read the pick off the detail payload. `api-types.ts` regenerated.
+
 ## v0.4.3, 2026-07-21
 
 ### Fixed

@@ -382,7 +382,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 ]
 ```
 
-`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the event's single `source` attachment (`null` if none); a `proof` image never appears here. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
+`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
 
@@ -680,6 +680,14 @@ Full detail for a single event, in any lifecycle state.
       "original_filename": "IMG_2034.MOV"
     }
   ],
+  "thumbnail": {
+    "id": "uuid",
+    "role": "source",
+    "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../video.mp4",
+    "media_type": "video",
+    "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+    "original_filename": "IMG_2034.MOV"
+  },
   "tags": [
     { "name": "Drone", "category": "capture_source" }
   ],
@@ -689,7 +697,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
@@ -986,7 +994,7 @@ Any active filter empties the users group (the filters are event predicates; an 
 }
 ```
 
-`media` on both event groups carries the event's `source` attachments only (a `proof` image never appears here), the same contract as the [`GET /events`](#get-events) card thumbnail.
+`media` on both event groups carries the picked card thumbnail (at most one row: the `source` attachment, else the first `proof` image), the same rule as the [`GET /events`](#get-events) card.
 
 `bio_highlight` is `null` when only the username matched, the UI uses this to hide the snippet block instead of rendering an un-highlighted bio. Groups the caller didn't request via `type=` come back as empty arrays.
 
@@ -1214,7 +1222,7 @@ Geolocations for a given analyst.
 }
 ```
 
-`media` is the geolocation's first media row (the card thumbnail), `null` when it has none; the full media list is on the detail payload only.
+`media` is the picked card thumbnail (same rule as [`GET /events`](#get-events)), `null` when the event has neither a source attachment nor a proof image; the full media list is on the detail payload only.
 
 ---
 

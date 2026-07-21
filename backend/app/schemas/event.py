@@ -150,6 +150,11 @@ class EventRead(BaseModel):
     # ONLY the ``source`` rows: proof images travel inside the proof JSON as
     # URLs, so surfacing their rows here would double-render them.
     media: list[MediaRead]
+    # The card / preview thumbnail: first ``source`` media, else first
+    # ``proof`` image (``services.thumbnails``, the one home for the rule).
+    # Lets a preview built on this payload (the map pin hover) show a
+    # proof-only event's image without re-deriving the pick client-side.
+    thumbnail: MediaRead | None
     tags: list[TagRead]
     conflicts: list[ConflictRead]
 
@@ -170,10 +175,11 @@ class EventList(BaseModel):
     # Lets the card tell a withdrawn request from a rejected detection.
     before_closed_status: BeforeClosedStatus | None
     owner: AuthorRef
-    # The card thumbnail: the event's single ``source`` media, None when it has
-    # none. One media on purpose so the list payload stays light; the full set
-    # lives on ``EventRead.media``. Required (no default) so a
-    # constructor can't silently omit it and ship a false "no media".
+    # The card thumbnail: first ``source`` media, else first ``proof`` image
+    # (``services.thumbnails``), None when the event has neither. One media on
+    # purpose so the list payload stays light; the full set lives on
+    # ``EventRead.media``. Required (no default) so a constructor can't
+    # silently omit it and ship a false "no media".
     media: MediaRead | None
     tags: list[TagRead]
     conflicts: list[ConflictRead]
