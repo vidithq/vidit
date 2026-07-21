@@ -456,7 +456,9 @@ function PinPreviewCard({
     setPos({ left, top });
   }, [x, y, entry, error]);
 
-  const media = entry?.media.find((m) => m.role === "source");
+  // The backend-picked card thumbnail (source media, else proof image):
+  // one pick rule, homed in the backend's services/thumbnails.
+  const media = entry?.thumbnail ?? undefined;
   return (
     // Above the detail / filter overlays (z-1000): a preview near a panel
     // edge must stay fully readable, and it is transient hover chrome.

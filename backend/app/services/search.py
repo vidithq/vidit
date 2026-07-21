@@ -34,9 +34,9 @@ from app.models.event import (
     Event,
     EventInvestigator,
 )
-from app.models.media import Media
 from app.models.user import User
 from app.services.event_filters import EventFilters
+from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
 # (U+0002 / U+0003) not an ASCII string like ``[[HL]]``: an ASCII marker is
@@ -187,7 +187,7 @@ def search_geolocations(
         )
         .options(
             joinedload(Event.owner),
-            joinedload(Event.media.and_(Media.role == "source")),
+            joinedload(Event.media.and_(thumbnail_media_criteria())),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -201,6 +201,7 @@ def search_geolocations(
         if row is None:  # soft-deleted between SELECTs — drop silently
             continue
         geo = row.Event
+        thumb = pick_thumbnail(geo.media)
         out.append(
             {
                 "id": geo.id,
@@ -212,7 +213,7 @@ def search_geolocations(
                 "is_demo": geo.is_demo,
                 "status": geo.status,
                 "owner": geo.owner,
-                "media": geo.media,
+                "media": [thumb] if thumb is not None else [],
                 "tags": geo.tags,
             }
         )
@@ -245,7 +246,7 @@ def search_requests(
         db.query(Event)
         .options(
             joinedload(Event.owner),
-            joinedload(Event.media.and_(Media.role == "source")),
+            joinedload(Event.media.and_(thumbnail_media_criteria())),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -268,6 +269,7 @@ def search_requests(
         geo = geo_by_id.get(hit_id)
         if geo is None:
             continue
+        thumb = pick_thumbnail(geo.media)
         out.append(
             {
                 "id": geo.id,
@@ -278,7 +280,7 @@ def search_requests(
                 "created_at": geo.created_at,
                 "is_demo": geo.is_demo,
                 "owner": geo.owner,
-                "media": geo.media,
+                "media": [thumb] if thumb is not None else [],
                 "tags": geo.tags,
                 "claimer_count": counts.get(geo.id, 0),
             }

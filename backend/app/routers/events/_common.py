@@ -7,18 +7,18 @@ none imports another:
   ``code → status`` map),
 * :func:`build_event_read`, the single ``EventRead`` assembler shared by
   create, detail, and the lifecycle mutations, and
-* the small projection helpers (:func:`coords_or_none`, :func:`source_media`)
+* the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
   every serializer leans on.
 """
 
 from typing import NoReturn
 
 from app.models.event import Event
-from app.models.media import Media
 from app.routers._errors import raise_typed_error
 from app.schemas.event import CoordsRead, EventRead
 from app.schemas.media import MediaRead
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.thumbnails import pick_thumbnail
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,
@@ -47,14 +47,13 @@ def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
     return CoordsRead(lat=lat, lng=lng)
 
 
-def source_media(geo: Event) -> MediaRead | None:
-    """The event's single ``source`` media as its wire shape, or None.
+def thumbnail_media(geo: Event) -> MediaRead | None:
+    """The event's card thumbnail as its wire shape, or None.
 
-    The ``media`` relationship carries proof rows too since the roles merge;
-    every card thumbnail must pick through this so a proof image can't
-    masquerade as the footage.
+    Delegates the pick to ``services.thumbnails.pick_thumbnail`` (first
+    ``source`` row, else first ``proof`` image), the one home for the rule.
     """
-    row: Media | None = next((m for m in geo.media if m.role == "source"), None)
+    row = pick_thumbnail(geo.media)
     return MediaRead.model_validate(row) if row is not None else None
 
 
@@ -75,7 +74,10 @@ def build_event_read(
     relationship (``None`` for a directly-submitted geolocation); callers
     eager-load it along with ``geolocators`` / ``investigators`` and their
     users. ``media`` carries only the ``source`` rows: proof images travel
-    inside the proof JSON as URLs.
+    inside the proof JSON as URLs. ``thumbnail`` is the card pick
+    (``services.thumbnails``), which may be a proof image on a source-less
+    event; callers that want it non-null on such rows must eager-load media
+    with ``thumbnail_media_criteria``.
     """
     return EventRead(
         id=geo.id,
@@ -118,6 +120,7 @@ def build_event_read(
         investigator_count=sum(1 for i in geo.investigators if i.user.deleted_at is None),
         investigators=[i.user for i in geo.investigators if i.user.deleted_at is None],
         media=[m for m in geo.media if m.role == "source"],
+        thumbnail=thumbnail_media(geo),
         tags=geo.tags,
         conflicts=geo.conflicts,
     )

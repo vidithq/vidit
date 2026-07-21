@@ -5,13 +5,13 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.event import Event
 from app.models.follow import Follow
-from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import coords_or_none, source_media
+from app.routers.events._common import coords_or_none, thumbnail_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
+from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 
@@ -195,7 +195,7 @@ def get_user_geolocations(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(Media.role == "source")),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
         .order_by(Event.event_date.desc())
@@ -214,7 +214,7 @@ def get_user_geolocations(
             status=geo.status,
             before_closed_status=geo.before_closed_status,
             owner=geo.owner,
-            media=source_media(geo),
+            media=thumbnail_media(geo),
             tags=geo.tags,
             conflicts=geo.conflicts,
         )

@@ -26,10 +26,9 @@ from app.models.event import (
     EventGeolocator,
     EventInvestigator,
 )
-from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import build_event_read, coords_or_none, source_media
+from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
 from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
@@ -42,6 +41,7 @@ from app.services.event_filters import (
     validate_media_types,
     validate_status_filter,
 )
+from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 # Detail page lists every investigator; the list card only needs a few
@@ -311,7 +311,7 @@ def list_events(
             subqueryload(Event.owner),
             subqueryload(Event.tags),
             subqueryload(Event.conflicts),
-            subqueryload(Event.media.and_(Media.role == "source")),
+            subqueryload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.id.in_(ids))
         .order_by(Event.created_at.desc())
@@ -335,7 +335,7 @@ def list_events(
             status=geo.status,
             before_closed_status=geo.before_closed_status,
             owner=geo.owner,
-            media=source_media(geo),
+            media=thumbnail_media(geo),
             tags=geo.tags,
             conflicts=geo.conflicts,
             investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
@@ -396,7 +396,7 @@ def list_detections(
             joinedload(Event.requested_by),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(Media.role == "source")),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),
         )

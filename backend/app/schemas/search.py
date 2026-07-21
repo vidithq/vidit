@@ -56,8 +56,10 @@ class SearchEventHit(BaseModel):
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
     owner: AuthorRef
-    # The ``source`` media rows only, same as the request hit and the list
-    # card: the card thumbnail must never show a proof image as the footage.
+    # The picked card thumbnail (at most one row), same rule as the request
+    # hit and the list card: first ``source`` media, else first ``proof``
+    # image (``services.thumbnails``). A list for wire stability; the card
+    # renders ``media[0]``.
     media: list[MediaRead]
     tags: list[TagRead]
 
@@ -76,6 +78,7 @@ class SearchRequestHit(BaseModel):
     created_at: datetime
     is_demo: bool
     owner: AuthorRef
+    # Same picked-thumbnail shape as ``SearchEventHit.media``.
     media: list[MediaRead]
     tags: list[TagRead]
     # Denormalised so the card renders the "N working" badge without a

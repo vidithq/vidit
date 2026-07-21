@@ -62,6 +62,12 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         role: "source",
       },
     ],
+    thumbnail: {
+      id: "m1",
+      storage_url: "/local-storage/evidence.jpg",
+      media_type: "image",
+      role: "source",
+    },
     requested_by: {
       id: "u2",
       username: "poster",

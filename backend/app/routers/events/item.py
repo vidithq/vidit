@@ -25,7 +25,6 @@ from app.models.event import (
     EventGeolocator,
     EventInvestigator,
 )
-from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
@@ -43,6 +42,7 @@ from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.storage import (
     sweep_keys,
 )
+from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 
@@ -51,7 +51,7 @@ router = APIRouter()
 _DETAIL_LOADS = (
     joinedload(Event.owner),
     joinedload(Event.requested_by),
-    selectinload(Event.media.and_(Media.role == "source")),
+    selectinload(Event.media.and_(thumbnail_media_criteria())),
     selectinload(Event.tags),
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),

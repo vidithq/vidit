@@ -1910,6 +1910,7 @@ export interface components {
             status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
+            thumbnail: components["schemas"]["MediaRead"] | null;
             /** Title */
             title: string;
             /**
