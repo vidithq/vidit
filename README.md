@@ -18,18 +18,19 @@ Live at **[vidit.app](https://vidit.app)** (closed beta).
 ## Demo
 
 <!--
-Embed source: the README variant rendered by `make promo` (1280×720,
-~1.6 MB), uploaded as a GitHub user-attachment so the player renders
+Embed source: the README variant of the v0.4 promo (1280×720, ~6 MB,
+`npx remotion render ... --scale 2/3` in video/, see video/README.md),
+uploaded as a GitHub user-attachment so the player renders
 inline on github.com. To swap in a re-render: drag the new
 `video/out/promo-readme.mp4` into any GitHub draft comment textarea,
 copy the `https://github.com/user-attachments/assets/<uuid>` URL it
 generates, and replace the URL on the bare line below; leaving the
 URL alone on its own line is what triggers GitHub's auto-player.
-The hero on [vidit.app](https://vidit.app) plays the matching 2K
-master (10 MB) from CloudFront.
+The hero on [vidit.app](https://vidit.app) plays the matching 1440p
+master (35 MB) from CloudFront.
 -->
 
-https://github.com/user-attachments/assets/8b3689a9-b840-4ffb-8e91-21aef1aaca48
+https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 
 ---
 

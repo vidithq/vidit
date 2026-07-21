@@ -414,7 +414,7 @@ Vercel **Keychain quirk**: CLI ≥ 32 stores tokens in macOS Keychain; the `auth
 
 `--scope` is required in non-interactive shells (no default team).
 
-`NEXT_PUBLIC_*` env vars are baked into the JS bundle at build time. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video, a CloudFront `.mp4` URL) are passed explicitly into the build from repo **variables** in [`deploy.yml`](../.github/workflows/deploy.yml), because `vercel pull` doesn't reliably surface `NEXT_PUBLIC_*` to `next build`.
+`NEXT_PUBLIC_*` env vars are baked into the JS bundle at build time. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video, a CloudFront `.mp4` URL, currently `landing/promo-v04.mp4` on the media bucket) are passed explicitly into the build from repo **variables** in [`deploy.yml`](../.github/workflows/deploy.yml), because `vercel pull` doesn't reliably surface `NEXT_PUBLIC_*` to `next build`.
 
 ### Observability: what's wired and how to turn it on
 
