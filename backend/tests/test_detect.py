@@ -281,13 +281,28 @@ def test_structured_empty_marker_line_does_not_shadow_a_later_value(text):
     assert "T:" not in d.proof_text and "C:" not in d.proof_text and "S:" not in d.proof_text
 
 
-def test_structured_requires_a_footage_source():
-    # S: designates a link that binds, but to an article (host ``other``):
-    # outside the source vocabulary, so the mention does not conform.
+def test_structured_off_vocabulary_link_is_stored_link_only():
+    # S: designates a link outside the chase vocabulary (host ``other``): the
+    # link is stored as the source, with no media fetch and no post date.
     record = _struct_rec(
         "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/a",
         external_sources=[
             SourceLink(url="https://example.org/report", host="other", shortlink="https://t.co/a")
+        ],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert d.source_posted_at is None
+    assert d.source_media == []
+
+
+def test_structured_own_status_link_is_not_a_source():
+    # S: linking the author's own post stays a format failure: a
+    # cross-reference, never footage.
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/me",
+        external_sources=[
+            SourceLink(url="https://x.com/analyst/status/9", host="x", shortlink="https://t.co/me")
         ],
     )
     assert detect_structured(record, bot_handle="viditbot") == []

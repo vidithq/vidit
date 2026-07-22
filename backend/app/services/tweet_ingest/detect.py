@@ -106,11 +106,13 @@ def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
 
     Exactly one URL token may sit on the line (two or more is a failure). The
     token must bind to one of the record's link entities, by its ``t.co``
-    shortlink or its expanded URL, and that entity must be footage by the
-    shared vocabulary (:func:`footage_candidates`: an X status, Telegram, or
-    YouTube; never the author's own status). Links elsewhere in the tweet
-    neither help nor hurt: the pruned record keeps only the designated
-    entity, and keeps the inline quote only when it IS the designated status.
+    shortlink or its expanded URL. Any bound link is a valid designation,
+    whatever its host: the chase vocabulary (X status / Telegram / YouTube)
+    decides what gets fetched, never what gets stored. The one exception is a
+    link back to the author's own status (a cross-reference, not a source).
+    Links elsewhere in the tweet neither help nor hurt: the pruned record
+    keeps only the designated entity, and keeps the inline quote only when it
+    IS the designated status.
 
     A line with no URL token designates the inline quote when there is one:
     X converts a pasted status link into the quote card, and some syndication
@@ -132,9 +134,15 @@ def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
     if link is None:
         return None
     candidates = footage_candidates([(link.url, link.host)], owner_handle=record.handle)
-    if not candidates:
+    if link.host == "x" and not candidates:
+        # Host ``x`` only classifies status links, so an empty candidate list
+        # here means the author's own status: rejected, never a source.
         return None
-    if record.quoted is not None and candidates[0].status_id == record.quoted.tweet_id:
+    if (
+        candidates
+        and record.quoted is not None
+        and candidates[0].status_id == record.quoted.tweet_id
+    ):
         # The designated status is the inline quote: keep it, its media and
         # post date come free, no chase needed.
         return dataclasses.replace(record, external_sources=[link])
@@ -202,7 +210,7 @@ def detect_structured(
 
     The tweet must carry all of ``T:`` (non-empty title), ``C:`` (one decimal
     pair inside bounds), and ``S:`` (a line designating the source: one URL
-    token bound to a footage entity, or the inline quote when X swallowed the
+    token bound to a link entity, or the inline quote when X swallowed the
     token into the quote card, see :func:`_designated_source`). Anything
     short of that returns ``[]``: free-text coordinate detection is
     deliberately not a fallback here, that stays the archive path's
@@ -235,7 +243,14 @@ def detect_structured(
     if designated is None:
         return []
     resolved = resolve_thread([_chase_source(designated, client=client)])
-    if resolved is None or resolved.source_url is None:
+    if resolved is None:
+        return []
+    source_url = resolved.source_url
+    if source_url is None:
+        # The shared resolution only surfaces chase-vocabulary hosts; a
+        # designated off-vocabulary link (host ``other``) is stored link-only.
+        source_url = designated.external_sources[0].url if designated.external_sources else None
+    if source_url is None:
         return []
     from app.models.event import TITLE_MAX_LENGTH
 
@@ -254,7 +269,7 @@ def detect_structured(
             proof_text=clean_proof_text(
                 _expand_shortlinks(fields.proof_text, record.external_sources)
             ),
-            source_url=resolved.source_url,
+            source_url=source_url,
             detected_from_url=resolved.detected_from_url,
             owner_handle=resolved.owner_handle,
             event_date=resolved.event_date,
