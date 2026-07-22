@@ -252,17 +252,17 @@ def compose_failure_reply() -> str:
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the ``S: source link`` line is a placeholder phrase, not a link).
     The source-rule sentence covers the analyst whose three lines are right
-    but whose ``S:`` link is out of vocabulary. Only posted to linked
-    authors, and never on a tag that is itself a reply to the bot (the
-    caller's loop guard).
+    but whose ``S:`` line carries zero or several URLs, or links their own
+    post. Only posted to linked authors, and never on a tag that is itself a
+    reply to the bot (the caller's loop guard).
     """
     return (
         "Vidit: nothing saved. Tag me on one post holding three lines:\n"
         "T: title\n"
         "C: 22.703889, -83.297222\n"
         "S: source link\n"
-        "S must hold one link to an X, Telegram, or YouTube post. "
-        "Media attached to that post; other lines become the proof note."
+        "S must hold exactly one link, to the footage post, never your own. "
+        "Other lines become the proof note."
     )
 
 

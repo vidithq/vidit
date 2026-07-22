@@ -620,8 +620,8 @@ def test_compose_failure_reply_teaches_the_format_linklessly():
     assert "C: 22.703889, -83.297222" in text
     assert "S: source link" in text
     # The source rule, for the analyst whose three lines are right but whose
-    # S: link is out of vocabulary.
-    assert "S must hold one link to an X, Telegram, or YouTube post" in text
+    # S: line carries zero or several URLs, or links their own post.
+    assert "S must hold exactly one link" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
 
