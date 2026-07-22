@@ -25,7 +25,7 @@ dependencies = [
     # to strip EXIF + other metadata (GPS, camera, IPTC) from uploaded
     # images before they hit S3. Pinned ≥11 for the modern security
     # window — older versions had libtiff + libwebp CVEs.
-    "pillow>=11.0",
+    "pillow>=12.3.0",
     "beautifulsoup4>=4.15.0",
 ]
 
