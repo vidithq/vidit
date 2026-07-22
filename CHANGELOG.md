@@ -8,6 +8,15 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## v0.4.5, 2026-07-22
+
+### Changed
+- **The bot stores any `S:` link as the source** ([#178](https://github.com/vidithq/vidit/pull/178), [`docs/ingestion.md`](docs/ingestion.md#bot-format)). The X / Telegram / YouTube vocabulary now only decides what the mention pipeline chases (media, post date), never what it stores: a designated `S:` link on any host lands as `source_url` link-only. A link back to the author's own post stays a format failure, and the failure reply teaches the rule ("S must hold exactly one link, to the footage post, never your own.").
+- **Backend test suite parallelized** ([#180](https://github.com/vidithq/vidit/pull/180), [#181](https://github.com/vidithq/vidit/pull/181), [`backend/tests/conftest.py`](backend/tests/conftest.py), [`docs/engineering.md`](docs/engineering.md)). `pytest -n auto --dist loadfile` (= `make test`; CI runs `-n 4`) gives each xdist worker its own database, cloned from a template the controller migrates to alembic head (reused across runs while the revision matches), so workers share no mutable state; plain `pytest` stays serial on the dev database. CI's `backend-test` job also dropped its separate `alembic upgrade head` step (the template build owns migrations) and its `needs: backend-lint` gate (lint and tests run in parallel, the public-repo norm). Local full suite ~18 min → ~30 s with the loader fix below; CI backend wall clock ~3m48 → ~1m34.
+
+### Fixed
+- **`GET /events` scanned the whole media table from the second request on** ([#179](https://github.com/vidithq/vidit/pull/179), [`backend/app/routers/events/read.py`](backend/app/routers/events/read.py)). `subqueryload(Event.media.and_(...))` loses the outer query's correlation once SQLAlchemy serves the statement from its compiled cache, so every anonymous list request fetched every media row (~795k on a populated database, ~6.4 s per request, ~0.03 s after the fix) instead of the page's. The list's relationship loads now use `selectinload`, the strategy the item and detections endpoints already use.
+
 ## v0.4.4, 2026-07-21
 
 ### Changed
