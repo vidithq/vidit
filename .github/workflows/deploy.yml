@@ -43,8 +43,16 @@ jobs:
     if: inputs.target == 'backend' || inputs.target == 'both'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # One matrix job per Railway service, all from the same ref: the four
+    # uploads are independent, so the backend deploy costs the slowest
+    # service instead of the sum. The scheduler services still have no
+    # GitHub source connected — this workflow stays their only deploy path.
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, backend-import-worker, backend-conflicts, backend-x-bot]
     concurrency:
-      group: prod-deploy-backend
+      group: prod-deploy-${{ matrix.service }}
       cancel-in-progress: false
     # No job-wide ``working-directory`` — ``railway up`` uploads the
     # snapshot from the CWD, and the Railway service has Root Directory
@@ -59,7 +67,10 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # One matrix leg records the run summary; four identical blocks would
+      # just repeat the same resolved SHA.
       - name: Record deploying commit
+        if: matrix.service == 'backend'
         run: |
           SHA=$(git rev-parse HEAD)
           SHORT=$(git rev-parse --short HEAD)
@@ -77,31 +88,13 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy API to Railway
+      # Each service carries its own dashboard config (Root Directory
+      # ``backend``, Config-as-code ``backend/railway.scheduler.json``, start
+      # command); the upload is the same repo-root snapshot for all four.
+      - name: Deploy ${{ matrix.service }} to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend --ci
-
-      # The scheduler services (always-on import worker, conflict-sync cron)
-      # have no GitHub source connected — this workflow is their only deploy
-      # path, so they ship the same ref as the API. Each service carries its
-      # own dashboard config (Root Directory ``backend``, Config-as-code
-      # ``backend/railway.scheduler.json``, start command); the upload is the
-      # same repo-root snapshot as the API's.
-      - name: Deploy import worker to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend-import-worker --ci
-
-      - name: Deploy conflict-sync cron to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend-conflicts --ci
-
-      - name: Deploy bot cron to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend-x-bot --ci
+        run: railway up --service ${{ matrix.service }} --ci
 
   deploy-frontend:
     name: Deploy frontend (Vercel)
