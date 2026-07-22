@@ -158,7 +158,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests)
+│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests). `pytest -n auto --dist loadfile` (= `make test`) runs parallel: conftest migrates a template DB to alembic head and clones one database per xdist worker; plain `pytest` stays serial on the dev DB
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
@@ -328,7 +328,7 @@ In prod, set `CORS_ORIGIN_REGEX=` (empty) in Railway env vars to drop the localh
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (`needs: backend-lint`): `alembic upgrade head` → `pytest` against a PostGIS service container. `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (`needs: backend-lint`): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repo-layout)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |

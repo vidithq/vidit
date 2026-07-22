@@ -118,11 +118,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
-      - name: Run migrations
-        run: uv run alembic upgrade head
-
+      # No separate `alembic upgrade head` step: the parallel run builds a
+      # template database at alembic head (tests/conftest.py) and clones it
+      # per worker, so the migrations run as part of the pytest step.
       - name: pytest
-        run: uv run pytest -v
+        run: uv run pytest -v -n 4 --dist loadfile
 
   # Deliberately ONE job, not a checks job gating a test job: the steps
   # already run in fail-fast order (eslint → tsc → vitest → next build)
