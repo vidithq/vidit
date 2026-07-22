@@ -76,12 +76,13 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     ids = [u.id for u in users]
     handles = [u.x_handle for u in users if u.x_handle]
 
-    archives = dict(
-        db.query(ArchiveImportJob.owner_id, func.count())
+    archives: dict[uuid.UUID, int] = {
+        owner_id: count
+        for owner_id, count in db.query(ArchiveImportJob.owner_id, func.count())
         .filter(ArchiveImportJob.owner_id.in_(ids), ArchiveImportJob.status == "done")
         .group_by(ArchiveImportJob.owner_id)
         .all()
-    )
+    }
     bot_by_handle: dict[str, int] = (
         dict(
             db.query(
@@ -108,12 +109,13 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     by_status: dict[tuple[uuid.UUID, str], int] = {
         (owner_id, status_value): count for owner_id, status_value, count in event_rows
     }
-    logins = dict(
-        db.query(AuthEvent.user_id, func.max(AuthEvent.created_at))
+    logins: dict[uuid.UUID | None, datetime] = {
+        user_id: latest
+        for user_id, latest in db.query(AuthEvent.user_id, func.max(AuthEvent.created_at))
         .filter(AuthEvent.user_id.in_(ids), AuthEvent.event == EVENT_LOGIN)
         .group_by(AuthEvent.user_id)
         .all()
-    )
+    }
 
     return {
         u.id: AdminInviteRedeemerRead(
