@@ -15,7 +15,7 @@ from fastapi import (
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
@@ -308,10 +308,15 @@ def list_events(
             ST_X(Event.event_coords).label("lng"),
         )
         .options(
-            subqueryload(Event.owner),
-            subqueryload(Event.tags),
-            subqueryload(Event.conflicts),
-            subqueryload(Event.media.and_(thumbnail_media_criteria())),
+            # ``selectinload`` (IN on the page's ids), never ``subqueryload``:
+            # combined with ``.and_()`` criteria, subqueryload loses the outer
+            # query's correlation when SQLAlchemy serves the statement from its
+            # compiled cache, and the media branch degrades into a scan of the
+            # whole table (~4s per request on a populated database).
+            selectinload(Event.owner),
+            selectinload(Event.tags),
+            selectinload(Event.conflicts),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.id.in_(ids))
         .order_by(Event.created_at.desc())
