@@ -20,7 +20,7 @@ import httpx
 
 from .acquire import quoted_from_syndication, record_from_syndication
 from .errors import TweetImportError
-from .extract import ParsedCoord, clean_proof_text, split_marker_lines
+from .extract import MarkerFields, ParsedCoord, clean_proof_text, split_marker_lines
 from .records import SourceLink, TelegramFootage, TweetRecord
 from .resolve import footage_candidates, resolve_thread
 from .syndication import ParsedMedia
@@ -96,6 +96,11 @@ _STRUCTURED_COORD_RE = re.compile(r"^([-+]?\d{1,3}(?:\.\d+)?)°?[\s,]+([-+]?\d{1
 # ``SourceLink.shortlink`` (see :func:`_designated_source`).
 _S_VALUE_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
+# A line that is nothing but one URL token: the bare format's source line
+# (the unprefixed ``S:``). Whole-line, like ``_STRUCTURED_COORD_RE``: a link
+# inside prose is a proof reference, never a designation.
+_URL_ONLY_LINE_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.IGNORECASE)
+
 # Sentence punctuation an analyst may glue after the URL token; stripped
 # before binding the token to its entity.
 _TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
@@ -150,6 +155,81 @@ def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
     # A quote of anything else is not the designated source; drop it so it
     # cannot steal the source slot from the S: link.
     return dataclasses.replace(record, quoted=None, external_sources=[link])
+
+
+def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
+    """The bare (unprefixed) shape of the strict format, or ``None`` when the
+    text doesn't carry it.
+
+    The analyst-friendly form: same structure as the marker form, the shape
+    itself carrying what the prefixes carried. Deterministic, no free-text
+    recovery:
+
+    * **Coordinates**: the one line that is nothing but a decimal pair
+      (``_STRUCTURED_COORD_RE``, whole line). Zero or several such lines fail.
+    * **Source**: the one line that is nothing but a URL token binding to a
+      link entity. A whole-line token binding to nothing (the ``t.co`` wrapper
+      X appends for attached media) is ignored, not a failure; two bound
+      lines fail. With no such line, the inline quote card is the designated
+      source; failing that, a post carrying exactly one link entity anywhere
+      designates that link (put the source alone on its line when the post
+      carries several). None of those either fails.
+    * **Title**: the first remaining non-empty, non-URL-only line.
+    * Every other line is the proof note.
+
+    The trade against the marker form: a shape failure still fails loudly
+    (nothing lands), but the title is positional, so a post that opens with
+    commentary titles the draft with it — the owner's review pass owns that
+    correction. The marker form stays the escape hatch that pins every field
+    explicitly.
+    """
+    lines = text.splitlines()
+    coord_idx = [i for i, line in enumerate(lines) if _STRUCTURED_COORD_RE.match(line.strip())]
+    if len(coord_idx) != 1:
+        return None
+    url_only: dict[int, str] = {}
+    bound: list[int] = []
+    for i, line in enumerate(lines):
+        match = _URL_ONLY_LINE_RE.match(line)
+        if match is None:
+            continue
+        token = match.group(1).rstrip(_TOKEN_TRAILING_PUNCT)
+        url_only[i] = token
+        if any(token in (entry.shortlink, entry.url) for entry in record.external_sources):
+            bound.append(i)
+    if len(bound) > 1:
+        return None
+    source_idx: int | None
+    if bound:
+        source_idx, source_value = bound[0], url_only[bound[0]]
+    elif record.quoted is not None:
+        # No token: the quote card is the source (``_designated_source``'s
+        # empty-value branch), as when X swallows the pasted status URL.
+        source_idx, source_value = None, ""
+    elif len(record.external_sources) == 1:
+        source_idx, source_value = None, record.external_sources[0].url
+    else:
+        return None
+    consumed = {coord_idx[0]}
+    if source_idx is not None:
+        consumed.add(source_idx)
+    title_idx = next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if i not in consumed and i not in url_only and line.strip()
+        ),
+        None,
+    )
+    if title_idx is None:
+        return None
+    consumed.add(title_idx)
+    return MarkerFields(
+        title=lines[title_idx].strip(),
+        coords=lines[coord_idx[0]].strip(),
+        source=source_value,
+        proof_text="\n".join(line for i, line in enumerate(lines) if i not in consumed),
+    )
 
 
 def _expand_shortlinks(text: str, links: list[SourceLink]) -> str:
@@ -209,23 +289,38 @@ def detect_structured(
 ) -> list[DetectedGeoloc]:
     """The bot's strict single-tweet mapper: one conforming tweet, one DTO.
 
-    The tweet must carry all of ``T:`` (non-empty title), ``C:`` (one decimal
-    pair inside bounds), and ``S:`` (a line designating the source: one URL
-    token bound to a link entity, or the inline quote when X swallowed the
-    token into the quote card, see :func:`_designated_source`). Anything
-    short of that returns ``[]``: free-text coordinate detection is
-    deliberately not a fallback here, that stays the archive path's
-    vocabulary. Title and coordinate come from the markers; the non-marker
-    lines, with the bot tag and the markers stripped and ``t.co`` reference
-    tokens expanded, become the proof; source URL, source post date, and the
-    media split come from ``resolve_thread`` over the pruned record (attached
-    media is the analyst's annotation, so it lands as proof; the source media
-    rides the designated quote / chased status / chased Telegram embed).
-    ``client`` serves the at-most-one chase fetch behind the ``S:`` link.
+    Two spellings of one structure, both all-or-nothing:
+
+    * **Marker form**: ``T:`` (non-empty title), ``C:`` (one decimal pair
+      inside bounds), ``S:`` (a line designating the source: one URL token
+      bound to a link entity, or the inline quote when X swallowed the token
+      into the quote card, see :func:`_designated_source`). Any marker
+      present pins this form: an incomplete marker set fails rather than
+      falling back to the bare shape (a half-marked post is a mistake to
+      teach, not a guess to absorb).
+    * **Bare form**: no marker lines at all; the shape carries the fields
+      (:func:`_bare_fields`): the whole-line decimal pair, the whole-line
+      source link (or the quote card / the post's only link), the first
+      remaining line as title.
+
+    Anything short of either returns ``[]``: free-text coordinate detection
+    is deliberately not a fallback here, that stays the archive path's
+    vocabulary. The remaining lines, with the bot tag stripped and ``t.co``
+    reference tokens expanded, become the proof; source URL, source post
+    date, and the media split come from ``resolve_thread`` over the pruned
+    record (attached media is the analyst's annotation, so it lands as
+    proof; the source media rides the designated quote / chased status /
+    chased Telegram embed). ``client`` serves the at-most-one chase fetch
+    behind the designated link.
     """
     text = re.sub(rf"@{re.escape(bot_handle)}\b", "", record.text, flags=re.IGNORECASE)
     fields = split_marker_lines(text)
-    if fields.title is None or fields.coords is None or fields.source is None:
+    if (fields.title, fields.coords, fields.source) == (None, None, None):
+        bare = _bare_fields(record, text)
+        if bare is None:
+            return []
+        fields = bare
+    elif fields.title is None or fields.coords is None or fields.source is None:
         return []
     match = _STRUCTURED_COORD_RE.match(fields.coords)
     if match is None:

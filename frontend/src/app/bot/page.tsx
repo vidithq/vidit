@@ -1,17 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AtSign, Reply, ShieldCheck, ClipboardCheck } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  AtSign,
+  Reply,
+  ShieldCheck,
+  ClipboardCheck,
+  Bot,
+  Play,
+  ImageIcon,
+} from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { Dot } from "@/components/ui/Dot";
 import { PageFrame } from "@/components/ui/PageFrame";
 
 // Public guide for the @ViditBot mention format, reachable without an
-// account (see `PUBLIC_PREFIXES` in `proxy.ts`). This is the page the bot's
-// bio and pinned post point to, and the destination behind the failure
-// reply's "Guide in bio": the reply itself is linkless by contract, so the
-// full lesson lives here. Server component for SEO, composed from the same
-// primitives and section/card markup as the landing page.
+// account (see `PUBLIC_PREFIXES` in `proxy.ts`) and from the sidebar's Bot
+// entry. This is the page the bot's bio and pinned post point to, and the
+// destination behind the failure reply's "Guide in bio": the reply itself
+// is linkless by contract, so the full lesson lives here. Server component
+// for SEO, composed from the same primitives and section/card markup as
+// the landing page; the mock X posts mirror the promo video's BotBeat
+// composition (video/src/components/BotBeat.tsx).
 
 const TITLE = "Tag @ViditBot: import a geolocation from one post";
 const DESCRIPTION =
@@ -37,48 +48,92 @@ export const metadata: Metadata = {
   },
 };
 
-// The three marker lines, the whole vocabulary the bot reads.
-const MARKERS: { marker: string; label: string; body: string }[] = [
+// The three lines the bot reads off the post's shape, in order.
+const LINES: { step: string; label: string; body: string }[] = [
   {
-    marker: "T:",
+    step: "1",
     label: "Title",
-    body: "The event title, on its own line.",
+    body: "The first line of your post becomes the draft's title.",
   },
   {
-    marker: "C:",
+    step: "2",
     label: "Coordinates",
-    body: "One decimal pair (48.123456, 37.654321) and nothing else on the line. Signs and degree symbols are fine; DMS is not.",
+    body: "One decimal pair alone on its line: 48.123456, 37.654321. Signs and degree symbols are fine; DMS is not.",
   },
   {
-    marker: "S:",
+    step: "3",
     label: "Source",
-    body: "Exactly one link, to the post carrying the footage. Never your own post, and never two links on the line.",
+    body: "The footage link alone on its line, or quote the source post. Never your own post.",
   },
 ];
 
-// A mock post: the landing's card shell around a monospace body, an
-// author line, and an optional attachment hint. Content-only markup, same
-// composition vocabulary as the landing's feature cards.
-function ExamplePost({
-  attachment,
+// A mock X post, the same composition the promo video's BotBeat renders:
+// X-dark card, avatar, name row, body with link-blue accents, optional
+// media placeholder. Page-local content markup, not a product primitive.
+function MockPost({
+  name,
+  handle,
+  avatar,
+  bot = false,
+  replyingTo,
+  media,
   children,
 }: {
-  attachment?: string;
-  children: string;
+  name: string;
+  handle: string;
+  avatar: string;
+  bot?: boolean;
+  replyingTo?: string;
+  media?: { kind: "video" | "image"; label: string };
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-      <p className="text-[11px] font-medium text-neutral-500">
-        @you <span className="font-normal text-neutral-600">on X</span>
-      </p>
-      <pre className="mt-2 whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-neutral-300">
+    <div className="rounded-2xl border border-neutral-800 bg-black p-4 text-left">
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${avatar}`}
+        >
+          {bot ? <Bot size={20} /> : name.slice(0, 1)}
+        </span>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[15px] font-bold text-neutral-100">
+            {name}
+          </p>
+          <p className="truncate text-[13px] text-neutral-500">
+            {handle}
+            {replyingTo && (
+              <>
+                {" "}
+                · replying to <span className="text-sky-500">{replyingTo}</span>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+      <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100">
         {children}
-      </pre>
-      {attachment && (
-        <p className="mt-2 text-[11px] text-neutral-500">📎 {attachment}</p>
+      </div>
+      {media && (
+        <div className="mt-3 flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
+          <span className="flex flex-col items-center gap-2 text-neutral-500">
+            <span className="flex size-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
+              {media.kind === "video" ? (
+                <Play size={16} />
+              ) : (
+                <ImageIcon size={16} />
+              )}
+            </span>
+            <span className="text-[11px]">{media.label}</span>
+          </span>
+        </div>
       )}
     </div>
   );
+}
+
+// Link-blue span for the mock bodies (X's anchor color, display only).
+function BodyLink({ children }: { children: ReactNode }) {
+  return <span className="text-sky-500">{children}</span>;
 }
 
 export default function BotGuidePage() {
@@ -110,13 +165,13 @@ export default function BotGuidePage() {
             </h2>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            {MARKERS.map(({ marker, label, body }) => (
+            {LINES.map(({ step, label, body }) => (
               <div
-                key={marker}
+                key={step}
                 className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
               >
                 <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 font-mono text-sm text-orange-400">
-                  {marker}
+                  {step}
                 </span>
                 <h3 className="mt-4 text-sm font-medium text-neutral-100">
                   {label}
@@ -128,8 +183,12 @@ export default function BotGuidePage() {
             ))}
           </div>
           <p className="mt-4 text-center text-[13px] leading-relaxed text-neutral-400">
-            Every other line of your post becomes the draft&apos;s proof note.
-            Markers are case-insensitive; free-text coordinates are not parsed.
+            Every other line becomes the draft&apos;s proof note. Free-text
+            coordinates are not parsed, and the explicit spelling with{" "}
+            <span className="font-mono text-neutral-300">T:</span>{" "}
+            <span className="font-mono text-neutral-300">C:</span>{" "}
+            <span className="font-mono text-neutral-300">S:</span> prefixes is
+            still read.
           </p>
         </section>
 
@@ -148,16 +207,27 @@ export default function BotGuidePage() {
                 Inline: the source is on X or Telegram
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                One post carrying the tag and the three lines. When S: links an
-                X post or a public Telegram post, Vidit fetches the footage and
-                its post date for you. Quoting the source post instead of
-                linking it works too. Attach your annotated screenshots: they
-                land as proof.
+                One post carrying the tag and the three lines. When the source
+                is an X post or a public Telegram post, Vidit fetches the
+                footage and its post date for you. Quoting the source post
+                works too. Attach your annotated screenshots: they land as
+                proof.
               </p>
               <div className="mt-4">
-                <ExamplePost attachment="your annotated screenshots (proof)">
-                  {"@ViditBot\nT: Strike on the vehicle depot\nC: 48.123456, 37.654321\nS: https://x.com/warfootage/status/17…\nSmoke plume matches the skyline"}
-                </ExamplePost>
+                <MockPost
+                  name="GEOIMINT"
+                  handle="@GEOIMINT"
+                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                  media={{
+                    kind: "image",
+                    label: "your annotated screenshots (proof)",
+                  }}
+                >
+                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
+                  <BodyLink>x.com/warfootage/status/17…</BodyLink>
+                  {"\nSmoke plume matches the skyline.\n"}
+                  <BodyLink>@viditbot</BodyLink>
+                </MockPost>
               </div>
             </div>
 
@@ -170,18 +240,35 @@ export default function BotGuidePage() {
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
                 TikTok, Instagram, a news article: Vidit cannot fetch footage
-                from those, so relay it yourself. Post the three lines first,
-                then tag the bot in a direct reply to your own post, with the
+                from those, so relay it yourself. Post the three lines, then
+                tag the bot in a direct reply to your own post, with the
                 footage attached. The reply&apos;s media becomes the source
-                footage; anything you write next to it joins the proof note.
+                footage.
               </p>
               <div className="mt-4 space-y-3">
-                <ExamplePost attachment="your annotated screenshots (proof)">
-                  {"T: Strike on the vehicle depot\nC: 48.123456, 37.654321\nS: https://www.tiktok.com/@war/video/7…\nSmoke plume matches the skyline"}
-                </ExamplePost>
-                <ExamplePost attachment="the re-uploaded footage (source)">
-                  {"↳ replying to your own post\n@ViditBot"}
-                </ExamplePost>
+                <MockPost
+                  name="GEOIMINT"
+                  handle="@GEOIMINT"
+                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                >
+                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
+                  <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
+                  {"\nSmoke plume matches the skyline."}
+                </MockPost>
+                <div className="pl-6">
+                  <MockPost
+                    name="GEOIMINT"
+                    handle="@GEOIMINT"
+                    avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                    replyingTo="@GEOIMINT"
+                    media={{
+                      kind: "video",
+                      label: "the re-uploaded footage (source)",
+                    }}
+                  >
+                    <BodyLink>@viditbot</BodyLink>
+                  </MockPost>
+                </div>
               </div>
             </div>
           </div>
@@ -198,7 +285,7 @@ export default function BotGuidePage() {
               </h3>
               <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
                 <li>
-                  The bot replies in-thread with your draft&apos;s reference,
+                  The bot answers in-thread with your draft&apos;s reference,
                   and flags a possible duplicate when the media is already on
                   Vidit.
                 </li>
@@ -208,10 +295,23 @@ export default function BotGuidePage() {
                   proxy), then publish.
                 </li>
                 <li>
-                  If the format is incomplete, the bot replies with what is
+                  If the shape is incomplete, the bot replies with what is
                   missing. Tag again on a corrected post.
                 </li>
               </ul>
+              <div className="mt-4">
+                <MockPost
+                  name="Vidit"
+                  handle="@viditbot"
+                  avatar="bg-gradient-to-br from-orange-500 to-amber-500"
+                  bot
+                  replyingTo="@GEOIMINT"
+                >
+                  {
+                    "Vidit: 1 geolocation draft saved · ref 94183d44\nReview it from your profile (link in bio)."
+                  }
+                </MockPost>
+              </div>
             </div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
               <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
@@ -227,12 +327,13 @@ export default function BotGuidePage() {
                   name.
                 </li>
                 <li>
-                  S: holds exactly one link, to the footage post, never your
-                  own post.
+                  One source, never your own post. When your post carries
+                  several links, put the source alone on its own line; the
+                  others stay proof references.
                 </li>
                 <li>
-                  A relay reply must answer your own marker post; tags under
-                  someone else&apos;s post import nothing.
+                  A relay reply must answer your own post; tags under someone
+                  else&apos;s post import nothing.
                 </li>
               </ul>
             </div>

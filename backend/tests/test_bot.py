@@ -4,10 +4,11 @@ Every X surface is mocked: syndication bodies through one ``MockTransport``
 (dispatched by tweet id), the paid mentions read and reply write through
 another. The DB and the assemble step are real, same as ``test_detection``.
 
-The bot accepts the strict format in two forms — inline (markers on the
-tagged tweet) and relay (markers on the parent the tagged reply answers,
-the reply carrying the footage); the free-text coordinate vocabulary stays
-the archive path's and is proven NOT to work here.
+The bot accepts one strict structure in two spellings (bare shape or
+T:/C:/S: markers) and two delivery forms — inline (the structure on the
+tagged tweet) and relay (the structure on the parent the tagged reply
+answers, the reply carrying the footage); the free-text coordinate
+vocabulary stays the archive path's and is proven NOT to work here.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ RELAY_PARENT_ID = "9300000000000000011"
 RELAY_TAGGED_ID = "9300000000000000012"
 RELAY_TAGGED_TWICE_ID = "9300000000000000013"
 FOREIGN_PARENT_TAG_ID = "9300000000000000014"
+BARE_FMT_ID = "9300000000000000015"
 SOURCE_ID = "9300000000000000042"
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
@@ -173,6 +175,22 @@ BODIES = {
         "user": {"screen_name": HANDLE},
         "text": "@viditbot relay this",
         "in_reply_to_status_id_str": FOREIGN_ID,
+    },
+    # The bare form: same structure, no marker prefixes. The shape carries
+    # the fields (title line, whole-line coordinate pair, whole-line source
+    # link), the trailing prose becoming the proof.
+    BARE_FMT_ID: {
+        "id_str": BARE_FMT_ID,
+        "created_at": "2026-03-11T20:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "@viditbot\n"
+            "Strike on the vehicle depot\n"
+            "48.123456, 37.654321\n"
+            "https://t.co/src\n"
+            "Smoke plume matches the skyline"
+        ),
+        "entities": _SOURCE_ENTITIES,
     },
     # The S: link's target, chased for its post date (no media, so the
     # assemble step fetches nothing).
@@ -361,7 +379,30 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
     (payload,) = posted  # the linked author gets the format lesson
-    assert "T: title" in payload["text"]
+    assert "shaped as three lines" in payload["text"]
+
+
+async def test_bare_mention_creates_draft_from_the_shape(db, linked_owner):
+    # The unprefixed form end to end: title, coordinate, and source read
+    # from the shape alone; the S: link chased for its post date.
+    outcome, _, posted, _ = await _run(db, [BARE_FMT_ID])
+
+    assert outcome.events_created == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.title == "Strike on the vehicle depot"
+    point = to_shape(event.event_coords)
+    assert point.y == pytest.approx(48.123456)
+    assert point.x == pytest.approx(37.654321)
+    assert event.source_url == _SOURCE_URL
+    assert event.source_posted_at is not None
+
+    proof = json.dumps(event.proof)
+    assert "Smoke plume matches the skyline" in proof
+    assert "Strike on the vehicle depot" not in proof  # the title line is consumed
+    assert "48.123456" not in proof and "t.co" not in proof
+
+    (payload,) = posted
+    assert payload["reply"] == {"in_reply_to_tweet_id": BARE_FMT_ID}
 
 
 async def test_relay_mention_creates_draft_from_the_parent(db, linked_owner):
@@ -407,7 +448,7 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     (payload,) = posted  # the linked author still gets the format lesson
-    assert "T: title" in payload["text"]
+    assert "shaped as three lines" in payload["text"]
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -421,7 +462,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "T: title" in text and "C: 22.703889, -83.297222" in text and "S: source link" in text
+    assert "shaped as three lines" in text and "22.703889, -83.297222" in text
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -554,7 +595,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     text = payload["text"]
     assert isinstance(text, str)
     assert "nothing saved" in text.lower()
-    assert "T: title" in text  # the format lesson
+    assert "shaped as three lines" in text  # the format lesson
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -712,14 +753,14 @@ def test_compose_reply_is_linkless_and_carries_warnings():
 
 def test_compose_failure_reply_teaches_the_format_linklessly():
     text = compose_failure_reply()
-    assert "T: title" in text
-    assert "C: 22.703889, -83.297222" in text
-    assert "S: source link" in text
-    # The source rule, for the analyst whose three lines are right but whose
-    # S: line carries zero or several URLs, or links their own post.
-    assert "S holds one link" in text
+    # The bare shape is the lesson: title line, coordinate line, source line.
+    assert "shaped as three lines" in text
+    assert "22.703889, -83.297222" in text
+    # The source rule, for the analyst whose source is missing, ambiguous,
+    # or their own post.
+    assert "the source link, alone on its line, never your own post" in text
     # The relay escape hatch, for footage the chase cannot fetch.
-    assert "tag me in a direct reply" in text
+    assert "Tag me in a direct reply" in text
     assert "Guide in bio" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280

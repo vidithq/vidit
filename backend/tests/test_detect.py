@@ -474,6 +474,108 @@ def test_structured_chase_transport_error_degrades_to_link_only():
     assert d.source_media == []
 
 
+# ── The bare form (unprefixed): the shape carries the fields ──────────────
+
+
+_REPORT_LINK = SourceLink(
+    url="https://example.org/report", host="other", shortlink="https://t.co/r"
+)
+
+_BARE_CONFORMING = (
+    "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nSmoke plume matches"
+)
+
+
+def test_bare_conforming_tweet_maps_shape_to_fields():
+    record = _struct_rec(_BARE_CONFORMING, external_sources=[_REPORT_LINK])
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.coordinate.lat == pytest.approx(48.123456)
+    assert d.coordinate.lng == pytest.approx(37.654321)
+    assert d.source_url == "https://example.org/report"
+    assert d.proof_text == "Smoke plume matches"
+    assert "48.123456" not in d.proof_text and "t.co" not in d.proof_text
+
+
+def test_bare_quote_card_is_the_designated_source():
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nSmoke plume matches",
+        quoted=_QUOTE,
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
+
+
+def test_bare_sole_inline_link_is_the_source():
+    # No URL-only line, no quote, but exactly one link entity in the post:
+    # that link is the source, and its prose line stays proof, expanded.
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nGeolocated from https://t.co/r footage",
+        external_sources=[_REPORT_LINK],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert "Geolocated from https://example.org/report footage" in d.proof_text
+
+
+def test_bare_several_inline_links_are_ambiguous():
+    # Two entities and none alone on its line: no deterministic designation.
+    other = SourceLink(url="https://example.org/other", host="other", shortlink="https://t.co/o")
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nsee https://t.co/r and https://t.co/o",
+        external_sources=[_REPORT_LINK, other],
+    )
+    assert detect_structured(record, bot_handle="viditbot") == []
+
+
+def test_bare_url_only_line_designates_among_several_links():
+    # Same two entities, but one sits alone on its line: that one is the
+    # source; the other stays a proof reference.
+    other = SourceLink(url="https://example.org/other", host="other", shortlink="https://t.co/o")
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nsee also https://t.co/o",
+        external_sources=[_REPORT_LINK, other],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert "see also https://example.org/other" in d.proof_text
+
+
+def test_bare_two_coordinate_lines_are_ambiguous():
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\n50.450100, 30.523400\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured(record, bot_handle="viditbot") == []
+
+
+def test_bare_unbound_media_wrapper_line_is_ignored():
+    # X appends the attached-media t.co wrapper to the text; whole-line but
+    # binding to no entity, it neither designates nor fails, and never
+    # becomes the title.
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nhttps://t.co/media",
+        external_sources=[_REPORT_LINK],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert d.title == "Strike on the depot"
+    assert "t.co" not in d.proof_text
+
+
+def test_partial_markers_never_fall_back_to_the_bare_shape():
+    # One marker pins the marker form: an incomplete set is a mistake to
+    # teach, not a bare-shape guess.
+    record = _struct_rec(
+        "@viditbot\nT: Strike on the depot\n48.123456, 37.654321\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured(record, bot_handle="viditbot") == []
+
+
 # ── The relay mapper (the bot's two-tweet form) ───────────────────────────
 
 
@@ -582,6 +684,17 @@ def test_relay_media_outranks_chased_media_but_keeps_the_chased_date():
     (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
     assert d.source_url == "https://x.com/warfootage/status/42"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_accepts_a_bare_parent():
+    # The relay parent runs the same mapper, so the bare shape works there too.
+    parent = _relay_parent_rec(
+        "Strike on the depot\n48.123456, 37.654321\nhttps://t.co/tk\nSmoke plume matches"
+    )
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
 
 

@@ -12,9 +12,10 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
-The pipeline per mention accepts two forms of the same strict format —
-``T:`` a title, ``C:`` one decimal coordinate pair, ``S:`` a source link,
-remaining lines becoming the proof text:
+The pipeline per mention accepts one strict structure — a title, one
+decimal coordinate pair, a source link, remaining lines becoming the proof
+text — spelled bare (the shape carries the fields, the primary form) or
+with explicit ``T:`` / ``C:`` / ``S:`` markers, and delivered in two forms:
 
 * **Inline**: the tagged tweet itself carries the markers
   (:func:`tweet_ingest.detect_structured`; at most one extra syndication
@@ -263,21 +264,23 @@ def compose_failure_reply() -> str:
     why nothing landed, the format itself, and the relay escape hatch.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
-    domain (the ``S: source link`` line is a placeholder phrase, not a link;
-    the full guide lives behind the bio link). The source-rule sentence
-    covers the analyst whose three lines are right but whose ``S:`` line
-    carries zero or several URLs, or links their own post; the relay sentence
-    covers footage the chase cannot fetch. Only posted to linked authors, and
-    never on a tag that is itself a reply to the bot (the caller's loop
-    guard). Composed length must stay well under ``_REPLY_MAX_CHARS``.
+    domain (the "source link" line is a placeholder phrase, not a link; the
+    full guide lives behind the bio link). Teaches the bare shape (the
+    primary form; the ``T:`` / ``C:`` / ``S:`` markers stay accepted without
+    being advertised here); the source-rule clause covers the analyst whose
+    lines are right but whose source is missing, ambiguous, or their own
+    post; the relay sentence covers footage the chase cannot fetch. Only
+    posted to linked authors, and never on a tag that is itself a reply to
+    the bot (the caller's loop guard). Composed length must stay well under
+    ``_REPLY_MAX_CHARS``.
     """
     return (
-        "Vidit: nothing saved. Tag me on one post holding three lines:\n"
-        "T: title\n"
-        "C: 22.703889, -83.297222\n"
-        "S: source link\n"
-        "S holds one link, never your own post. Or post the three lines, then tag me "
-        "in a direct reply carrying the footage. Guide in bio."
+        "Vidit: nothing saved. Tag me on one post shaped as three lines:\n"
+        "the title\n"
+        "22.703889, -83.297222\n"
+        "the source link, alone on its line, never your own post\n"
+        "Other lines join the proof note. Can't link the footage? Tag me in a "
+        "direct reply carrying it. Guide in bio."
     )
 
 
