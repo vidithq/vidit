@@ -16,7 +16,9 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     TweetRecord,
     detect,
+    detect_relay,
     detect_structured,
+    fetch_relay_parent,
     stitch,
 )
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink
@@ -470,6 +472,185 @@ def test_structured_chase_transport_error_degrades_to_link_only():
     assert d.source_url == "https://x.com/warfootage/status/79"
     assert d.source_posted_at is None
     assert d.source_media == []
+
+
+# ── The relay mapper (the bot's two-tweet form) ───────────────────────────
+
+
+# An S: link outside the chase vocabulary (host ``other``): the relay form's
+# reason to exist — the footage cannot be fetched from it.
+_OFF_VOCAB = SourceLink(
+    url="https://www.tiktok.com/@war/video/7", host="other", shortlink="https://t.co/tk"
+)
+
+_RELAY_VIDEO = ParsedMedia(
+    kind="video", remote_url="https://video.twimg.com/relay.mp4", content_type="video/mp4"
+)
+
+_PARENT_TEXT = (
+    "T: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/tk\nSmoke plume matches"
+)
+
+
+def _relay_parent_rec(
+    text: str = _PARENT_TEXT,
+    *,
+    quoted: QuotedTweet | None = None,
+    external_sources: list[SourceLink] | None = None,
+    media: list[ParsedMedia] | None = None,
+) -> TweetRecord:
+    return TweetRecord(
+        tweet_id="20",
+        handle="analyst",
+        text=text,
+        created_at="2026-03-11T12:00:00Z",
+        permalink="https://x.com/analyst/status/20",
+        media=media or [],
+        quoted=quoted,
+        external_sources=external_sources if external_sources is not None else [_OFF_VOCAB],
+    )
+
+
+def _relay_reply_rec(
+    text: str = "@viditbot footage saved below",
+    *,
+    handle: str = "analyst",
+    media: list[ParsedMedia] | None = None,
+) -> TweetRecord:
+    return TweetRecord(
+        tweet_id="21",
+        handle=handle,
+        text=text,
+        created_at="2026-03-11T12:05:00Z",
+        permalink=f"https://x.com/{handle}/status/21",
+        media=[_RELAY_VIDEO] if media is None else media,
+        in_reply_to_status_id="20",
+    )
+
+
+def test_relay_reply_media_is_the_source_media():
+    proof_img = ParsedMedia(
+        kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
+    )
+    parent = _relay_parent_rec(media=[proof_img])
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    # The parent runs the same strict mapper as an inline mention.
+    assert d.title == "Strike on the depot"
+    assert d.coordinate.lat == pytest.approx(48.123456)
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert d.source_posted_at is None  # off-vocabulary: nothing to chase
+    # Idempotency anchors on the parent: tagging both tweets lands on one key.
+    assert d.detected_from_url == "https://x.com/analyst/status/20"
+    # The reply's attachment is the footage; the parent's stays annotation.
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+    assert [m.remote_url for m in d.proof_media] == ["https://pbs.twimg.com/own.jpg"]
+    # The reply's caption joins the proof, tag stripped.
+    assert d.proof_text == "Smoke plume matches\nfootage saved below"
+    assert "viditbot" not in d.proof_text
+
+
+def test_relay_requires_the_same_author():
+    # A stranger replying under the analyst's marker tweet cannot relay
+    # media onto it.
+    reply = _relay_reply_rec(handle="stranger")
+    assert detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot") == []
+
+
+def test_relay_nonconforming_parent_yields_nothing():
+    parent = _relay_parent_rec("Geolocated 48.123456, 37.654321 near the depot")
+    assert detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot") == []
+
+
+def test_relay_without_media_resolves_the_parent_as_if_inline():
+    # A media-less reply-tag still counts (the analyst forgot the inline tag):
+    # the parent resolves exactly as an inline mention would, plus the caption.
+    (d,) = detect_relay(_relay_reply_rec(media=[]), _relay_parent_rec(), bot_handle="viditbot")
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert d.source_media == []
+    assert d.proof_text == "Smoke plume matches\nfootage saved below"
+
+
+def test_relay_media_outranks_chased_media_but_keeps_the_chased_date():
+    # The parent's S: resolved to the quote card (media + date known). The
+    # reply's re-upload still wins the source slot — the analyst's explicit
+    # gesture — while the chased post date is kept.
+    parent = _relay_parent_rec(
+        "T: Strike on the depot\nC: 48.123456, 37.654321\nS: source below",
+        quoted=_QUOTE,
+        external_sources=[],
+    )
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_reply_markers_never_shadow_the_parent():
+    # Marker-shaped lines on the reply are dropped from the caption, never
+    # merged into the parent's fields (a fully conforming reply would have
+    # taken the inline path before relay is ever consulted).
+    reply = _relay_reply_rec("@viditbot\nT: A different title\ncaption line")
+    (d,) = detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert "different title" not in d.proof_text
+    assert "caption line" in d.proof_text
+
+
+# ── fetch_relay_parent: the one-hop, fail-soft parent fetch ───────────────
+
+
+# Distinct parent ids per test: the syndication fetch caches by tweet id
+# process-wide, so re-using one id across tests would leak the first body.
+def _reply_to(parent_id: str) -> TweetRecord:
+    return dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=parent_id)
+
+
+def _parent_body(parent_id: str, handle: str = "analyst") -> dict:
+    return {
+        "id_str": parent_id,
+        "created_at": "2026-03-11T12:00:00.000Z",
+        "user": {"screen_name": handle},
+        "text": _PARENT_TEXT,
+    }
+
+
+def test_fetch_relay_parent_returns_the_self_reply_parent():
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.url.params["id"] == "9400000000000000201"
+        return httpx.Response(200, json=_parent_body("9400000000000000201"))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        parent = fetch_relay_parent(_reply_to("9400000000000000201"), client=client)
+    assert parent is not None
+    assert parent.tweet_id == "9400000000000000201"
+    assert parent.handle == "analyst"
+
+
+def test_fetch_relay_parent_is_none_for_a_non_reply():
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("a non-reply must trigger no fetch")
+
+    record = dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=None)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(record, client=client) is None
+
+
+def test_fetch_relay_parent_rejects_another_authors_parent():
+    # The authoritative same-author guard runs on the FETCHED handle: the URL
+    # is built from the tagger's handle, but syndication returns the real one.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_parent_body("9400000000000000202", "someone_else"))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(_reply_to("9400000000000000202"), client=client) is None
+
+
+def test_fetch_relay_parent_fetch_failure_degrades_to_none():
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)  # parent deleted / protected
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(_reply_to("9400000000000000203"), client=client) is None
 
 
 # ── Archive regression: the free-text spine is untouched by the bot format ─

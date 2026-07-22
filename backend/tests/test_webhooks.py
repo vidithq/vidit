@@ -457,7 +457,8 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     assert "nothing saved" in text.lower()
     assert "T: title" in text
     assert "C: 22.703889, -83.297222" in text
-    assert "S must hold exactly one link" in text
+    assert "S holds one link" in text
+    assert "tag me in a direct reply" in text  # the relay escape hatch
 
 
 async def test_drain_unlinked_author_is_fully_silent(db):

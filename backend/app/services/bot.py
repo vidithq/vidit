@@ -12,14 +12,24 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
-The pipeline per mention reads exactly one tweet, the tagged one (no parent
-walk: the archive backfill keeps its own self-thread stitching, the bot does
-not share it). The tweet must carry the strict inline format, all of:
+The pipeline per mention accepts two forms of the same strict format —
 ``T:`` a title, ``C:`` one decimal coordinate pair, ``S:`` a source link,
-with the remaining lines becoming the proof text
-(:func:`tweet_ingest.detect_structured`; at most one extra syndication fetch
-resolves the ``S:`` target's media and post date). Free-text coordinate
-detection is deliberately not a fallback here. The detection persists
+remaining lines becoming the proof text:
+
+* **Inline**: the tagged tweet itself carries the markers
+  (:func:`tweet_ingest.detect_structured`; at most one extra syndication
+  fetch resolves the ``S:`` target's media and post date).
+* **Relay**: the tagged tweet is the analyst's direct reply to their own
+  marker tweet, carrying the re-uploaded footage as attached media — for an
+  ``S:`` link the chase vocabulary cannot fetch (TikTok, Instagram, an
+  article). One fetch resolves the parent, which must be the same author's
+  conforming tweet; the reply's media becomes the source media
+  (:func:`tweet_ingest.detect_relay`).
+
+That one-hop parent fetch is the only ancestor read: there is no free-text
+parent rollup (the archive backfill keeps its own self-thread stitching, the
+bot does not share it), and free-text coordinate detection is deliberately
+not a fallback here. The detection persists
 through ``assemble_detections`` owned by the existing Vidit account whose
 admin-linked ``x_handle`` matches the tagged author (the bot never mints
 users: an unknown handle is ledgered ``no_account`` and produces nothing),
@@ -67,8 +77,10 @@ from app.models.user import User
 from app.services.detection import assemble_detections
 from app.services.tweet_ingest import (
     TweetRecord,
+    detect_relay,
     detect_structured,
     fetch_cdn_media,
+    fetch_relay_parent,
     record_from_syndication,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
@@ -170,10 +182,11 @@ class BotRunOutcome:
 def _tagged_record(mention: Mention, *, client: httpx.Client | None = None) -> TweetRecord:
     """Exactly the tagged tweet, one syndication fetch.
 
-    The strict mention format is single-tweet by contract, so the bot never
-    walks parents; a coordinate living in an ancestor tweet does not count.
-    The archive backfill keeps its own self-thread stitching untouched (its
-    threads are same-author by construction, see docs/ingestion.md).
+    The markers live either here (inline form) or on the direct parent (relay
+    form, fetched separately by :func:`tweet_ingest.fetch_relay_parent`); a
+    coordinate living anywhere else in the thread does not count. The archive
+    backfill keeps its own self-thread stitching untouched (its threads are
+    same-author by construction, see docs/ingestion.md).
     """
     return record_from_syndication(
         f"https://x.com/{mention.author_handle}/status/{mention.tweet_id}",
@@ -246,23 +259,25 @@ def compose_reply(created_ids: list[str], *, missing_source: bool, duplicate_med
 
 
 def compose_failure_reply() -> str:
-    """The in-thread reply for a linked author whose tagged tweet does not
-    carry the full strict format: why nothing landed, plus the format itself.
+    """The in-thread reply for a linked author whose tag produced nothing:
+    why nothing landed, the format itself, and the relay escape hatch.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
-    domain (the ``S: source link`` line is a placeholder phrase, not a link).
-    The source-rule sentence covers the analyst whose three lines are right
-    but whose ``S:`` line carries zero or several URLs, or links their own
-    post. Only posted to linked authors, and never on a tag that is itself a
-    reply to the bot (the caller's loop guard).
+    domain (the ``S: source link`` line is a placeholder phrase, not a link;
+    the full guide lives behind the bio link). The source-rule sentence
+    covers the analyst whose three lines are right but whose ``S:`` line
+    carries zero or several URLs, or links their own post; the relay sentence
+    covers footage the chase cannot fetch. Only posted to linked authors, and
+    never on a tag that is itself a reply to the bot (the caller's loop
+    guard). Composed length must stay well under ``_REPLY_MAX_CHARS``.
     """
     return (
         "Vidit: nothing saved. Tag me on one post holding three lines:\n"
         "T: title\n"
         "C: 22.703889, -83.297222\n"
         "S: source link\n"
-        "S must hold exactly one link, to the footage post, never your own. "
-        "Other lines become the proof note."
+        "S holds one link, never your own post. Or post the three lines, then tag me "
+        "in a direct reply carrying the footage. Guide in bio."
     )
 
 
@@ -328,6 +343,16 @@ async def _process_mention(
     detections = detect_structured(
         record, bot_handle=settings.x_bot_handle, client=syndication_client
     )
+    if not detections:
+        # The relay form: a tag in a direct reply to the author's own marker
+        # tweet, the reply's media relaying the footage. One parent fetch,
+        # same-author guarded; anything short of a conforming parent keeps
+        # the ``no_detection`` verdict.
+        parent = fetch_relay_parent(record, client=syndication_client)
+        if parent is not None:
+            detections = detect_relay(
+                record, parent, bot_handle=settings.x_bot_handle, client=syndication_client
+            )
     if not detections:
         return "no_detection", 0, None
     # After the detection step on purpose: an unknown handle with a

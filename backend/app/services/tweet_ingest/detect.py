@@ -18,7 +18,8 @@ from datetime import date, datetime
 
 import httpx
 
-from .acquire import quoted_from_syndication
+from .acquire import quoted_from_syndication, record_from_syndication
+from .errors import TweetImportError
 from .extract import ParsedCoord, clean_proof_text, split_marker_lines
 from .records import SourceLink, TelegramFootage, TweetRecord
 from .resolve import footage_candidates, resolve_thread
@@ -278,4 +279,79 @@ def detect_structured(
             source_media=resolved.source_media,
             proof_media=resolved.proof_media,
         )
+    ]
+
+
+def fetch_relay_parent(
+    record: TweetRecord, *, client: httpx.Client | None = None
+) -> TweetRecord | None:
+    """The parent behind a relay-form mention: the tweet ``record`` replies to,
+    when it is the same author's post. ``None`` otherwise.
+
+    One hop, one syndication fetch, and only for a self-reply: the same-author
+    guard (checked on the fetched parent's handle, the authoritative value) is
+    what stops a stranger from tagging the bot under someone else's post and
+    relaying media onto it. Fail-soft: a fetch failure reads as "no parent",
+    so the mention degrades to ``no_detection``.
+    """
+    if record.in_reply_to_status_id is None:
+        return None
+    try:
+        parent = record_from_syndication(
+            f"https://x.com/{record.handle}/status/{record.in_reply_to_status_id}",
+            client=client,
+        )
+    except TweetImportError:
+        return None
+    if parent.handle.lower() != record.handle.lower():
+        return None
+    return parent
+
+
+def detect_relay(
+    tagged: TweetRecord,
+    parent: TweetRecord,
+    *,
+    bot_handle: str,
+    client: httpx.Client | None = None,
+) -> list[DetectedGeoloc]:
+    """The bot's relay mapper: the strict format lives on the parent (the
+    analyst's geoloc tweet), the tagged reply relays the footage.
+
+    The relay form exists for sources outside the chase vocabulary (TikTok, an
+    Instagram post, a news article): the ``S:`` link cannot yield the footage,
+    so the analyst re-uploads it in a direct reply to their own geoloc tweet
+    and tags the bot there. That second tweet is the explicit signal
+    ``split_media`` otherwise requires before promoting an analyst's own
+    attachment to source footage.
+
+    The parent runs the same strict mapper as an inline mention (markers,
+    bounds, ``S:`` designation, at most one chase), so the two forms cannot
+    drift; ``detected_from_url`` is therefore the parent's permalink, and an
+    analyst who tags both tweets lands on the same idempotency key. On top of
+    that resolution: the reply's attached media, when present, becomes the
+    source media (it outranks any chased media — the analyst's explicit
+    gesture wins; a chased post date is still kept); the reply's non-marker
+    text joins the proof as a caption. A reply with no media changes nothing:
+    the parent resolves exactly as if it had been tagged inline. Same-author
+    is re-checked here so the guard cannot be skipped by a caller.
+    """
+    if parent.handle.lower() != tagged.handle.lower():
+        return []
+    detections = detect_structured(parent, bot_handle=bot_handle, client=client)
+    if not detections:
+        return []
+    tag_stripped = re.sub(rf"@{re.escape(bot_handle)}\b", "", tagged.text, flags=re.IGNORECASE)
+    caption = clean_proof_text(
+        _expand_shortlinks(split_marker_lines(tag_stripped).proof_text, tagged.external_sources)
+    )
+    return [
+        dataclasses.replace(
+            detection,
+            source_media=list(tagged.media) if tagged.media else detection.source_media,
+            proof_text=(
+                f"{detection.proof_text}\n{caption}".strip("\n") if caption else detection.proof_text
+            ),
+        )
+        for detection in detections
     ]

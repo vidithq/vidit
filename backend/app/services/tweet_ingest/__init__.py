@@ -23,7 +23,13 @@ from __future__ import annotations
 
 from .acquire import record_from_syndication
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .detect import DetectedGeoloc, detect, detect_structured
+from .detect import (
+    DetectedGeoloc,
+    detect,
+    detect_relay,
+    detect_structured,
+    fetch_relay_parent,
+)
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -68,9 +74,11 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "detect",
+    "detect_relay",
     "detect_structured",
     "extract_coords",
     "fetch_cdn_media",
+    "fetch_relay_parent",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
