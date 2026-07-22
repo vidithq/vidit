@@ -321,9 +321,7 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     db.add_all([invite, job, mention, detected, geolocated, login_event])
     db.commit()
     try:
-        rows = client.get(
-            "/api/v1/admin/invite-codes", headers=login_as(client, admin_user)
-        ).json()
+        rows = client.get("/api/v1/admin/invite-codes", headers=login_as(client, admin_user)).json()
         row = next(r for r in rows if r["code"] == invite.code)
         redeemer = row["redeemer"]
         assert redeemer["username"] == regular_user.username
