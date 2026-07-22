@@ -158,7 +158,7 @@ vidit/
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
-│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests)
+│   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests). `pytest -n auto --dist loadfile` (= `make test`) runs parallel: conftest migrates a template DB to alembic head and clones one database per xdist worker; plain `pytest` stays serial on the dev DB
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
 │   └── Dockerfile
