@@ -35,7 +35,11 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 # ── Pydantic response-model fields ────────────────────────────────────────────
 # Set by the service layer when constructing the schema and serialized by
 # Pydantic; the field name is never read back in app/.
-used_by_username  # schemas/admin.py InviteCodeRead
+redeemer  # schemas/admin.py AdminInviteCodeRead
+archives_imported  # schemas/admin.py AdminInviteRedeemerRead
+bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
+last_login_at  # schemas/admin.py AdminInviteRedeemerRead
+deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 deleted_geos  # schemas/admin.py
 with_claims  # schemas/admin.py

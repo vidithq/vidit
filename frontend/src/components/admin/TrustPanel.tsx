@@ -1,383 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { BadgeCheck, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 import {
-  deleteUser,
   searchUsers,
-  setUserTrust,
-  setUserXHandle,
+  type AdminPurgeDetectedResponse,
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-} from "@/components/ui/form-styles";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Pill } from "@/components/ui/Pill";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
-
-function TrustUserRow({
-  user,
-  onUpdated,
-  onDeleted,
-}: {
-  user: AdminUser;
-  onUpdated: (u: AdminUser) => void;
-  onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
-}) {
-  const [reason, setReason] = useState(user.trust_reason ?? "");
-  const [showReasonForm, setShowReasonForm] = useState(false);
-  const [xHandle, setXHandle] = useState(user.x_handle ?? "");
-  const [showXHandleForm, setShowXHandleForm] = useState(false);
-  const [deleteMode, setDeleteMode] = useState<"soft" | "hard" | null>(null);
-
-  const grantMutation = useMutation(
-    () =>
-      setUserTrust(user.id, {
-        is_trusted: true,
-        trust_reason: reason.trim(),
-      }),
-    {
-      fallback: "Failed to grant trust",
-      onSuccess: (updated) => {
-        onUpdated(updated);
-        setShowReasonForm(false);
-      },
-    }
-  );
-
-  const revokeMutation = useMutation(
-    () =>
-      setUserTrust(user.id, {
-        is_trusted: false,
-        trust_reason: null,
-      }),
-    {
-      fallback: "Failed to revoke trust",
-      onSuccess: (updated) => {
-        onUpdated(updated);
-        setReason("");
-      },
-    }
-  );
-
-  const xHandleMutation = useMutation(
-    (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
-    {
-      fallback: "Failed to update the X handle",
-      onSuccess: (updated) => {
-        onUpdated(updated);
-        setXHandle(updated.x_handle ?? "");
-        setShowXHandleForm(false);
-      },
-    }
-  );
-
-  const deleteMutation = useMutation(
-    (hard: boolean) => deleteUser(user.id, { hard }),
-    {
-      fallback: "Failed to delete user",
-      onSuccess: (response) => {
-        onDeleted(user.id, response);
-        setDeleteMode(null);
-        confirmDelete.cancel();
-      },
-    }
-  );
-
-  const granting = grantMutation.loading || revokeMutation.loading;
-  const linking = xHandleMutation.loading;
-  const deleting = deleteMutation.loading;
-  // One shared error slot across the row's actions; each action clears
-  // the others (mirrors the old single `setError(null)` per handler).
-  const error =
-    grantMutation.error ??
-    revokeMutation.error ??
-    xHandleMutation.error ??
-    deleteMutation.error;
-
-  const trusted = user.is_trusted;
-
-  const submitGrant = () => {
-    revokeMutation.reset();
-    xHandleMutation.reset();
-    deleteMutation.reset();
-    if (!reason.trim()) {
-      grantMutation.setError("A reason is required when granting trust.");
-      return;
-    }
-    void grantMutation.run();
-  };
-
-  const submitRevoke = () => {
-    grantMutation.reset();
-    xHandleMutation.reset();
-    deleteMutation.reset();
-    void revokeMutation.run();
-  };
-
-  const submitXHandle = () => {
-    grantMutation.reset();
-    revokeMutation.reset();
-    deleteMutation.reset();
-    if (!xHandle.trim()) {
-      xHandleMutation.setError("An X handle is required (use Clear to unlink).");
-      return;
-    }
-    void xHandleMutation.run(xHandle.trim());
-  };
-
-  const submitXHandleClear = () => {
-    grantMutation.reset();
-    revokeMutation.reset();
-    deleteMutation.reset();
-    void xHandleMutation.run(null);
-  };
-
-  const submitDelete = () => {
-    if (deleteMode === null) return;
-    grantMutation.reset();
-    revokeMutation.reset();
-    xHandleMutation.reset();
-    void deleteMutation.run(deleteMode === "hard");
-  };
-
-  const confirmDelete = useConfirmAction(() => submitDelete());
-
-  const cancelDelete = () => {
-    setDeleteMode(null);
-    confirmDelete.cancel();
-    grantMutation.reset();
-    revokeMutation.reset();
-    xHandleMutation.reset();
-    deleteMutation.reset();
-  };
-
-  return (
-    <div className="border border-neutral-800 rounded-md p-3 space-y-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm text-neutral-100 inline-flex items-center gap-1.5">
-            @{user.username}
-            {trusted && (
-              <BadgeCheck size={14} className="text-orange-500" strokeWidth={1.8} />
-            )}
-            {user.is_admin && (
-              <Pill className="uppercase tracking-wider">admin</Pill>
-            )}
-          </div>
-          <div className="text-xs text-neutral-500 truncate">{user.email}</div>
-          {user.x_handle && (
-            <div className="mt-1">
-              <Pill>X: @{user.x_handle}</Pill>
-            </div>
-          )}
-          {trusted && user.trust_reason && (
-            <div className="text-xs text-neutral-400 mt-1 italic">
-              “{user.trust_reason}”
-            </div>
-          )}
-        </div>
-        <div className="shrink-0 flex flex-col items-end gap-1">
-          {trusted ? (
-            <Button
-              variant="danger"
-              disabled={granting}
-              onClick={submitRevoke}
-              className="whitespace-nowrap"
-            >
-              Revoke trust
-            </Button>
-          ) : showReasonForm ? null : (
-            <Button
-              variant="ghost"
-              onClick={() => setShowReasonForm(true)}
-              className="whitespace-nowrap"
-            >
-              Grant trust
-            </Button>
-          )}
-          {deleteMode === null && !showReasonForm && !showXHandleForm && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowXHandleForm(true)}
-              className="whitespace-nowrap"
-            >
-              {user.x_handle ? "Edit X handle" : "Link X handle"}
-            </Button>
-          )}
-          {deleteMode === null && !showReasonForm && !showXHandleForm && (
-            <div className="inline-flex gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setDeleteMode("soft");
-                  confirmDelete.cancel();
-                }}
-                className="whitespace-nowrap"
-              >
-                Soft delete
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  setDeleteMode("hard");
-                  confirmDelete.cancel();
-                }}
-                className="whitespace-nowrap"
-              >
-                Hard delete
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!trusted && showReasonForm && (
-        <div className="space-y-2">
-          <label className={FORM_LABEL} htmlFor={`reason-${user.id}`}>
-            Reason (public, surfaces in the badge tooltip)
-          </label>
-          <Input
-            variant="compact"
-            id={`reason-${user.id}`}
-            type="text"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Established OSINT track record on X"
-          />
-          <div className="flex gap-2">
-            <Button variant="primary" onClick={submitGrant} disabled={granting}>
-              {granting ? "Granting…" : "Confirm grant"}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowReasonForm(false);
-                setReason(user.trust_reason ?? "");
-                grantMutation.reset();
-                revokeMutation.reset();
-                deleteMutation.reset();
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {showXHandleForm && (
-        <div className="space-y-2">
-          <label className={FORM_LABEL} htmlFor={`x-handle-${user.id}`}>
-            X handle (the bot attributes mentions from this handle to this
-            account)
-          </label>
-          <Input
-            variant="compact"
-            id={`x-handle-${user.id}`}
-            type="text"
-            value={xHandle}
-            onChange={(e) => setXHandle(e.target.value)}
-            placeholder="e.g. @osint_hawk"
-          />
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              onClick={submitXHandle}
-              disabled={linking}
-            >
-              {linking ? "Saving…" : "Confirm link"}
-            </Button>
-            {user.x_handle && (
-              <Button
-                variant="danger"
-                onClick={submitXHandleClear}
-                disabled={linking}
-              >
-                Clear link
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowXHandleForm(false);
-                setXHandle(user.x_handle ?? "");
-                grantMutation.reset();
-                revokeMutation.reset();
-                xHandleMutation.reset();
-                deleteMutation.reset();
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {deleteMode !== null && (
-        <div
-          className={`px-3 py-2 rounded-md text-xs space-y-2 ${
-            deleteMode === "hard"
-              ? "border bg-red-500/5 border-red-500/30 text-red-200"
-              : WARNING_CALLOUT
-          }`}
-        >
-          {deleteMode === "hard" ? (
-            <p>
-              <strong>Hard delete is irreversible.</strong> Drops @
-              {user.username}, every geolocation they authored, their
-              media, and S3 objects.{" "}
-              {!confirmDelete.armed && "Click “Confirm” to proceed."}
-            </p>
-          ) : (
-            <p>
-              Soft-deleting will hide @{user.username} from public reads and
-              cascade-hide every geolocation they authored.{" "}
-              {!confirmDelete.armed && "Click “Confirm” to proceed."}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <Button
-              variant="danger"
-              onClick={confirmDelete.trigger}
-              disabled={deleting}
-              className={confirmDelete.armed ? DANGER_CONFIRM : ""}
-            >
-              {deleting
-                ? "Deleting…"
-                : confirmDelete.armed
-                  ? "Confirm"
-                  : deleteMode === "hard"
-                    ? "Hard delete"
-                    : "Soft delete"}
-            </Button>
-            <Button variant="ghost" onClick={cancelDelete}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="text-xs text-red-300">{error}</div>
-      )}
-    </div>
-  );
-}
+import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
 export function TrustPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AdminUser[] | null>(null);
   const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(
+    null
+  );
+  const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
     null
   );
 
@@ -391,6 +38,7 @@ export function TrustPanel() {
   const onSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLastDelete(null);
+    setLastPurge(null);
     await searchMutation.run();
   };
 
@@ -411,15 +59,9 @@ export function TrustPanel() {
       <header>
         <SectionEyebrow title="Manage analysts" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Find an analyst by username or email, then act on the row:{" "}
-          <span className="text-orange-400">grant or revoke trust</span> (the
-          orange checkmark, with a public reason surfaced in the badge
-          tooltip), link or clear the X handle the bot attributes mentions
-          to,{" "}
-          <span className="text-amber-300">soft delete</span> (hide them and
-          everything they&apos;ve posted from public view), or{" "}
-          <span className="text-red-300">hard delete</span> (GDPR erasure:
-          drops the user, their geolocations, and their S3 media).
+          Find any analyst by username or email, including accounts that never
+          came through an invite code, then act on the row: the same actions as
+          the onboarding table above.
         </p>
       </header>
 
@@ -465,11 +107,12 @@ export function TrustPanel() {
             </div>
           ) : (
             results.map((u) => (
-              <TrustUserRow
+              <UserActionsCard
                 key={u.id}
                 user={u}
                 onUpdated={onUpdated}
                 onDeleted={onDeleted}
+                onPurged={setLastPurge}
               />
             ))
           )}
@@ -491,6 +134,21 @@ export function TrustPanel() {
               : `Cascade-hid ${lastDelete.cascaded_geolocations} geolocation${
                   lastDelete.cascaded_geolocations === 1 ? "" : "s"
                 }.`}
+          </div>
+        </ActionReceipt>
+      )}
+
+      {lastPurge && (
+        <ActionReceipt
+          mode="hard"
+          header={<span className="font-medium">@{lastPurge.username}</span>}
+        >
+          <div className="text-neutral-500">
+            {`Purged ${lastPurge.deleted_events} detected draft${
+              lastPurge.deleted_events === 1 ? "" : "s"
+            }, swept ${lastPurge.media_count} media row${
+              lastPurge.media_count === 1 ? "" : "s"
+            }. Account untouched.`}
           </div>
         </ActionReceipt>
       )}

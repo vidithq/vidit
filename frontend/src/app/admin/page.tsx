@@ -9,7 +9,7 @@ import { DemoRequestsPanel } from "@/components/admin/DemoRequestsPanel";
 import { DemoDataPanel } from "@/components/admin/DemoDataPanel";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
-import { InviteCodesPanel } from "@/components/admin/InviteCodesPanel";
+import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { TrustPanel } from "@/components/admin/TrustPanel";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -39,7 +39,7 @@ export default function AdminPage() {
 
   return (
     <PageShell title="Admin">
-      <InviteCodesPanel />
+      <OnboardingPanel />
       <DetectionStatsPanel />
       <TrustPanel />
       <EventDeletePanel />
