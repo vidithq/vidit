@@ -21,6 +21,9 @@ const CSRF_COOKIE = "vidit_csrf";
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
+  // The bot format guide: the destination behind the bot's bio and pinned
+  // post, read by analysts with no Vidit session yet.
+  "/bot",
   // The Sentry tunnel: browsers POST error envelopes here (rewritten to
   // Sentry ingest by next.config's tunnelRoute). Anonymous readers crash
   // too; behind the wall their reports redirected to /login and died 405.

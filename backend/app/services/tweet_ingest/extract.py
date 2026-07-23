@@ -235,6 +235,19 @@ class MarkerFields:
     proof_text: str
 
 
+def has_marker_lines(text: str) -> bool:
+    """Whether ``text`` carries any ``T:`` / ``C:`` / ``S:`` marker line at
+    all, including one with an empty payload.
+
+    The bot's spelling discriminator: any marker line pins the marker form,
+    so a half-marked or empty-marked post fails loudly instead of leaking
+    into the bare shape (where a literal ``T:`` line would become the
+    title). :func:`split_marker_lines` can't answer this, since it records
+    only non-empty payloads.
+    """
+    return any(_MARKER_LINE_RE.match(line) for line in text.splitlines())
+
+
 def split_marker_lines(text: str) -> MarkerFields:
     """Split ``text`` into its ``T:`` / ``C:`` / ``S:`` marker values and the
     remaining proof lines.

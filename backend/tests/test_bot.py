@@ -4,8 +4,10 @@ Every X surface is mocked: syndication bodies through one ``MockTransport``
 (dispatched by tweet id), the paid mentions read and reply write through
 another. The DB and the assemble step are real, same as ``test_detection``.
 
-The bot accepts only the strict single-tweet format (``T:`` / ``C:`` /
-``S:`` lines, everything else becomes the proof); the free-text coordinate
+The bot accepts one strict structure in two spellings (bare shape or
+T:/C:/S: markers) and two delivery forms — inline (the structure on the
+tagged tweet) and relay (the structure on the parent the tagged reply
+answers, the reply carrying the footage); the free-text coordinate
 vocabulary stays the archive path's and is proven NOT to work here.
 """
 
@@ -43,6 +45,11 @@ MISSING_T_ID = "9300000000000000006"
 MISSING_C_ID = "9300000000000000007"
 MISSING_S_ID = "9300000000000000008"
 REPLY_BARE_ID = "9300000000000000010"
+RELAY_PARENT_ID = "9300000000000000011"
+RELAY_TAGGED_ID = "9300000000000000012"
+RELAY_TAGGED_TWICE_ID = "9300000000000000013"
+FOREIGN_PARENT_TAG_ID = "9300000000000000014"
+BARE_FMT_ID = "9300000000000000015"
 SOURCE_ID = "9300000000000000042"
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
@@ -124,6 +131,66 @@ BODIES = {
         "user": {"screen_name": HANDLE},
         "text": "@viditbot see above",
         "in_reply_to_status_id_str": PARENT_ID,
+    },
+    # The relay pair: the analyst's marker tweet whose S: link is outside the
+    # chase vocabulary (TikTok, host ``other``), and the analyst's direct
+    # reply tagging the bot. Media-less on purpose: the assemble step's CDN
+    # fetch opens a real socket, so the media split stays unit-tested
+    # (test_detect.py); this proves the wiring.
+    RELAY_PARENT_ID: {
+        "id_str": RELAY_PARENT_ID,
+        "created_at": "2026-03-11T19:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "T: Depot strike geolocated\n"
+            "C: 48.123456, 37.654321\n"
+            "S: https://t.co/tk\n"
+            "Matched the tower skyline"
+        ),
+        "entities": {
+            "urls": [
+                {"url": "https://t.co/tk", "expanded_url": "https://www.tiktok.com/@war/video/7"}
+            ]
+        },
+    },
+    RELAY_TAGGED_ID: {
+        "id_str": RELAY_TAGGED_ID,
+        "created_at": "2026-03-11T19:05:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot footage saved below",
+        "in_reply_to_status_id_str": RELAY_PARENT_ID,
+    },
+    RELAY_TAGGED_TWICE_ID: {
+        "id_str": RELAY_TAGGED_TWICE_ID,
+        "created_at": "2026-03-11T19:10:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot tagging again",
+        "in_reply_to_status_id_str": RELAY_PARENT_ID,
+    },
+    # The analyst tags the bot under someone ELSE's post: the same-author
+    # guard must refuse the relay, whatever the parent contains.
+    FOREIGN_PARENT_TAG_ID: {
+        "id_str": FOREIGN_PARENT_TAG_ID,
+        "created_at": "2026-03-11T19:15:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot relay this",
+        "in_reply_to_status_id_str": FOREIGN_ID,
+    },
+    # The bare form: same structure, no marker prefixes. The shape carries
+    # the fields (title line, whole-line coordinate pair, whole-line source
+    # link), the trailing prose becoming the proof.
+    BARE_FMT_ID: {
+        "id_str": BARE_FMT_ID,
+        "created_at": "2026-03-11T20:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "@viditbot\n"
+            "Strike on the vehicle depot\n"
+            "48.123456, 37.654321\n"
+            "https://t.co/src\n"
+            "Smoke plume matches the skyline"
+        ),
+        "entities": _SOURCE_ENTITIES,
     },
     # The S: link's target, chased for its post date (no media, so the
     # assemble step fetches nothing).
@@ -295,23 +362,94 @@ async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
     assert payload["reply"] == {"in_reply_to_tweet_id": TAGGED_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert str(event.id) in text
+    assert str(event.id)[:8] in text  # the shortened ref
+    assert str(event.id) not in text  # never the full UUID (a third of the reply)
     assert "No source" not in text  # the S: source landed, no warning
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
 
 
 async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
-    # The tagged tweet is a bare reply to the analyst's own coordinate tweet.
-    # The old self-thread walk would have rolled the parent in and detected;
-    # the strict single-tweet read must fail it instead.
+    # The tagged tweet is a bare reply to the analyst's own FREE-TEXT
+    # coordinate tweet. The old self-thread walk would have rolled the parent
+    # in and detected; the relay form fetches the parent but holds it to the
+    # same strict markers, so free text keeps failing.
     outcome, _, posted, _ = await _run(db, [REPLY_BARE_ID])
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
     (payload,) = posted  # the linked author gets the format lesson
-    assert "T: title" in payload["text"]
+    assert "Shape, one per line" in payload["text"]
+
+
+async def test_bare_mention_creates_draft_from_the_shape(db, linked_owner):
+    # The unprefixed form end to end: title, coordinate, and source read
+    # from the shape alone; the S: link chased for its post date.
+    outcome, _, posted, _ = await _run(db, [BARE_FMT_ID])
+
+    assert outcome.events_created == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.title == "Strike on the vehicle depot"
+    point = to_shape(event.event_coords)
+    assert point.y == pytest.approx(48.123456)
+    assert point.x == pytest.approx(37.654321)
+    assert event.source_url == _SOURCE_URL
+    assert event.source_posted_at is not None
+
+    proof = json.dumps(event.proof)
+    assert "Smoke plume matches the skyline" in proof
+    assert "Strike on the vehicle depot" not in proof  # the title line is consumed
+    assert "48.123456" not in proof and "t.co" not in proof
+
+    (payload,) = posted
+    assert payload["reply"] == {"in_reply_to_tweet_id": BARE_FMT_ID}
+
+
+async def test_relay_mention_creates_draft_from_the_parent(db, linked_owner):
+    # The relay form: markers on the parent, the tag in the analyst's direct
+    # reply. The S: link (TikTok, outside the chase vocabulary) is stored
+    # link-only; provenance anchors on the parent, not the tagged reply.
+    outcome, _, posted, _ = await _run(db, [RELAY_TAGGED_ID])
+
+    assert outcome.events_created == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.status == STATUS_DETECTED
+    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{RELAY_PARENT_ID}"
+    assert event.title == "Depot strike geolocated"
+    assert event.source_url == "https://www.tiktok.com/@war/video/7"
+    assert event.source_posted_at is None
+
+    proof = json.dumps(event.proof)
+    assert "Matched the tower skyline" in proof  # the parent's proof line
+    assert "footage saved below" in proof  # the reply's caption joins it
+    assert "viditbot" not in proof
+
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == RELAY_TAGGED_ID).one()
+    assert ledger.outcome == "created"
+    (payload,) = posted  # the success reply answers the tagged reply
+    assert payload["reply"] == {"in_reply_to_tweet_id": RELAY_TAGGED_ID}
+
+
+async def test_relay_and_inline_share_the_parent_idempotency_key(db, linked_owner):
+    # detected_from_url anchors on the parent, so a second relay tag and an
+    # inline mention of the parent itself both collapse onto the first draft.
+    outcome, _, _, _ = await _run(db, [RELAY_TAGGED_ID, RELAY_TAGGED_TWICE_ID, RELAY_PARENT_ID])
+
+    assert outcome.events_created == 1
+    assert outcome.skipped == 2
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
+
+
+async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
+    # The same-author guard: tagging the bot under someone else's post must
+    # not relay anything onto it, whatever the parent contains.
+    outcome, _, posted, _ = await _run(db, [FOREIGN_PARENT_TAG_ID])
+
+    assert outcome.no_detection == 1
+    assert outcome.events_created == 0
+    (payload,) = posted  # the linked author still gets the format lesson
+    assert "Shape, one per line" in payload["text"]
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -325,7 +463,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "T: title" in text and "C: 22.703889, -83.297222" in text and "S: source link" in text
+    assert "Shape, one per line" in text and "22.703889, -83.297222" in text
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -458,7 +596,8 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     text = payload["text"]
     assert isinstance(text, str)
     assert "nothing saved" in text.lower()
-    assert "T: title" in text  # the format lesson
+    assert "Shape, one per line" in text  # the format lesson
+    assert "I found no coordinate line." in text  # the diagnosis opener
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -606,7 +745,8 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
 def test_compose_reply_is_linkless_and_carries_warnings():
     event_id = str(uuid.uuid4())
     text = compose_reply([event_id], missing_source=True, duplicate_media=True)
-    assert event_id in text
+    assert event_id[:8] in text
+    assert event_id not in text  # the ref is shortened
     assert "No source quote or footage link" in text
     assert "already exists" in text
     assert "link in bio" in text
@@ -616,20 +756,35 @@ def test_compose_reply_is_linkless_and_carries_warnings():
 
 def test_compose_failure_reply_teaches_the_format_linklessly():
     text = compose_failure_reply()
-    assert "T: title" in text
-    assert "C: 22.703889, -83.297222" in text
-    assert "S: source link" in text
-    # The source rule, for the analyst whose three lines are right but whose
-    # S: line carries zero or several URLs, or links their own post.
-    assert "S must hold exactly one link" in text
+    # The bare shape is the lesson: title line, coordinate line, source line.
+    assert "Shape, one per line" in text
+    assert "22.703889, -83.297222" in text
+    # The relay escape hatch, for footage the chase cannot fetch.
+    assert "Tag me in a direct reply" in text
+    assert "Guide in bio" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
+
+
+def test_compose_failure_reply_opens_with_every_diagnosis():
+    # Each reason code opens the reply with its hint; every variant stays
+    # linkless and inside the cap; an unknown code degrades to the plain
+    # lesson rather than raising.
+    from app.services.bot import _FAILURE_HINTS
+
+    for reason, hint in _FAILURE_HINTS.items():
+        text = compose_failure_reply(reason)
+        assert text.startswith(f"Vidit: nothing saved. {hint}")
+        assert "Shape, one per line" in text
+        assert "http" not in text and ".app" not in text and ".com" not in text
+        assert len(text) <= 280
+    assert compose_failure_reply("no_such_reason").startswith("Vidit: nothing saved.\n")
 
 
 def test_compose_reply_counts_extra_drafts():
     ids = [str(uuid.uuid4()) for _ in range(3)]
     text = compose_reply(ids, missing_source=False, duplicate_media=False)
     assert "3 geolocation drafts" in text
-    assert ids[0] in text
+    assert ids[0][:8] in text
     assert "(+2 more)" in text
     assert len(text) <= 280

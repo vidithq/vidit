@@ -19,6 +19,7 @@ import {
   LogIn,
   Megaphone,
   Swords,
+  Bot,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -120,6 +121,9 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   },
   { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search" },
+  // The public @ViditBot format guide: an on-ramp surface, so it rides the
+  // rail like About rather than hiding behind the bot's X bio alone.
+  { href: "/bot", icon: Bot, label: "Bot" },
   { href: "/about", icon: Info, label: "About" },
 ];
 

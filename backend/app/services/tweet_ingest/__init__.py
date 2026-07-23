@@ -23,7 +23,23 @@ from __future__ import annotations
 
 from .acquire import record_from_syndication
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .detect import DetectedGeoloc, detect, detect_structured
+from .detect import (
+    COORDS_AMBIGUOUS,
+    COORDS_INVALID,
+    COORDS_MISSING,
+    MARKERS_INCOMPLETE,
+    SOURCE_AMBIGUOUS,
+    SOURCE_MISSING,
+    SOURCE_OWN,
+    SOURCE_UNBOUND,
+    TITLE_MISSING,
+    DetectedGeoloc,
+    detect,
+    detect_relay,
+    detect_structured,
+    detect_structured_diagnosed,
+    fetch_relay_parent,
+)
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -51,7 +67,16 @@ from .syndication import (
 )
 
 __all__ = [
+    "COORDS_AMBIGUOUS",
+    "COORDS_INVALID",
+    "COORDS_MISSING",
+    "MARKERS_INCOMPLETE",
     "MEDIA_FETCH_MAX_BYTES",
+    "SOURCE_AMBIGUOUS",
+    "SOURCE_MISSING",
+    "SOURCE_OWN",
+    "SOURCE_UNBOUND",
+    "TITLE_MISSING",
     "TWITTER_MEDIA_HOSTS",
     "DetectedGeoloc",
     "InvalidTweetUrl",
@@ -68,9 +93,12 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "detect",
+    "detect_relay",
     "detect_structured",
+    "detect_structured_diagnosed",
     "extract_coords",
     "fetch_cdn_media",
+    "fetch_relay_parent",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",

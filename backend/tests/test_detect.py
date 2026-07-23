@@ -16,7 +16,10 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     TweetRecord,
     detect,
+    detect_relay,
     detect_structured,
+    detect_structured_diagnosed,
+    fetch_relay_parent,
     stitch,
 )
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink
@@ -470,6 +473,361 @@ def test_structured_chase_transport_error_degrades_to_link_only():
     assert d.source_url == "https://x.com/warfootage/status/79"
     assert d.source_posted_at is None
     assert d.source_media == []
+
+
+# ── The bare form (unprefixed): the shape carries the fields ──────────────
+
+
+_REPORT_LINK = SourceLink(
+    url="https://example.org/report", host="other", shortlink="https://t.co/r"
+)
+
+_BARE_CONFORMING = (
+    "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nSmoke plume matches"
+)
+
+
+def test_bare_conforming_tweet_maps_shape_to_fields():
+    record = _struct_rec(_BARE_CONFORMING, external_sources=[_REPORT_LINK])
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.coordinate.lat == pytest.approx(48.123456)
+    assert d.coordinate.lng == pytest.approx(37.654321)
+    assert d.source_url == "https://example.org/report"
+    assert d.proof_text == "Smoke plume matches"
+    assert "48.123456" not in d.proof_text and "t.co" not in d.proof_text
+
+
+def test_bare_quote_card_is_the_designated_source():
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nSmoke plume matches",
+        quoted=_QUOTE,
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
+
+
+def test_bare_sole_inline_link_is_the_source():
+    # No URL-only line, no quote, but exactly one link entity in the post:
+    # that link is the source, and its prose line stays proof, expanded.
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nGeolocated from https://t.co/r footage",
+        external_sources=[_REPORT_LINK],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert "Geolocated from https://example.org/report footage" in d.proof_text
+
+
+def test_bare_several_inline_links_are_ambiguous():
+    # Two entities and none alone on its line: no deterministic designation.
+    other = SourceLink(url="https://example.org/other", host="other", shortlink="https://t.co/o")
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nsee https://t.co/r and https://t.co/o",
+        external_sources=[_REPORT_LINK, other],
+    )
+    assert detect_structured(record, bot_handle="viditbot") == []
+
+
+def test_bare_url_only_line_designates_among_several_links():
+    # Same two entities, but one sits alone on its line: that one is the
+    # source; the other stays a proof reference.
+    other = SourceLink(url="https://example.org/other", host="other", shortlink="https://t.co/o")
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nsee also https://t.co/o",
+        external_sources=[_REPORT_LINK, other],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert "see also https://example.org/other" in d.proof_text
+
+
+def test_bare_two_coordinate_lines_are_ambiguous():
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\n50.450100, 30.523400\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured(record, bot_handle="viditbot") == []
+
+
+def test_bare_unbound_media_wrapper_line_is_ignored():
+    # X appends the attached-media t.co wrapper to the text; whole-line but
+    # binding to no entity, it neither designates nor fails, and never
+    # becomes the title.
+    record = _struct_rec(
+        "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nhttps://t.co/media",
+        external_sources=[_REPORT_LINK],
+    )
+    (d,) = detect_structured(record, bot_handle="viditbot")
+    assert d.source_url == "https://example.org/report"
+    assert d.title == "Strike on the depot"
+    assert "t.co" not in d.proof_text
+
+
+def test_partial_markers_never_fall_back_to_the_bare_shape():
+    # One marker pins the marker form: an incomplete set is a mistake to
+    # teach, not a bare-shape guess.
+    record = _struct_rec(
+        "@viditbot\nT: Strike on the depot\n48.123456, 37.654321\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+def test_empty_marker_line_pins_the_marker_form():
+    # A lone empty ``T:`` must fail loudly, never leak the literal "T:" line
+    # into the bare shape as the title.
+    record = _struct_rec(
+        "@viditbot\nT:\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        # Free text: no whole-line pair anywhere.
+        ("@viditbot Geolocated 48.123456, 37.654321 near https://t.co/r", "coords_missing"),
+        # Two whole-line pairs.
+        (
+            "@viditbot\nStrike\n48.123456, 37.654321\n50.450100, 30.523400\nhttps://t.co/r",
+            "coords_ambiguous",
+        ),
+        # A pair alone on its line but out of bounds.
+        ("@viditbot\nStrike\n95.123456, 37.654321\nhttps://t.co/r", "coords_invalid"),
+        # No link, no quote.
+        ("@viditbot\nStrike on the depot\n48.123456, 37.654321", "source_missing"),
+    ],
+)
+def test_bare_failures_carry_their_reason(text, reason):
+    sources = [_REPORT_LINK] if "t.co/r" in text else []
+    record = _struct_rec(text, external_sources=sources)
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == ([], reason)
+
+
+def test_own_status_source_carries_the_own_reason():
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/me",
+        external_sources=[
+            SourceLink(url="https://x.com/analyst/status/9", host="x", shortlink="https://t.co/me")
+        ],
+    )
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == ([], "source_own")
+
+
+# ── The relay mapper (the bot's two-tweet form) ───────────────────────────
+
+
+# An S: link outside the chase vocabulary (host ``other``): the relay form's
+# reason to exist — the footage cannot be fetched from it.
+_OFF_VOCAB = SourceLink(
+    url="https://www.tiktok.com/@war/video/7", host="other", shortlink="https://t.co/tk"
+)
+
+_RELAY_VIDEO = ParsedMedia(
+    kind="video", remote_url="https://video.twimg.com/relay.mp4", content_type="video/mp4"
+)
+
+_PARENT_TEXT = (
+    "T: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/tk\nSmoke plume matches"
+)
+
+
+def _relay_parent_rec(
+    text: str = _PARENT_TEXT,
+    *,
+    quoted: QuotedTweet | None = None,
+    external_sources: list[SourceLink] | None = None,
+    media: list[ParsedMedia] | None = None,
+) -> TweetRecord:
+    return TweetRecord(
+        tweet_id="20",
+        handle="analyst",
+        text=text,
+        created_at="2026-03-11T12:00:00Z",
+        permalink="https://x.com/analyst/status/20",
+        media=media or [],
+        quoted=quoted,
+        external_sources=external_sources if external_sources is not None else [_OFF_VOCAB],
+    )
+
+
+def _relay_reply_rec(
+    text: str = "@viditbot footage saved below",
+    *,
+    handle: str = "analyst",
+    media: list[ParsedMedia] | None = None,
+) -> TweetRecord:
+    return TweetRecord(
+        tweet_id="21",
+        handle=handle,
+        text=text,
+        created_at="2026-03-11T12:05:00Z",
+        permalink=f"https://x.com/{handle}/status/21",
+        media=[_RELAY_VIDEO] if media is None else media,
+        in_reply_to_status_id="20",
+    )
+
+
+def test_relay_reply_media_is_the_source_media():
+    proof_img = ParsedMedia(
+        kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
+    )
+    parent = _relay_parent_rec(media=[proof_img])
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    # The parent runs the same strict mapper as an inline mention.
+    assert d.title == "Strike on the depot"
+    assert d.coordinate.lat == pytest.approx(48.123456)
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert d.source_posted_at is None  # off-vocabulary: nothing to chase
+    # Idempotency anchors on the parent: tagging both tweets lands on one key.
+    assert d.detected_from_url == "https://x.com/analyst/status/20"
+    # The reply's attachment is the footage; the parent's stays annotation.
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+    assert [m.remote_url for m in d.proof_media] == ["https://pbs.twimg.com/own.jpg"]
+    # The reply's caption joins the proof, tag stripped.
+    assert d.proof_text == "Smoke plume matches\nfootage saved below"
+    assert "viditbot" not in d.proof_text
+
+
+def test_relay_requires_the_same_author():
+    # A stranger replying under the analyst's marker tweet cannot relay
+    # media onto it.
+    reply = _relay_reply_rec(handle="stranger")
+    assert detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot") == []
+
+
+def test_relay_nonconforming_parent_yields_nothing():
+    parent = _relay_parent_rec("Geolocated 48.123456, 37.654321 near the depot")
+    assert detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot") == []
+
+
+def test_relay_without_media_resolves_the_parent_as_if_inline():
+    # A media-less reply-tag still counts (the analyst forgot the inline tag):
+    # the parent resolves exactly as an inline mention would, plus the caption.
+    (d,) = detect_relay(_relay_reply_rec(media=[]), _relay_parent_rec(), bot_handle="viditbot")
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert d.source_media == []
+    assert d.proof_text == "Smoke plume matches\nfootage saved below"
+
+
+def test_relay_media_outranks_chased_media_but_keeps_the_chased_date():
+    # The parent's S: resolved to the quote card (media + date known). The
+    # reply's re-upload still wins the source slot — the analyst's explicit
+    # gesture — while the chased post date is kept.
+    parent = _relay_parent_rec(
+        "T: Strike on the depot\nC: 48.123456, 37.654321\nS: source below",
+        quoted=_QUOTE,
+        external_sources=[],
+    )
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert d.source_url == "https://x.com/warfootage/status/42"
+    assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_accepts_a_bare_parent():
+    # The relay parent runs the same mapper, so the bare shape works there too.
+    parent = _relay_parent_rec(
+        "Strike on the depot\n48.123456, 37.654321\nhttps://t.co/tk\nSmoke plume matches"
+    )
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_reply_markers_never_shadow_the_parent():
+    # Marker-shaped lines on the reply are dropped from the caption, never
+    # merged into the parent's fields (a fully conforming reply would have
+    # taken the inline path before relay is ever consulted).
+    reply = _relay_reply_rec("@viditbot\nT: A different title\ncaption line")
+    (d,) = detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert "different title" not in d.proof_text
+    assert "caption line" in d.proof_text
+
+
+# ── fetch_relay_parent: the one-hop, fail-soft parent fetch ───────────────
+
+
+# Distinct parent ids per test: the syndication fetch caches by tweet id
+# process-wide, so re-using one id across tests would leak the first body.
+def _reply_to(parent_id: str) -> TweetRecord:
+    return dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=parent_id)
+
+
+def _parent_body(parent_id: str, handle: str = "analyst") -> dict:
+    return {
+        "id_str": parent_id,
+        "created_at": "2026-03-11T12:00:00.000Z",
+        "user": {"screen_name": handle},
+        "text": _PARENT_TEXT,
+    }
+
+
+def test_fetch_relay_parent_returns_the_self_reply_parent():
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.url.params["id"] == "9400000000000000201"
+        return httpx.Response(200, json=_parent_body("9400000000000000201"))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        parent = fetch_relay_parent(_reply_to("9400000000000000201"), client=client)
+    assert parent is not None
+    assert parent.tweet_id == "9400000000000000201"
+    assert parent.handle == "analyst"
+
+
+def test_fetch_relay_parent_is_none_for_a_non_reply():
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("a non-reply must trigger no fetch")
+
+    record = dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=None)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(record, client=client) is None
+
+
+def test_fetch_relay_parent_builds_a_lowercase_permalink():
+    # The parent permalink anchors the shared inline/relay idempotency key,
+    # so it is case-folded whatever case the tagger's handle arrived in.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_parent_body("9400000000000000204"))
+
+    reply = dataclasses.replace(
+        _relay_reply_rec(handle="Analyst"), in_reply_to_status_id="9400000000000000204"
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        parent = fetch_relay_parent(reply, client=client)
+    assert parent is not None
+    assert parent.permalink == "https://x.com/analyst/status/9400000000000000204"
+
+
+def test_fetch_relay_parent_rejects_another_authors_parent():
+    # The authoritative same-author guard runs on the FETCHED handle: the URL
+    # is built from the tagger's handle, but syndication returns the real one.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_parent_body("9400000000000000202", "someone_else"))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(_reply_to("9400000000000000202"), client=client) is None
+
+
+def test_fetch_relay_parent_fetch_failure_degrades_to_none():
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)  # parent deleted / protected
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_relay_parent(_reply_to("9400000000000000203"), client=client) is None
 
 
 # ── Archive regression: the free-text spine is untouched by the bot format ─
