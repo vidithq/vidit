@@ -50,7 +50,8 @@ export function revokeInviteCode(id: string): Promise<InviteCode> {
 export interface AdminUser {
   id: string;
   username: string;
-  email: string;
+  // NULL on legacy credential-less rows, mirroring `AdminUserRead`.
+  email: string | null;
   is_admin: boolean;
   is_trusted: boolean;
   trust_reason: string | null;

@@ -61,7 +61,7 @@ export function UserActionsCard({
         onUpdated(updated);
         setShowReasonForm(false);
       },
-    }
+    },
   );
 
   const revokeMutation = useMutation(
@@ -76,7 +76,7 @@ export function UserActionsCard({
         onUpdated(updated);
         setReason("");
       },
-    }
+    },
   );
 
   const xHandleMutation = useMutation(
@@ -88,7 +88,7 @@ export function UserActionsCard({
         setXHandle(updated.x_handle ?? "");
         setShowXHandleForm(false);
       },
-    }
+    },
   );
 
   const deleteMutation = useMutation(
@@ -100,7 +100,7 @@ export function UserActionsCard({
         setDangerMode(null);
         confirmDanger.cancel();
       },
-    }
+    },
   );
 
   const purgeMutation = useMutation(() => purgeDetectedEvents(user.id), {
@@ -153,7 +153,9 @@ export function UserActionsCard({
   const submitXHandle = () => {
     resetOthers("xhandle");
     if (!xHandle.trim()) {
-      xHandleMutation.setError("An X handle is required (use Clear to unlink).");
+      xHandleMutation.setError(
+        "An X handle is required (use Clear to unlink).",
+      );
       return;
     }
     void xHandleMutation.run(xHandle.trim());
@@ -200,13 +202,21 @@ export function UserActionsCard({
           <div className="text-sm text-neutral-100 inline-flex items-center gap-1.5">
             @{user.username}
             {trusted && (
-              <BadgeCheck size={14} className="text-orange-500" strokeWidth={1.8} />
+              <BadgeCheck
+                size={14}
+                className="text-orange-500"
+                strokeWidth={1.8}
+              />
             )}
             {user.is_admin && (
               <Pill className="uppercase tracking-wider">admin</Pill>
             )}
           </div>
-          <div className="text-xs text-neutral-500 truncate">{user.email}</div>
+          {user.email && (
+            <div className="text-xs text-neutral-500 truncate">
+              {user.email}
+            </div>
+          )}
           {user.x_handle && (
             <div className="mt-1">
               <Pill>X: @{user.x_handle}</Pill>
@@ -371,8 +381,8 @@ export function UserActionsCard({
           {dangerMode === "hard" ? (
             <p>
               <strong>Hard delete is irreversible.</strong> Drops @
-              {user.username}, every geolocation they authored, their
-              media, and S3 objects.{" "}
+              {user.username}, every geolocation they authored, their media, and
+              S3 objects.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}
             </p>
           ) : dangerMode === "soft" ? (
@@ -384,8 +394,9 @@ export function UserActionsCard({
           ) : (
             <p>
               Purging drops every <strong>detected</strong> draft @
-              {user.username} owns (rows + media), and keeps the account,
-              its geolocations and its requests. The broken-archive repair.{" "}
+              {user.username} owns (rows + media, dismissed drafts included, so
+              the sweep can exceed the counter), and keeps the account, its
+              geolocations and its requests. The broken-archive repair.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}
             </p>
           )}

@@ -22,6 +22,7 @@ from app.schemas.admin import (
     InviteCodeStatus,
 )
 from app.services.auth import bump_token_version, generate_invite_code
+from app.services.evidence_intake import collect_media_keys
 from app.services.storage import get_storage, sweep_keys
 
 logger = logging.getLogger(__name__)
@@ -612,31 +613,25 @@ def purge_detected_events(
     """Hard-delete every ``detected`` draft a user owns, keeping the account.
 
     The broken-archive repair: a bad import can mint hundreds of junk drafts;
-    this sweeps them (rows + S3 media, soft-deleted drafts included) without
-    touching the account, its geolocations, or its requests. ``closed`` rows
-    that were once detected stay (the owner explicitly acted on those). Same
+    this sweeps them (rows + S3 objects via :func:`collect_media_keys`,
+    derivatives included, soft-deleted drafts included) without touching the
+    account, its geolocations, or its requests. ``closed`` rows that were once
+    detected stay (the owner explicitly acted on those). Same
     commit-then-sweep ordering as :func:`hard_delete_user`.
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
 
-    storage = get_storage()
     drafts = (
-        db.query(Event).filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED).all()
+        db.query(Event)
+        .options(joinedload(Event.media))
+        .filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED)
+        .all()
     )
     media_keys: list[str] = []
     for draft in drafts:
-        for m in draft.media:
-            key = storage.key_from_url(m.storage_url)
-            if key:
-                media_keys.append(key)
-            else:
-                logger.warning(
-                    "Media row %s has unrecognised storage_url %s — skipping S3 delete",
-                    m.id,
-                    m.storage_url,
-                )
+        media_keys.extend(collect_media_keys(list(draft.media)))
 
     target = {
         "user_id": str(user.id),

@@ -1381,7 +1381,7 @@ List every invite code (newest first), including exhausted / revoked / expired o
 ]
 ```
 
-`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
+`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted drafts, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
 
 ### `DELETE /admin/invite-codes/{id}` 🛡️
 
@@ -1437,7 +1437,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 ### `DELETE /admin/users/{id}/detected-events` 🛡️
 
-Hard-delete every `detected` draft the user owns (rows + media rows + S3 objects, soft-deleted drafts included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk drafts; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete.
+Hard-delete every `detected` draft the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted drafts included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk drafts; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
 
 **Response 200:**
 ```json

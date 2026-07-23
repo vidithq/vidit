@@ -69,8 +69,8 @@ class AdminInviteRedeemerRead(BaseModel):
     # many drafts the bot minted for them, ever. Historical by design: a
     # draft deleted later still counted as bot activity.
     bot_detection_count: int
-    # Live ``detected`` drafts they own right now (what "Purge detected"
-    # would remove).
+    # Live ``detected`` drafts they own right now. The purge endpoint sweeps
+    # soft-deleted drafts too, so it may remove more than this counter shows.
     detected_count: int
     # Live ``geolocated`` events they own.
     geolocated_count: int
@@ -182,7 +182,8 @@ class AdminPurgeDetectedResponse(BaseModel):
     user_id: uuid.UUID
     username: str
     deleted_events: int = 0
-    # Every file swept, source and proof roles alike.
+    # Storage objects swept: every media file, source and proof roles alike,
+    # hero / thumb derivatives included.
     media_count: int = 0
 
 

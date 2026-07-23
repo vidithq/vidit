@@ -15,17 +15,17 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { ActionReceipt } from "@/components/admin/ActionReceipt";
+import { ActionReceipt, PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
 export function TrustPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AdminUser[] | null>(null);
   const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(
-    null
+    null,
   );
   const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
-    null
+    null,
   );
 
   const searchMutation = useMutation(() => searchUsers(query), {
@@ -44,7 +44,7 @@ export function TrustPanel() {
 
   const onUpdated = (u: AdminUser) => {
     setResults((prev) =>
-      prev ? prev.map((row) => (row.id === u.id ? u : row)) : prev
+      prev ? prev.map((row) => (row.id === u.id ? u : row)) : prev,
     );
   };
 
@@ -52,6 +52,12 @@ export function TrustPanel() {
     // Drop the row: the user is now gone (hard) or hidden from reads (soft).
     setResults((prev) => (prev ? prev.filter((r) => r.id !== userId) : prev));
     setLastDelete(response);
+    setLastPurge(null);
+  };
+
+  const onPurged = (response: AdminPurgeDetectedResponse) => {
+    setLastPurge(response);
+    setLastDelete(null);
   };
 
   return (
@@ -93,11 +99,7 @@ export function TrustPanel() {
         </Button>
       </form>
 
-      {error && (
-        <div className={FORM_ERROR_BANNER}>
-          {error}
-        </div>
-      )}
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
       {results !== null && (
         <div className="space-y-2">
@@ -112,7 +114,7 @@ export function TrustPanel() {
                 user={u}
                 onUpdated={onUpdated}
                 onDeleted={onDeleted}
-                onPurged={setLastPurge}
+                onPurged={onPurged}
               />
             ))
           )}
@@ -138,20 +140,7 @@ export function TrustPanel() {
         </ActionReceipt>
       )}
 
-      {lastPurge && (
-        <ActionReceipt
-          mode="hard"
-          header={<span className="font-medium">@{lastPurge.username}</span>}
-        >
-          <div className="text-neutral-500">
-            {`Purged ${lastPurge.deleted_events} detected draft${
-              lastPurge.deleted_events === 1 ? "" : "s"
-            }, swept ${lastPurge.media_count} media row${
-              lastPurge.media_count === 1 ? "" : "s"
-            }. Account untouched.`}
-          </div>
-        </ActionReceipt>
-      )}
+      {lastPurge && <PurgeReceipt purge={lastPurge} />}
     </Card>
   );
 }

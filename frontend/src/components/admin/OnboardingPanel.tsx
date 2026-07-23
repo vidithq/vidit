@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill, type PillTone } from "@/components/ui/Pill";
-import { ActionReceipt } from "@/components/admin/ActionReceipt";
+import { PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
 // Invite lifecycle mapped onto the shared pill tones: active is the accent
@@ -88,88 +88,94 @@ function InviteCodeRow({
 
   return (
     <tr className="border-b border-neutral-800 last:border-0">
-        <td className="py-2 pr-3">
-          <Button
-            variant="ghost"
-            onClick={onCopy}
-            title={copied ? "Copied" : `Copy ${invite.code}`}
-          >
-            <Copy size={12} className="text-neutral-500" />
-            <span className="font-mono">
-              {copied ? "Copied" : `${invite.code.slice(0, 6)}…`}
-            </span>
-          </Button>
-        </td>
-        <td className="py-2 pr-3">
-          <StatusChip status={invite.status} />
-        </td>
-        <td className="py-2 pr-3 text-xs text-neutral-400">
-          {redeemer ? (
-            <span title={invite.used_at ? new Date(invite.used_at).toLocaleString() : undefined}>
-              @{redeemer.username}
-            </span>
-          ) : (
-            <span className="text-neutral-600">—</span>
-          )}
-        </td>
-        <td className="py-2 pr-3">
-          {invite.x_handle ? (
-            <Pill>@{invite.x_handle}</Pill>
-          ) : (
-            <span className="text-xs text-neutral-600">—</span>
-          )}
-        </td>
-        <td className="py-2 pr-3 text-xs text-neutral-400">
-          {formatDay(invite.expires_at)}
-        </td>
-        <td className="py-2 pr-3 text-xs text-right tabular-nums">
-          {count(redeemer?.archives_imported)}
-        </td>
-        <td className="py-2 pr-3 text-xs text-right tabular-nums">
-          {count(redeemer?.bot_detection_count)}
-        </td>
-        <td className="py-2 pr-3 text-xs text-right tabular-nums">
-          {count(redeemer?.detected_count)}
-        </td>
-        <td className="py-2 pr-3 text-xs text-right tabular-nums">
-          {count(redeemer?.geolocated_count)}
-        </td>
-        <td
-          className="py-2 pr-3 text-xs text-neutral-400"
-          title={
-            redeemer?.last_login_at
-              ? new Date(redeemer.last_login_at).toLocaleString()
-              : undefined
-          }
+      <td className="py-2 pr-3">
+        <Button
+          variant="ghost"
+          onClick={onCopy}
+          title={copied ? "Copied" : `Copy ${invite.code}`}
         >
-          {formatDay(redeemer?.last_login_at ?? null)}
-        </td>
-        <td className="py-2 text-right whitespace-nowrap">
-          {redeemer && (
-            <Button variant="ghost" onClick={onToggle}>
-              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              Manage
-            </Button>
-          )}
-          {canRevoke && (
-            <Button
-              variant="danger"
-              disabled={revoking}
-              onClick={async () => {
-                setRevoking(true);
-                try {
-                  await onRevoke(invite.id);
-                } finally {
-                  setRevoking(false);
-                }
-              }}
-              className="ml-1"
-            >
-              <Trash2 size={12} />
-              Revoke
-            </Button>
-          )}
-        </td>
+          <Copy size={12} className="text-neutral-500" />
+          <span className="font-mono">
+            {copied ? "Copied" : `${invite.code.slice(0, 6)}…`}
+          </span>
+        </Button>
+      </td>
+      <td className="py-2 pr-3">
+        <StatusChip status={invite.status} />
+      </td>
+      <td className="py-2 pr-3 text-xs text-neutral-400">
+        {redeemer ? (
+          <span
+            title={
+              invite.used_at
+                ? new Date(invite.used_at).toLocaleString()
+                : undefined
+            }
+          >
+            @{redeemer.username}
+          </span>
+        ) : (
+          <span className="text-neutral-600">—</span>
+        )}
+      </td>
+      <td className="py-2 pr-3">
+        {invite.x_handle ? (
+          <Pill>@{invite.x_handle}</Pill>
+        ) : (
+          <span className="text-xs text-neutral-600">—</span>
+        )}
+      </td>
+      <td className="py-2 pr-3 text-xs text-neutral-400">
+        {formatDay(invite.expires_at)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.archives_imported)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.bot_detection_count)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.detected_count)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.geolocated_count)}
+      </td>
+      <td
+        className="py-2 pr-3 text-xs text-neutral-400"
+        title={
+          redeemer?.last_login_at
+            ? new Date(redeemer.last_login_at).toLocaleString()
+            : undefined
+        }
+      >
+        {formatDay(redeemer?.last_login_at ?? null)}
+      </td>
+      <td className="py-2 text-right whitespace-nowrap">
+        {redeemer && (
+          <Button variant="ghost" onClick={onToggle}>
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            Manage
+          </Button>
+        )}
+        {canRevoke && (
+          <Button
+            variant="danger"
+            disabled={revoking}
+            onClick={async () => {
+              setRevoking(true);
+              try {
+                await onRevoke(invite.id);
+              } finally {
+                setRevoking(false);
+              }
+            }}
+            className="ml-1"
+          >
+            <Trash2 size={12} />
+            Revoke
+          </Button>
+        )}
+      </td>
     </tr>
   );
 }
@@ -178,7 +184,7 @@ export function OnboardingPanel() {
   const [codes, setCodes] = useState<InviteCode[] | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
-    null
+    null,
   );
 
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
@@ -199,7 +205,7 @@ export function OnboardingPanel() {
         setXHandle("");
         refresh();
       },
-    }
+    },
   );
   const { error, setError } = createMutation;
   const creating = createMutation.loading;
@@ -239,8 +245,7 @@ export function OnboardingPanel() {
 
   // The card renders below the table (not as an expanded row) so it stays
   // put when the wide table scrolls horizontally.
-  const managed =
-    codes?.find((c) => c.id === expandedId)?.redeemer ?? null;
+  const managed = codes?.find((c) => c.id === expandedId)?.redeemer ?? null;
 
   return (
     <Card as="section">
@@ -296,11 +301,7 @@ export function OnboardingPanel() {
         </Button>
       </form>
 
-      {error && (
-        <div className={FORM_ERROR_BANNER}>
-          {error}
-        </div>
-      )}
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -344,9 +345,10 @@ export function OnboardingPanel() {
                   key={c.id}
                   invite={c}
                   expanded={expandedId === c.id}
-                  onToggle={() =>
-                    setExpandedId((prev) => (prev === c.id ? null : c.id))
-                  }
+                  onToggle={() => {
+                    setLastPurge(null);
+                    setExpandedId((prev) => (prev === c.id ? null : c.id));
+                  }}
                   onRevoke={onRevoke}
                 />
               ))
@@ -357,10 +359,13 @@ export function OnboardingPanel() {
 
       {managed && (
         <UserActionsCard
+          // Keyed by user so form drafts and an armed danger confirm never
+          // survive a switch from one analyst's Manage to another's.
+          key={managed.user_id}
           user={{
             id: managed.user_id,
             username: managed.username,
-            email: managed.email ?? "",
+            email: managed.email,
             is_admin: managed.is_admin,
             is_trusted: managed.is_trusted,
             trust_reason: managed.trust_reason,
@@ -373,20 +378,7 @@ export function OnboardingPanel() {
         />
       )}
 
-      {lastPurge && (
-        <ActionReceipt
-          mode="hard"
-          header={<span className="font-medium">@{lastPurge.username}</span>}
-        >
-          <div className="text-neutral-500">
-            {`Purged ${lastPurge.deleted_events} detected draft${
-              lastPurge.deleted_events === 1 ? "" : "s"
-            }, swept ${lastPurge.media_count} media row${
-              lastPurge.media_count === 1 ? "" : "s"
-            }. Account untouched.`}
-          </div>
-        </ActionReceipt>
-      )}
+      {lastPurge && <PurgeReceipt purge={lastPurge} />}
     </Card>
   );
 }
