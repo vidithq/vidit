@@ -29,12 +29,7 @@ interface DetailsFieldsProps {
    *  read-only inside this block (it's the one immutable field) when provided;
    *  the submit form omits it. */
   detectedFromUrl?: string | null;
-  /** Geolocation requires the event date; on a request (an unfinished
-   *  geolocation) it's optional. Event time is always optional; the source post
-   *  time is always required. */
-  eventDateRequired?: boolean;
-  /** Flag the event-date / source-time / source-URL inputs as missing. */
-  eventDateInvalid?: boolean;
+  /** Flag the source-time / source-URL inputs as missing. */
   sourcePostedAtInvalid?: boolean;
   sourceUrlInvalid?: boolean;
 }
@@ -54,8 +49,6 @@ export function DetailsFields({
   setSourcePostedAt,
   sourceUrlLocked,
   detectedFromUrl,
-  eventDateRequired = true,
-  eventDateInvalid = false,
   sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
@@ -64,21 +57,17 @@ export function DetailsFields({
       <SectionHeading title="Details" concept="section_details" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Optional on every path: the footage doesn't always establish when
+            the depicted event happened; an empty date reads as "Unknown". */}
         <div className="space-y-1.5">
-          <label
-            htmlFor="event_date"
-            className={`${FORM_LABEL}${eventDateInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Event date <FieldHelp concept="event_date" />{" "}
-            {!eventDateRequired && <OptionalHint />}
+          <label htmlFor="event_date" className={FORM_LABEL}>
+            Event date <FieldHelp concept="event_date" /> <OptionalHint />
           </label>
           <Input
             id="event_date"
             type="date"
-            required={eventDateRequired}
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            invalid={eventDateInvalid}
             className={eventDate ? "has-value" : ""}
           />
         </div>

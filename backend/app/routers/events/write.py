@@ -26,7 +26,6 @@ from app.models.event import SOURCE_URL_MAX_LENGTH, TITLE_MAX_LENGTH
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
-    parse_iso_date,
     parse_iso_datetime,
     parse_json_id_list,
     parse_optional_iso_date,
@@ -69,11 +68,12 @@ async def create_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    # No ``max_length`` on ``event_date``: ``date.fromisoformat`` is the
-    # source of truth (and implicitly bounds length). Capping at 10 would
-    # reject a valid ``2026-05-01T00:00:00`` with a generic Pydantic 422
-    # instead of our custom message.
-    event_date: str = Form(...),
+    # Optional: the footage doesn't always establish when the depicted event
+    # happened; NULL reads as "Unknown". No ``max_length``:
+    # ``date.fromisoformat`` is the source of truth (and implicitly bounds
+    # length). Capping at 10 would reject a valid ``2026-05-01T00:00:00`` with
+    # a generic Pydantic 422 instead of our custom message.
+    event_date: str | None = Form(None),
     # Optional hour-of-day for the event (HH:MM, UTC). Parsed below.
     event_time: str | None = Form(None),
     # When the source posted the media: a full datetime (datetime-local
@@ -103,7 +103,7 @@ async def create_event(
     # value into ``Event.event_date`` (Mapped[date]) would 500 at
     # flush, AFTER the S3 round-trips. 422 matches ``_parse_bbox`` /
     # ``_parse_filter_date`` so malformed-input rejections share a code.
-    parsed_event_date = parse_iso_date(event_date, field="event_date")
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     # Optional hour → None when absent; required source instant, read as UTC.
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")

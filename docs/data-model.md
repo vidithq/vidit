@@ -338,7 +338,7 @@ One row is one event across the whole lifecycle. `status` is the lifecycle; `eve
 | `source_url` | `TEXT` | nullable, where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected` (a machine draft may declare no source, see [`ingestion.md`](ingestion.md)). |
 | `detected_from_url` | `TEXT` | nullable, the post a machine detection was imported from. The `(detected_from_url, coordinate)` re-import idempotency anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL, Tiptap document (ProseMirror JSON). Every row carries a proof doc: human submits the analyst's write-up, machine detections the tweet / thread text. A submission with no proof body stores an empty doc, not NULL. |
-| `event_date` | `DATE` | nullable, when the depicted event happened. Often unknown for a `requested` event; the submit transition requires it at `geolocated`. For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
+| `event_date` | `DATE` | nullable in every status, when the depicted event happened. NULL when unknown (the footage doesn't always establish the date; renders as *Unknown*). For a machine detection, provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable, optional time-of-day for `event_date` (UTC). NULL when the hour is unknown. |
 | `source_posted_at` | `TIMESTAMPTZ` | nullable, when the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (submission). A human submit or a machine detection with a quoted source always sets it; a machine detection with only a footage link (no quote) leaves it `NULL`, since the link carries no date, except a Telegram footage link whose public embed was chased, which carries the post's own date (see [`ingestion.md`](ingestion.md#archive-formats)). |
 | `detected_post_at` | `TIMESTAMPTZ` | nullable, when the analyst published this geolocation on X (the post time of `detected_from_url`). The "who geolocated it first" precedence input for the claim/dispute pipeline; captured at import because the tweet may later be deleted. NULL for human submits. |
@@ -371,7 +371,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
-| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date nullable (required at the `geolocated` transition); time optional (the hour is often unknown) |
+| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date nullable in every status (NULL when the footage doesn't establish it); time optional (the hour is often unknown) |
 | `source_posted_at` | when the source posted the media | analyst, or detection (a quoted source's date) | nullable: `NULL` on a `detected` row whose source is a footage link (no date) or whose source is undeclared |
 | `detected_post_at` | when the analyst posted the geolocation on X | detection only (the imported tweet's time) | NULL for human submits |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
