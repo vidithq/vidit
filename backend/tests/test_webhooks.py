@@ -455,7 +455,7 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     text = payload["text"]
     assert isinstance(text, str)
     assert "nothing saved" in text.lower()
-    assert "shaped as three lines" in text
+    assert "Shape, one per line" in text
     assert "22.703889, -83.297222" in text
     assert "Tag me in a direct reply" in text  # the relay escape hatch
 

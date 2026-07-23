@@ -18,6 +18,7 @@ from app.services.tweet_ingest import (
     detect,
     detect_relay,
     detect_structured,
+    detect_structured_diagnosed,
     fetch_relay_parent,
     stitch,
 )
@@ -573,7 +574,55 @@ def test_partial_markers_never_fall_back_to_the_bare_shape():
         "@viditbot\nT: Strike on the depot\n48.123456, 37.654321\nhttps://t.co/r",
         external_sources=[_REPORT_LINK],
     )
-    assert detect_structured(record, bot_handle="viditbot") == []
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+def test_empty_marker_line_pins_the_marker_form():
+    # A lone empty ``T:`` must fail loudly, never leak the literal "T:" line
+    # into the bare shape as the title.
+    record = _struct_rec(
+        "@viditbot\nT:\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r",
+        external_sources=[_REPORT_LINK],
+    )
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        # Free text: no whole-line pair anywhere.
+        ("@viditbot Geolocated 48.123456, 37.654321 near https://t.co/r", "coords_missing"),
+        # Two whole-line pairs.
+        (
+            "@viditbot\nStrike\n48.123456, 37.654321\n50.450100, 30.523400\nhttps://t.co/r",
+            "coords_ambiguous",
+        ),
+        # A pair alone on its line but out of bounds.
+        ("@viditbot\nStrike\n95.123456, 37.654321\nhttps://t.co/r", "coords_invalid"),
+        # No link, no quote.
+        ("@viditbot\nStrike on the depot\n48.123456, 37.654321", "source_missing"),
+    ],
+)
+def test_bare_failures_carry_their_reason(text, reason):
+    sources = [_REPORT_LINK] if "t.co/r" in text else []
+    record = _struct_rec(text, external_sources=sources)
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == ([], reason)
+
+
+def test_own_status_source_carries_the_own_reason():
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/me",
+        external_sources=[
+            SourceLink(url="https://x.com/analyst/status/9", host="x", shortlink="https://t.co/me")
+        ],
+    )
+    assert detect_structured_diagnosed(record, bot_handle="viditbot") == ([], "source_own")
 
 
 # ── The relay mapper (the bot's two-tweet form) ───────────────────────────

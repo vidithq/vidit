@@ -554,7 +554,7 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 | `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized (lowercase, no leading `@`). Forensics, not a FK; attribution resolves through the admin-linked `users.x_handle`. |
 | `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`; nothing created, no reply), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
-| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply, success (event ref + warnings) or failure (teaches the strict `T:` / `C:` / `S:` format plus the source rule, linked authors only); NULL when no reply was earned, reply credentials are absent, or the post failed (the detection stays durable either way). |
+| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply, success (event ref + warnings) or failure (a diagnosis plus the format lesson, linked authors only, see [`ingestion.md`](ingestion.md#bot-format)); NULL when no reply was earned, reply credentials are absent, or the post failed (the detection stays durable either way). |
 | `liked_at` | `TIMESTAMPTZ` | nullable. Retired: the like ack was removed from the response model, so nothing writes or reads it; new rows keep it NULL (dropping the column is not worth a migration). |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
 

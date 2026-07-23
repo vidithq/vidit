@@ -379,7 +379,7 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
     (payload,) = posted  # the linked author gets the format lesson
-    assert "shaped as three lines" in payload["text"]
+    assert "Shape, one per line" in payload["text"]
 
 
 async def test_bare_mention_creates_draft_from_the_shape(db, linked_owner):
@@ -448,7 +448,7 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     (payload,) = posted  # the linked author still gets the format lesson
-    assert "shaped as three lines" in payload["text"]
+    assert "Shape, one per line" in payload["text"]
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -462,7 +462,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "shaped as three lines" in text and "22.703889, -83.297222" in text
+    assert "Shape, one per line" in text and "22.703889, -83.297222" in text
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -595,7 +595,8 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     text = payload["text"]
     assert isinstance(text, str)
     assert "nothing saved" in text.lower()
-    assert "shaped as three lines" in text  # the format lesson
+    assert "Shape, one per line" in text  # the format lesson
+    assert "I found no coordinate line." in text  # the diagnosis opener
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -754,16 +755,28 @@ def test_compose_reply_is_linkless_and_carries_warnings():
 def test_compose_failure_reply_teaches_the_format_linklessly():
     text = compose_failure_reply()
     # The bare shape is the lesson: title line, coordinate line, source line.
-    assert "shaped as three lines" in text
+    assert "Shape, one per line" in text
     assert "22.703889, -83.297222" in text
-    # The source rule, for the analyst whose source is missing, ambiguous,
-    # or their own post.
-    assert "the source link, alone on its line, never your own post" in text
     # The relay escape hatch, for footage the chase cannot fetch.
     assert "Tag me in a direct reply" in text
     assert "Guide in bio" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
     assert len(text) <= 280
+
+
+def test_compose_failure_reply_opens_with_every_diagnosis():
+    # Each reason code opens the reply with its hint; every variant stays
+    # linkless and inside the cap; an unknown code degrades to the plain
+    # lesson rather than raising.
+    from app.services.bot import _FAILURE_HINTS
+
+    for reason, hint in _FAILURE_HINTS.items():
+        text = compose_failure_reply(reason)
+        assert text.startswith(f"Vidit: nothing saved. {hint}")
+        assert "Shape, one per line" in text
+        assert "http" not in text and ".app" not in text and ".com" not in text
+        assert len(text) <= 280
+    assert compose_failure_reply("no_such_reason").startswith("Vidit: nothing saved.\n")
 
 
 def test_compose_reply_counts_extra_drafts():

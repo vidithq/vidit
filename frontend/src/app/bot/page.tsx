@@ -272,8 +272,8 @@ export default function BotGuidePage() {
                 TikTok, Instagram, a news article: Vidit cannot fetch footage
                 from those, so relay it yourself. Post the three lines, then
                 tag the bot in a direct reply to your own post, with the
-                footage attached. The reply&apos;s media becomes the source
-                footage.
+                footage attached alone (one attachment lands as the source;
+                annotations belong on the first post).
               </p>
               <div className="mt-4 space-y-3">
                 <MockPost

@@ -20,7 +20,13 @@ import httpx
 
 from .acquire import quoted_from_syndication, record_from_syndication
 from .errors import TweetImportError
-from .extract import MarkerFields, ParsedCoord, clean_proof_text, split_marker_lines
+from .extract import (
+    MarkerFields,
+    ParsedCoord,
+    clean_proof_text,
+    has_marker_lines,
+    split_marker_lines,
+)
 from .records import SourceLink, TelegramFootage, TweetRecord
 from .resolve import footage_candidates, resolve_thread
 from .syndication import ParsedMedia
@@ -105,10 +111,26 @@ _URL_ONLY_LINE_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.IGNORECASE)
 # before binding the token to its entity.
 _TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
 
+# Failure-reason codes ``detect_structured_diagnosed`` surfaces so the bot's
+# failure reply can open with what actually went wrong. Plain strings, one
+# home; the reply copy lives in ``bot._FAILURE_HINTS``.
+MARKERS_INCOMPLETE = "markers_incomplete"
+COORDS_MISSING = "coords_missing"
+COORDS_AMBIGUOUS = "coords_ambiguous"
+COORDS_INVALID = "coords_invalid"
+SOURCE_MISSING = "source_missing"
+SOURCE_AMBIGUOUS = "source_ambiguous"
+SOURCE_UNBOUND = "source_unbound"
+SOURCE_OWN = "source_own"
+TITLE_MISSING = "title_missing"
 
-def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
-    """Prune ``record`` to the source its ``S:`` line designates, or ``None``
-    when the line designates nothing valid (a format failure).
+
+def _designated_source(
+    record: TweetRecord, s_value: str
+) -> tuple[TweetRecord | None, str | None]:
+    """Prune ``record`` to the source its ``S:`` line designates, or
+    ``(None, reason)`` when the line designates nothing valid (a format
+    failure, the reason naming which rule broke).
 
     Exactly one URL token may sit on the line (two or more is a failure). The
     token must bind to one of the record's link entities, by its ``t.co``
@@ -127,23 +149,23 @@ def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
     """
     tokens = [t.rstrip(_TOKEN_TRAILING_PUNCT) for t in _S_VALUE_URL_RE.findall(s_value)]
     if len(tokens) > 1:
-        return None
+        return None, SOURCE_AMBIGUOUS
     if not tokens:
         if record.quoted is not None:
-            return dataclasses.replace(record, external_sources=[])
-        return None
+            return dataclasses.replace(record, external_sources=[]), None
+        return None, SOURCE_MISSING
     token = tokens[0]
     link = next(
         (entry for entry in record.external_sources if token in (entry.shortlink, entry.url)),
         None,
     )
     if link is None:
-        return None
+        return None, SOURCE_UNBOUND
     candidates = footage_candidates([(link.url, link.host)], owner_handle=record.handle)
     if link.host == "x" and not candidates:
         # Host ``x`` only classifies status links, so an empty candidate list
         # here means the author's own status: rejected, never a source.
-        return None
+        return None, SOURCE_OWN
     if (
         candidates
         and record.quoted is not None
@@ -151,15 +173,15 @@ def _designated_source(record: TweetRecord, s_value: str) -> TweetRecord | None:
     ):
         # The designated status is the inline quote: keep it, its media and
         # post date come free, no chase needed.
-        return dataclasses.replace(record, external_sources=[link])
+        return dataclasses.replace(record, external_sources=[link]), None
     # A quote of anything else is not the designated source; drop it so it
     # cannot steal the source slot from the S: link.
-    return dataclasses.replace(record, quoted=None, external_sources=[link])
+    return dataclasses.replace(record, quoted=None, external_sources=[link]), None
 
 
-def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
-    """The bare (unprefixed) shape of the strict format, or ``None`` when the
-    text doesn't carry it.
+def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, str | None]:
+    """The bare (unprefixed) shape of the strict format, or ``(None, reason)``
+    when the text doesn't carry it.
 
     The analyst-friendly form: same structure as the marker form, the shape
     itself carrying what the prefixes carried. Deterministic, no free-text
@@ -172,21 +194,24 @@ def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
       X appends for attached media) is ignored, not a failure; two bound
       lines fail. With no such line, the inline quote card is the designated
       source; failing that, a post carrying exactly one link entity anywhere
-      designates that link (put the source alone on its line when the post
-      carries several). None of those either fails.
+      designates that link. A post with no bound line, no quote, and zero or
+      several link entities fails: with several links, the source must sit
+      alone on its own line.
     * **Title**: the first remaining non-empty, non-URL-only line.
     * Every other line is the proof note.
 
     The trade against the marker form: a shape failure still fails loudly
     (nothing lands), but the title is positional, so a post that opens with
-    commentary titles the draft with it — the owner's review pass owns that
+    commentary titles the draft with it; the owner's review pass owns that
     correction. The marker form stays the escape hatch that pins every field
     explicitly.
     """
     lines = text.splitlines()
     coord_idx = [i for i, line in enumerate(lines) if _STRUCTURED_COORD_RE.match(line.strip())]
-    if len(coord_idx) != 1:
-        return None
+    if not coord_idx:
+        return None, COORDS_MISSING
+    if len(coord_idx) > 1:
+        return None, COORDS_AMBIGUOUS
     url_only: dict[int, str] = {}
     bound: list[int] = []
     for i, line in enumerate(lines):
@@ -198,7 +223,7 @@ def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
         if any(token in (entry.shortlink, entry.url) for entry in record.external_sources):
             bound.append(i)
     if len(bound) > 1:
-        return None
+        return None, SOURCE_AMBIGUOUS
     source_idx: int | None
     if bound:
         source_idx, source_value = bound[0], url_only[bound[0]]
@@ -208,8 +233,10 @@ def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
         source_idx, source_value = None, ""
     elif len(record.external_sources) == 1:
         source_idx, source_value = None, record.external_sources[0].url
+    elif record.external_sources:
+        return None, SOURCE_AMBIGUOUS
     else:
-        return None
+        return None, SOURCE_MISSING
     consumed = {coord_idx[0]}
     if source_idx is not None:
         consumed.add(source_idx)
@@ -222,14 +249,15 @@ def _bare_fields(record: TweetRecord, text: str) -> MarkerFields | None:
         None,
     )
     if title_idx is None:
-        return None
+        return None, TITLE_MISSING
     consumed.add(title_idx)
-    return MarkerFields(
+    fields = MarkerFields(
         title=lines[title_idx].strip(),
         coords=lines[coord_idx[0]].strip(),
         source=source_value,
         proof_text="\n".join(line for i, line in enumerate(lines) if i not in consumed),
     )
+    return fields, None
 
 
 def _expand_shortlinks(text: str, links: list[SourceLink]) -> str:
@@ -287,16 +315,30 @@ def _chase_source(record: TweetRecord, *, client: httpx.Client | None) -> TweetR
 def detect_structured(
     record: TweetRecord, *, bot_handle: str, client: httpx.Client | None = None
 ) -> list[DetectedGeoloc]:
-    """The bot's strict single-tweet mapper: one conforming tweet, one DTO.
+    """:func:`detect_structured_diagnosed` without the failure reason; the
+    mapper most callers want."""
+    detections, _ = detect_structured_diagnosed(record, bot_handle=bot_handle, client=client)
+    return detections
+
+
+def detect_structured_diagnosed(
+    record: TweetRecord, *, bot_handle: str, client: httpx.Client | None = None
+) -> tuple[list[DetectedGeoloc], str | None]:
+    """The bot's strict single-tweet mapper: one conforming tweet, one DTO,
+    plus a failure-reason code (the module-level ``*_MISSING`` / ``*_AMBIGUOUS``
+    constants) when nothing conforms, so the failure reply can name what
+    broke instead of reciting the whole lesson.
 
     Two spellings of one structure, both all-or-nothing:
 
     * **Marker form**: ``T:`` (non-empty title), ``C:`` (one decimal pair
       inside bounds), ``S:`` (a line designating the source: one URL token
       bound to a link entity, or the inline quote when X swallowed the token
-      into the quote card, see :func:`_designated_source`). Any marker
-      present pins this form: an incomplete marker set fails rather than
-      falling back to the bare shape (a half-marked post is a mistake to
+      into the quote card, see :func:`_designated_source`). Any marker LINE
+      present, even one with an empty payload, pins this form
+      (:func:`has_marker_lines`): an incomplete or empty marker set fails
+      rather than falling back to the bare shape, where the literal marker
+      line would leak into the title (a half-marked post is a mistake to
       teach, not a guess to absorb).
     * **Bare form**: no marker lines at all; the shape carries the fields
       (:func:`_bare_fields`): the whole-line decimal pair, the whole-line
@@ -314,17 +356,18 @@ def detect_structured(
     behind the designated link.
     """
     text = re.sub(rf"@{re.escape(bot_handle)}\b", "", record.text, flags=re.IGNORECASE)
-    fields = split_marker_lines(text)
-    if (fields.title, fields.coords, fields.source) == (None, None, None):
-        bare = _bare_fields(record, text)
+    if has_marker_lines(text):
+        fields = split_marker_lines(text)
+        if fields.title is None or fields.coords is None or fields.source is None:
+            return [], MARKERS_INCOMPLETE
+    else:
+        bare, reason = _bare_fields(record, text)
         if bare is None:
-            return []
+            return [], reason
         fields = bare
-    elif fields.title is None or fields.coords is None or fields.source is None:
-        return []
     match = _STRUCTURED_COORD_RE.match(fields.coords)
     if match is None:
-        return []
+        return [], COORDS_INVALID
     coordinate = ParsedCoord(lat=float(match.group(1)), lng=float(match.group(2)))
     # Bounds checking has one home (the same check the human create and
     # geolocate paths run). Imported locally: the rest of ``tweet_ingest``
@@ -334,20 +377,20 @@ def detect_structured(
     try:
         validate_coordinates(coordinate.lat, coordinate.lng)
     except InvalidCoordinatesError:
-        return []
-    designated = _designated_source(record, fields.source)
+        return [], COORDS_INVALID
+    designated, source_reason = _designated_source(record, fields.source)
     if designated is None:
-        return []
+        return [], source_reason
     resolved = resolve_thread([_chase_source(designated, client=client)])
     if resolved is None:
-        return []
+        return [], None
     source_url = resolved.source_url
     if source_url is None:
         # The shared resolution only surfaces chase-vocabulary hosts; a
         # designated off-vocabulary link (host ``other``) is stored link-only.
         source_url = designated.external_sources[0].url if designated.external_sources else None
     if source_url is None:
-        return []
+        return [], SOURCE_MISSING
     from app.models.event import TITLE_MAX_LENGTH
 
     # Non-empty by the split contract (a marker only records a non-empty
@@ -358,7 +401,7 @@ def detect_structured(
         clipped = title[:TITLE_MAX_LENGTH]
         cut_at = clipped.rfind(" ")
         title = clipped[:cut_at].rstrip() if cut_at >= 40 else clipped.rstrip()
-    return [
+    detections = [
         DetectedGeoloc(
             coordinate=coordinate,
             title=title,
@@ -375,6 +418,7 @@ def detect_structured(
             proof_media=resolved.proof_media,
         )
     ]
+    return detections, None
 
 
 def fetch_relay_parent(
@@ -425,9 +469,12 @@ def detect_relay(
     drift; ``detected_from_url`` is therefore the parent's permalink, and an
     analyst who tags both tweets lands on the same idempotency key. On top of
     that resolution: the reply's attached media, when present, becomes the
-    source media (it outranks any chased media — the analyst's explicit
-    gesture wins; a chased post date is still kept); the reply's non-marker
-    text joins the proof as a caption. A reply with no media changes nothing:
+    source media (it outranks any chased media, the analyst's explicit
+    gesture wins; a chased post date is still kept). The assemble step
+    stores one ``role=source`` media, so the reply should carry the footage
+    alone; annotations belong on the parent, where they land as proof. The
+    reply's non-marker text joins the proof as a caption. A reply with no
+    media changes nothing:
     the parent resolves exactly as if it had been tagged inline. Same-author
     is re-checked here so the guard cannot be skipped by a caller.
     """
