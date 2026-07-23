@@ -356,13 +356,15 @@ def detect_structured_diagnosed(
     text = re.sub(rf"@{re.escape(bot_handle)}\b", "", record.text, flags=re.IGNORECASE)
     if has_marker_lines(text):
         fields = split_marker_lines(text)
-        if fields.title is None or fields.coords is None or fields.source is None:
-            return [], MARKERS_INCOMPLETE
     else:
         bare, reason = _bare_fields(record, text)
         if bare is None:
             return [], reason
         fields = bare
+    # Only the marker path can leave a field unfilled (``_bare_fields``
+    # always fills all three); the shared check also narrows the Optionals.
+    if fields.title is None or fields.coords is None or fields.source is None:
+        return [], MARKERS_INCOMPLETE
     match = _STRUCTURED_COORD_RE.match(fields.coords)
     if match is None:
         return [], COORDS_INVALID
