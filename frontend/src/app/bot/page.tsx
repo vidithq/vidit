@@ -213,12 +213,12 @@ export default function BotGuidePage() {
             ))}
           </div>
           <p className="mt-4 text-center text-[13px] leading-relaxed text-neutral-400">
-            Every other line becomes the draft&apos;s proof note. Free-text
-            coordinates are not parsed, and the explicit spelling with{" "}
-            <span className="font-mono text-neutral-300">T:</span>{" "}
-            <span className="font-mono text-neutral-300">C:</span>{" "}
-            <span className="font-mono text-neutral-300">S:</span> prefixes is
-            still read.
+            Anything else you write in the post is kept as the draft&apos;s
+            proof note. Prefer explicit prefixes? Writing the three lines as{" "}
+            <span className="font-mono text-neutral-300">T: title</span>,{" "}
+            <span className="font-mono text-neutral-300">C: coordinates</span>,{" "}
+            <span className="font-mono text-neutral-300">S: source</span> works
+            too.
           </p>
         </section>
 
