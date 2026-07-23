@@ -125,9 +125,7 @@ SOURCE_OWN = "source_own"
 TITLE_MISSING = "title_missing"
 
 
-def _designated_source(
-    record: TweetRecord, s_value: str
-) -> tuple[TweetRecord | None, str | None]:
+def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord | None, str | None]:
     """Prune ``record`` to the source its ``S:`` line designates, or
     ``(None, reason)`` when the line designates nothing valid (a format
     failure, the reason naming which rule broke).
@@ -497,7 +495,9 @@ def detect_relay(
             detection,
             source_media=list(tagged.media) if tagged.media else detection.source_media,
             proof_text=(
-                f"{detection.proof_text}\n{caption}".strip("\n") if caption else detection.proof_text
+                f"{detection.proof_text}\n{caption}".strip("\n")
+                if caption
+                else detection.proof_text
             ),
         )
         for detection in detections
