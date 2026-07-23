@@ -77,11 +77,12 @@ jobs:
 
   backend-test:
     name: Backend tests
-    # Gated on the lint job: ruff + mypy fail in well under a minute,
-    # pytest + the PostGIS service container cost several. A lint-red
-    # commit never spins up the container; a green run pays the lint
-    # duration up front before tests start — accepted trade.
-    needs: backend-lint
+    # Runs in parallel with the lint job (no `needs:`), the norm on public
+    # repos where runner minutes are free: one cycle surfaces lint AND test
+    # failures together, and a green run (the common case) doesn't pay the
+    # lint duration up front. The old lint gate earned its keep when the
+    # serial suite cost several minutes; at ~1.5 min parallelized it only
+    # added latency.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -118,11 +119,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
-      - name: Run migrations
-        run: uv run alembic upgrade head
-
+      # No separate `alembic upgrade head` step: the parallel run builds a
+      # template database at alembic head (tests/conftest.py) and clones it
+      # per worker, so the migrations run as part of the pytest step.
       - name: pytest
-        run: uv run pytest -v
+        run: uv run pytest -v -n 4 --dist loadfile
 
   # Deliberately ONE job, not a checks job gating a test job: the steps
   # already run in fail-fast order (eslint → tsc → vitest → next build)

@@ -385,6 +385,8 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
+    // A null date reads as Unknown, not an empty cell.
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 
   it("omits the Event time row when no time is set", () => {
