@@ -92,6 +92,11 @@ describe("createEvent multipart", () => {
     expect(body.has("capture_source_lng")).toBe(false);
   });
 
+  it("omits event_date when the date is unknown", async () => {
+    await createEvent({ ...createInput, event_date: undefined });
+    expect(lastBody().has("event_date")).toBe(false);
+  });
+
   it("sends both camera halves together (both-or-neither)", async () => {
     await createEvent({
       ...createInput,

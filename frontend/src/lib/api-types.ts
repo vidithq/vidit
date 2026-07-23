@@ -1627,7 +1627,7 @@ export interface components {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Event Date */
-            event_date: string;
+            event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
             /** File */
@@ -1689,7 +1689,7 @@ export interface components {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Event Date */
-            event_date: string;
+            event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
             /** Files */

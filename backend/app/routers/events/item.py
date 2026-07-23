@@ -28,9 +28,9 @@ from app.models.event import (
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
-    parse_iso_date,
     parse_iso_datetime,
     parse_json_id_list,
+    parse_optional_iso_date,
     parse_optional_iso_time,
     parse_optional_json_object,
 )
@@ -171,7 +171,9 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    event_date: str = Form(...),
+    # Optional, mirroring create: the footage doesn't always establish when the
+    # depicted event happened; NULL reads as "Unknown".
+    event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
@@ -201,7 +203,7 @@ async def geolocate_event(
     """
     files = files or []
     proof_files = proof_files or []
-    parsed_event_date = parse_iso_date(event_date, field="event_date")
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = parse_optional_json_object(proof, field="proof")

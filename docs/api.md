@@ -719,7 +719,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `capture_source_lat` | float | no | Latitude of the camera position (where the footage was shot from). Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | no | Longitude of the camera position. |
 | `source_url` | string | yes | Original source URL, ≤2000 chars. |
-| `event_date` | string (YYYY-MM-DD) | yes | When the depicted event happened. |
+| `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Omitted / empty → stored NULL (the footage doesn't always establish the date; renders as *Unknown*). |
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date. Distinct from `event_date` and the submission time. |
 | `proof` | string (JSON) | no | Serialized Tiptap document. Its inline images reference not-yet-uploaded files as `placeholder://<filename>`, resolved against `proof_files`. |
@@ -830,7 +830,7 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
 | `source_url` | string | ≤2000 chars, the footage origin. A `detected` draft may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url` (a fulfiller must not rewrite the requester's evidence anchor) |
-| `event_date` | string (YYYY-MM-DD) | When the depicted event happened |
+| `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Optional, mirroring create: empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date |
 | `proof` | JSON string | Tiptap document (sanitised); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |

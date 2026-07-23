@@ -17,7 +17,6 @@ export type MissingFieldKey =
   | "title"
   | "coordinates"
   | "source_url"
-  | "event_date"
   | "source_posted_at"
   | "proof"
   | "proof_image"
@@ -37,7 +36,6 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   title: "Title",
   coordinates: "Coordinates",
   source_url: "Source URL",
-  event_date: "Event date",
   source_posted_at: "Source post time",
   proof: "Proof",
   proof_image: "Proof image",
@@ -166,8 +164,9 @@ export interface EventEditInput {
   capture_source_lat?: number;
   capture_source_lng?: number;
   source_url: string;
-  /** ISO `YYYY-MM-DD`. */
-  event_date: string;
+  /** Optional ISO `YYYY-MM-DD`; omitted when the footage doesn't establish
+   *  the date (reads as "Unknown"). */
+  event_date?: string;
   /** Optional ISO `HH:MM`; empty / omitted clears it. */
   event_time?: string;
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required: a post always has a time. */
@@ -192,9 +191,8 @@ export interface EventEditInput {
  *  the optional camera point (both-or-neither), and the tag set. Factored out
  *  of `appendEventFormFields` and `createEventRequest` so the two paths can't
  *  drift on this shared subset. The paths differ only on the subject point
- *  (`lat`/`lng` required on geolocate, optional on a request), `event_date`
- *  (required vs optional), the source-media key, and `proof_files`, which each
- *  caller appends itself. */
+ *  (`lat`/`lng` required on geolocate, optional on a request), the
+ *  source-media key, and `proof_files`, which each caller appends itself. */
 function appendSharedEventFields(
   fd: FormData,
   input: {
@@ -232,8 +230,8 @@ function appendSharedEventFields(
  *  except geolocate's `remove_media_ids`. The source-media key differs by
  *  endpoint (create / request take a singular `file`, geolocate a plural
  *  `files` list for kept-plus-new), so the caller passes it. Builds on
- *  `appendSharedEventFields` and adds the always-present subject point,
- *  `event_date`, the source media, and the proof-body images. */
+ *  `appendSharedEventFields` and adds the always-present subject point, the
+ *  optional `event_date`, the source media, and the proof-body images. */
 function appendEventFormFields(
   fd: FormData,
   input: Omit<EventEditInput, "remove_media_ids">,
@@ -242,7 +240,9 @@ function appendEventFormFields(
   appendSharedEventFields(fd, input);
   fd.append("lat", String(input.lat));
   fd.append("lng", String(input.lng));
-  fd.append("event_date", input.event_date);
+  if (input.event_date) {
+    fd.append("event_date", input.event_date);
+  }
   for (const file of input.files) {
     fd.append(sourceKey, file);
   }
@@ -516,7 +516,6 @@ export function submitReadiness(geo: {
   lat: number;
   lng: number;
   source_url: string;
-  event_date: string;
   source_posted_at: string;
   proof: Record<string, unknown> | null;
   media: readonly unknown[];
@@ -529,7 +528,6 @@ export function submitReadiness(geo: {
       lat: String(geo.lat),
       lng: String(geo.lng),
       sourceUrl: geo.source_url,
-      eventDate: geo.event_date,
       sourcePostedAt: geo.source_posted_at,
       proof: geo.proof,
       mediaCount: geo.media.length,
@@ -549,7 +547,6 @@ export interface EventFieldsState {
   lat: string;
   lng: string;
   sourceUrl: string;
-  eventDate: string;
   /** ISO datetime (datetime-local value, UTC). Required. */
   sourcePostedAt: string;
   proof: Record<string, unknown> | null;
@@ -598,7 +595,6 @@ export function missingEventFields(
   if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
   if (!coordsValid) missing.push({ key: "coordinates", label: FIELD_LABELS.coordinates });
   if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
-  if (!s.eventDate) missing.push({ key: "event_date", label: FIELD_LABELS.event_date });
   if (!s.sourcePostedAt) {
     missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }

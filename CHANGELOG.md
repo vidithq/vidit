@@ -8,6 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- **`event_date` optional at publish** ([`backend/app/routers/events/write.py`](backend/app/routers/events/write.py), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`docs/api.md`](docs/api.md), [`docs/data-model.md`](docs/data-model.md)). `POST /events` and `POST /events/{id}/geolocate` no longer require `event_date`: the footage doesn't always establish when the depicted event happened, and the column was already nullable. Empty / omitted stores NULL, rendered as *Unknown* on the detail surfaces (previously an em-dash placeholder). The submit and detection forms mark the date field optional, and the geolocation readiness floor drops it. `api-types.ts` regenerated.
+
 ## v0.4.5, 2026-07-22
 
 ### Changed

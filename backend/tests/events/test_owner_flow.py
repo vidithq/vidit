@@ -229,6 +229,24 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
     assert refreshed.status == STATUS_GEOLOCATED
 
 
+def test_geolocate_accepts_missing_event_date(db, author, conflict, capture_source_tag):
+    """``event_date`` omitted → the row geolocates with a null date (reads as
+    Unknown): the footage doesn't always establish when the event happened."""
+    geo = _detected(db, author, with_media=True)
+    form = _floor_form(conflict, capture_source_tag)
+    del form["event_date"]
+    response = client.post(
+        f"/api/v1/events/{geo.id}/geolocate",
+        data=form,
+        files=_floor_files(),
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "geolocated"
+    assert body["event_date"] is None
+
+
 def test_geolocate_applies_source_url_but_ignores_provenance_and_state(
     db, author, conflict, capture_source_tag
 ):
