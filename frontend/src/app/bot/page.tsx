@@ -9,6 +9,7 @@ import {
   Bot,
   Play,
   ImageIcon,
+  X,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
@@ -64,6 +65,35 @@ const LINES: { step: string; label: string; body: string }[] = [
     step: "3",
     label: "Source",
     body: "The footage link alone on its line, or quote the source post. Never your own post.",
+  },
+];
+
+// The shapes that fail (or misfire), so the guide teaches them before the
+// failure reply has to.
+const MISTAKES: { label: string; body: string }[] = [
+  {
+    label: "Tagging the first post when relaying",
+    body: "The tag goes on the reply that carries the footage. Tag the first post instead and it imports without the footage, and a later tag on the reply is ignored as already imported.",
+  },
+  {
+    label: "Two coordinate lines",
+    body: "One post, one pair. Two coordinate-only lines are ambiguous: nothing imports.",
+  },
+  {
+    label: "Two source links",
+    body: "Two links each alone on a line, or several links with none alone on its line: nothing imports. Exactly one source, alone on its line.",
+  },
+  {
+    label: "Sourcing your own post",
+    body: "A link back to your own post is a cross-reference, never a source. Link the original footage post.",
+  },
+  {
+    label: "Coordinates inside a sentence",
+    body: "“Geolocated at 48.123456, 37.654321 by the bridge” is not parsed. The pair must sit alone on its line.",
+  },
+  {
+    label: "Tagging under someone else’s post",
+    body: "A relay reply must answer your own post. Tags under anyone else’s import nothing.",
   },
 ];
 
@@ -250,6 +280,10 @@ export default function BotGuidePage() {
                   name="GEOIMINT"
                   handle="@GEOIMINT"
                   avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                  media={{
+                    kind: "image",
+                    label: "your annotated screenshots (proof)",
+                  }}
                 >
                   {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
                   <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
@@ -271,6 +305,32 @@ export default function BotGuidePage() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="pb-16">
+          <div className="text-center">
+            <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
+              What not to do
+            </h2>
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {MISTAKES.map(({ label, body }) => (
+              <div
+                key={label}
+                className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
+              >
+                <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 text-red-400">
+                  <X size={17} />
+                </span>
+                <h3 className="mt-4 text-sm font-medium text-neutral-100">
+                  {label}
+                </h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
+                  {body}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -327,13 +387,12 @@ export default function BotGuidePage() {
                   name.
                 </li>
                 <li>
-                  One source, never your own post. When your post carries
-                  several links, put the source alone on its own line; the
-                  others stay proof references.
+                  One draft per post: tagging the same geolocation again
+                  collapses onto the first import.
                 </li>
                 <li>
-                  A relay reply must answer your own post; tags under someone
-                  else&apos;s post import nothing.
+                  The bot reads public posts only: tags from a protected
+                  account cannot import.
                 </li>
               </ul>
             </div>
