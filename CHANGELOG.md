@@ -8,6 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- **`/favicon.ico` 404'd, leaving the generic globe icon in Google results** ([`frontend/src/app/favicon.ico/route.ts`](frontend/src/app/favicon.ico/route.ts), [`docs/engineering.md`](docs/engineering.md)). Next's generated-icon convention emits only hashed `/icon/*` link tags; the fixed path crawlers fall back to had nothing. A route handler now serves the 192px Satori "V" there.
+
 ## v0.4.6, 2026-07-23
 
 ### Added
