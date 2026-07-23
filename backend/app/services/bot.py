@@ -198,8 +198,13 @@ def _tagged_record(mention: Mention, *, client: httpx.Client | None = None) -> T
     backfill keeps its own self-thread stitching untouched (its threads are
     same-author by construction, see docs/ingestion.md).
     """
+    # Lowercased handle: the permalink is the ``(detected_from_url,
+    # coordinate)`` idempotency anchor, and the relay path builds the
+    # parent's permalink from the syndication screen_name while this one
+    # comes from the mention payload. Case-folding both keeps one
+    # geolocation on one key even if the two feeds disagree on case.
     return record_from_syndication(
-        f"https://x.com/{mention.author_handle}/status/{mention.tweet_id}",
+        f"https://x.com/{mention.author_handle.lower()}/status/{mention.tweet_id}",
         client=client,
     )
 
@@ -247,16 +252,23 @@ def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
     )
 
 
+# The ref shown in the success reply: the UUID's first block, enough to
+# eyeball the draft in the Detections queue; the full 36 chars would eat a
+# third of the reply for no extra identification value there.
+_REPLY_REF_CHARS = 8
+
+
 def compose_reply(created_ids: list[str], *, missing_source: bool, duplicate_media: bool) -> str:
     """The in-thread reply for a mention that created drafts.
 
-    Linkless by contract: a bare event ref, never a URL or auto-linkable
-    domain (X bills link posts ~13x higher; the clickable link lives in the
-    bot bio). Warnings surface what blocks or questions the draft.
+    Linkless by contract: a bare event ref (shortened to
+    ``_REPLY_REF_CHARS``), never a URL or auto-linkable domain (X bills link
+    posts ~13x higher; the clickable link lives in the bot bio). Warnings
+    surface what blocks or questions the draft.
     """
     n = len(created_ids)
     noun = "drafts" if n > 1 else "draft"
-    head = f"Vidit: {n} geolocation {noun} saved · ref {created_ids[0]}"
+    head = f"Vidit: {n} geolocation {noun} saved · ref {created_ids[0][:_REPLY_REF_CHARS]}"
     if n > 1:
         head += f" (+{n - 1} more)"
     lines = [head]
@@ -379,8 +391,13 @@ async def _process_mention(
         # parent fetch, same-author guarded; anything short of a conforming
         # parent keeps the ``no_detection`` verdict. When a parent exists,
         # its diagnosis outranks the tagged reply's (the reply is usually a
-        # bare tag, whose own diagnosis is just "no coordinate line").
-        parent = fetch_relay_parent(record, client=syndication_client)
+        # bare tag, whose own diagnosis is just "no coordinate line"). A
+        # reply to the bot itself (the courtesy-thanks shape, the most
+        # common non-conforming mention) skips the fetch: its parent is the
+        # bot's own reply, which the same-author guard would only discard.
+        parent = None
+        if record.in_reply_to_user_id != settings.x_bot_user_id:
+            parent = fetch_relay_parent(record, client=syndication_client)
         if parent is not None:
             detections = detect_relay(
                 record, parent, bot_handle=settings.x_bot_handle, client=syndication_client

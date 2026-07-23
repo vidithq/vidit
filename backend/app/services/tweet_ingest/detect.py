@@ -436,8 +436,13 @@ def fetch_relay_parent(
     if record.in_reply_to_status_id is None:
         return None
     try:
+        # Lowercased handle: the parent's permalink anchors the shared
+        # inline/relay idempotency key, and the inline path lowercases its
+        # own URL the same way (``bot._tagged_record``), so a case drift
+        # between the mention payload and the syndication screen_name can't
+        # split one geolocation across two keys.
         parent = record_from_syndication(
-            f"https://x.com/{record.handle}/status/{record.in_reply_to_status_id}",
+            f"https://x.com/{record.handle.lower()}/status/{record.in_reply_to_status_id}",
             client=client,
         )
     except TweetImportError:

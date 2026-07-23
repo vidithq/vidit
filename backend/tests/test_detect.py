@@ -797,6 +797,21 @@ def test_fetch_relay_parent_is_none_for_a_non_reply():
         assert fetch_relay_parent(record, client=client) is None
 
 
+def test_fetch_relay_parent_builds_a_lowercase_permalink():
+    # The parent permalink anchors the shared inline/relay idempotency key,
+    # so it is case-folded whatever case the tagger's handle arrived in.
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_parent_body("9400000000000000204"))
+
+    reply = dataclasses.replace(
+        _relay_reply_rec(handle="Analyst"), in_reply_to_status_id="9400000000000000204"
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        parent = fetch_relay_parent(reply, client=client)
+    assert parent is not None
+    assert parent.permalink == "https://x.com/analyst/status/9400000000000000204"
+
+
 def test_fetch_relay_parent_rejects_another_authors_parent():
     # The authoritative same-author guard runs on the FETCHED handle: the URL
     # is built from the tagger's handle, but syndication returns the real one.
