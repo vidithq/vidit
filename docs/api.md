@@ -75,6 +75,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
+| DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/trust` | 🛡️ | Grant / revoke `is_trusted` + `trust_reason` |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
@@ -119,7 +120,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `PATCH /users/me` | 30/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
-| `POST /admin/invite-codes` · `DELETE /admin/users/{id}` | 30/hour |
+| `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
@@ -1340,13 +1341,13 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
   "revoked_at": null,
   "created_at": "2026-05-09T10:00:00Z",
   "status": "active",
-  "used_by_username": null,
+  "redeemer": null,
   "used_at": null,
   "x_handle": "osint_hawk"
 }
 ```
 
-`status` is one of `active | exhausted | revoked | expired`, computed at read time.
+`status` is one of `active | exhausted | revoked | expired`, computed at read time. `redeemer` is the first consumer with their onboarding stats (see the list endpoint); `null` until the code is used.
 
 **Response 409:** `x_handle` already linked to a user (`{"code": "x_handle_conflict", …}`).
 
@@ -1354,14 +1355,33 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 
 ### `GET /admin/invite-codes` 🛡️
 
-List every invite code (newest first), including exhausted / revoked / expired ones.
+List every invite code (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
 
 **Response 200:**
 ```json
 [
-  { "id": "…", "code": "…", "status": "active", "max_uses": 1, "use_count": 0, "expires_at": null, "revoked_at": null, "created_at": "…", "used_by_username": null, "used_at": null, "x_handle": null }
+  {
+    "id": "…", "code": "…", "status": "exhausted", "max_uses": 1, "use_count": 1,
+    "expires_at": null, "revoked_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
+    "redeemer": {
+      "user_id": "…",
+      "username": "osint_hawk",
+      "email": "hawk@example.com",
+      "is_admin": false,
+      "is_trusted": false,
+      "trust_reason": null,
+      "x_handle": "osint_hawk",
+      "archives_imported": 1,
+      "bot_detection_count": 3,
+      "detected_count": 12,
+      "geolocated_count": 4,
+      "last_login_at": "…"
+    }
+  }
 ]
 ```
+
+`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted drafts, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
 
 ### `DELETE /admin/invite-codes/{id}` 🛡️
 
@@ -1412,6 +1432,22 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 ```
 
 `cascaded_geolocations` counts every event owned (requests + geolocations, one table since the merge). For `mode = "hard"`, `deleted_at` is `null` and `media_count` (every file, source and proof roles) reflects what was swept from S3.
+
+**Response 404:** unknown id.
+
+### `DELETE /admin/users/{id}/detected-events` 🛡️
+
+Hard-delete every `detected` draft the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted drafts included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk drafts; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
+
+**Response 200:**
+```json
+{
+  "user_id": "…",
+  "username": "osint_hawk",
+  "deleted_events": 137,
+  "media_count": 12
+}
+```
 
 **Response 404:** unknown id.
 

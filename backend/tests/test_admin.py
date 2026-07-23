@@ -10,6 +10,9 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
+from app.models.archive_import_job import ArchiveImportJob
+from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.bot_mention import BotMention
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -124,7 +127,7 @@ def test_create_invite_code_persists_and_returns_active(admin_user, db):
     assert body["status"] == "active"
     assert body["expires_at"] is not None
     assert body["revoked_at"] is None
-    assert body["used_by_username"] is None
+    assert body["redeemer"] is None
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).first()
     assert invite is not None
@@ -278,6 +281,123 @@ def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
+
+
+def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular_user, db):
+    handle = f"redeem{uuid.uuid4().hex[:8]}"
+    regular_user.x_handle = handle
+    invite = InviteCode(
+        code=f"code{uuid.uuid4().hex[:12]}",
+        created_by=admin_user.id,
+        used_by=regular_user.id,
+        used_at=datetime.now(UTC),
+        max_uses=1,
+        use_count=1,
+    )
+    job = ArchiveImportJob(
+        owner_id=regular_user.id, zip_key=f"staging/{uuid.uuid4().hex}.zip", status="done"
+    )
+    mention = BotMention(
+        mention_tweet_id=uuid.uuid4().hex[:19],
+        author_handle=handle.upper(),
+        outcome="drafted",
+        events_created=3,
+    )
+    detected = Event(
+        owner_id=regular_user.id,
+        title=f"Draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+    )
+    geolocated = Event(
+        owner_id=regular_user.id,
+        title=f"Located {uuid.uuid4().hex[:8]}",
+        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
+        source_url="https://example.com/source",
+        geolocated_at=datetime.now(UTC),
+    )
+    login_event = AuthEvent(user_id=regular_user.id, event=EVENT_LOGIN)
+    db.add_all([invite, job, mention, detected, geolocated, login_event])
+    db.commit()
+    try:
+        rows = client.get("/api/v1/admin/invite-codes", headers=login_as(client, admin_user)).json()
+        row = next(r for r in rows if r["code"] == invite.code)
+        redeemer = row["redeemer"]
+        assert redeemer["username"] == regular_user.username
+        assert redeemer["x_handle"] == handle
+        assert redeemer["archives_imported"] == 1
+        # Case-insensitive handle match: the mention was authored as upper-case.
+        assert redeemer["bot_detection_count"] == 3
+        assert redeemer["detected_count"] == 1
+        assert redeemer["geolocated_count"] == 1
+        assert redeemer["last_login_at"] is not None
+    finally:
+        db.expire_all()
+        db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
+        db.query(ArchiveImportJob).filter(ArchiveImportJob.owner_id == regular_user.id).delete()
+        db.query(BotMention).filter(BotMention.id == mention.id).delete()
+        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        regular_user.x_handle = None
+        db.commit()
+
+
+def test_purge_detected_events_sweeps_drafts_and_keeps_the_rest(admin_user, regular_user, db):
+    detected = Event(
+        owner_id=regular_user.id,
+        title=f"Draft {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+    )
+    geolocated = Event(
+        owner_id=regular_user.id,
+        title=f"Located {uuid.uuid4().hex[:8]}",
+        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
+        source_url="https://example.com/source",
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add_all([detected, geolocated])
+    db.commit()
+    detected_id, geolocated_id = detected.id, geolocated.id
+
+    response = client.delete(
+        f"/api/v1/admin/users/{regular_user.id}/detected-events",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["username"] == regular_user.username
+    assert body["deleted_events"] == 1
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == detected_id).first() is None
+    assert db.query(Event).filter(Event.id == geolocated_id).first() is not None
+    assert db.query(User).filter(User.id == regular_user.id).first() is not None
+
+    audit = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "detected_events_purged")
+        .order_by(AdminEvent.created_at.desc())
+        .first()
+    )
+    assert audit is not None
+    assert audit.target["deleted_events"] == 1
+
+
+def test_purge_detected_events_404_for_unknown_user(admin_user):
+    response = client.delete(
+        f"/api/v1/admin/users/{uuid.uuid4()}/detected-events",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 404
+
+
+def test_purge_detected_events_403_for_regular_user(regular_user):
+    response = client.delete(
+        f"/api/v1/admin/users/{regular_user.id}/detected-events",
+        headers=login_as(client, regular_user),
+    )
+    assert response.status_code == 403
 
 
 def test_login_auto_promotes_when_email_matches_admin_emails(monkeypatch, db):

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import type { AdminPurgeDetectedResponse } from "@/lib/admin";
 import { Pill } from "@/components/ui/Pill";
 
 /**
@@ -33,5 +34,27 @@ export function ActionReceipt({
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * The detected-purge receipt, shared by the onboarding table and the
+ * Manage-analysts search so the copy cannot drift between the two surfaces
+ * (the same reason `UserActionsCard` is shared).
+ */
+export function PurgeReceipt({ purge }: { purge: AdminPurgeDetectedResponse }) {
+  return (
+    <ActionReceipt
+      mode="hard"
+      header={<span className="font-medium">@{purge.username}</span>}
+    >
+      <div className="text-neutral-500">
+        {`Purged ${purge.deleted_events} detected draft${
+          purge.deleted_events === 1 ? "" : "s"
+        }, swept ${purge.media_count} storage object${
+          purge.media_count === 1 ? "" : "s"
+        }. Account untouched.`}
+      </div>
+    </ActionReceipt>
   );
 }

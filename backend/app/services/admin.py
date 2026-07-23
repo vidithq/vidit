@@ -8,12 +8,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
-from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
+from app.models.archive_import_job import ArchiveImportJob
+from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.bot_mention import BotMention
+from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
-from app.schemas.admin import AdminDetectionStatsRead, AdminInviteCodeRead, InviteCodeStatus
+from app.schemas.admin import (
+    AdminDetectionStatsRead,
+    AdminInviteCodeRead,
+    AdminInviteRedeemerRead,
+    InviteCodeStatus,
+)
 from app.services.auth import bump_token_version, generate_invite_code
+from app.services.evidence_intake import collect_media_keys
 from app.services.storage import get_storage, sweep_keys
 
 logger = logging.getLogger(__name__)
@@ -56,20 +65,100 @@ def _invite_code_status(invite: InviteCode) -> InviteCodeStatus:
     return "active"
 
 
-def serialize_invite_code(invite: InviteCode) -> AdminInviteCodeRead:
-    return AdminInviteCodeRead(
-        id=invite.id,
-        code=invite.code,
-        max_uses=invite.max_uses,
-        use_count=invite.use_count,
-        expires_at=invite.expires_at,
-        revoked_at=invite.revoked_at,
-        created_at=invite.created_at,
-        status=_invite_code_status(invite),
-        used_by_username=invite.used_by_user.username if invite.used_by_user else None,
-        used_at=invite.used_at,
-        x_handle=invite.x_handle,
+def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
+    """Batch the onboarding counters for every redeemer in one pass per source.
+
+    Grouped aggregates over ``archive_import_jobs``, ``bot_mentions``,
+    ``events`` and ``auth_events`` keyed by user (bot mentions by lowercased
+    handle), so the invite list stays O(1) queries however many rows it has.
+    """
+    if not users:
+        return {}
+    ids = [u.id for u in users]
+    handles = [u.x_handle for u in users if u.x_handle]
+
+    archives: dict[uuid.UUID, int] = {
+        owner_id: count
+        for owner_id, count in db.query(ArchiveImportJob.owner_id, func.count())
+        .filter(ArchiveImportJob.owner_id.in_(ids), ArchiveImportJob.status == "done")
+        .group_by(ArchiveImportJob.owner_id)
+        .all()
+    }
+    bot_by_handle: dict[str, int] = (
+        dict(
+            db.query(
+                func.lower(BotMention.author_handle),
+                func.coalesce(func.sum(BotMention.events_created), 0),
+            )
+            .filter(func.lower(BotMention.author_handle).in_(handles))
+            .group_by(func.lower(BotMention.author_handle))
+            .all()
+        )
+        if handles
+        else {}
     )
+    event_rows = (
+        db.query(Event.owner_id, Event.status, func.count())
+        .filter(
+            Event.owner_id.in_(ids),
+            Event.deleted_at.is_(None),
+            Event.status.in_((STATUS_DETECTED, STATUS_GEOLOCATED)),
+        )
+        .group_by(Event.owner_id, Event.status)
+        .all()
+    )
+    by_status: dict[tuple[uuid.UUID, str], int] = {
+        (owner_id, status_value): count for owner_id, status_value, count in event_rows
+    }
+    logins: dict[uuid.UUID | None, datetime] = {
+        user_id: latest
+        for user_id, latest in db.query(AuthEvent.user_id, func.max(AuthEvent.created_at))
+        .filter(AuthEvent.user_id.in_(ids), AuthEvent.event == EVENT_LOGIN)
+        .group_by(AuthEvent.user_id)
+        .all()
+    }
+
+    return {
+        u.id: AdminInviteRedeemerRead(
+            user_id=u.id,
+            username=u.username,
+            email=u.email,
+            is_admin=u.is_admin,
+            is_trusted=u.is_trusted,
+            trust_reason=u.trust_reason,
+            x_handle=u.x_handle,
+            archives_imported=archives.get(u.id, 0),
+            bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
+            detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
+            geolocated_count=by_status.get((u.id, STATUS_GEOLOCATED), 0),
+            last_login_at=logins.get(u.id),
+        )
+        for u in users
+    }
+
+
+def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[AdminInviteCodeRead]:
+    redeemers = _redeemer_reads(db, [i.used_by_user for i in invites if i.used_by_user is not None])
+    return [
+        AdminInviteCodeRead(
+            id=invite.id,
+            code=invite.code,
+            max_uses=invite.max_uses,
+            use_count=invite.use_count,
+            expires_at=invite.expires_at,
+            revoked_at=invite.revoked_at,
+            created_at=invite.created_at,
+            status=_invite_code_status(invite),
+            redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
+            used_at=invite.used_at,
+            x_handle=invite.x_handle,
+        )
+        for invite in invites
+    ]
+
+
+def serialize_invite_code(db: Session, invite: InviteCode) -> AdminInviteCodeRead:
+    return serialize_invite_codes(db, [invite])[0]
 
 
 def _assert_x_handle_free(
@@ -511,6 +600,51 @@ def hard_delete_user(
         geo_media_keys,
         context=f"user {user_id} hard-delete",
     )
+
+    return target
+
+
+def purge_detected_events(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Hard-delete every ``detected`` draft a user owns, keeping the account.
+
+    The broken-archive repair: a bad import can mint hundreds of junk drafts;
+    this sweeps them (rows + S3 objects via :func:`collect_media_keys`,
+    derivatives included, soft-deleted drafts included) without touching the
+    account, its geolocations, or its requests. ``closed`` rows that were once
+    detected stay (the owner explicitly acted on those). Same
+    commit-then-sweep ordering as :func:`hard_delete_user`.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise UserNotFoundError("User not found")
+
+    drafts = (
+        db.query(Event)
+        .options(joinedload(Event.media))
+        .filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED)
+        .all()
+    )
+    media_keys: list[str] = []
+    for draft in drafts:
+        media_keys.extend(collect_media_keys(list(draft.media)))
+
+    target = {
+        "user_id": str(user.id),
+        "username": user.username,
+        "deleted_events": len(drafts),
+        "media_count": len(media_keys),
+    }
+    for draft in drafts:
+        db.delete(draft)
+    log_admin_event(db, actor_id=actor_id, action="detected_events_purged", target=target)
+    db.commit()
+
+    sweep_keys(media_keys, context=f"user {user_id} detected purge")
 
     return target
 

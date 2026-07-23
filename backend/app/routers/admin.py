@@ -16,6 +16,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
     AdminMeResponse,
+    AdminPurgeDetectedResponse,
     AdminSeedDemoRequest,
     AdminSeedDemoRequestsRequest,
     AdminSeedDemoRequestsResponse,
@@ -86,7 +87,7 @@ def create_invite_code(
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
-    return admin_service.serialize_invite_code(invite)
+    return admin_service.serialize_invite_code(db, invite)
 
 
 @router.get("/invite-codes", response_model=list[AdminInviteCodeRead])
@@ -94,7 +95,7 @@ def list_invite_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[AdminInviteCodeRead]:
-    return [admin_service.serialize_invite_code(i) for i in admin_service.list_invite_codes(db)]
+    return admin_service.serialize_invite_codes(db, admin_service.list_invite_codes(db))
 
 
 @router.delete(
@@ -111,7 +112,7 @@ def revoke_invite_code(
     invite = admin_service.revoke_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
     if invite is None:
         raise HTTPException(status_code=404, detail="Invite code not found")
-    return admin_service.serialize_invite_code(invite)
+    return admin_service.serialize_invite_code(db, invite)
 
 
 @router.get("/users", response_model=list[AdminUserRead])
@@ -167,6 +168,33 @@ def set_user_x_handle(
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
+
+
+@router.delete(
+    "/users/{user_id}/detected-events",
+    response_model=AdminPurgeDetectedResponse,
+)
+@limiter.limit("30/hour")
+def purge_detected_events_admin(
+    request: Request,
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminPurgeDetectedResponse:
+    """Hard-delete every `detected` draft the user owns (rows + S3 media),
+    keeping the account and everything else they authored. The
+    broken-archive repair."""
+    try:
+        result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    points_cache.invalidate()
+    return AdminPurgeDetectedResponse(
+        user_id=user_id,
+        username=result["username"],
+        deleted_events=result["deleted_events"],
+        media_count=result["media_count"],
+    )
 
 
 @router.delete(
