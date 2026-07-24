@@ -389,7 +389,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); the map buckets them for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
+Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
 
 Results are cached in-memory for 60s per unique filter combination; the response
 echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited

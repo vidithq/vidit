@@ -153,9 +153,11 @@ def list_points(
     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
     ``requested`` guess is not a confident pin, and a closed row was judged
     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
-    are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
-    timeline scrubbers and filters the windows client-side (no refetch per
-    drag). ``detected`` is ``1`` for a machine detection (rendered marked),
+    are ISO ``YYYY-MM-DD`` strings; ``event_date`` is ``null`` when unknown
+    (the column is optional) and the frontend then leaves that point out of
+    the event-date scrubber instead of hiding it. The frontend buckets the
+    dates for the two timeline scrubbers and filters the windows client-side
+    (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
     panel offers its hide-demo toggle only when one is present). Flags, not
     strings, to keep the payload small. Cached in-memory for 60s per unique
@@ -225,7 +227,7 @@ def list_points(
             str(r.id),
             float(r.lat),
             float(r.lng),
-            r.event_date.isoformat(),
+            r.event_date.isoformat() if r.event_date else None,
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
             1 if r.is_demo else 0,
