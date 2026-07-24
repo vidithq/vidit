@@ -261,6 +261,30 @@ def test_points_returns_compact_shape(db, author):
     assert row[6] == 0  # not a demo row
 
 
+def test_points_null_event_date_serialises_as_null(db, author):
+    """A dateless geolocation must reach the map as ``null``, not crash /points
+    (regression: ``event_date`` went optional and the tuple builder still
+    called ``.isoformat()`` unconditionally, 500ing the whole map payload)."""
+    geo = Event(
+        owner_id=author.id,
+        title="Dateless geo",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://x.com/a/status/2",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=None,
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add(geo)
+    db.commit()
+    db.refresh(geo)
+
+    response = client.get("/api/v1/events/points")
+    assert response.status_code == 200
+    row = next(r for r in response.json() if r[0] == str(geo.id))
+    assert row[3] is None
+    assert row[4] == geo.created_at.date().isoformat()
+
+
 def test_points_excludes_soft_deleted(db, author):
     live = _make_geo(db, author=author)
     dead = _make_geo(db, author=author, deleted=True)

@@ -9,6 +9,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- **The map 500'd once a dateless event was geolocated** ([`backend/app/routers/events/read.py`](backend/app/routers/events/read.py), [`docs/api.md`](docs/api.md)). `GET /events/points` called `.isoformat()` on `event_date` unconditionally, so the first NULL-dated located row (possible since `event_date` went optional) crashed the whole map payload in prod. The tuple now carries `null` for an unknown date; the frontend already treated a missing date as unconstrained in the scrubbers, and the `MapPoint` type reflects the nullable slot.
 - **`/favicon.ico` 404'd, leaving the generic globe icon in Google results** ([`frontend/src/app/favicon.ico/route.ts`](frontend/src/app/favicon.ico/route.ts), [`docs/engineering.md`](docs/engineering.md)). Next's generated-icon convention emits only hashed `/icon/*` link tags; the fixed path crawlers fall back to had nothing. A route handler now serves the 192px Satori "V" there.
 
 ## v0.4.6, 2026-07-23
