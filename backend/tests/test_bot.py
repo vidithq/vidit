@@ -364,7 +364,10 @@ async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
     assert isinstance(text, str)
     assert str(event.id)[:8] in text  # the shortened ref
     assert str(event.id) not in text  # never the full UUID (a third of the reply)
-    assert "⚠" not in text  # clean draft: no dedup warning
+    # The mocked source tweet carries no media, so the footage warning fires;
+    # its date resolved, so the date warning must not.
+    assert "No footage stored from the source" in text
+    assert "source's post date" not in text and "already exists" not in text
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
 
@@ -747,17 +750,23 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
 
 def test_compose_reply_is_linkless_and_carries_the_warnings():
     event_id = str(uuid.uuid4())
-    text = compose_reply(event_id, source_date_missing=True, duplicate_media=True)
+    text = compose_reply(
+        event_id, source_footage_missing=True, source_date_missing=True, duplicate_media=True
+    )
     assert text.startswith("✅ 1 geolocation draft saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
+    assert "No footage stored from the source" in text
     assert "source's post date" in text
     assert "already exists" in text
     assert "Review it from your profile" in text
     assert "http" not in text and "vidit.app" not in text
     assert _weighted_len(text) <= 280
-    # No warning on a clean draft (source date known, media unseen).
-    assert "⚠" not in compose_reply(event_id, source_date_missing=False, duplicate_media=False)
+    # No warning on a clean draft (footage stored, date known, media unseen).
+    clean = compose_reply(
+        event_id, source_footage_missing=False, source_date_missing=False, duplicate_media=False
+    )
+    assert "⚠" not in clean
 
 
 # X weighs emoji outside its two cheap Basic-Latin ranges as 2; the composer

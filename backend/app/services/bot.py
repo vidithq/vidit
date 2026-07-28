@@ -261,7 +261,13 @@ def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
 _REPLY_REF_CHARS = 8
 
 
-def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media: bool) -> str:
+def compose_reply(
+    created_id: str,
+    *,
+    source_footage_missing: bool,
+    source_date_missing: bool,
+    duplicate_media: bool,
+) -> str:
     """The in-thread reply for a mention that created its draft.
 
     One draft by construction: the strict format carries exactly one
@@ -270,14 +276,22 @@ def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media
     twin lives in :func:`compose_failure_reply`). Linkless by contract: a
     bare event ref (shortened to ``_REPLY_REF_CHARS``), never a URL or
     auto-linkable domain (X bills link posts ~13x higher; the clickable
-    link lives in the bot bio). Two warnings: the source's post date came
-    back unknown (an off-vocabulary link, or a failed chase: the draft's
-    provisional event date then anchors on nothing but the analyst's own
-    post), and the dedup question. A sourceless draft cannot pass the
-    format, so there is no missing-source warning to raise. The ref also
-    makes each reply unique, so X's duplicate-content 403 cannot eat it.
+    link lives in the bot bio). Three warnings: no footage stored from the
+    source (off-vocabulary link, media-less or restricted source post, or a
+    failed fetch; review is the only repair, re-tagging dedups), the
+    source's post date came back unknown (the draft's provisional event
+    date then anchors on nothing but the analyst's own post), and the dedup
+    question. A sourceless draft cannot pass the format, so there is no
+    missing-source warning to raise. The ref also makes each reply unique,
+    so X's duplicate-content 403 cannot eat it.
     """
     lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
+    if source_footage_missing:
+        # The draft carries its source link but no stored footage: an
+        # off-vocabulary link, a media-less or restricted source post, or a
+        # failed fetch. Not repairable by re-tagging (the idempotency key
+        # already exists, a relay would be skipped): review is the fix.
+        lines.append("⚠ No footage stored from the source. Add it at review")
     if source_date_missing:
         lines.append("⚠ Couldn't read the source's post date. Check the event date at review")
     if duplicate_media:
@@ -440,9 +454,15 @@ async def _process_mention(
         return ("failed" if assembled.failed else "skipped"), 0, None, None
     reply_id: str | None = None
     if reply_allowed:
+        created = assembled.created[0]
+        has_footage = (
+            db.query(Media.id).filter(Media.event_id == created.id, Media.role == "source").first()
+            is not None
+        )
         reply = compose_reply(
-            str(assembled.created[0].id),
-            source_date_missing=assembled.created[0].source_posted_at is None,
+            str(created.id),
+            source_footage_missing=not has_footage,
+            source_date_missing=created.source_posted_at is None,
             duplicate_media=_has_duplicate_media(db, assembled.created),
         )
         reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
