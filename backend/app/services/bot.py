@@ -295,7 +295,7 @@ _FAILURE_DIAGNOSES: dict[str, str] = {
     MARKERS_INCOMPLETE: "Incomplete T:/C:/S: marker set",
     COORDS_MISSING: "No coordinate line",
     COORDS_AMBIGUOUS: "Several coordinate lines",
-    COORDS_INVALID: "Coordinate line is not a bare decimal pair",
+    COORDS_INVALID: "Coordinate pair malformed or out of bounds",
     SOURCE_MISSING: "No source link (a media preview link does not count)",
     SOURCE_AMBIGUOUS: "Several possible source links",
     SOURCE_UNBOUND: "Source line URL matches none of the post's attached links",
