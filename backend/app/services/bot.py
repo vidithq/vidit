@@ -286,21 +286,21 @@ def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media
     return "\n".join(lines)[:_REPLY_MAX_CHARS]
 
 
-# Per failure-reason code: what the mapper saw. Keyed by the
-# ``tweet_ingest`` reason constants; keep each short (the composed reply
-# must stay under ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`)
-# and linkless. Deliberately diagnosis-only: the fix lives behind the bio
-# guide, not in the reply.
+# Per failure-reason code: the diagnosis, as a terse noun phrase so every
+# ⚠ line reads in one uniform voice (no first person, no fix recipe: the
+# fix lives behind the bio guide). Keyed by the ``tweet_ingest`` reason
+# constants; keep each short (the composed reply must stay under
+# ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`) and linkless.
 _FAILURE_DIAGNOSES: dict[str, str] = {
-    MARKERS_INCOMPLETE: "a T:/C:/S: marker is empty or missing",
-    COORDS_MISSING: "I found no coordinate line",
-    COORDS_AMBIGUOUS: "several lines look like coordinates",
-    COORDS_INVALID: "the coordinate line must be one decimal pair and nothing else",
-    SOURCE_MISSING: "I found no source link; a media preview link does not count",
-    SOURCE_AMBIGUOUS: "several links could be the source",
-    SOURCE_UNBOUND: "the source line's link is not one of the post's own links",
-    SOURCE_OWN: "your own post cannot be the source",
-    TITLE_MISSING: "I found no title line",
+    MARKERS_INCOMPLETE: "Empty or missing T:/C:/S: marker",
+    COORDS_MISSING: "No coordinate line",
+    COORDS_AMBIGUOUS: "Several coordinate lines",
+    COORDS_INVALID: "Coordinate line is not a bare decimal pair",
+    SOURCE_MISSING: "No source link (a media preview link does not count)",
+    SOURCE_AMBIGUOUS: "Several possible source links",
+    SOURCE_UNBOUND: "Source link is not one of the post's own links",
+    SOURCE_OWN: "Own post used as the source",
+    TITLE_MISSING: "No title line",
 }
 
 
@@ -328,11 +328,11 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str = "") ->
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
     if diagnosis is None:
         warning = (
-            "⚠ I could not read the format: a title, one decimal coordinate "
-            "pair, and a source link, each on its own line"
+            "⚠ Unrecognized format: a title, one decimal coordinate pair, "
+            "and a source link, each on its own line"
         )
     else:
-        warning = f"⚠ {diagnosis[0].upper()}{diagnosis[1:]}"
+        warning = f"⚠ {diagnosis}"
     return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
 
 

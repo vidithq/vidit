@@ -381,7 +381,7 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
     (payload,) = posted  # the linked author still gets the diagnosis
     text = payload["text"]
-    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
     assert "(m00010)" in text
 
 
@@ -467,7 +467,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -599,7 +599,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
     assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -771,7 +771,7 @@ def test_compose_failure_reply_without_diagnosis_states_the_format():
     text = compose_failure_reply(mention_id="2081747867450957995")
     assert text.startswith("❌ Nothing saved\n")
     # No diagnosis to point at: the one-line format summary, no recited shape.
-    assert "each on its own line" in text
+    assert "Unrecognized format" in text
     assert "Guide in bio" in text
     assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -787,8 +787,7 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
         text = compose_failure_reply(reason, mention_id="123456789")
         first, warning, footer = text.splitlines()
         assert first == "❌ Nothing saved"
-        assert warning.startswith("⚠ ")
-        assert diag[1:] in warning  # the diagnosis, first letter capitalized
+        assert warning == f"⚠ {diag}"
         assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
         assert _weighted_len(text) <= 280
