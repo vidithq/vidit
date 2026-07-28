@@ -382,7 +382,7 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     (payload,) = posted  # the failure reply points at the parent, not the tag
     text = payload["text"]
     assert text.startswith(
-        "❌ Nothing saved from the post you replied to.\n⚠ I found no coordinate line."
+        "❌ Nothing saved from the post you replied to\n⚠ I found no coordinate line."
     )
     assert "(m00010)" in text
 
@@ -457,7 +457,7 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
     # The refused relay reads as an inline failure of the tag itself: the
     # reply must NOT point at someone else's parent.
     (payload,) = posted
-    assert payload["text"].startswith("❌ Nothing saved from this post.")
+    assert payload["text"].startswith("❌ Nothing saved from this post")
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -471,7 +471,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post.\n⚠ I found no coordinate line.")
+    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line.")
     assert "33.123456, 35.654321" in text  # the fix shows the expected shape
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -604,7 +604,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post.\n⚠ I found no coordinate line.")
+    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line.")
     assert "Add one decimal pair alone on its line" in text  # the fix
     assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
@@ -759,7 +759,7 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert event_id not in text  # the ref is shortened
     assert "source's post date" in text
     assert "already exists" in text
-    assert "link in bio" in text
+    assert "Review it from your profile" in text
     assert "http" not in text and "vidit.app" not in text
     assert _weighted_len(text) <= 280
     # No warning on a clean draft (source date known, media unseen).
@@ -775,7 +775,7 @@ def _weighted_len(text: str) -> int:
 
 def test_compose_failure_reply_without_diagnosis_states_the_format():
     text = compose_failure_reply(mention_id="2081747867450957995")
-    assert text.startswith("❌ Nothing saved.")
+    assert text.startswith("❌ Nothing saved\n")
     # No diagnosis to point at: the one-line format summary, no recited shape.
     assert "each on its own line" in text
     assert "Guide in bio" in text
@@ -791,18 +791,18 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
 
     for reason, (diag, _fix) in _FAILURE_DIAGNOSES.items():
         for relay, head in (
-            (False, "❌ Nothing saved from this post."),
-            (True, "❌ Nothing saved from the post you replied to."),
+            (False, "❌ Nothing saved from this post"),
+            (True, "❌ Nothing saved from the post you replied to"),
         ):
             text = compose_failure_reply(reason, relay=relay, mention_id="123456789")
             first, warning, footer = text.splitlines()
             assert first == head
             assert warning.startswith("⚠ ")
             assert diag[1:] in warning  # the diagnosis, first letter capitalized
-            assert footer == "Guide in bio. (m56789)"
+            assert footer == "Guide in bio (m56789)"
             assert "http" not in text and ".app" not in text and ".com" not in text
             assert _weighted_len(text) <= 280
-    assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved.")
+    assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved\n")
 
 
 def test_compose_failure_reply_relay_source_missing_teaches_the_reply_path():
@@ -810,7 +810,7 @@ def test_compose_failure_reply_relay_source_missing_teaches_the_reply_path():
     # path: the relay source_missing fix must say so.
     text = compose_failure_reply("source_missing", relay=True, mention_id="42")
     assert "in a tagged reply" in text
-    assert text.startswith("❌ Nothing saved from the post you replied to.")
+    assert text.startswith("❌ Nothing saved from the post you replied to")
 
 
 def test_compose_failure_replies_differ_across_mentions():

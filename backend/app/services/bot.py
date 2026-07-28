@@ -280,10 +280,10 @@ def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media
     """
     lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
     if source_date_missing:
-        lines.append("⚠ Couldn't read the source's post date. Check the event date at review.")
+        lines.append("⚠ Couldn't read the source's post date. Check the event date at review")
     if duplicate_media:
-        lines.append("⚠ This media already exists on Vidit. Possible duplicate.")
-    lines.append("Review it from your profile (link in bio).")
+        lines.append("⚠ This media already exists on Vidit. Possible duplicate")
+    lines.append("Review it from your profile")
     return "\n".join(lines)[:_REPLY_MAX_CHARS]
 
 
@@ -358,24 +358,24 @@ def compose_failure_reply(
     weighs ✅ / ❌ / ⚠ as 2).
     """
     head = (
-        "❌ Nothing saved from the post you replied to."
+        "❌ Nothing saved from the post you replied to"
         if relay
-        else "❌ Nothing saved from this post."
+        else "❌ Nothing saved from this post"
     )
     ref = f" (m{mention_id[-5:]})" if mention_id else ""
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
     if diagnosis is None:
         warning = (
             "⚠ I could not read the format: a title, one decimal coordinate "
-            "pair, and a source link, each on its own line."
+            "pair, and a source link, each on its own line"
         )
-        head = "❌ Nothing saved."
+        head = "❌ Nothing saved"
     else:
         diag, fix = diagnosis
         if relay and reason == SOURCE_MISSING:
             fix = _RELAY_SOURCE_FIX
-        warning = f"⚠ {diag[0].upper()}{diag[1:]}. {fix}."
-    return "\n".join([head, warning, f"Guide in bio.{ref}"])[:_REPLY_MAX_CHARS]
+        warning = f"⚠ {diag[0].upper()}{diag[1:]}. {fix}"
+    return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
 
 
 def _record(

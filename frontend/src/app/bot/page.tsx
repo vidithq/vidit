@@ -372,7 +372,7 @@ export default function BotGuidePage() {
                   replyingTo="@GEOIMINT"
                 >
                   {
-                    "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile (link in bio)."
+                    "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile"
                   }
                 </MockPost>
               </div>
