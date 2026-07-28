@@ -14,7 +14,6 @@ const complete: EventFieldsState = {
   lat: "48.5",
   lng: "37.8",
   sourceUrl: "https://t.me/c/1",
-  eventDate: "2026-01-02",
   sourcePostedAt: "2026-01-01T00:00",
   proof: {
     type: "doc",
@@ -41,7 +40,6 @@ describe("missingEventFields", () => {
         lat: "",
         lng: "",
         sourceUrl: "",
-        eventDate: "",
         sourcePostedAt: "",
         proof: null,
         mediaCount: 0,
@@ -52,7 +50,6 @@ describe("missingEventFields", () => {
       "Title",
       "Coordinates",
       "Source URL",
-      "Event date",
       "Source post time",
       "Proof",
       "Source media",
@@ -115,7 +112,6 @@ describe("submitReadiness", () => {
     lat: 48.5,
     lng: 37.8,
     source_url: "https://t.me/c/1",
-    event_date: "2026-01-02",
     source_posted_at: "2026-01-01T00:00:00Z",
     proof: {
       type: "doc",

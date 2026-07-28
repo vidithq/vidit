@@ -15,6 +15,46 @@ const intAttr = (v: unknown): number | undefined =>
 const stringAttr = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
 
+/** Mirrors backend `sanitize._safe_link_href`: only an explicit http(s)://
+ * URL with a hostname is safe to render as an anchor href. The backend
+ * sanitizer is the source of truth (it strips anything else before the
+ * doc is ever persisted); this is defense-in-depth in case a doc reaches
+ * the renderer unsanitized. Rejects `javascript:`, `data:`, `mailto:`, and
+ * schemeless/relative hrefs (Tiptap links are always absolute). */
+function isSafeLinkHref(href: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return false;
+  }
+  return (
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    parsed.hostname.length > 0
+  );
+}
+
+/** Mirrors the spirit of backend `sanitize._safe_image_src` (relative path,
+ * or an https:// / local-dev host): the FE can't read the backend's
+ * `storage_backend` / CDN settings, so this is conservative rather than an
+ * exact mirror. The point is to never let a `javascript:`, `data:`, or
+ * protocol-relative (`//host`) src reach the DOM. */
+function isSafeImageSrc(src: string): boolean {
+  if (src.startsWith("//")) return false;
+  if (src.startsWith("/")) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(src);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  if (parsed.protocol === "http:" && parsed.hostname === "localhost") {
+    return true;
+  }
+  return false;
+}
+
 function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
   if (!marks || marks.length === 0) return text;
   return marks.reduce<ReactNode>((acc, mark) => {
@@ -33,7 +73,7 @@ function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
         );
       case "link": {
         const href = stringAttr(mark.attrs?.href);
-        if (!href) return acc;
+        if (!href || !isSafeLinkHref(href)) return acc;
         const target = stringAttr(mark.attrs?.target);
         return (
           <a
@@ -139,7 +179,7 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
       return <hr key={key} className="my-4 border-neutral-800" />;
     case "image": {
       const src = stringAttr(node.attrs?.src);
-      if (!src) return null;
+      if (!src || !isSafeImageSrc(src)) return null;
       const alt = stringAttr(node.attrs?.alt) ?? "";
       const title = stringAttr(node.attrs?.title);
       return (

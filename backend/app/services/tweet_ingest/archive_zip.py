@@ -60,6 +60,12 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 MAX_TOTAL_UNCOMPRESSED_BYTES = 8 * 1024 * 1024 * 1024
 MAX_FILE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
 
+# Anti-inode-exhaustion cap: a real X export has at most a few thousand media
+# files, so this only bounds an attacker archive packing millions of distinct,
+# empty ``tweets_media/*`` entries, each of which passes every byte cap above
+# but still costs one inode when written to disk.
+MAX_ENTRY_COUNT = 100_000
+
 _CHUNK = 1024 * 1024
 
 
@@ -79,6 +85,8 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
 
     with zf:
         names = [n for n in zf.namelist() if not n.endswith("/")]
+        if len(names) > MAX_ENTRY_COUNT:
+            raise ArchiveTooLargeError("Archive has too many entries")
         tweets_member = _find_tweets_member(names)
         if tweets_member is None:
             raise NoTweetsFileError("Archive has no tweets.js")

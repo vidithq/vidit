@@ -62,6 +62,12 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         role: "source",
       },
     ],
+    thumbnail: {
+      id: "m1",
+      storage_url: "/local-storage/evidence.jpg",
+      media_type: "image",
+      role: "source",
+    },
     requested_by: {
       id: "u2",
       username: "poster",
@@ -379,6 +385,8 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
+    // A null date reads as Unknown, not an empty cell.
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 
   it("omits the Event time row when no time is set", () => {

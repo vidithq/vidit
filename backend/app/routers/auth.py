@@ -294,15 +294,20 @@ def login(
         else DUMMY_PASSWORD_HASH
     )
     password_ok = verify_password(body.password, password_hash)
-    if user is None or user.deleted_at is not None or not password_ok:
+    if user is None or user.deleted_at is not None or not user.is_active or not password_ok:
         # Log failed_login with the matched user_id when we have one (so
         # "failed attempts against this account" is queryable), NULL
         # when the email didn't match (so we don't leak existence by
         # writing a probe-able mapping). Same row shape either way.
+        # A deactivated account is treated like a soft-deleted one here:
+        # its id is withheld so a deactivation is not exposed as a
+        # probe-able failed_login mapping.
         audit.log_auth_event(
             db,
             event=EVENT_FAILED_LOGIN,
-            user_id=user.id if (user is not None and user.deleted_at is None) else None,
+            user_id=user.id
+            if (user is not None and user.deleted_at is None and user.is_active)
+            else None,
         )
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")

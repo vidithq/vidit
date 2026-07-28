@@ -456,7 +456,9 @@ function PinPreviewCard({
     setPos({ left, top });
   }, [x, y, entry, error]);
 
-  const media = entry?.media.find((m) => m.role === "source");
+  // The backend-picked card thumbnail (source media, else proof image):
+  // one pick rule, homed in the backend's services/thumbnails.
+  const media = entry?.thumbnail ?? undefined;
   return (
     // Above the detail / filter overlays (z-1000): a preview near a panel
     // edge must stay fully readable, and it is transient hover chrome.
@@ -632,6 +634,22 @@ interface MapProps {
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
+}
+
+// Dev-only camera handle for the promo-recording pipeline (video/): exposes
+// the maplibre instance so a Playwright take can drive smooth easeTo camera
+// moves instead of synthetic wheel events. Never mounts in production.
+function DevMapHandle() {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" || !map) return;
+    const w = window as unknown as { __viditMap?: unknown };
+    w.__viditMap = map.getMap();
+    return () => {
+      delete w.__viditMap;
+    };
+  }, [map]);
+  return null;
 }
 
 export default function Map({
@@ -971,6 +989,7 @@ export default function Map({
         onPinHover={hoverPin}
         spider={spider}
       />
+      {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
 

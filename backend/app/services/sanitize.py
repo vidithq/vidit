@@ -55,15 +55,20 @@ _MAX_NODES = 5_000
 
 
 def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
-    """Image src must be relative or point at the configured CDN.
+    """Image src must be relative or point at the configured media host.
 
-    With no CloudFront configured, any https:// passes (dev media URLs); in
-    prod with `cloudfront_domain` set, only that host. http://localhost
-    local-storage URLs pass only when `cloudfront_domain` is unset AND
-    `storage_backend == "local"`, so a CDN-less-but-S3 staging env doesn't
-    accept loopback URLs. ``allow_placeholders`` additionally admits
-    ``placeholder://<filename>`` srcs, intake-time only, never persisted
-    (see ``PROOF_PLACEHOLDER_PREFIX``).
+    Host resolution by deployment:
+    - ``cloudfront_domain`` set (prod): only that host's https URLs pass.
+    - no CDN + ``storage_backend == "s3"``: only the bucket endpoint
+      (``{bucket}.s3.{region}.amazonaws.com``) passes. A bare-S3 deploy must
+      NOT fall through to "any https", or a persisted
+      ``<image src="https://attacker/pixel.gif">`` would exfiltrate every
+      viewer's IP/UA, defeating the anti-tracking-pixel guarantee.
+    - no CDN + ``storage_backend == "local"`` (dev): the ``http://localhost``
+      local-storage prefix passes, and any other https is a dev convenience.
+
+    ``allow_placeholders`` additionally admits ``placeholder://<filename>``
+    srcs, intake-time only, never persisted (see ``PROOF_PLACEHOLDER_PREFIX``).
     """
     if not isinstance(value, str):
         return None
@@ -91,8 +96,15 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     scheme = parsed.scheme.lower()
     if scheme != "https":
         return None
-    if cdn and (parsed.hostname or "").lower() != cdn:
-        return None
+    host = (parsed.hostname or "").lower()
+    if cdn:
+        return value if host == cdn else None
+    if settings.storage_backend == "s3":
+        # No CloudFront in front of the bucket: pin to the S3 endpoint the
+        # storage layer actually mints URLs for (see
+        # ``storage.S3Storage.public_url``). Anything else is a foreign host.
+        s3_host = f"{settings.s3_bucket}.s3.{settings.aws_region}.amazonaws.com".lower()
+        return value if host == s3_host else None
     return value
 
 

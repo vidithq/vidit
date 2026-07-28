@@ -49,7 +49,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -77,11 +77,12 @@ jobs:
 
   backend-test:
     name: Backend tests
-    # Gated on the lint job: ruff + mypy fail in well under a minute,
-    # pytest + the PostGIS service container cost several. A lint-red
-    # commit never spins up the container; a green run pays the lint
-    # duration up front before tests start — accepted trade.
-    needs: backend-lint
+    # Runs in parallel with the lint job (no `needs:`), the norm on public
+    # repos where runner minutes are free: one cycle surfaces lint AND test
+    # failures together, and a green run (the common case) doesn't pay the
+    # lint duration up front. The old lint gate earned its keep when the
+    # serial suite cost several minutes; at ~1.5 min parallelized it only
+    # added latency.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -104,7 +105,7 @@ jobs:
       DATABASE_URL: postgresql://vision:vision@localhost:5432/vision
       JWT_SECRET: test-secret-not-for-production
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -118,11 +119,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
-      - name: Run migrations
-        run: uv run alembic upgrade head
-
+      # No separate `alembic upgrade head` step: the parallel run builds a
+      # template database at alembic head (tests/conftest.py) and clones it
+      # per worker, so the migrations run as part of the pytest step.
       - name: pytest
-        run: uv run pytest -v
+        run: uv run pytest -v -n 4 --dist loadfile
 
   # Deliberately ONE job, not a checks job gating a test job: the steps
   # already run in fail-fast order (eslint → tsc → vitest → next build)
@@ -135,7 +136,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -175,7 +176,7 @@ jobs:
     name: API types in sync with OpenAPI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -216,7 +217,7 @@ jobs:
     name: Hygiene — duplication & dead code
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -283,7 +284,7 @@ jobs:
           echo "✓ PR labelled 'no-docs-needed' — docs-pairing check is exempt."
           echo "The author asserts this change has no docs/ + planning/ impact (justify it in the PR description). Remove the label to re-enforce the check."
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event.pull_request.user.login != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'no-docs-needed')
         with:
           fetch-depth: 0

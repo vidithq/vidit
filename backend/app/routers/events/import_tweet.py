@@ -24,7 +24,7 @@ from app.schemas.tweet_import import (
     TweetImportResponse,
 )
 from app.services.detection import preview_detection
-from app.services.storage import scrub_log
+from app.services.storage import ALLOWED_TYPES, scrub_log
 from app.services.tweet_ingest import (
     MEDIA_FETCH_MAX_BYTES,
     InvalidTweetUrl,
@@ -195,7 +195,17 @@ def import_from_tweet_media(
                     # streaming check; a malformed header isn't trusted anyway.
                     pass
 
-            content_type = upstream.headers.get("content-type", "application/octet-stream")
+            # Never forward the upstream content-type verbatim: the browser
+            # renders whatever this proxy claims, so an upstream that lies
+            # (e.g. serving HTML/SVG as its declared type) could trigger
+            # content sniffing in the analyst's session. Only the same
+            # image/video MIMEs this app accepts on upload get through; a
+            # bare comparison against the allowlist (params like
+            # ``; charset=`` stripped first) is exact, no substring match.
+            raw_content_type = upstream.headers.get("content-type", "")
+            content_type = raw_content_type.split(";", 1)[0].strip().lower()
+            if content_type not in ALLOWED_TYPES:
+                content_type = "application/octet-stream"
 
             buffer = bytearray()
             for chunk in upstream.iter_bytes():
@@ -213,5 +223,11 @@ def import_from_tweet_media(
     return Response(
         content=bytes(buffer),
         media_type=content_type,
-        headers={"Cache-Control": "private, max-age=300"},
+        headers={
+            "Cache-Control": "private, max-age=300",
+            # Belt-and-suspenders alongside the global nosniff middleware
+            # (main.py): this response is the one place the app echoes
+            # third-party bytes back to the browser.
+            "X-Content-Type-Options": "nosniff",
+        },
     )

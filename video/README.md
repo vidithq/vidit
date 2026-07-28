@@ -141,3 +141,54 @@ For 4K (3840×2160), append `--scale 2` to the render command.
   the rAF loop in the page WITHOUT awaiting the resulting Promise — an
   awaited `page.evaluate(asyncFn)` blocks the CDP session and tanks
   the screenshot grabber from 30 fps to ~4 fps.
+
+## v0.4 promo (`PromoV04`)
+
+A second pipeline, sharing the capture technique above but recording one
+clip per beat instead of one continuous take, so the comp can pace beats
+independently and slot in real X screen captures.
+
+```bash
+cd backend && uv run python scripts/mock_demo_user.py   # analyst user
+make seed                                               # demo map data
+make dev-worker                                         # the import worker must run
+cd video
+npm run record:v04   # or: node record-v04.js map,import,queue,promote,bot-embed
+npm run render:v04   # → out/promo-v04.mp4 (1920×1080, 60 fps)
+```
+
+The recorded takes import the maintainer's REAL X export ("Vidit
+stuff.zip" at the repo root, their published geolocation work), copied
+read-only to `out/real-archive.zip`, so every draft and event on camera
+carries real media. `gen-archive.js` (a synthetic real-shaped archive)
+stays for CI / reproducibility when the real export isn't available.
+
+Per clip (all real UI, none of it staged on camera): `map.mp4` opens the
+anonymous map, dezooms to clusters and opens a real promoted geolocation
+(one draft from the real archive, promoted at setup and remembered in
+`out/hero.json`); `import.mp4` uploads the real archive through `/submit`
+and lands on the filled detections queue; `queue.mp4` is a steady queue
+shot; `promote.mp4` reviews a real draft, submits it and shows the
+published point; `bot-embed.mp4` records the official X embed (dark) of
+the analyst's real coordinate tweet as the bot beat's base plate. Timing
+marks from each take go to `public/clips/meta.json`;
+`gen-clips-manifest.js` compiles them into `src/clips-manifest.ts`, which
+`src/PromoV04.tsx` reads, so a re-record never needs hand-retimed
+sequences. The comp letterboxes every recording above a reserved caption
+band, so captions never overlap the demo.
+
+### Maintainer drop-in slots (real X footage)
+
+Two beats are meant to be REAL X screen recordings, captured manually:
+
+| Slot file | Used by | Until it exists |
+|---|---|---|
+| `public/clips/bot-x-capture.mp4` | `PromoV04` bot beat (tweet → tag `@viditbot` → like → reply) | the interim composite renders: the real X embed recording (`bot-embed.mp4`) plus an overlay of the tag reply, like, and bot reply in X's dark idiom |
+| `public/clips/x-export-capture.mp4` | `FeatureImport` opening (Settings → "Download an archive of your data") | a styled placeholder card renders instead |
+
+Drop the file in, re-run `node gen-clips-manifest.js`, re-render. The
+capture is scaled and center-cropped into the same browser-chrome frame
+as the app clips; any aspect ratio works, 16:9 crops least.
+
+`FeatureImport` is the follow-up feature video on the archive import
+(scaffolded, not rendered for v0.4): `npm run render:feature-import`.

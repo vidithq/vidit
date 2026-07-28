@@ -70,7 +70,6 @@ const REQUEST_REQS: Req[] = [
 // What a full geolocation adds on top of the request floor.
 const GEO_EXTRA_REQS: Req[] = [
   { label: FIELD_LABELS.coordinates, keys: ["coordinates"] },
-  { label: FIELD_LABELS.event_date, keys: ["event_date"] },
   { label: FIELD_LABELS.proof_image, keys: ["proof", "proof_image"] },
   { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
   { label: FIELD_LABELS.capture_source_tag, keys: ["capture_source_tag"] },
@@ -317,7 +316,7 @@ function SubmitForm() {
           lng: lngNum,
           ...capture,
           source_url: sourceUrl,
-          event_date: eventDate,
+          event_date: eventDate || undefined,
           event_time: eventTime || undefined,
           source_posted_at: sourcePostedAt,
           proof,
@@ -334,7 +333,7 @@ function SubmitForm() {
         lng: lngNum,
         ...capture,
         source_url: sourceUrl,
-        event_date: eventDate,
+        event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
         proof,
@@ -365,7 +364,6 @@ function SubmitForm() {
           lat,
           lng,
           sourceUrl,
-          eventDate,
           sourcePostedAt,
           proof,
           mediaCount: files.length,
@@ -381,7 +379,6 @@ function SubmitForm() {
       lat,
       lng,
       sourceUrl,
-      eventDate,
       sourcePostedAt,
       proof,
       files.length,
@@ -617,9 +614,6 @@ function SubmitForm() {
           invalid={invalidKeys.has("coordinates")}
         />
 
-        {/* Event date is required only to publish a geolocation, so it's
-            optional at the field level; the readiness list names it as part of
-            the geolocation floor. */}
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
@@ -630,8 +624,6 @@ function SubmitForm() {
           sourcePostedAt={sourcePostedAt}
           setSourcePostedAt={setSourcePostedAt}
           sourceUrlLocked={lockedFromRequest}
-          eventDateRequired={false}
-          eventDateInvalid={invalidKeys.has("event_date")}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />

@@ -154,6 +154,7 @@ const MOCK_DETAIL: EventDetail = {
   geolocated_at: "2026-06-01T00:00:00Z",
   closed_at: null,
   media: [],
+  thumbnail: null,
   requested_by: null,
   geolocators: [],
   investigator_count: 0,

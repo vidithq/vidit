@@ -141,11 +141,11 @@ function DetailRows({
         label="Event date"
         concept="event_date"
         compact={compact}
-        value={geo.event_date ? formatDate(geo.event_date) : "—"}
+        value={geo.event_date ? formatDate(geo.event_date) : "Unknown"}
       />
       {/* Time-of-day gets its own row, not folded into Event date: it can be
           known without the day (an approximate hour from sun position or
-          shadows on a request), so it must surface even when the date is "—".
+          shadows), so it must surface even when the date is "Unknown".
           Shown only when set, matching the other optional rows. */}
       {geo.event_time && (
         <DetailRow

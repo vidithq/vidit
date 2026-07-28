@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import coords_or_none, source_media
+from app.routers.events._common import coords_or_none, thumbnail_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.services import social
 
@@ -37,7 +37,7 @@ def get_timeline(
             status=geo.status,
             before_closed_status=geo.before_closed_status,
             owner=geo.owner,
-            media=source_media(geo),
+            media=thumbnail_media(geo),
             tags=geo.tags,
             conflicts=geo.conflicts,
         )

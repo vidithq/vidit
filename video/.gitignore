@@ -7,3 +7,8 @@ out/
 # into public/ for Remotion's staticFile() to resolve. Big binary,
 # easy to rebuild — don't commit it.
 public/recording-submit.mp4
+
+# Recorded takes, generated stills, and fetched avatar assets: all
+# regenerable by record-v04.js (or refetched), same rule as the
+# recording above. clips-manifest.ts is the committed projection.
+public/clips/

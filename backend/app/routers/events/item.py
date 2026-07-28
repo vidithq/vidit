@@ -25,13 +25,12 @@ from app.models.event import (
     EventGeolocator,
     EventInvestigator,
 )
-from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._forms import (
-    parse_iso_date,
     parse_iso_datetime,
     parse_json_id_list,
+    parse_optional_iso_date,
     parse_optional_iso_time,
     parse_optional_json_object,
 )
@@ -43,6 +42,7 @@ from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.storage import (
     sweep_keys,
 )
+from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 
@@ -51,7 +51,7 @@ router = APIRouter()
 _DETAIL_LOADS = (
     joinedload(Event.owner),
     joinedload(Event.requested_by),
-    selectinload(Event.media.and_(Media.role == "source")),
+    selectinload(Event.media.and_(thumbnail_media_criteria())),
     selectinload(Event.tags),
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
@@ -171,7 +171,9 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    event_date: str = Form(...),
+    # Optional, mirroring create: the footage doesn't always establish when the
+    # depicted event happened; NULL reads as "Unknown".
+    event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
@@ -201,12 +203,12 @@ async def geolocate_event(
     """
     files = files or []
     proof_files = proof_files or []
-    parsed_event_date = parse_iso_date(event_date, field="event_date")
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = parse_optional_json_object(proof, field="proof")
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
     # Not owner-gated at the router: the service enforces per-status ownership

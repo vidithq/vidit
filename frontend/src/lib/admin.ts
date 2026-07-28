@@ -3,6 +3,10 @@ import type { components } from "./api-types";
 
 export type InviteCodeStatus = "active" | "exhausted" | "revoked" | "expired";
 
+/** The first consumer of a code with its onboarding counters, nested in the
+ *  invite list so the admin table renders activity without per-row fetches. */
+export type InviteRedeemer = components["schemas"]["AdminInviteRedeemerRead"];
+
 export interface InviteCode {
   id: string;
   code: string;
@@ -12,7 +16,7 @@ export interface InviteCode {
   revoked_at: string | null;
   created_at: string;
   status: InviteCodeStatus;
-  used_by_username: string | null;
+  redeemer: InviteRedeemer | null;
   used_at: string | null;
   /** The X handle the code binds; redemption copies it onto the new
    *  account as its bot-attribution link. */
@@ -46,7 +50,8 @@ export function revokeInviteCode(id: string): Promise<InviteCode> {
 export interface AdminUser {
   id: string;
   username: string;
-  email: string;
+  // NULL on legacy credential-less rows, mirroring `AdminUserRead`.
+  email: string | null;
   is_admin: boolean;
   is_trusted: boolean;
   trust_reason: string | null;
@@ -118,6 +123,20 @@ export function deleteUser(
 ): Promise<AdminUserDeleteResponse> {
   const path = `/admin/users/${id}${options.hard ? "?hard=true" : ""}`;
   return apiFetch<AdminUserDeleteResponse>(path, { method: "DELETE" });
+}
+
+export type AdminPurgeDetectedResponse =
+  components["schemas"]["AdminPurgeDetectedResponse"];
+
+/** Hard-delete every `detected` draft the user owns, keeping the account.
+ *  The broken-archive repair. */
+export function purgeDetectedEvents(
+  id: string
+): Promise<AdminPurgeDetectedResponse> {
+  return apiFetch<AdminPurgeDetectedResponse>(
+    `/admin/users/${id}/detected-events`,
+    { method: "DELETE" }
+  );
 }
 
 // ── Demo data ─────────────────────────────────────────────────────────

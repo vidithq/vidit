@@ -148,9 +148,9 @@ export default function HomePage() {
     const subHi = hi(submittedEnd);
     return statusFiltered.filter((p) => {
       // A missing/unparseable date must not silently drop the point (NaN fails
-      // every comparison) — treat that dimension as unconstrained, matching the
-      // histogram, which skips undated points rather than hiding them. Both
-      // columns are NOT NULL today; this is defensive against future sources.
+      // every comparison): treat that dimension as unconstrained, matching the
+      // histogram, which skips undated points rather than hiding them.
+      // event_date is optional, so null is a live case, not just a safeguard.
       const ev = p[3] ? Date.parse(`${p[3]}T00:00:00Z`) : NaN;
       const sub = p[4] ? Date.parse(`${p[4]}T00:00:00Z`) : NaN;
       const evOk = Number.isNaN(ev) || (ev >= evLo && ev <= evHi);

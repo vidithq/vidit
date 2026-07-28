@@ -47,6 +47,38 @@ class AdminInviteCodeCreate(BaseModel):
         return normalize_x_handle(v)
 
 
+class AdminInviteRedeemerRead(BaseModel):
+    """Onboarding snapshot of the account a code was redeemed by.
+
+    Nested in `AdminInviteCodeRead` so the admin onboarding table renders
+    activity and hosts the per-user actions (trust, X handle, delete, purge
+    detected) without a second request per row. Carries the same acting
+    fields as `AdminUserRead` plus read-side counters.
+    """
+
+    user_id: uuid.UUID
+    username: str
+    email: str | None
+    is_admin: bool
+    is_trusted: bool
+    trust_reason: str | None
+    x_handle: str | None
+    # ``done`` archive-import jobs (a queued / failed upload is not an import).
+    archives_imported: int
+    # Sum of ``bot_mentions.events_created`` for the account's X handle: how
+    # many drafts the bot minted for them, ever. Historical by design: a
+    # draft deleted later still counted as bot activity.
+    bot_detection_count: int
+    # Live ``detected`` drafts they own right now. The purge endpoint sweeps
+    # soft-deleted drafts too, so it may remove more than this counter shows.
+    detected_count: int
+    # Live ``geolocated`` events they own.
+    geolocated_count: int
+    # Most recent ``login`` auth event; NULL for an account that has never
+    # logged in since the audit log existed.
+    last_login_at: datetime | None
+
+
 class AdminInviteCodeRead(BaseModel):
     """Response shape for the admin invite-code list + create endpoints.
 
@@ -67,10 +99,11 @@ class AdminInviteCodeRead(BaseModel):
     status: InviteCodeStatus
     # The X handle the code binds, copied onto the account at redemption.
     x_handle: str | None
-    # Username of the *first* consumer, if any. For single-use codes (the
-    # default) it's the only one; multi-use codes still surface only the first
-    # — a full per-use audit would need an `invite_code_uses` junction table.
-    used_by_username: str | None
+    # The *first* consumer, if any, with their onboarding stats. For
+    # single-use codes (the default) it's the only one; multi-use codes still
+    # surface only the first — a full per-use audit would need an
+    # `invite_code_uses` junction table.
+    redeemer: AdminInviteRedeemerRead | None
     used_at: datetime | None
 
 
@@ -135,6 +168,22 @@ class AdminEventDeleteResponse(BaseModel):
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
     # Every file swept, source and proof roles alike.
+    media_count: int = 0
+
+
+class AdminPurgeDetectedResponse(BaseModel):
+    """Response for `DELETE /admin/users/{id}/detected-events`.
+
+    The broken-archive repair: every ``detected`` draft the user owns is
+    hard-deleted (rows + S3 media), the account itself untouched. The counts
+    are the copy-pasteable record of what was swept.
+    """
+
+    user_id: uuid.UUID
+    username: str
+    deleted_events: int = 0
+    # Storage objects swept: every media file, source and proof roles alike,
+    # hero / thumb derivatives included.
     media_count: int = 0
 
 

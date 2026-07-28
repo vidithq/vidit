@@ -46,6 +46,7 @@ def test_database_url_postgres_scheme_is_normalized(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h:5432/db")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
     settings = Settings()
     assert settings.database_url == "postgresql://u:p@h:5432/db"
 
@@ -54,6 +55,7 @@ def test_database_url_postgresql_scheme_passes_through(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h:5432/db")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
     settings = Settings()
     assert settings.database_url == "postgresql://u:p@h:5432/db"
 
@@ -78,8 +80,27 @@ def test_overridden_jwt_secret_with_remote_db_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("JWT_SECRET", "a-real-secret")
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
     settings = Settings()
     assert settings.jwt_secret == "a-real-secret"
+
+
+def test_remote_db_with_cookie_secure_false_fails(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
+    with pytest.raises(ValidationError, match="COOKIE_SECURE must be true"):
+        Settings()
+
+
+def test_remote_db_with_cookie_secure_true_passes(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    settings = Settings()
+    assert settings.cookie_secure is True
 
 
 def test_default_jwt_secret_with_ipv6_localhost_passes(monkeypatch):

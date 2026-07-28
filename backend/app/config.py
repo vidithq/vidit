@@ -143,6 +143,20 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_cookie_secure(self) -> "Settings":
+        if self.cookie_secure:
+            return self
+        host = urlparse(self.database_url).hostname
+        if host is None or host.lower() not in LOCAL_DB_HOSTS:
+            raise ValueError(
+                f"COOKIE_SECURE must be true when DATABASE_URL points to a "
+                f"non-local host (got {host!r}). A non-local deployment must "
+                f"set COOKIE_SECURE=true so the session cookie is never sent "
+                f"over plaintext."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_x_bot_config(self) -> "Settings":
         read_pair = (self.x_bot_bearer_token, self.x_bot_user_id)
         if any(read_pair) and not all(read_pair):

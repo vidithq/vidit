@@ -560,6 +560,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
+      media={hit.media[0]}
       author={hit.owner}
       date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}

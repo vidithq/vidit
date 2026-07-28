@@ -427,6 +427,35 @@ def test_create_round_trips_source_posted_at_and_event_time(
     assert without.json()["event_time"] is None
 
 
+def test_create_accepts_missing_event_date(
+    db, author, conflict, capture_source_tag, tmp_path, monkeypatch
+):
+    """``event_date`` omitted → 201 with a null date (reads as Unknown): the
+    footage doesn't always establish when the depicted event happened."""
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    form = _form(
+        title="date unknown",
+        lat="48.5",
+        lng="34.5",
+        tag_ids=json.dumps([str(capture_source_tag.id)]),
+        conflict_ids=json.dumps([str(conflict.id)]),
+    )
+    del form["event_date"]
+
+    response = client.post(
+        "/api/v1/events",
+        headers=login_as(client, author),
+        data=form,
+        files=_files(),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["event_date"] is None
+
+
 def test_create_rejects_invalid_source_posted_at(author):
     """Garbage ``source_posted_at`` → 422 before any S3 round-trip (same contract
     as ``event_date``)."""

@@ -38,7 +38,7 @@ export const FIELD_HELP = {
     label: "What is the source media?",
   },
   event_date: {
-    text: "When the depicted event happened (from the chyron or context). Not the post date or the date you submit it here.",
+    text: "When the depicted event happened (from the chyron or context). Not the post date or the date you submit it here. Leave blank when the footage doesn't establish it; it then reads as Unknown.",
     label: "What is the event date?",
   },
   event_time: {

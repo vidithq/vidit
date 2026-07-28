@@ -70,6 +70,45 @@ describe("renderProof", () => {
     expect(container).toHaveTextContent("orphan");
   });
 
+  it("drops the anchor for a javascript: href, rendering plain text instead", () => {
+    const container = renderDoc(
+      doc(
+        paragraph(
+          text("click me", [
+            { type: "link", attrs: { href: "javascript:alert(1)" } },
+          ])
+        )
+      )
+    );
+    expect(container.querySelector("a")).toBeNull();
+    expect(container).toHaveTextContent("click me");
+  });
+
+  it("drops the anchor for a data: href", () => {
+    const container = renderDoc(
+      doc(
+        paragraph(
+          text("payload", [
+            {
+              type: "link",
+              attrs: { href: "data:text/html,<script>alert(1)</script>" },
+            },
+          ])
+        )
+      )
+    );
+    expect(container.querySelector("a")).toBeNull();
+    expect(container).toHaveTextContent("payload");
+  });
+
+  it("drops the anchor for a schemeless / relative href", () => {
+    const container = renderDoc(
+      doc(paragraph(text("relative", [{ type: "link", attrs: { href: "/x" } }])))
+    );
+    expect(container.querySelector("a")).toBeNull();
+    expect(container).toHaveTextContent("relative");
+  });
+
   it("clamps heading levels into h1–h6 and defaults to h3", () => {
     const heading = (level: unknown) => ({
       type: "heading",
@@ -94,6 +133,50 @@ describe("renderProof", () => {
     expect(imgs[0]).toHaveAttribute("alt", "ruins");
     expect(imgs[0]).toHaveAttribute("loading", "lazy");
     expect(imgs[0]).toHaveAttribute("referrerpolicy", "no-referrer");
+  });
+
+  it("renders a valid https:// image src", () => {
+    const container = renderDoc(
+      doc({
+        type: "image",
+        attrs: { src: "https://d10w3bld05vsky.cloudfront.net/p.jpg" },
+      })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("renders the http://localhost dev-storage image src", () => {
+    const container = renderDoc(
+      doc({
+        type: "image",
+        attrs: { src: "http://localhost:8000/local-storage/p.jpg" },
+      })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("drops an image with a javascript: src", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "javascript:alert(1)" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("drops an image with a data: src", () => {
+    const container = renderDoc(
+      doc({
+        type: "image",
+        attrs: { src: "data:image/svg+xml,<svg onload=alert(1)>" },
+      })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("drops an image with a protocol-relative (//host) src", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "//attacker.example/pixel.gif" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
   });
 
   it("renders lists, code blocks, rules, and hard breaks", () => {

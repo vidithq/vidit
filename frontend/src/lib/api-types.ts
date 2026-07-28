@@ -250,6 +250,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/detected-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Purge Detected Events Admin
+         * @description Hard-delete every `detected` draft the user owns (rows + S3 media),
+         *     keeping the account and everything else they authored. The
+         *     broken-archive repair.
+         */
+        delete: operations["purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users/{user_id}/trust": {
         parameters: {
             query?: never;
@@ -739,9 +761,11 @@ export interface paths {
          *     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
          *     ``requested`` guess is not a confident pin, and a closed row was judged
          *     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
-         *     are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
-         *     timeline scrubbers and filters the windows client-side (no refetch per
-         *     drag). ``detected`` is ``1`` for a machine detection (rendered marked),
+         *     are ISO ``YYYY-MM-DD`` strings; ``event_date`` is ``null`` when unknown
+         *     (the column is optional) and the frontend then leaves that point out of
+         *     the event-date scrubber instead of hiding it. The frontend buckets the
+         *     dates for the two timeline scrubbers and filters the windows client-side
+         *     (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
          *     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
          *     panel offers its hide-demo toggle only when one is present). Flags, not
          *     strings, to keep the payload small. Cached in-memory for 60s per unique
@@ -1326,6 +1350,7 @@ export interface components {
             id: string;
             /** Max Uses */
             max_uses: number;
+            redeemer: components["schemas"]["AdminInviteRedeemerRead"] | null;
             /** Revoked At */
             revoked_at: string | null;
             /**
@@ -1337,8 +1362,44 @@ export interface components {
             use_count: number;
             /** Used At */
             used_at: string | null;
-            /** Used By Username */
-            used_by_username: string | null;
+            /** X Handle */
+            x_handle: string | null;
+        };
+        /**
+         * AdminInviteRedeemerRead
+         * @description Onboarding snapshot of the account a code was redeemed by.
+         *
+         *     Nested in `AdminInviteCodeRead` so the admin onboarding table renders
+         *     activity and hosts the per-user actions (trust, X handle, delete, purge
+         *     detected) without a second request per row. Carries the same acting
+         *     fields as `AdminUserRead` plus read-side counters.
+         */
+        AdminInviteRedeemerRead: {
+            /** Archives Imported */
+            archives_imported: number;
+            /** Bot Detection Count */
+            bot_detection_count: number;
+            /** Detected Count */
+            detected_count: number;
+            /** Email */
+            email: string | null;
+            /** Geolocated Count */
+            geolocated_count: number;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Is Trusted */
+            is_trusted: boolean;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Trust Reason */
+            trust_reason: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
             /** X Handle */
             x_handle: string | null;
         };
@@ -1368,6 +1429,33 @@ export interface components {
         AdminMeResponse: {
             /** Is Admin */
             is_admin: boolean;
+        };
+        /**
+         * AdminPurgeDetectedResponse
+         * @description Response for `DELETE /admin/users/{id}/detected-events`.
+         *
+         *     The broken-archive repair: every ``detected`` draft the user owns is
+         *     hard-deleted (rows + S3 media), the account itself untouched. The counts
+         *     are the copy-pasteable record of what was swept.
+         */
+        AdminPurgeDetectedResponse: {
+            /**
+             * Deleted Events
+             * @default 0
+             */
+            deleted_events: number;
+            /**
+             * Media Count
+             * @default 0
+             */
+            media_count: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
         };
         /**
          * AdminSeedDemoRequest
@@ -1627,7 +1715,7 @@ export interface components {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Event Date */
-            event_date: string;
+            event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
             /** File */
@@ -1689,7 +1777,7 @@ export interface components {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Event Date */
-            event_date: string;
+            event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
             /** Files */
@@ -1910,6 +1998,7 @@ export interface components {
             status: "requested" | "detected" | "geolocated" | "closed";
             /** Tags */
             tags: components["schemas"]["TagRead"][];
+            thumbnail: components["schemas"]["MediaRead"] | null;
             /** Title */
             title: string;
             /**
@@ -2134,6 +2223,8 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Media */
+            media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
             /**
              * Status
@@ -2967,6 +3058,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminUserDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPurgeDetectedResponse"];
                 };
             };
             /** @description Validation Error */

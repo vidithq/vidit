@@ -130,7 +130,7 @@ export function EventEditForm({
     lng: parseFloat(lng),
     ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
-    event_date: eventDate,
+    event_date: eventDate || undefined,
     event_time: eventTime || undefined,
     source_posted_at: sourcePostedAt,
     proof,
@@ -172,7 +172,6 @@ export function EventEditForm({
     lat,
     lng,
     sourceUrl,
-    eventDate,
     sourcePostedAt,
     proof,
     mediaCount: keptMediaCount,
@@ -268,7 +267,6 @@ export function EventEditForm({
           setSourcePostedAt={setSourcePostedAt}
           sourceUrlLocked={false}
           detectedFromUrl={geo.detected_from_url}
-          eventDateInvalid={invalidKeys.has("event_date")}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />

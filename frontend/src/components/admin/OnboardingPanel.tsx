@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Trash2 } from "lucide-react";
 
 import {
   createInviteCode,
   listInviteCodes,
   revokeInviteCode,
+  type AdminPurgeDetectedResponse,
   type InviteCode,
   type InviteCodeStatus,
 } from "@/lib/admin";
@@ -22,6 +23,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill, type PillTone } from "@/components/ui/Pill";
+import { PurgeReceipt } from "@/components/admin/ActionReceipt";
+import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
 // Invite lifecycle mapped onto the shared pill tones: active is the accent
 // draw, revoked the red end-state, exhausted / expired the quiet neutral.
@@ -32,6 +35,8 @@ const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
   expired: "neutral",
 };
 
+const COLUMN_COUNT = 11;
+
 function StatusChip({ status }: { status: InviteCodeStatus }) {
   return (
     <Pill tone={STATUS_TONE[status]} className="uppercase tracking-wider">
@@ -40,22 +45,27 @@ function StatusChip({ status }: { status: InviteCodeStatus }) {
   );
 }
 
-function formatDate(value: string | null): string {
+function formatDay(value: string | null): string {
   if (!value) return "—";
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleDateString();
 }
 
 function InviteCodeRow({
   invite,
+  expanded,
+  onToggle,
   onRevoke,
 }: {
   invite: InviteCode;
+  expanded: boolean;
+  onToggle: () => void;
   onRevoke: (id: string) => Promise<void>;
 }) {
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const canRevoke = invite.status === "active" || invite.status === "exhausted";
+  const redeemer = invite.redeemer;
 
   const onCopy = async () => {
     try {
@@ -66,6 +76,15 @@ function InviteCodeRow({
       // Clipboard API fails on insecure contexts; code is on screen to copy by hand.
     }
   };
+
+  const count = (value: number | undefined) =>
+    value === undefined ? (
+      <span className="text-neutral-600">—</span>
+    ) : value === 0 ? (
+      <span className="text-neutral-600">0</span>
+    ) : (
+      <span className="text-neutral-200">{value}</span>
+    );
 
   return (
     <tr className="border-b border-neutral-800 last:border-0">
@@ -85,9 +104,15 @@ function InviteCodeRow({
         <StatusChip status={invite.status} />
       </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
-        {invite.used_by_username ? (
-          <span title={invite.used_at ? formatDate(invite.used_at) : undefined}>
-            @{invite.used_by_username}
+        {redeemer ? (
+          <span
+            title={
+              invite.used_at
+                ? new Date(invite.used_at).toLocaleString()
+                : undefined
+            }
+          >
+            @{redeemer.username}
           </span>
         ) : (
           <span className="text-neutral-600">—</span>
@@ -101,12 +126,37 @@ function InviteCodeRow({
         )}
       </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
-        {formatDate(invite.expires_at)}
+        {formatDay(invite.expires_at)}
       </td>
-      <td className="py-2 pr-3 text-xs text-neutral-500">
-        {formatDate(invite.created_at)}
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.archives_imported)}
       </td>
-      <td className="py-2 text-right">
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.bot_detection_count)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.detected_count)}
+      </td>
+      <td className="py-2 pr-3 text-xs text-right tabular-nums">
+        {count(redeemer?.geolocated_count)}
+      </td>
+      <td
+        className="py-2 pr-3 text-xs text-neutral-400"
+        title={
+          redeemer?.last_login_at
+            ? new Date(redeemer.last_login_at).toLocaleString()
+            : undefined
+        }
+      >
+        {formatDay(redeemer?.last_login_at ?? null)}
+      </td>
+      <td className="py-2 text-right whitespace-nowrap">
+        {redeemer && (
+          <Button variant="ghost" onClick={onToggle}>
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            Manage
+          </Button>
+        )}
         {canRevoke && (
           <Button
             variant="danger"
@@ -119,7 +169,7 @@ function InviteCodeRow({
                 setRevoking(false);
               }
             }}
-            className="whitespace-nowrap"
+            className="ml-1"
           >
             <Trash2 size={12} />
             Revoke
@@ -130,8 +180,12 @@ function InviteCodeRow({
   );
 }
 
-export function InviteCodesPanel() {
+export function OnboardingPanel() {
   const [codes, setCodes] = useState<InviteCode[] | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
+    null,
+  );
 
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
@@ -151,7 +205,7 @@ export function InviteCodesPanel() {
         setXHandle("");
         refresh();
       },
-    }
+    },
   );
   const { error, setError } = createMutation;
   const creating = createMutation.loading;
@@ -184,14 +238,24 @@ export function InviteCodesPanel() {
     }
   };
 
+  const onPurged = (response: AdminPurgeDetectedResponse) => {
+    setLastPurge(response);
+    refresh();
+  };
+
+  // The card renders below the table (not as an expanded row) so it stays
+  // put when the wide table scrolls horizontally.
+  const managed = codes?.find((c) => c.id === expandedId)?.redeemer ?? null;
+
   return (
     <Card as="section">
       <header>
-        <SectionEyebrow title="Invite codes" margin="none" />
+        <SectionEyebrow title="Onboarding" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Every code is single-use (one code, one analyst), so the audit
-          trail names exactly who joined with what. Mint, share via a
-          trusted channel, revoke once it&apos;s done its job.
+          Every code is single-use (one code, one analyst), so each row tracks
+          one analyst&apos;s journey: archives imported, bot detections, live
+          drafts, geolocations, last login. Mint, share via a trusted channel,
+          then manage the code and the account from the row.
         </p>
       </header>
 
@@ -237,11 +301,7 @@ export function InviteCodesPanel() {
         </Button>
       </form>
 
-      {error && (
-        <div className={FORM_ERROR_BANNER}>
-          {error}
-        </div>
-      )}
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -252,31 +312,73 @@ export function InviteCodesPanel() {
               <th className="py-2 pr-3 font-medium">Used by</th>
               <th className="py-2 pr-3 font-medium">X handle</th>
               <th className="py-2 pr-3 font-medium">Expires</th>
-              <th className="py-2 pr-3 font-medium">Created</th>
+              <th className="py-2 pr-3 font-medium text-right">Archives</th>
+              <th className="py-2 pr-3 font-medium text-right">Bot det.</th>
+              <th className="py-2 pr-3 font-medium text-right">Detected</th>
+              <th className="py-2 pr-3 font-medium text-right">Geolocs</th>
+              <th className="py-2 pr-3 font-medium">Last login</th>
               <th className="py-2"></th>
             </tr>
           </thead>
           <tbody>
             {codes === null ? (
               <tr>
-                <td colSpan={7} className="py-4 text-center text-xs text-neutral-500">
+                <td
+                  colSpan={COLUMN_COUNT}
+                  className="py-4 text-center text-xs text-neutral-500"
+                >
                   Loading…
                 </td>
               </tr>
             ) : codes.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-4 text-center text-xs text-neutral-500">
+                <td
+                  colSpan={COLUMN_COUNT}
+                  className="py-4 text-center text-xs text-neutral-500"
+                >
                   No invite codes yet.
                 </td>
               </tr>
             ) : (
               codes.map((c) => (
-                <InviteCodeRow key={c.id} invite={c} onRevoke={onRevoke} />
+                <InviteCodeRow
+                  key={c.id}
+                  invite={c}
+                  expanded={expandedId === c.id}
+                  onToggle={() => {
+                    setLastPurge(null);
+                    setExpandedId((prev) => (prev === c.id ? null : c.id));
+                  }}
+                  onRevoke={onRevoke}
+                />
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {managed && (
+        <UserActionsCard
+          // Keyed by user so form drafts and an armed danger confirm never
+          // survive a switch from one analyst's Manage to another's.
+          key={managed.user_id}
+          user={{
+            id: managed.user_id,
+            username: managed.username,
+            email: managed.email,
+            is_admin: managed.is_admin,
+            is_trusted: managed.is_trusted,
+            trust_reason: managed.trust_reason,
+            x_handle: managed.x_handle,
+          }}
+          detectedCount={managed.detected_count}
+          onUpdated={refresh}
+          onDeleted={refresh}
+          onPurged={onPurged}
+        />
+      )}
+
+      {lastPurge && <PurgeReceipt purge={lastPurge} />}
     </Card>
   );
 }

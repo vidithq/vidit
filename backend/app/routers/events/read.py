@@ -15,7 +15,7 @@ from fastapi import (
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
@@ -26,10 +26,9 @@ from app.models.event import (
     EventGeolocator,
     EventInvestigator,
 )
-from app.models.media import Media
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import build_event_read, coords_or_none, source_media
+from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
 from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
@@ -42,6 +41,7 @@ from app.services.event_filters import (
     validate_media_types,
     validate_status_filter,
 )
+from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 # Detail page lists every investigator; the list card only needs a few
@@ -153,9 +153,11 @@ def list_points(
     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
     ``requested`` guess is not a confident pin, and a closed row was judged
     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
-    are ISO ``YYYY-MM-DD`` strings; the frontend buckets them for the two
-    timeline scrubbers and filters the windows client-side (no refetch per
-    drag). ``detected`` is ``1`` for a machine detection (rendered marked),
+    are ISO ``YYYY-MM-DD`` strings; ``event_date`` is ``null`` when unknown
+    (the column is optional) and the frontend then leaves that point out of
+    the event-date scrubber instead of hiding it. The frontend buckets the
+    dates for the two timeline scrubbers and filters the windows client-side
+    (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
     panel offers its hide-demo toggle only when one is present). Flags, not
     strings, to keep the payload small. Cached in-memory for 60s per unique
@@ -225,7 +227,7 @@ def list_points(
             str(r.id),
             float(r.lat),
             float(r.lng),
-            r.event_date.isoformat(),
+            r.event_date.isoformat() if r.event_date else None,
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
             1 if r.is_demo else 0,
@@ -308,10 +310,15 @@ def list_events(
             ST_X(Event.event_coords).label("lng"),
         )
         .options(
-            subqueryload(Event.owner),
-            subqueryload(Event.tags),
-            subqueryload(Event.conflicts),
-            subqueryload(Event.media.and_(Media.role == "source")),
+            # ``selectinload`` (IN on the page's ids), never ``subqueryload``:
+            # combined with ``.and_()`` criteria, subqueryload loses the outer
+            # query's correlation when SQLAlchemy serves the statement from its
+            # compiled cache, and the media branch degrades into a scan of the
+            # whole table (~4s per request on a populated database).
+            selectinload(Event.owner),
+            selectinload(Event.tags),
+            selectinload(Event.conflicts),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.id.in_(ids))
         .order_by(Event.created_at.desc())
@@ -335,7 +342,7 @@ def list_events(
             status=geo.status,
             before_closed_status=geo.before_closed_status,
             owner=geo.owner,
-            media=source_media(geo),
+            media=thumbnail_media(geo),
             tags=geo.tags,
             conflicts=geo.conflicts,
             investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
@@ -396,7 +403,7 @@ def list_detections(
             joinedload(Event.requested_by),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(Media.role == "source")),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),
         )

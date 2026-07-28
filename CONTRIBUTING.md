@@ -29,8 +29,10 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    uv run ruff format --check .   # catches line-wrap issues `ruff check` doesn't
    uv run mypy app                # checks app/ only; scripts/ and tests/ aren't covered
    uv run vulture                 # dead code: removing a helper's last caller orphans it here
-   uv run pytest                  # needs the docker-compose Postgres up + `uv run alembic upgrade head`
+   uv run pytest -n auto --dist loadfile  # parallel: one clone database per worker, built from a migrated template; needs the docker-compose Postgres up
    ```
+
+   Plain `uv run pytest` still works (serial, against the dev database as-is; needs `uv run alembic upgrade head`).
 
    Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`. `make hygiene` runs the cross-cutting gates (jscpd, knip, palette-coverage).
 4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
