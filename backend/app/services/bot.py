@@ -48,8 +48,7 @@ seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
 verdict. A created draft earns the in-thread success reply (event ref +
 warnings); a linked author whose tag produced nothing gets a failure reply
-naming where the bot read (the tagged post, or the parent for a relay) and
-the one move that fixes it, unless the tagged tweet is itself a reply to
+carrying the diagnosis, unless the tagged tweet is itself a reply to
 the bot (the loop guard: a courtesy answer to the bot's own reply
 auto-mentions the bot and must not earn another reply). An unlinked author
 stays fully silent (``no_account``). All reply text is linkless by contract
@@ -305,17 +304,15 @@ _FAILURE_DIAGNOSES: dict[str, str] = {
 }
 
 
-def compose_failure_reply(
-    reason: str | None = None, *, relay: bool = False, mention_id: str = ""
-) -> str:
+def compose_failure_reply(reason: str | None = None, *, mention_id: str = "") -> str:
     """The in-thread reply for a linked author whose tag produced nothing.
 
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
-    voice: the ❌ header naming where the bot read (``relay`` flags a
-    diagnosis carried by the parent, the post the mention replies to), one
-    ⚠ line per problem (what it saw; the mapper surfaces one reason per
-    mention today, so one line), and the footer. No recited lesson and no
-    fix recipe: the full format lives behind the bio link.
+    voice: the ❌ header, one ⚠ line per problem (what the mapper saw; it
+    surfaces one reason per mention today, so one line), and the footer.
+    One header for both delivery forms: the diagnosed post is the analyst's
+    own thread either way, so naming it added nothing. No recited lesson
+    and no fix recipe: the full format lives behind the bio link.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the "source link" phrase is a placeholder, not a link). Only
@@ -326,11 +323,7 @@ def compose_failure_reply(
     Composed length must stay under ``_REPLY_MAX_CHARS`` with margin (X
     weighs ✅ / ❌ / ⚠ as 2).
     """
-    head = (
-        "❌ Nothing saved from the post you replied to"
-        if relay
-        else "❌ Nothing saved from this post"
-    )
+    head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})" if mention_id else ""
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
     if diagnosis is None:
@@ -338,7 +331,6 @@ def compose_failure_reply(
             "⚠ I could not read the format: a title, one decimal coordinate "
             "pair, and a source link, each on its own line"
         )
-        head = "❌ Nothing saved"
     else:
         warning = f"⚠ {diagnosis[0].upper()}{diagnosis[1:]}"
     return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
@@ -405,12 +397,11 @@ async def _process_mention(
     syndication_client: httpx.Client | None,
     x_write_client: httpx.Client | None,
     reply_allowed: bool,
-) -> tuple[BotMentionOutcome, int, str | None, str | None, bool]:
+) -> tuple[BotMentionOutcome, int, str | None, str | None]:
     record = _tagged_record(mention, client=syndication_client)
     detections, failure_reason = detect_structured_diagnosed(
         record, bot_handle=settings.x_bot_handle, client=syndication_client
     )
-    failure_from_parent = False
     if not detections:
         # The relay form: a tag in a direct reply to the author's own
         # structured tweet, the reply relaying the footage (and, when the
@@ -432,15 +423,14 @@ async def _process_mention(
             )
             if not detections and parent_reason is not None:
                 failure_reason = parent_reason
-                failure_from_parent = True
     if not detections:
-        return "no_detection", 0, None, failure_reason, failure_from_parent
+        return "no_detection", 0, None, failure_reason
     # After the detection step on purpose: an unknown handle with a
     # non-conforming tweet ledgers ``no_detection``, so ``no_account`` isolates
     # the mentions where a link would actually have produced a draft.
     owner = _linked_owner(db, record.handle)
     if owner is None:
-        return "no_account", 0, None, None, False
+        return "no_account", 0, None, None
     assembled = await assemble_detections(
         db, owner=owner, detections=detections, fetch_media=fetch_cdn_media
     )
@@ -449,7 +439,7 @@ async def _process_mention(
         # detection is a transient failure, and ``failed`` keeps it on the
         # operator's retry path (delete the ledger row) instead of burying it
         # as an already-imported tweet.
-        return ("failed" if assembled.failed else "skipped"), 0, None, None, False
+        return ("failed" if assembled.failed else "skipped"), 0, None, None
     reply_id: str | None = None
     if reply_allowed:
         reply = compose_reply(
@@ -463,7 +453,7 @@ async def _process_mention(
             "Reply budget reached; draft created without reply for mention %s",
             mention.tweet_id,
         )
-    return "created", len(assembled.created), reply_id, None, False
+    return "created", len(assembled.created), reply_id, None
 
 
 async def process_single_mention(
@@ -503,7 +493,7 @@ async def process_single_mention(
     # silent, whatever the tweet yields.
     author_linked = _linked_owner(db, mention.author_handle) is not None
     try:
-        verdict, created, reply_id, failure_reason, failure_from_parent = await _process_mention(
+        verdict, created, reply_id, failure_reason = await _process_mention(
             db,
             mention,
             syndication_client=syndication_client,
@@ -531,9 +521,7 @@ async def process_single_mention(
         # earn another reply, forever.
         reply_id = _post_reply_failsoft(
             mention,
-            compose_failure_reply(
-                failure_reason, relay=failure_from_parent, mention_id=mention.tweet_id
-            ),
+            compose_failure_reply(failure_reason, mention_id=mention.tweet_id),
             client=x_write_client,
         )
     if not _record(

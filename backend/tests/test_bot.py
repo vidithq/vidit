@@ -379,11 +379,9 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
-    (payload,) = posted  # the failure reply points at the parent, not the tag
+    (payload,) = posted  # the linked author still gets the diagnosis
     text = payload["text"]
-    assert text.startswith(
-        "❌ Nothing saved from the post you replied to\n⚠ I found no coordinate line\n"
-    )
+    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
     assert "(m00010)" in text
 
 
@@ -454,10 +452,8 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
-    # The refused relay reads as an inline failure of the tag itself: the
-    # reply must NOT point at someone else's parent.
-    (payload,) = posted
-    assert payload["text"].startswith("❌ Nothing saved from this post")
+    (payload,) = posted  # the linked author still gets the diagnosis
+    assert payload["text"].startswith("❌ Nothing saved\n")
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -471,7 +467,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line\n")
+    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -603,7 +599,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line\n")
+    assert text.startswith("❌ Nothing saved\n⚠ I found no coordinate line\n")
     assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -788,18 +784,14 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
     from app.services.bot import _FAILURE_DIAGNOSES
 
     for reason, diag in _FAILURE_DIAGNOSES.items():
-        for relay, head in (
-            (False, "❌ Nothing saved from this post"),
-            (True, "❌ Nothing saved from the post you replied to"),
-        ):
-            text = compose_failure_reply(reason, relay=relay, mention_id="123456789")
-            first, warning, footer = text.splitlines()
-            assert first == head
-            assert warning.startswith("⚠ ")
-            assert diag[1:] in warning  # the diagnosis, first letter capitalized
-            assert footer == "Guide in bio (m56789)"
-            assert "http" not in text and ".app" not in text and ".com" not in text
-            assert _weighted_len(text) <= 280
+        text = compose_failure_reply(reason, mention_id="123456789")
+        first, warning, footer = text.splitlines()
+        assert first == "❌ Nothing saved"
+        assert warning.startswith("⚠ ")
+        assert diag[1:] in warning  # the diagnosis, first letter capitalized
+        assert footer == "Guide in bio (m56789)"
+        assert "http" not in text and ".app" not in text and ".com" not in text
+        assert _weighted_len(text) <= 280
     assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved\n")
 
 

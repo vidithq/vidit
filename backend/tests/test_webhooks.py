@@ -454,7 +454,7 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post")
+    assert text.startswith("❌ Nothing saved\n")
     assert "\n⚠ " in text  # the diagnosis line, same shape as the success reply
     assert "Guide in bio" in text
     assert f"(m{BARE_ID[-5:]})" in text  # the anti-duplicate mention tail
