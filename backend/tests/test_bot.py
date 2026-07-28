@@ -364,7 +364,10 @@ async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
     assert isinstance(text, str)
     assert str(event.id)[:8] in text  # the shortened ref
     assert str(event.id) not in text  # never the full UUID (a third of the reply)
-    assert "No source" not in text  # the S: source landed, no warning
+    # The mocked source tweet carries no media, so the footage warning fires;
+    # its date resolved, so the date warning must not.
+    assert "No footage stored from the source" in text
+    assert "source's post date" not in text and "already exists" not in text
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
 
@@ -379,8 +382,10 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
-    (payload,) = posted  # the linked author gets the format lesson
-    assert "Shape, one per line" in payload["text"]
+    (payload,) = posted  # the linked author still gets the diagnosis
+    text = payload["text"]
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
+    assert "(m00010)" in text
 
 
 async def test_bare_mention_creates_draft_from_the_shape(db, linked_owner):
@@ -429,6 +434,8 @@ async def test_relay_mention_creates_draft_from_the_parent(db, linked_owner):
     assert ledger.outcome == "created"
     (payload,) = posted  # the success reply answers the tagged reply
     assert payload["reply"] == {"in_reply_to_tweet_id": RELAY_TAGGED_ID}
+    # Off-vocabulary source (TikTok): no post date came back, the reply warns.
+    assert "source's post date" in payload["text"]
 
 
 async def test_relay_and_inline_share_the_parent_idempotency_key(db, linked_owner):
@@ -448,8 +455,8 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
-    (payload,) = posted  # the linked author still gets the format lesson
-    assert "Shape, one per line" in payload["text"]
+    (payload,) = posted  # the linked author still gets the diagnosis
+    assert payload["text"].startswith("❌ Nothing saved\n")
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -463,7 +470,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "Shape, one per line" in text and "22.703889, -83.297222" in text
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -595,9 +602,8 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert "nothing saved" in text.lower()
-    assert "Shape, one per line" in text  # the format lesson
-    assert "I found no coordinate line." in text  # the diagnosis opener
+    assert text.startswith("❌ Nothing saved\n⚠ No coordinate line\n")
+    assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -742,49 +748,64 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
         await run_bot_once(db)
 
 
-def test_compose_reply_is_linkless_and_carries_warnings():
+def test_compose_reply_is_linkless_and_carries_the_warnings():
     event_id = str(uuid.uuid4())
-    text = compose_reply([event_id], missing_source=True, duplicate_media=True)
+    text = compose_reply(
+        event_id, source_footage_missing=True, source_date_missing=True, duplicate_media=True
+    )
+    assert text.startswith("✅ 1 geolocation draft saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
-    assert "No source quote or footage link" in text
+    assert "No footage stored from the source" in text
+    assert "source's post date" in text
     assert "already exists" in text
-    assert "link in bio" in text
+    assert "Review it from your profile" in text
     assert "http" not in text and "vidit.app" not in text
-    assert len(text) <= 280
+    assert _weighted_len(text) <= 280
+    # No warning on a clean draft (footage stored, date known, media unseen).
+    clean = compose_reply(
+        event_id, source_footage_missing=False, source_date_missing=False, duplicate_media=False
+    )
+    assert "⚠" not in clean
 
 
-def test_compose_failure_reply_teaches_the_format_linklessly():
-    text = compose_failure_reply()
-    # The bare shape is the lesson: title line, coordinate line, source line.
-    assert "Shape, one per line" in text
-    assert "22.703889, -83.297222" in text
-    # The relay escape hatch, for footage the chase cannot fetch.
-    assert "Tag me in a direct reply" in text
+# An upper bound on X's weighted length: everything above U+2000 counts 2,
+# which covers the composer glyphs (✅ ❌ ⚠) and overcounts nothing the
+# replies use today. Stricter than the Python code-point count.
+def _weighted_len(text: str) -> int:
+    return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
+
+
+def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
+    text = compose_failure_reply(mention_id="2081747867450957995")
+    assert text.startswith("❌ Nothing saved\n")
+    # No diagnosis to point at: the one-line format summary, no recited shape.
+    assert "@vidithq" in text
     assert "Guide in bio" in text
+    assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
-    assert len(text) <= 280
+    assert _weighted_len(text) <= 280
 
 
-def test_compose_failure_reply_opens_with_every_diagnosis():
-    # Each reason code opens the reply with its hint; every variant stays
-    # linkless and inside the cap; an unknown code degrades to the plain
-    # lesson rather than raising.
-    from app.services.bot import _FAILURE_HINTS
+def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
+    # Each reason yields the header, its one ⚠ diagnosis line, and the
+    # footer; every variant stays linkless, unique per mention, inside the cap.
+    from app.services.bot import _FAILURE_DIAGNOSES
 
-    for reason, hint in _FAILURE_HINTS.items():
-        text = compose_failure_reply(reason)
-        assert text.startswith(f"Vidit: nothing saved. {hint}")
-        assert "Shape, one per line" in text
+    for reason, diag in _FAILURE_DIAGNOSES.items():
+        text = compose_failure_reply(reason, mention_id="123456789")
+        first, warning, footer = text.splitlines()
+        assert first == "❌ Nothing saved"
+        assert warning == f"⚠ {diag}"
+        assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
-        assert len(text) <= 280
-    assert compose_failure_reply("no_such_reason").startswith("Vidit: nothing saved.\n")
+        assert _weighted_len(text) <= 280
+    assert compose_failure_reply("no_such_reason", mention_id="1").startswith("❌ Nothing saved\n")
 
 
-def test_compose_reply_counts_extra_drafts():
-    ids = [str(uuid.uuid4()) for _ in range(3)]
-    text = compose_reply(ids, missing_source=False, duplicate_media=False)
-    assert "3 geolocation drafts" in text
-    assert ids[0][:8] in text
-    assert "(+2 more)" in text
-    assert len(text) <= 280
+def test_compose_failure_replies_differ_across_mentions():
+    # The mention tail is the anti-duplicate: same diagnosis, two mentions,
+    # two distinct texts (X 403s a tweet identical to a recent one).
+    a = compose_failure_reply("source_missing", mention_id="1111100001")
+    b = compose_failure_reply("source_missing", mention_id="2222200002")
+    assert a != b
