@@ -298,8 +298,8 @@ _FAILURE_DIAGNOSES: dict[str, str] = {
     COORDS_INVALID: "Coordinate line is not a bare decimal pair",
     SOURCE_MISSING: "No source link (a media preview link does not count)",
     SOURCE_AMBIGUOUS: "Several possible source links",
-    SOURCE_UNBOUND: "Source link is not one of the post's own links",
-    SOURCE_OWN: "Own post used as the source",
+    SOURCE_UNBOUND: "Source line URL matches none of the post's attached links",
+    SOURCE_OWN: "Source link points to your own post",
     TITLE_MISSING: "No title line",
 }
 
