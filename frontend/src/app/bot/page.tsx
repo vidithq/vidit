@@ -270,10 +270,12 @@ export default function BotGuidePage() {
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
                 TikTok, Instagram, a news article: Vidit cannot fetch footage
-                from those, so relay it yourself. Post the three lines, then
-                tag the bot in a direct reply to your own post, with the
-                footage attached alone (one attachment lands as the source;
-                annotations belong on the first post).
+                from those, so relay it yourself. Post the title and
+                coordinates, then tag the bot in a direct reply to your own
+                post, carrying the source link and the re-uploaded footage
+                attached alone (one attachment lands as the source;
+                annotations belong on the first post). The source link can
+                sit on either post.
               </p>
               <div className="mt-4 space-y-3">
                 <MockPost
@@ -285,9 +287,9 @@ export default function BotGuidePage() {
                     label: "your annotated screenshots (proof)",
                   }}
                 >
-                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
-                  <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
-                  {"\nSmoke plume matches the skyline."}
+                  {
+                    "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
+                  }
                 </MockPost>
                 <div className="pl-6">
                   <MockPost
@@ -300,6 +302,8 @@ export default function BotGuidePage() {
                       label: "the re-uploaded footage (source)",
                     }}
                   >
+                    <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
+                    {"\n"}
                     <BodyLink>@viditbot</BodyLink>
                   </MockPost>
                 </div>
@@ -355,8 +359,8 @@ export default function BotGuidePage() {
                   proxy), then publish.
                 </li>
                 <li>
-                  If the shape is incomplete, the bot replies with what is
-                  missing. Tag again on a corrected post.
+                  If the shape is incomplete, the bot replies with the one
+                  thing that broke; the full format lives in this guide.
                 </li>
               </ul>
               <div className="mt-4">
@@ -368,7 +372,7 @@ export default function BotGuidePage() {
                   replyingTo="@GEOIMINT"
                 >
                   {
-                    "Vidit: 1 geolocation draft saved · ref 94183d44\nReview it from your profile (link in bio)."
+                    "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile"
                   }
                 </MockPost>
               </div>

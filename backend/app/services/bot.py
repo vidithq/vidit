@@ -24,8 +24,10 @@ with explicit ``T:`` / ``C:`` / ``S:`` markers, and delivered in two forms:
   marker tweet, carrying the re-uploaded footage as attached media, for an
   ``S:`` link the chase vocabulary cannot fetch (TikTok, Instagram, an
   article). One fetch resolves the parent, which must be the same author's
-  conforming tweet; the reply's media becomes the source media
-  (:func:`tweet_ingest.detect_relay`).
+  conforming tweet; the reply's media becomes the source media, and a
+  bare-shape parent missing only its source link borrows the reply's sole
+  link (the dominant "source in the reply" field habit)
+  (:func:`tweet_ingest.detect_relay_diagnosed`).
 
 That one-hop parent fetch is the only ancestor read: there is no free-text
 parent rollup (the archive backfill keeps its own self-thread stitching, the
@@ -43,15 +45,16 @@ dropped is still re-read even after a newer one advanced the ledger.
 
 Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
-was the most expensive call of the mention). A created draft earns the
-in-thread success reply (event ref + warnings); a linked author whose
-tagged tweet misses any part of the format gets a failure reply teaching
-it, unless the tagged tweet is itself a reply to the bot (the loop guard:
-a courtesy answer to the bot's own reply auto-mentions the bot and must
-not earn another reply). An unlinked author stays fully silent
-(``no_account``). All reply text is linkless by contract (a URL 13x's the
-per-post price; the clickable link lives in the bot bio); the composers own
-that invariant. Every reply spends the hourly and per-author budgets
+was the most expensive call of the mention). Replies open with the ✅/❌
+verdict. A created draft earns the in-thread success reply (event ref +
+warnings); a linked author whose tag produced nothing gets a failure reply
+carrying the diagnosis, unless the tagged tweet is itself a reply to
+the bot (the loop guard: a courtesy answer to the bot's own reply
+auto-mentions the bot and must not earn another reply). An unlinked author
+stays fully silent (``no_account``). All reply text is linkless by contract
+(a URL 13x's the per-post price; the clickable link lives in the bot bio)
+and unique per mention (X 403s duplicate content); the composers own both
+invariants. Every reply spends the hourly and per-author budgets
 (:class:`GestureBudget`, seeded from the ledger's trailing window so the
 caps hold across passes, not per drain).
 """
@@ -87,7 +90,7 @@ from app.services.tweet_ingest import (
     SOURCE_UNBOUND,
     TITLE_MISSING,
     TweetRecord,
-    detect_relay,
+    detect_relay_diagnosed,
     detect_structured_diagnosed,
     fetch_cdn_media,
     fetch_relay_parent,
@@ -99,9 +102,9 @@ logger = logging.getLogger(__name__)
 
 # X's classic post length. Replies are composed under it and hard-truncated
 # as a belt: an over-long reply would 403 the (billed) create call. The cap
-# counts Python code points while X counts weighted characters (the ⚠ glyph
-# weighs 2), so composed text must stay under it with margin; today's worst
-# case is the diagnosed failure reply at ~260 code points.
+# counts Python code points while X counts weighted characters (the ✅ / ❌ /
+# ⚠ glyphs weigh 2), so composed text must stay under it with margin; the
+# length test walks every reason × context combination.
 _REPLY_MAX_CHARS = 280
 
 # Billed-spend ceilings on the write side. The mention surface is public: any
@@ -112,8 +115,8 @@ _REPLY_MAX_CHARS = 280
 # its own posting effort. The window is wall-clock (the trailing hour, read
 # from the ledger), not per pass: the worker drains every few seconds, so a
 # per-pass budget would multiply the caps hundreds of times an hour.
-_MAX_REPLIES_PER_HOUR = 20
-_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 3
+_MAX_REPLIES_PER_HOUR = 40
+_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 10
 _GESTURE_WINDOW = timedelta(hours=1)
 
 # The reconciliation poll's cursor lookback, in snowflake id space (the
@@ -258,69 +261,91 @@ def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
 _REPLY_REF_CHARS = 8
 
 
-def compose_reply(created_ids: list[str], *, missing_source: bool, duplicate_media: bool) -> str:
-    """The in-thread reply for a mention that created drafts.
+def compose_reply(
+    created_id: str,
+    *,
+    source_footage_missing: bool,
+    source_date_missing: bool,
+    duplicate_media: bool,
+) -> str:
+    """The in-thread reply for a mention that created its draft.
 
-    Linkless by contract: a bare event ref (shortened to
-    ``_REPLY_REF_CHARS``), never a URL or auto-linkable domain (X bills link
-    posts ~13x higher; the clickable link lives in the bot bio). Warnings
-    surface what blocks or questions the draft.
+    One draft by construction: the strict format carries exactly one
+    coordinate line, so a mention never yields more (multi-detection lists
+    are the archive path's shape). Opens with the at-a-glance ✅ (the ❌
+    twin lives in :func:`compose_failure_reply`). Linkless by contract: a
+    bare event ref (shortened to ``_REPLY_REF_CHARS``), never a URL or
+    auto-linkable domain (X bills link posts ~13x higher; the clickable
+    link lives in the bot bio). Three warnings: no footage stored from the
+    source (off-vocabulary link, media-less or restricted source post, or a
+    failed fetch; review is the only repair, re-tagging dedups), the
+    source's post date came back unknown (the draft's provisional event
+    date then anchors on nothing but the analyst's own post), and the dedup
+    question. A sourceless draft cannot pass the format, so there is no
+    missing-source warning to raise. The ref also makes each reply unique,
+    so X's duplicate-content 403 cannot eat it.
     """
-    n = len(created_ids)
-    noun = "drafts" if n > 1 else "draft"
-    head = f"Vidit: {n} geolocation {noun} saved · ref {created_ids[0][:_REPLY_REF_CHARS]}"
-    if n > 1:
-        head += f" (+{n - 1} more)"
-    lines = [head]
-    if missing_source:
-        lines.append("⚠ No source quote or footage link. Add one before publishing.")
+    lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
+    if source_footage_missing:
+        # The draft carries its source link but no stored footage: an
+        # off-vocabulary link, a media-less or restricted source post, or a
+        # failed fetch. Not repairable by re-tagging (the idempotency key
+        # already exists, a relay would be skipped): review is the fix.
+        lines.append("⚠ No footage stored from the source. Add it at review")
+    if source_date_missing:
+        lines.append("⚠ Couldn't read the source's post date. Check the event date at review")
     if duplicate_media:
-        lines.append("⚠ This media already exists on Vidit. Possible duplicate.")
-    lines.append("Review it from your profile (link in bio).")
+        lines.append("⚠ This media already exists on Vidit. Possible duplicate")
+    lines.append("Review it from your profile")
     return "\n".join(lines)[:_REPLY_MAX_CHARS]
 
 
-# One sentence per failure-reason code, opening the failure reply: the
-# diagnosis, before the recited shape. Keyed by the ``tweet_ingest`` reason
-# constants; keep each hint short (the composed reply must stay under
+# Per failure-reason code: the diagnosis, as a terse noun phrase so every
+# ⚠ line reads in one uniform voice (no first person, no fix recipe: the
+# fix lives behind the bio guide). Keyed by the ``tweet_ingest`` reason
+# constants; keep each short (the composed reply must stay under
 # ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`) and linkless.
-_FAILURE_HINTS: dict[str, str] = {
-    MARKERS_INCOMPLETE: "A T:/C:/S: marker is empty or missing.",
-    COORDS_MISSING: "I found no coordinate line.",
-    COORDS_AMBIGUOUS: "Several coordinate lines; keep exactly one.",
-    COORDS_INVALID: "The coordinate line must be one decimal pair, nothing else.",
-    SOURCE_MISSING: "I found no source link.",
-    SOURCE_AMBIGUOUS: "Several source candidates; one link, alone on its line.",
-    SOURCE_UNBOUND: "The source must be one of the post's own links.",
-    SOURCE_OWN: "Your own post cannot be the source.",
-    TITLE_MISSING: "I found no title line.",
+_FAILURE_DIAGNOSES: dict[str, str] = {
+    MARKERS_INCOMPLETE: "Incomplete T:/C:/S: marker set",
+    COORDS_MISSING: "No coordinate line",
+    COORDS_AMBIGUOUS: "Several coordinate lines",
+    COORDS_INVALID: "Coordinate pair malformed or out of bounds",
+    SOURCE_MISSING: "No source link (a media preview link does not count)",
+    SOURCE_AMBIGUOUS: "Several possible source links",
+    SOURCE_UNBOUND: "Source line URL matches none of the post's attached links",
+    SOURCE_OWN: "Source link points to your own post",
+    TITLE_MISSING: "No title line",
 }
 
 
-def compose_failure_reply(reason: str | None = None) -> str:
-    """The in-thread reply for a linked author whose tag produced nothing:
-    what went wrong (the diagnosed ``reason``, when the mapper surfaced
-    one), the shape itself, and the relay escape hatch.
+def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
+    """The in-thread reply for a linked author whose tag produced nothing.
+
+    Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
+    voice: the ❌ header, one ⚠ line per problem (what the mapper saw; it
+    surfaces one reason per mention today, so one line), and the footer.
+    One header for both delivery forms: the diagnosed post is the analyst's
+    own thread either way, so naming it added nothing. No recited lesson
+    and no fix recipe: the full format lives behind the bio link.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
-    domain (the "source link" phrase is a placeholder, not a link; the full
-    guide lives behind the bio link). Teaches the bare shape (the primary
-    form; the ``T:`` / ``C:`` / ``S:`` markers stay accepted without being
-    advertised here); the relay sentence covers footage the chase cannot
-    fetch. Only posted to linked authors, and never on a tag that is itself
-    a reply to the bot (the caller's loop guard). Composed length must stay
-    under ``_REPLY_MAX_CHARS`` with margin, hints included.
+    domain (the "source link" phrase is a placeholder, not a link). Only
+    posted to linked authors, and never on a tag that is itself a reply to
+    the bot (the caller's loop guard). The ``mention_id`` tail makes every
+    reply unique (X 403s a tweet identical to a recent one, which ate two
+    failure replies on 2026-07-27) and lets the operator grep the ledger.
+    Composed length must stay under ``_REPLY_MAX_CHARS`` with margin (X
+    weighs ✅ / ❌ / ⚠ as 2).
     """
-    hint = _FAILURE_HINTS.get(reason or "")
-    head = f"Vidit: nothing saved. {hint}" if hint else "Vidit: nothing saved."
-    return "\n".join(
-        [
-            head,
-            "Shape, one per line: a title, 22.703889, -83.297222, the source link. "
-            "Other lines join the proof note.",
-            "Can't link the footage? Tag me in a direct reply carrying it. Guide in bio.",
-        ]
-    )[:_REPLY_MAX_CHARS]
+    head = "❌ Nothing saved"
+    ref = f" (m{mention_id[-5:]})"
+    diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
+    # An undiagnosed failure is a case the mapper does not name: not the
+    # analyst's format to fix, so route them to the maintainers instead of
+    # reciting a lesson. A handle mention is not a link (the linkless
+    # contract concerns URLs).
+    warning = f"⚠ {diagnosis}" if diagnosis else "⚠ Unexpected case. Reach out to @vidithq"
+    return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
 
 
 def _record(
@@ -369,7 +394,11 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         )
     except XApiError as exc:
         logger.warning("Bot reply failed for mention %s: %s", mention.tweet_id, exc)
-        sentry_sdk.capture_exception(exc)
+        # X's duplicate-content 403 means this exact text was recently posted
+        # by the account: an expected refusal (e.g. re-processing after a
+        # restore), not an outage worth paging.
+        if "duplicate content" not in str(exc).lower():
+            sentry_sdk.capture_exception(exc)
         return None
 
 
@@ -387,26 +416,25 @@ async def _process_mention(
     )
     if not detections:
         # The relay form: a tag in a direct reply to the author's own
-        # structured tweet, the reply's media relaying the footage. One
-        # parent fetch, same-author guarded; anything short of a conforming
-        # parent keeps the ``no_detection`` verdict. When a parent exists,
-        # its diagnosis outranks the tagged reply's (the reply is usually a
-        # bare tag, whose own diagnosis is just "no coordinate line"). A
-        # reply to the bot itself (the courtesy-thanks shape, the most
-        # common non-conforming mention) skips the fetch: its parent is the
-        # bot's own reply, which the same-author guard would only discard.
+        # structured tweet, the reply relaying the footage (and, when the
+        # parent lacks one, the source link: see ``detect_relay_diagnosed``).
+        # One parent fetch, same-author guarded; anything short of a
+        # conforming parent keeps the ``no_detection`` verdict. When a parent
+        # exists, its diagnosis outranks the tagged reply's (the reply is
+        # usually a bare tag, whose own diagnosis is just "no coordinate
+        # line"), and the failure reply then carries the parent's diagnosis. A reply
+        # to the bot itself (the courtesy-thanks shape, the most common
+        # non-conforming mention) skips the fetch: its parent is the bot's
+        # own reply, which the same-author guard would only discard.
         parent = None
         if record.in_reply_to_user_id != settings.x_bot_user_id:
             parent = fetch_relay_parent(record, client=syndication_client)
         if parent is not None:
-            detections = detect_relay(
+            detections, parent_reason = detect_relay_diagnosed(
                 record, parent, bot_handle=settings.x_bot_handle, client=syndication_client
             )
-            if not detections:
-                _, parent_reason = detect_structured_diagnosed(
-                    parent, bot_handle=settings.x_bot_handle, client=syndication_client
-                )
-                failure_reason = parent_reason or failure_reason
+            if not detections and parent_reason is not None:
+                failure_reason = parent_reason
     if not detections:
         return "no_detection", 0, None, failure_reason
     # After the detection step on purpose: an unknown handle with a
@@ -426,9 +454,15 @@ async def _process_mention(
         return ("failed" if assembled.failed else "skipped"), 0, None, None
     reply_id: str | None = None
     if reply_allowed:
+        created = assembled.created[0]
+        has_footage = (
+            db.query(Media.id).filter(Media.event_id == created.id, Media.role == "source").first()
+            is not None
+        )
         reply = compose_reply(
-            [str(event.id) for event in assembled.created],
-            missing_source=any(event.source_url is None for event in assembled.created),
+            str(created.id),
+            source_footage_missing=not has_footage,
+            source_date_missing=created.source_posted_at is None,
             duplicate_media=_has_duplicate_media(db, assembled.created),
         )
         reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
@@ -504,7 +538,9 @@ async def process_single_mention(
         # answer to the bot's own reply (which auto-mentions the bot) would
         # earn another reply, forever.
         reply_id = _post_reply_failsoft(
-            mention, compose_failure_reply(failure_reason), client=x_write_client
+            mention,
+            compose_failure_reply(failure_reason, mention_id=mention.tweet_id),
+            client=x_write_client,
         )
     if not _record(
         db,

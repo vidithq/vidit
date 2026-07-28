@@ -442,7 +442,7 @@ async def test_drain_creates_draft_and_replies(db, linked_owner):
     assert row.attempts == 1
 
 
-async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_owner):
+async def test_drain_failure_path_posts_the_diagnosis_to_linked_author(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}
     )
@@ -454,10 +454,10 @@ async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "nothing saved" in text.lower()
-    assert "Shape, one per line" in text
-    assert "22.703889, -83.297222" in text
-    assert "Tag me in a direct reply" in text  # the relay escape hatch
+    assert text.startswith("❌ Nothing saved\n")
+    assert "\n⚠ " in text  # the diagnosis line, same shape as the success reply
+    assert "Guide in bio" in text
+    assert f"(m{BARE_ID[-5:]})" in text  # the anti-duplicate mention tail
 
 
 async def test_drain_unlinked_author_is_fully_silent(db):

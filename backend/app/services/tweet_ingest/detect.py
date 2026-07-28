@@ -113,7 +113,7 @@ _TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
 
 # Failure-reason codes ``detect_structured_diagnosed`` surfaces so the bot's
 # failure reply can open with what actually went wrong. Plain strings, one
-# home; the reply copy lives in ``bot._FAILURE_HINTS``.
+# home; the reply copy lives in ``bot._FAILURE_DIAGNOSES``.
 MARKERS_INCOMPLETE = "markers_incomplete"
 COORDS_MISSING = "coords_missing"
 COORDS_AMBIGUOUS = "coords_ambiguous"
@@ -459,6 +459,18 @@ def detect_relay(
     bot_handle: str,
     client: httpx.Client | None = None,
 ) -> list[DetectedGeoloc]:
+    """:func:`detect_relay_diagnosed` without the failure reason."""
+    detections, _ = detect_relay_diagnosed(tagged, parent, bot_handle=bot_handle, client=client)
+    return detections
+
+
+def detect_relay_diagnosed(
+    tagged: TweetRecord,
+    parent: TweetRecord,
+    *,
+    bot_handle: str,
+    client: httpx.Client | None = None,
+) -> tuple[list[DetectedGeoloc], str | None]:
     """The bot's relay mapper: the strict format lives on the parent (the
     analyst's geoloc tweet), the tagged reply relays the footage.
 
@@ -472,7 +484,16 @@ def detect_relay(
     The parent runs the same strict mapper as an inline mention (markers,
     bounds, ``S:`` designation, at most one chase), so the two forms cannot
     drift; ``detected_from_url`` is therefore the parent's permalink, and an
-    analyst who tags both tweets lands on the same idempotency key. On top of
+    analyst who tags both tweets lands on the same idempotency key. One
+    widening on top of that mapper: a bare-shape parent whose only defect is
+    the missing source link (no link entity, no quote card) borrows the
+    tagged reply's link, when the reply carries exactly one, as its
+    designated source. That is the dominant field habit (the geoloc tweet,
+    then a "source:" reply carrying the link and the re-upload); every other
+    rule still applies to the borrowed link (own-status rejection, chase,
+    ambiguity on several reply links keeps the failure). The returned reason
+    is the parent's diagnosis after that borrow, ``None`` on success or when
+    the same-author guard rejects the pair. On top of
     that resolution: the reply's attached media, when present, becomes the
     source media (it outranks any chased media, the analyst's explicit
     gesture wins; a chased post date is still kept). The assemble step
@@ -484,10 +505,26 @@ def detect_relay(
     is re-checked here so the guard cannot be skipped by a caller.
     """
     if parent.handle.lower() != tagged.handle.lower():
-        return []
-    detections = detect_structured(parent, bot_handle=bot_handle, client=client)
+        return [], None
+    detections, reason = detect_structured_diagnosed(parent, bot_handle=bot_handle, client=client)
+    if (
+        not detections
+        and reason == SOURCE_MISSING
+        and not parent.external_sources
+        and parent.quoted is None
+        and len(tagged.external_sources) == 1
+    ):
+        # Borrow the reply's sole link as the parent's source (see docstring).
+        # ``_bare_fields`` then designates it through its single-entity branch;
+        # the marker form is untouched (its ``S:`` line must carry the token).
+        augmented = dataclasses.replace(parent, external_sources=list(tagged.external_sources))
+        detections, augmented_reason = detect_structured_diagnosed(
+            augmented, bot_handle=bot_handle, client=client
+        )
+        if not detections:
+            reason = augmented_reason or reason
     if not detections:
-        return []
+        return [], reason
     tag_stripped = re.sub(rf"@{re.escape(bot_handle)}\b", "", tagged.text, flags=re.IGNORECASE)
     caption = clean_proof_text(
         _expand_shortlinks(split_marker_lines(tag_stripped).proof_text, tagged.external_sources)
@@ -503,4 +540,4 @@ def detect_relay(
             ),
         )
         for detection in detections
-    ]
+    ], None
