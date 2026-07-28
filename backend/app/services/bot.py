@@ -262,7 +262,7 @@ def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
 _REPLY_REF_CHARS = 8
 
 
-def compose_reply(created_id: str, *, duplicate_media: bool) -> str:
+def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media: bool) -> str:
     """The in-thread reply for a mention that created its draft.
 
     One draft by construction: the strict format carries exactly one
@@ -271,12 +271,16 @@ def compose_reply(created_id: str, *, duplicate_media: bool) -> str:
     twin lives in :func:`compose_failure_reply`). Linkless by contract: a
     bare event ref (shortened to ``_REPLY_REF_CHARS``), never a URL or
     auto-linkable domain (X bills link posts ~13x higher; the clickable
-    link lives in the bot bio). The one warning surfaces the dedup
-    question; a sourceless draft cannot pass the format, so there is no
-    missing-source warning to raise. The ref also makes each reply unique,
-    so X's duplicate-content 403 cannot eat it.
+    link lives in the bot bio). Two warnings: the source's post date came
+    back unknown (an off-vocabulary link, or a failed chase: the draft's
+    provisional event date then anchors on nothing but the analyst's own
+    post), and the dedup question. A sourceless draft cannot pass the
+    format, so there is no missing-source warning to raise. The ref also
+    makes each reply unique, so X's duplicate-content 403 cannot eat it.
     """
     lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
+    if source_date_missing:
+        lines.append("⚠ Couldn't read the source's post date. Check the event date at review.")
     if duplicate_media:
         lines.append("⚠ This media already exists on Vidit. Possible duplicate.")
     lines.append("Review it from your profile (link in bio).")
@@ -335,11 +339,14 @@ _RELAY_SOURCE_FIX = "Put the source link alone on a line here in a tagged reply,
 def compose_failure_reply(
     reason: str | None = None, *, relay: bool = False, mention_id: str = ""
 ) -> str:
-    """The in-thread reply for a linked author whose tag produced nothing:
-    the ❌ at-a-glance verdict, where the bot read (``relay`` flags a
-    diagnosis carried by the parent, the post the mention replies to), what
-    it saw, and the one move that fixes it. No recited lesson: the full
-    format lives behind the bio link.
+    """The in-thread reply for a linked author whose tag produced nothing.
+
+    Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
+    voice: the ❌ header naming where the bot read (``relay`` flags a
+    diagnosis carried by the parent, the post the mention replies to), one
+    ⚠ line per problem (what it saw + the one move that fixes it; the
+    mapper surfaces one reason per mention today, so one line), and the
+    footer. No recited lesson: the full format lives behind the bio link.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the "source link" phrase is a placeholder, not a link). Only
@@ -350,24 +357,25 @@ def compose_failure_reply(
     Composed length must stay under ``_REPLY_MAX_CHARS`` with margin (X
     weighs ✅ / ❌ / ⚠ as 2).
     """
-    where = "In the post you replied to" if relay else "In this post"
+    head = (
+        "❌ Nothing saved from the post you replied to."
+        if relay
+        else "❌ Nothing saved from this post."
+    )
     ref = f" (m{mention_id[-5:]})" if mention_id else ""
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
     if diagnosis is None:
-        return (
-            "❌ Nothing saved. I could not read the format: a title, one decimal "
-            "coordinate pair, and a source link, each on its own line. "
-            f"Guide in bio.{ref}"
-        )[:_REPLY_MAX_CHARS]
-    diag, fix = diagnosis
-    if relay and reason == SOURCE_MISSING:
-        fix = _RELAY_SOURCE_FIX
-    return "\n".join(
-        [
-            f"❌ Nothing saved. {where}: {diag}.",
-            f"{fix}. Guide in bio.{ref}",
-        ]
-    )[:_REPLY_MAX_CHARS]
+        warning = (
+            "⚠ I could not read the format: a title, one decimal coordinate "
+            "pair, and a source link, each on its own line."
+        )
+        head = "❌ Nothing saved."
+    else:
+        diag, fix = diagnosis
+        if relay and reason == SOURCE_MISSING:
+            fix = _RELAY_SOURCE_FIX
+        warning = f"⚠ {diag[0].upper()}{diag[1:]}. {fix}."
+    return "\n".join([head, warning, f"Guide in bio.{ref}"])[:_REPLY_MAX_CHARS]
 
 
 def _record(
@@ -480,6 +488,7 @@ async def _process_mention(
     if reply_allowed:
         reply = compose_reply(
             str(assembled.created[0].id),
+            source_date_missing=assembled.created[0].source_posted_at is None,
             duplicate_media=_has_duplicate_media(db, assembled.created),
         )
         reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)

@@ -382,7 +382,7 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     (payload,) = posted  # the failure reply points at the parent, not the tag
     text = payload["text"]
     assert text.startswith(
-        "❌ Nothing saved. In the post you replied to: I found no coordinate line."
+        "❌ Nothing saved from the post you replied to.\n⚠ I found no coordinate line."
     )
     assert "(m00010)" in text
 
@@ -433,6 +433,8 @@ async def test_relay_mention_creates_draft_from_the_parent(db, linked_owner):
     assert ledger.outcome == "created"
     (payload,) = posted  # the success reply answers the tagged reply
     assert payload["reply"] == {"in_reply_to_tweet_id": RELAY_TAGGED_ID}
+    # Off-vocabulary source (TikTok): no post date came back, the reply warns.
+    assert "source's post date" in payload["text"]
 
 
 async def test_relay_and_inline_share_the_parent_idempotency_key(db, linked_owner):
@@ -455,7 +457,7 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
     # The refused relay reads as an inline failure of the tag itself: the
     # reply must NOT point at someone else's parent.
     (payload,) = posted
-    assert payload["text"].startswith("❌ Nothing saved. In this post:")
+    assert payload["text"].startswith("❌ Nothing saved from this post.")
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -469,7 +471,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved. In this post: I found no coordinate line.")
+    assert text.startswith("❌ Nothing saved from this post.\n⚠ I found no coordinate line.")
     assert "33.123456, 35.654321" in text  # the fix shows the expected shape
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -602,7 +604,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved. In this post: I found no coordinate line.")
+    assert text.startswith("❌ Nothing saved from this post.\n⚠ I found no coordinate line.")
     assert "Add one decimal pair alone on its line" in text  # the fix
     assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
@@ -749,18 +751,19 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
         await run_bot_once(db)
 
 
-def test_compose_reply_is_linkless_and_carries_the_dedup_warning():
+def test_compose_reply_is_linkless_and_carries_the_warnings():
     event_id = str(uuid.uuid4())
-    text = compose_reply(event_id, duplicate_media=True)
+    text = compose_reply(event_id, source_date_missing=True, duplicate_media=True)
     assert text.startswith("✅ 1 geolocation draft saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
+    assert "source's post date" in text
     assert "already exists" in text
     assert "link in bio" in text
     assert "http" not in text and "vidit.app" not in text
     assert _weighted_len(text) <= 280
-    # No warning on a clean draft.
-    assert "⚠" not in compose_reply(event_id, duplicate_media=False)
+    # No warning on a clean draft (source date known, media unseen).
+    assert "⚠" not in compose_reply(event_id, source_date_missing=False, duplicate_media=False)
 
 
 # X weighs emoji outside its two cheap Basic-Latin ranges as 2; the composer
@@ -787,10 +790,16 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
     from app.services.bot import _FAILURE_DIAGNOSES
 
     for reason, (diag, _fix) in _FAILURE_DIAGNOSES.items():
-        for relay, where in ((False, "In this post"), (True, "In the post you replied to")):
+        for relay, head in (
+            (False, "❌ Nothing saved from this post."),
+            (True, "❌ Nothing saved from the post you replied to."),
+        ):
             text = compose_failure_reply(reason, relay=relay, mention_id="123456789")
-            assert text.startswith(f"❌ Nothing saved. {where}: {diag}.")
-            assert "(m56789)" in text
+            first, warning, footer = text.splitlines()
+            assert first == head
+            assert warning.startswith("⚠ ")
+            assert diag[1:] in warning  # the diagnosis, first letter capitalized
+            assert footer == "Guide in bio. (m56789)"
             assert "http" not in text and ".app" not in text and ".com" not in text
             assert _weighted_len(text) <= 280
     assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved.")
@@ -801,7 +810,7 @@ def test_compose_failure_reply_relay_source_missing_teaches_the_reply_path():
     # path: the relay source_missing fix must say so.
     text = compose_failure_reply("source_missing", relay=True, mention_id="42")
     assert "in a tagged reply" in text
-    assert text.startswith("❌ Nothing saved. In the post you replied to:")
+    assert text.startswith("❌ Nothing saved from the post you replied to.")
 
 
 def test_compose_failure_replies_differ_across_mentions():
