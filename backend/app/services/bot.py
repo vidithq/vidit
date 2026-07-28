@@ -287,53 +287,22 @@ def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media
     return "\n".join(lines)[:_REPLY_MAX_CHARS]
 
 
-# Per failure-reason code: what the mapper saw, then the one move that fixes
-# it. Keyed by the ``tweet_ingest`` reason constants; keep both short (the
-# composed reply must stay under ``_REPLY_MAX_CHARS``, see
-# :func:`compose_failure_reply`) and linkless.
-_FAILURE_DIAGNOSES: dict[str, tuple[str, str]] = {
-    MARKERS_INCOMPLETE: (
-        "a T:/C:/S: marker is empty or missing",
-        "Fill all three, or drop the markers and use the bare shape",
-    ),
-    COORDS_MISSING: (
-        "I found no coordinate line",
-        "Add one decimal pair alone on its line, like 33.123456, 35.654321",
-    ),
-    COORDS_AMBIGUOUS: (
-        "several lines look like coordinates",
-        "Keep exactly one decimal pair line",
-    ),
-    COORDS_INVALID: (
-        "the coordinate line must be one decimal pair and nothing else",
-        "Write it like 33.123456, 35.654321",
-    ),
-    SOURCE_MISSING: (
-        "I found no source link; a media preview link does not count",
-        "Add the source link alone on its own line",
-    ),
-    SOURCE_AMBIGUOUS: (
-        "several links could be the source",
-        "Keep one link alone on its own line",
-    ),
-    SOURCE_UNBOUND: (
-        "the source line's link is not one of the post's own links",
-        "Use a link the post actually carries",
-    ),
-    SOURCE_OWN: (
-        "your own post cannot be the source",
-        "Link the original footage instead",
-    ),
-    TITLE_MISSING: (
-        "I found no title line",
-        "Add a short title line",
-    ),
+# Per failure-reason code: what the mapper saw. Keyed by the
+# ``tweet_ingest`` reason constants; keep each short (the composed reply
+# must stay under ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`)
+# and linkless. Deliberately diagnosis-only: the fix lives behind the bio
+# guide, not in the reply.
+_FAILURE_DIAGNOSES: dict[str, str] = {
+    MARKERS_INCOMPLETE: "a T:/C:/S: marker is empty or missing",
+    COORDS_MISSING: "I found no coordinate line",
+    COORDS_AMBIGUOUS: "several lines look like coordinates",
+    COORDS_INVALID: "the coordinate line must be one decimal pair and nothing else",
+    SOURCE_MISSING: "I found no source link; a media preview link does not count",
+    SOURCE_AMBIGUOUS: "several links could be the source",
+    SOURCE_UNBOUND: "the source line's link is not one of the post's own links",
+    SOURCE_OWN: "your own post cannot be the source",
+    TITLE_MISSING: "I found no title line",
 }
-
-# The relay source failure has its own fix line: with the reply-link borrow
-# (``detect_relay_diagnosed``), replying again with the link IS the retry
-# path, no repost needed.
-_RELAY_SOURCE_FIX = "Put the source link alone on a line here in a tagged reply, or in that post"
 
 
 def compose_failure_reply(
@@ -344,9 +313,9 @@ def compose_failure_reply(
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
     voice: the ❌ header naming where the bot read (``relay`` flags a
     diagnosis carried by the parent, the post the mention replies to), one
-    ⚠ line per problem (what it saw + the one move that fixes it; the
-    mapper surfaces one reason per mention today, so one line), and the
-    footer. No recited lesson: the full format lives behind the bio link.
+    ⚠ line per problem (what it saw; the mapper surfaces one reason per
+    mention today, so one line), and the footer. No recited lesson and no
+    fix recipe: the full format lives behind the bio link.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the "source link" phrase is a placeholder, not a link). Only
@@ -371,10 +340,7 @@ def compose_failure_reply(
         )
         head = "❌ Nothing saved"
     else:
-        diag, fix = diagnosis
-        if relay and reason == SOURCE_MISSING:
-            fix = _RELAY_SOURCE_FIX
-        warning = f"⚠ {diag[0].upper()}{diag[1:]}. {fix}"
+        warning = f"⚠ {diagnosis[0].upper()}{diagnosis[1:]}"
     return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
 
 

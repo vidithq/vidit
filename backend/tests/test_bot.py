@@ -382,7 +382,7 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     (payload,) = posted  # the failure reply points at the parent, not the tag
     text = payload["text"]
     assert text.startswith(
-        "❌ Nothing saved from the post you replied to\n⚠ I found no coordinate line."
+        "❌ Nothing saved from the post you replied to\n⚠ I found no coordinate line\n"
     )
     assert "(m00010)" in text
 
@@ -471,8 +471,7 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line.")
-    assert "33.123456, 35.654321" in text  # the fix shows the expected shape
+    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line\n")
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -604,8 +603,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line.")
-    assert "Add one decimal pair alone on its line" in text  # the fix
+    assert text.startswith("❌ Nothing saved from this post\n⚠ I found no coordinate line\n")
     assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -789,7 +787,7 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
     # fix; every variant stays linkless, unique per mention, inside the cap.
     from app.services.bot import _FAILURE_DIAGNOSES
 
-    for reason, (diag, _fix) in _FAILURE_DIAGNOSES.items():
+    for reason, diag in _FAILURE_DIAGNOSES.items():
         for relay, head in (
             (False, "❌ Nothing saved from this post"),
             (True, "❌ Nothing saved from the post you replied to"),
@@ -803,14 +801,6 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
             assert "http" not in text and ".app" not in text and ".com" not in text
             assert _weighted_len(text) <= 280
     assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved\n")
-
-
-def test_compose_failure_reply_relay_source_missing_teaches_the_reply_path():
-    # With the reply-link borrow, replying again with the link is the retry
-    # path: the relay source_missing fix must say so.
-    text = compose_failure_reply("source_missing", relay=True, mention_id="42")
-    assert "in a tagged reply" in text
-    assert text.startswith("❌ Nothing saved from the post you replied to")
 
 
 def test_compose_failure_replies_differ_across_mentions():
