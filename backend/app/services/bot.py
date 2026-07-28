@@ -318,7 +318,7 @@ _FAILURE_DIAGNOSES: dict[str, str] = {
 }
 
 
-def compose_failure_reply(reason: str | None = None, *, mention_id: str = "") -> str:
+def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """The in-thread reply for a linked author whose tag produced nothing.
 
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
@@ -338,7 +338,7 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str = "") ->
     weighs ✅ / ❌ / ⚠ as 2).
     """
     head = "❌ Nothing saved"
-    ref = f" (m{mention_id[-5:]})" if mention_id else ""
+    ref = f" (m{mention_id[-5:]})"
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
     # An undiagnosed failure is a case the mapper does not name: not the
     # analyst's format to fix, so route them to the maintainers instead of
@@ -422,7 +422,7 @@ async def _process_mention(
         # conforming parent keeps the ``no_detection`` verdict. When a parent
         # exists, its diagnosis outranks the tagged reply's (the reply is
         # usually a bare tag, whose own diagnosis is just "no coordinate
-        # line"), and the failure reply then points at the parent. A reply
+        # line"), and the failure reply then carries the parent's diagnosis. A reply
         # to the bot itself (the courtesy-thanks shape, the most common
         # non-conforming mention) skips the fetch: its parent is the bot's
         # own reply, which the same-author guard would only discard.

@@ -359,8 +359,8 @@ export default function BotGuidePage() {
                   proxy), then publish.
                 </li>
                 <li>
-                  If the shape is incomplete, the bot replies with what it
-                  saw, where it looked, and the one fix to make.
+                  If the shape is incomplete, the bot replies with the one
+                  thing that broke; the full format lives in this guide.
                 </li>
               </ul>
               <div className="mt-4">

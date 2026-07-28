@@ -769,9 +769,9 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert "⚠" not in clean
 
 
-# X weighs emoji outside its two cheap Basic-Latin ranges as 2; the composer
-# glyphs (✅ ❌ ⚠) all do. Counting them double here keeps the test honest
-# about the real billed length, not the Python code-point count.
+# An upper bound on X's weighted length: everything above U+2000 counts 2,
+# which covers the composer glyphs (✅ ❌ ⚠) and overcounts nothing the
+# replies use today. Stricter than the Python code-point count.
 def _weighted_len(text: str) -> int:
     return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
 
@@ -787,9 +787,9 @@ def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
     assert _weighted_len(text) <= 280
 
 
-def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
-    # Each reason × context names where the bot read, what it saw, and the
-    # fix; every variant stays linkless, unique per mention, inside the cap.
+def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
+    # Each reason yields the header, its one ⚠ diagnosis line, and the
+    # footer; every variant stays linkless, unique per mention, inside the cap.
     from app.services.bot import _FAILURE_DIAGNOSES
 
     for reason, diag in _FAILURE_DIAGNOSES.items():
@@ -800,7 +800,7 @@ def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
         assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
         assert _weighted_len(text) <= 280
-    assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved\n")
+    assert compose_failure_reply("no_such_reason", mention_id="1").startswith("❌ Nothing saved\n")
 
 
 def test_compose_failure_replies_differ_across_mentions():

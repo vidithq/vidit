@@ -442,7 +442,7 @@ async def test_drain_creates_draft_and_replies(db, linked_owner):
     assert row.attempts == 1
 
 
-async def test_drain_failure_path_posts_format_hint_to_linked_author(db, linked_owner):
+async def test_drain_failure_path_posts_the_diagnosis_to_linked_author(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}
     )
