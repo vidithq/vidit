@@ -302,7 +302,6 @@ export default function BotGuidePage() {
                       label: "the re-uploaded footage (source)",
                     }}
                   >
-                    {"Video source:\n"}
                     <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
                     {"\n"}
                     <BodyLink>@viditbot</BodyLink>
