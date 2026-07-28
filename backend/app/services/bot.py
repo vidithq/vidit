@@ -292,7 +292,7 @@ def compose_reply(created_id: str, *, source_date_missing: bool, duplicate_media
 # constants; keep each short (the composed reply must stay under
 # ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`) and linkless.
 _FAILURE_DIAGNOSES: dict[str, str] = {
-    MARKERS_INCOMPLETE: "Empty or missing T:/C:/S: marker",
+    MARKERS_INCOMPLETE: "Incomplete T:/C:/S: marker set",
     COORDS_MISSING: "No coordinate line",
     COORDS_AMBIGUOUS: "Several coordinate lines",
     COORDS_INVALID: "Coordinate line is not a bare decimal pair",
