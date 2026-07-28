@@ -13,10 +13,13 @@ import httpx
 import pytest
 
 from app.services.tweet_ingest import (
+    SOURCE_MISSING,
+    SOURCE_OWN,
     ParsedMedia,
     TweetRecord,
     detect,
     detect_relay,
+    detect_relay_diagnosed,
     detect_structured,
     detect_structured_diagnosed,
     fetch_relay_parent,
@@ -667,6 +670,7 @@ def _relay_reply_rec(
     *,
     handle: str = "analyst",
     media: list[ParsedMedia] | None = None,
+    external_sources: list[SourceLink] | None = None,
 ) -> TweetRecord:
     return TweetRecord(
         tweet_id="21",
@@ -676,6 +680,7 @@ def _relay_reply_rec(
         permalink=f"https://x.com/{handle}/status/21",
         media=[_RELAY_VIDEO] if media is None else media,
         in_reply_to_status_id="20",
+        external_sources=external_sources or [],
     )
 
 
@@ -756,6 +761,77 @@ def test_relay_reply_markers_never_shadow_the_parent():
     assert d.title == "Strike on the depot"
     assert "different title" not in d.proof_text
     assert "caption line" in d.proof_text
+
+
+_LINKLESS_PARENT = "Strike on the depot\n48.123456, 37.654321\nSmoke plume matches"
+
+
+def test_relay_borrows_the_reply_link_when_the_parent_lacks_one():
+    # The dominant field habit: the bare geoloc tweet, then a "source:" reply
+    # carrying the link and the re-upload. The parent misses only its source;
+    # the reply's sole link fills the slot, everything else resolves as usual.
+    parent = _relay_parent_rec(_LINKLESS_PARENT, external_sources=[])
+    reply = _relay_reply_rec(
+        "@viditbot Video source:\nhttps://t.co/tk", external_sources=[_OFF_VOCAB]
+    )
+    (d,), reason = detect_relay_diagnosed(reply, parent, bot_handle="viditbot")
+    assert reason is None
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    # Idempotency still anchors on the parent, and the reply still relays.
+    assert d.detected_from_url == "https://x.com/analyst/status/20"
+    assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_borrow_needs_exactly_one_reply_link():
+    parent = _relay_parent_rec(_LINKLESS_PARENT, external_sources=[])
+    two_links = [
+        _OFF_VOCAB,
+        SourceLink(url="https://t.me/war/1", host="telegram", shortlink="https://t.co/tg"),
+    ]
+    reply = _relay_reply_rec("@viditbot sources below", external_sources=two_links)
+    detections, reason = detect_relay_diagnosed(reply, parent, bot_handle="viditbot")
+    assert detections == []
+    assert reason == SOURCE_MISSING  # the parent's verdict stands, no guess
+
+
+def test_relay_borrow_never_overrides_a_parent_source():
+    # A parent that carries its own link keeps it: the borrow fills an empty
+    # slot, it never competes with a designated source.
+    parent = _relay_parent_rec(
+        "Strike on the depot\n48.123456, 37.654321\nhttps://t.co/tk\nSmoke plume",
+        external_sources=[_OFF_VOCAB],
+    )
+    other = SourceLink(url="https://t.me/war/2", host="telegram", shortlink="https://t.co/o")
+    reply = _relay_reply_rec("@viditbot see also", external_sources=[other])
+    (d,), reason = detect_relay_diagnosed(reply, parent, bot_handle="viditbot")
+    assert reason is None
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+
+
+def test_relay_borrowed_own_status_link_is_still_rejected():
+    # The borrowed link runs the full designation rules: the author's own
+    # status stays a cross-reference, never a source.
+    parent = _relay_parent_rec(_LINKLESS_PARENT, external_sources=[])
+    own = SourceLink(url="https://x.com/analyst/status/19", host="x", shortlink="https://t.co/self")
+    reply = _relay_reply_rec("@viditbot proof above", external_sources=[own])
+    detections, reason = detect_relay_diagnosed(reply, parent, bot_handle="viditbot")
+    assert detections == []
+    assert reason == SOURCE_OWN
+
+
+def test_relay_diagnosed_surfaces_the_parent_reason():
+    # A parent that fails on something other than the source diagnoses as
+    # itself; the same-author guard reports no reason at all.
+    parent = _relay_parent_rec("Geolocated 48.123456, 37.654321 near the depot")
+    detections, reason = detect_relay_diagnosed(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert detections == []
+    assert reason is not None
+    stranger = _relay_reply_rec(handle="stranger")
+    assert detect_relay_diagnosed(stranger, _relay_parent_rec(), bot_handle="viditbot") == (
+        [],
+        None,
+    )
 
 
 # ── fetch_relay_parent: the one-hop, fail-soft parent fetch ───────────────

@@ -379,8 +379,12 @@ async def test_parent_rollup_is_gone_on_the_bot_path(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
-    (payload,) = posted  # the linked author gets the format lesson
-    assert "Shape, one per line" in payload["text"]
+    (payload,) = posted  # the failure reply points at the parent, not the tag
+    text = payload["text"]
+    assert text.startswith(
+        "❌ Nothing saved. In the post you replied to: I found no coordinate line."
+    )
+    assert "(m00010)" in text
 
 
 async def test_bare_mention_creates_draft_from_the_shape(db, linked_owner):
@@ -448,8 +452,10 @@ async def test_relay_under_a_foreign_parent_is_refused(db, linked_owner):
 
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
-    (payload,) = posted  # the linked author still gets the format lesson
-    assert "Shape, one per line" in payload["text"]
+    # The refused relay reads as an inline failure of the tag itself: the
+    # reply must NOT point at someone else's parent.
+    (payload,) = posted
+    assert payload["text"].startswith("❌ Nothing saved. In this post:")
 
 
 async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
@@ -463,7 +469,8 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     (payload,) = posted
     text = payload["text"]
     assert isinstance(text, str)
-    assert "Shape, one per line" in text and "22.703889, -83.297222" in text
+    assert text.startswith("❌ Nothing saved. In this post: I found no coordinate line.")
+    assert "33.123456, 35.654321" in text  # the fix shows the expected shape
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == FREETEXT_ID).one()
@@ -595,9 +602,9 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert payload["reply"] == {"in_reply_to_tweet_id": BARE_ID}
     text = payload["text"]
     assert isinstance(text, str)
-    assert "nothing saved" in text.lower()
-    assert "Shape, one per line" in text  # the format lesson
-    assert "I found no coordinate line." in text  # the diagnosis opener
+    assert text.startswith("❌ Nothing saved. In this post: I found no coordinate line.")
+    assert "Add one decimal pair alone on its line" in text  # the fix
+    assert "(m00004)" in text  # the anti-duplicate mention tail
     # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_ID).one()
@@ -745,40 +752,63 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
 def test_compose_reply_is_linkless_and_carries_warnings():
     event_id = str(uuid.uuid4())
     text = compose_reply([event_id], missing_source=True, duplicate_media=True)
+    assert text.startswith("✅ ")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
     assert "No source quote or footage link" in text
     assert "already exists" in text
     assert "link in bio" in text
     assert "http" not in text and "vidit.app" not in text
-    assert len(text) <= 280
+    assert _weighted_len(text) <= 280
 
 
-def test_compose_failure_reply_teaches_the_format_linklessly():
-    text = compose_failure_reply()
-    # The bare shape is the lesson: title line, coordinate line, source line.
-    assert "Shape, one per line" in text
-    assert "22.703889, -83.297222" in text
-    # The relay escape hatch, for footage the chase cannot fetch.
-    assert "Tag me in a direct reply" in text
+# X weighs emoji outside its two cheap Basic-Latin ranges as 2; the composer
+# glyphs (✅ ❌ ⚠) all do. Counting them double here keeps the test honest
+# about the real billed length, not the Python code-point count.
+def _weighted_len(text: str) -> int:
+    return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
+
+
+def test_compose_failure_reply_without_diagnosis_states_the_format():
+    text = compose_failure_reply(mention_id="2081747867450957995")
+    assert text.startswith("❌ Nothing saved.")
+    # No diagnosis to point at: the one-line format summary, no recited shape.
+    assert "each on its own line" in text
     assert "Guide in bio" in text
+    assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
-    assert len(text) <= 280
+    assert _weighted_len(text) <= 280
 
 
-def test_compose_failure_reply_opens_with_every_diagnosis():
-    # Each reason code opens the reply with its hint; every variant stays
-    # linkless and inside the cap; an unknown code degrades to the plain
-    # lesson rather than raising.
-    from app.services.bot import _FAILURE_HINTS
+def test_compose_failure_reply_names_where_and_what_for_every_diagnosis():
+    # Each reason × context names where the bot read, what it saw, and the
+    # fix; every variant stays linkless, unique per mention, inside the cap.
+    from app.services.bot import _FAILURE_DIAGNOSES
 
-    for reason, hint in _FAILURE_HINTS.items():
-        text = compose_failure_reply(reason)
-        assert text.startswith(f"Vidit: nothing saved. {hint}")
-        assert "Shape, one per line" in text
-        assert "http" not in text and ".app" not in text and ".com" not in text
-        assert len(text) <= 280
-    assert compose_failure_reply("no_such_reason").startswith("Vidit: nothing saved.\n")
+    for reason, (diag, _fix) in _FAILURE_DIAGNOSES.items():
+        for relay, where in ((False, "In this post"), (True, "In the post you replied to")):
+            text = compose_failure_reply(reason, relay=relay, mention_id="123456789")
+            assert text.startswith(f"❌ Nothing saved. {where}: {diag}.")
+            assert "(m56789)" in text
+            assert "http" not in text and ".app" not in text and ".com" not in text
+            assert _weighted_len(text) <= 280
+    assert compose_failure_reply("no_such_reason").startswith("❌ Nothing saved.")
+
+
+def test_compose_failure_reply_relay_source_missing_teaches_the_reply_path():
+    # With the reply-link borrow, replying again with the link is the retry
+    # path: the relay source_missing fix must say so.
+    text = compose_failure_reply("source_missing", relay=True, mention_id="42")
+    assert "in a tagged reply" in text
+    assert text.startswith("❌ Nothing saved. In the post you replied to:")
+
+
+def test_compose_failure_replies_differ_across_mentions():
+    # The mention tail is the anti-duplicate: same diagnosis, two mentions,
+    # two distinct texts (X 403s a tweet identical to a recent one).
+    a = compose_failure_reply("source_missing", mention_id="1111100001")
+    b = compose_failure_reply("source_missing", mention_id="2222200002")
+    assert a != b
 
 
 def test_compose_reply_counts_extra_drafts():
