@@ -767,11 +767,11 @@ def _weighted_len(text: str) -> int:
     return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
 
 
-def test_compose_failure_reply_without_diagnosis_states_the_format():
+def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
     text = compose_failure_reply(mention_id="2081747867450957995")
     assert text.startswith("❌ Nothing saved\n")
     # No diagnosis to point at: the one-line format summary, no recited shape.
-    assert "Unrecognized format" in text
+    assert "@vidithq" in text
     assert "Guide in bio" in text
     assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text

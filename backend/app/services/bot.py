@@ -115,8 +115,8 @@ _REPLY_MAX_CHARS = 280
 # its own posting effort. The window is wall-clock (the trailing hour, read
 # from the ledger), not per pass: the worker drains every few seconds, so a
 # per-pass budget would multiply the caps hundreds of times an hour.
-_MAX_REPLIES_PER_HOUR = 20
-_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 3
+_MAX_REPLIES_PER_HOUR = 40
+_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 10
 _GESTURE_WINDOW = timedelta(hours=1)
 
 # The reconciliation poll's cursor lookback, in snowflake id space (the
@@ -326,13 +326,11 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str = "") ->
     head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})" if mention_id else ""
     diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
-    if diagnosis is None:
-        warning = (
-            "⚠ Unrecognized format: a title, one decimal coordinate pair, "
-            "and a source link, each on its own line"
-        )
-    else:
-        warning = f"⚠ {diagnosis}"
+    # An undiagnosed failure is a case the mapper does not name: not the
+    # analyst's format to fix, so route them to the maintainers instead of
+    # reciting a lesson. A handle mention is not a link (the linkless
+    # contract concerns URLs).
+    warning = f"⚠ {diagnosis}" if diagnosis else "⚠ Unexpected case. Reach out to @vidithq"
     return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
 
 
