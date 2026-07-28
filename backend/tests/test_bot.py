@@ -364,7 +364,7 @@ async def test_conforming_mention_creates_draft_from_markers(db, linked_owner):
     assert isinstance(text, str)
     assert str(event.id)[:8] in text  # the shortened ref
     assert str(event.id) not in text  # never the full UUID (a third of the reply)
-    assert "No source" not in text  # the S: source landed, no warning
+    assert "⚠" not in text  # clean draft: no dedup warning
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
 
@@ -749,17 +749,18 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
         await run_bot_once(db)
 
 
-def test_compose_reply_is_linkless_and_carries_warnings():
+def test_compose_reply_is_linkless_and_carries_the_dedup_warning():
     event_id = str(uuid.uuid4())
-    text = compose_reply([event_id], missing_source=True, duplicate_media=True)
-    assert text.startswith("✅ ")
+    text = compose_reply(event_id, duplicate_media=True)
+    assert text.startswith("✅ 1 geolocation draft saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
-    assert "No source quote or footage link" in text
     assert "already exists" in text
     assert "link in bio" in text
     assert "http" not in text and "vidit.app" not in text
     assert _weighted_len(text) <= 280
+    # No warning on a clean draft.
+    assert "⚠" not in compose_reply(event_id, duplicate_media=False)
 
 
 # X weighs emoji outside its two cheap Basic-Latin ranges as 2; the composer
@@ -809,12 +810,3 @@ def test_compose_failure_replies_differ_across_mentions():
     a = compose_failure_reply("source_missing", mention_id="1111100001")
     b = compose_failure_reply("source_missing", mention_id="2222200002")
     assert a != b
-
-
-def test_compose_reply_counts_extra_drafts():
-    ids = [str(uuid.uuid4()) for _ in range(3)]
-    text = compose_reply(ids, missing_source=False, duplicate_media=False)
-    assert "3 geolocation drafts" in text
-    assert ids[0][:8] in text
-    assert "(+2 more)" in text
-    assert len(text) <= 280

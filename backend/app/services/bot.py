@@ -262,24 +262,21 @@ def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
 _REPLY_REF_CHARS = 8
 
 
-def compose_reply(created_ids: list[str], *, missing_source: bool, duplicate_media: bool) -> str:
-    """The in-thread reply for a mention that created drafts.
+def compose_reply(created_id: str, *, duplicate_media: bool) -> str:
+    """The in-thread reply for a mention that created its draft.
 
-    Opens with the at-a-glance ✅ (the ❌ twin lives in
-    :func:`compose_failure_reply`). Linkless by contract: a bare event ref
-    (shortened to ``_REPLY_REF_CHARS``), never a URL or auto-linkable domain
-    (X bills link posts ~13x higher; the clickable link lives in the bot
-    bio). Warnings surface what blocks or questions the draft. The ref also
-    makes each reply unique, so X's duplicate-content 403 cannot eat it.
+    One draft by construction: the strict format carries exactly one
+    coordinate line, so a mention never yields more (multi-detection lists
+    are the archive path's shape). Opens with the at-a-glance ✅ (the ❌
+    twin lives in :func:`compose_failure_reply`). Linkless by contract: a
+    bare event ref (shortened to ``_REPLY_REF_CHARS``), never a URL or
+    auto-linkable domain (X bills link posts ~13x higher; the clickable
+    link lives in the bot bio). The one warning surfaces the dedup
+    question; a sourceless draft cannot pass the format, so there is no
+    missing-source warning to raise. The ref also makes each reply unique,
+    so X's duplicate-content 403 cannot eat it.
     """
-    n = len(created_ids)
-    noun = "drafts" if n > 1 else "draft"
-    head = f"✅ {n} geolocation {noun} saved · ref {created_ids[0][:_REPLY_REF_CHARS]}"
-    if n > 1:
-        head += f" (+{n - 1} more)"
-    lines = [head]
-    if missing_source:
-        lines.append("⚠ No source quote or footage link. Add one before publishing.")
+    lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
     if duplicate_media:
         lines.append("⚠ This media already exists on Vidit. Possible duplicate.")
     lines.append("Review it from your profile (link in bio).")
@@ -482,8 +479,7 @@ async def _process_mention(
     reply_id: str | None = None
     if reply_allowed:
         reply = compose_reply(
-            [str(event.id) for event in assembled.created],
-            missing_source=any(event.source_url is None for event in assembled.created),
+            str(assembled.created[0].id),
             duplicate_media=_has_duplicate_media(db, assembled.created),
         )
         reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
