@@ -26,10 +26,18 @@ export default function HeroCtas() {
 
   return (
     <div className="mt-8 flex flex-col items-center gap-3">
-      <Link href="/register" className={buttonClasses("primary")}>
-        Have an invite code?
-        <ArrowRight size={15} />
-      </Link>
+      {/* Read is public since v0.4 — the map must be reachable from the hero
+          or anonymous visitors bounce off the invite gate thinking there is
+          nothing to see. */}
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <Link href="/map" className={buttonClasses("primary")}>
+          Explore the map
+          <ArrowRight size={15} />
+        </Link>
+        <Link href="/register" className={buttonClasses("secondary")}>
+          Have an invite code?
+        </Link>
+      </div>
       <p className="text-sm text-neutral-400">
         No invite? Request access: DM{" "}
         <a
