@@ -114,14 +114,20 @@ const ROADMAP: {
   {
     version: "v0.5",
     current: false,
-    title: "Open beta",
-    body: "Open self-registration: the invite-code gate comes down, behind a hardened moderation and legal stack.",
+    title: "Analyst portfolio",
+    body: "Your body of work becomes a first-class object: a profile that stands as a portfolio, rich link previews, batch completion of imported drafts, verification in the bot's replies, and sources archived so they outlive their tweets.",
+  },
+  {
+    version: "v0.6",
+    current: false,
+    title: "Collaboration",
+    body: "Notifications, shared credit on events, corroboration between analysts, self-serve handle verification, and requests as a collaborative queue.",
   },
   {
     version: "v1.0",
     current: false,
     title: "Public v1",
-    body: "Catalogue density, deeper search and social features, and the closed-beta framing removed. The full release.",
+    body: "Open self-registration behind a hardened moderation and legal stack, catalogue density, deeper search, and the closed-beta framing removed. The full release.",
   },
 ];
 
