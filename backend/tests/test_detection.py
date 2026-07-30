@@ -257,6 +257,47 @@ async def test_idempotency_recreates_closed_detection(db, owner):
     assert len(fresh) == 1
 
 
+async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):
+    # The delete-and-repost duplicate: two different tweets (distinct
+    # detected_from_url) declaring the same footage source at the same
+    # coordinate are one event — the second detection skips.
+    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    second = _dto(url="https://x.com/own/status/2", source_url="https://t.me/chan/1")
+    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
+    )
+    assert outcome.created == [] and outcome.skipped == 1
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
+
+
+async def test_same_source_different_coordinate_still_creates(db, owner):
+    # Same footage can legitimately yield two events at different places (one
+    # video, two strikes) — the source_url leg must not collapse them.
+    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    second = _dto(
+        url="https://x.com/own/status/2", source_url="https://t.me/chan/1", lat=48.6, lng=34.6
+    )
+    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.skipped == 0
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 2
+
+
+async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
+    # Two source-less detections from different posts at the same coordinate
+    # stay distinct: NULL source_url declares nothing, so it can't collide.
+    first = _dto(url="https://x.com/own/status/1")
+    second = _dto(url="https://x.com/own/status/2")
+    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
+    )
+    assert len(outcome.created) == 1 and outcome.skipped == 0
+
+
 async def test_geolocated_pair_is_skipped(db, owner):
     # A geolocated row already at this (detected_from_url, coordinate)
     # blocks a machine re-detection.

@@ -3,7 +3,7 @@
 The caller (the archive backfill, later the bot) owns acquire → stitch →
 detect; this turns the resulting DTOs into ``Event`` rows owned by the
 backfiller, with media through the evidence pipeline and idempotency on
-``(detected_from_url, coordinate)``. The DTO never reaches the ORM — that
+``(detected_from_url OR source_url, coordinate)``. The DTO never reaches the ORM — that
 boundary is what keeps ``detect`` pure and reusable across the preview, the
 archive backfill, and the bot.
 """
@@ -21,6 +21,7 @@ from typing import cast
 import httpx
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
@@ -107,17 +108,26 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> str:
     rows. (``detected_from_url`` embeds the handle, so it's already owner-unique
     in practice, but the explicit ``owner_id`` filter makes the invariant hold
     even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
-    every row sharing ``detected_from_url`` (including dismissed ones) and
-    matches the coordinate to ``_COORD_PLACES``. A live match (geolocated or
-    detected) wins → ``skip``; only dismissed matches (soft-deleted, or closed
-    off ``detected``, see :func:`_reimportable`) → ``recreate``; no match →
-    ``create``.
+    every row sharing ``detected_from_url`` — or, when the DTO declares one,
+    ``source_url`` (including dismissed ones) — and matches the coordinate to
+    ``_COORD_PLACES``. A live match (geolocated or detected) wins → ``skip``;
+    only dismissed matches (soft-deleted, or closed off ``detected``, see
+    :func:`_reimportable`) → ``recreate``; no match → ``create``.
+
+    The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
+    posts the same geolocation twice (a typo fix, an X repost), the bot is
+    tagged on both, and the two provenance URLs differ while the footage source
+    and coordinate are identical. Source-less DTOs keep the provenance-only
+    match — NULL declares nothing, so it can't collide.
     """
+    match = Event.detected_from_url == dto.detected_from_url
+    if dto.source_url is not None:
+        match = or_(match, Event.source_url == dto.source_url)
     rows = (
         db.query(Event)
         .filter(
             Event.owner_id == owner.id,
-            Event.detected_from_url == dto.detected_from_url,
+            match,
         )
         .all()
     )
@@ -296,7 +306,8 @@ async def assemble_detections(
 
     ``owner`` is the backfiller — the account whose verified handle the archive
     belongs to; every row is attributed to it. Idempotent on
-    ``(detected_from_url, coordinate)`` across states (see :func:`_disposition`).
+    ``(detected_from_url OR source_url, coordinate)`` across states (see
+    :func:`_disposition`).
 
     Each detection commits in its own transaction so one failure neither loses
     the others nor strands S3 objects — a raise is caught, counted in
