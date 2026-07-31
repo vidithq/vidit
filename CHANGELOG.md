@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.4.7, 2026-07-31
+
 ### Changed
 - **Bot replies: ✅/❌ verdicts with targeted fixes, and the relay form borrows the reply's source link** ([`backend/app/services/bot.py`](backend/app/services/bot.py), [`backend/app/services/tweet_ingest/detect.py`](backend/app/services/tweet_ingest/detect.py), [`docs/ingestion.md`](docs/ingestion.md#bot-format), [`frontend/src/app/bot/page.tsx`](frontend/src/app/bot/page.tsx)). The first live tags showed the dominant field habit: the geoloc post, then a "source:" reply carrying the link and the re-uploaded footage. The relay mapper now borrows the reply's sole link when the parent's only defect is the missing source link (every designation rule still applies: own-status rejection, chase, ambiguity fails), so that pattern imports instead of failing. Replies open with ✅ or ❌ and share one shape (header, one ⚠ line per problem, footer); the failure reply carries the diagnosis alone instead of reciting the whole format; the success reply warns when no footage was stored from the source and when the source's post date came back unknown; and every reply carries a short mention tail making it unique, since X's duplicate-content 403 ate two identical diagnoses on 2026-07-27 (that 403 is now logged without paging). The `/bot` guide's relay section teaches the source-link-in-reply path. Reply budgets rose from 20/h total and 3/h per author to 40/h and 10/h: the per-author cap starved a batch-posting analyst, and the total still bounds the billed worst case. `compose_reply` also shed two dead branches the strict format cannot reach (the multi-draft plural and the missing-source warning: one coordinate line per mention, and a sourceless draft cannot pass the format), and gained a real warning instead: when the source's post date came back unknown (off-vocabulary link or failed chase), the ✅ reply says to check the event date at review.
 
