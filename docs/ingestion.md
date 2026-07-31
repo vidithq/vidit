@@ -20,6 +20,8 @@ Nothing is deduced beyond these three signals:
 
 When no source is declared, `source_url` and `source_posted_at` are both `NULL`, and the tweet's own media (photos, video) is stored with `role=proof`, an annotation attached to the event rather than evidence of the footage's origin.
 
+**Coverage is text-only, a stated limitation.** Coordinates are read from tweet text and nothing else. Measured on a 48.5k-tweet external OSINT corpus (853 analysts), that recovers ~86% of the geolocations at ~0% false positives: decimal pairs dominate, DMS and hemisphere spellings are the handled long tail. The remaining ~14% carry the coordinate only inside the image, and reading those would require vision over every backfilled media, out of scope. The analyst sees the limit stated where it bites: the import panel's zero-result message says a post needs a coordinate in its text to become a detection.
+
 ## `detected`: a partial draft by definition
 
 A machine-produced event is born `detected`. A `detected` row may lack a `source_url`, a source media, or a location: partial is its normal state, not an error condition.

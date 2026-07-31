@@ -63,6 +63,8 @@ MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports cl
 
 Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)): GET on mount and on every `path` change, abort of the in-flight request on unmount / path change, skip while `path` is `null` (auth unresolved, route params not ready), `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render; 401 handling stays in the proxy. Lists the page mutates after seeding (e.g. `TagPicker` appending a newly created tag) stay `useState` + `apiFetch`. Writes (create / update / delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper, with `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulling the message; the anonymous→`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`.
 
+The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set: anonymous read is open on the content routes (map, events, requests, profiles, search) plus the auth pages, while write and account surfaces (`/submit`, `/import`, `/settings`, `/admin`, `/timeline`) require a session; write sub-routes nested under a public prefix (`/events/[id]/edit`, `/profile/[username]/detections`) are bounced client-side by `useRequireAuth`.
+
 ### Hosting
 
 | Service | Platform | Estimated cost |

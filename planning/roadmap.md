@@ -31,49 +31,21 @@ They need a single place to centralize geolocations, a structured format to pres
 
 ---
 
-## What's shipped
-
-**Closed-beta MVP.** Invite-only auth, interactive map with conflict/tag filters, geolocation submission (coordinates + source URL + media + Tiptap proof + tags), geolocation detail pages, analyst profiles.
-
-**Curated-platform consolidation.** Profile expansion (bio, external links, X identity anchor), admin panel (invite minting, soft/hard delete, trusted-contributor flag, demo seeding, reaper jobs), social graph (follow, timeline feed), full-text search across geolocations / analysts / requests, requests (open requests for geolocations to fulfil), UX polish.
-
-Per-PR detail in [`CHANGELOG.md`](../CHANGELOG.md).
-
----
-
-## v0.3: Open source launch
-
-A single coordinated event that retires the "closed-source / unknown / vibe-coded" objection and widens the closed-beta analyst pool beyond the early testers. The AGPL-3.0 flip on the repo and the pinned X tweet on [`@vidithq`](https://x.com/vidithq) fire in the same window. This operationalizes the standing AGPL commitment (see *Openness & transparency* below) and opens the *codebase*, not the doors. Independent of the safety stack.
-
-Work breakdown: [`next.md`](next.md) → *v0.3*.
-
-## v0.4: Curated onboarding (read-only)
-
-Analysts already do the geolocation work and post it to X; what blocks adoption is the time it would cost *them* to re-enter it into Vidit by hand: coordinates, source, media, proof, tags, one geolocation at a time. This tier removes that cost: an analyst imports their published history in one step and keeps it current by tagging a Vidit bot, so joining costs them a yes, not hours of re-entering work they've already done.
-
-The shape inverts the closed beta: **read opens to everyone; write stays gated.** The curated on-ramp becomes a second path to a writing account alongside the existing invite-gated registration. What stays deferred is *open* self-registration (sign up with no invite, v1.0) and the open-write stack it needs: upload moderation and CSAM scanning (v0.7), registration anti-abuse (v1.0).
-
-The decisions that bound it:
-
-- **Two self-serve channels, one shared core.** The analyst **uploads their official X archive** (the "Download your data" export: full history, no API, no cap) for a one-time backfill, and **tags a Vidit bot** on each new geolocation tweet for ongoing sync. Both feed one extraction core; re-uploading a fresh archive is a free catch-up.
-- **Consent is the action.** The upload and the tag *are* the consent: in-product, self-serve, scoped to the analyst's own posts. Nothing is fetched, processed, or published for anyone who hasn't acted; there is no out-of-band ask.
-- **Attribution is provisional; ownership is not verified in v0.4.** An import attributes work to a `@handle` without proving the uploader controls it: X's OAuth consent is too broad for a privacy-conscious audience and X offers no lighter identity integration (no OIDC; OAuth 1.0a is worse). The exposure is bounded: everything lands `detected` (draft, clearly marked), nothing is publicly vouched without a later submit, and the beta stays invite-gated. Handle-ownership proof + a claim/dispute pipeline move to v0.6.
-- **Detection is deterministic.** A parseable coordinate marks a geolocation tweet; there is no LLM classifier. The work is robust coordinate and media extraction, not training a model.
-- **Machine output is provisional but public.** Imported and bot-ingested geolocations land `detected` and appear on **every** public surface (map, search, timeline, profile), **always clearly marked**; the owner reviews and **submits** them, which removes the marker and freezes the row. A direct submission or a request fulfilment is born `geolocated`.
-
-This pulls anonymous read forward from the later open-write plan and adds the onboarding machinery: the extraction core, the archive intake, the `detected → submitted` submit flow, and an author identity decoupled from the auth account (shipped). The bot replies in-thread with dedup and coordinate-vs-image warnings, and a value layer (image-coordinate cross-checks and near-duplicate media matching) is what makes the import worth the analyst's while. Going public is gated on a legal review, a reduced surface since only the analyst's own consented work is ever processed.
-
-Work breakdown: [`next.md`](next.md) → *v0.4*.
-
 ## v0.5: Analyst portfolio
 
-The v0.4 on-ramp moves an analyst's published work in; v0.5 makes that body of work a first-class object: a public profile that stands as a portfolio (insights, a personal map, a share affordance), link previews that render the work wherever a profile or event URL lands, a batch completion flow so publishing an import costs one decision rather than one form per draft, verification returned in the bot's own replies (coordinate-vs-image cross-check, near-duplicate detection across analysts), corroboration between analysts on a published geolocation, and automated archival of source links so the work outlives its tweets. Read stays open (since v0.4), write stays invite-gated.
+The v0.4 on-ramp moves an analyst's published work in; v0.5 makes that body of work a first-class object: a public profile that stands as a portfolio (insights, a personal map, a share affordance), link previews that render the work wherever a profile or event URL lands, a batch completion flow so publishing an import costs one decision rather than one form per draft, a mobile pass on the surfaces those links land on, and automated archival of source links at event creation, drafts included, so the work outlives its tweets. Read stays open (since v0.4), write stays invite-gated, and the anti-scraping floor that public read earns lands here.
 
 Work breakdown: [`next.md`](next.md) → *v0.5*.
 
-## v0.6: Collaboration
+## v0.6: Collaboration & reviews
 
-The interaction layer between analysts: a notifications feed, shared credit on an event (multiple geolocators), self-serve handle-ownership verification with a claim/dispute path for contested attribution (**verify-by-post**: a one-time code in a public tweet, read back via the free syndication path; Keybase-style, zero OAuth consent, since X's OAuth screen proved too broad for the audience), follower lists, and the request board as a collaborative queue (triage, fulfillment notifications).
+Two phases: **A**, the substrate (the interaction layer between analysts, plus edit history on a published geolocation), and **B**, the visible layer it carries (organizations and reviews).
+
+Phase A is a notifications feed, shared credit on an event (multiple geolocators), geolocation edit history (an analyst edits a published geolocation while every prior version is kept and visible, because input errors happen and a correction must not silently rewrite the record: an edit creates a revision, not an overwrite), and the request board as a collaborative queue (triage, fulfillment notifications).
+
+Phase B makes organizations a first-class entity: a verified collective with members and roles, carrying its own public profile. On top of them, a review layer whose shipped gesture is a single approve: an analyst approves a published geolocation at a specific revision, an organization places its approval on a geolocation through its authorized members with the acting member recorded, and anyone can request an approval from an analyst or an organization. An approval covers only the revision it was placed on: a new revision renders without approvals until it is approved again, prior approvals stay readable in the revision history, and each reviewer is notified to re-approve, which is why the revisions and notifications of phase A come first.
+
+Reviews are an independent attestation layer: several analysts or organizations can review the same geolocation, they may disagree, and a review never changes the event's status or the author's trusted flag.
 
 Work breakdown: [`next.md`](next.md) → *v0.6*.
 
@@ -91,13 +63,13 @@ Work breakdown: [`next.md`](next.md) → *v0.8*.
 
 ## v0.9: Recognition
 
-The recognition layer: community credits, achievement badges, activity on the profile, leaderboards, and team / collective profiles with shared credit. Strictly separate from trust (see *Future considerations → Trust + governance*): recognition never feeds the trusted-contributor flag.
+The recognition layer: community credits, achievement badges, activity on the profile, and leaderboards. Strictly separate from trust (see *Future considerations → Trust + governance*): recognition never feeds the trusted-contributor flag.
 
 Work breakdown: [`next.md`](next.md) → *v0.9*.
 
 ## v1.0: Public v1
 
-Open write and the public launch. Self-registration opens and the invite-code gate retires; the threat model widens to account-farmers and unknown uploaded content, absorbed by the layers built in v0.6-v0.9 plus a registration anti-abuse stack (CAPTCHA, honeypot, disposable-email blocklist, rate limits, account lockout) and auth hardening. The trusted-contributor flag becomes a reader-facing filter across map / timeline / search. The legal foundation lands (legal entity, CGU, DSA compliance, DPA agreements, professional insurance), plus catalog density, cost tuning, and the closed-beta framing removed.
+Open write and the public launch. Self-registration opens and the invite-code gate retires; the threat model widens to account-farmers and unknown uploaded content, absorbed by the layers built in v0.6-v0.9 plus a registration anti-abuse stack (CAPTCHA, honeypot, disposable-email blocklist, rate limits, account lockout), auth hardening, and self-serve handle verification (verify-by-post, with a claim/dispute path), since open registration removes the admin touchpoint that binds a handle today. The trusted-contributor flag becomes a reader-facing filter across map / timeline / search. The legal foundation lands (legal entity, CGU, DSA compliance, DPA agreements, professional insurance), plus catalog density, cost tuning, and the closed-beta framing removed.
 
 Work breakdown: [`next.md`](next.md) → *v1.0*.
 
@@ -117,7 +89,7 @@ Long-term items deferred for cost, scale, philosophical fit, or because the curr
 
 ### Trust + governance
 
-- **Confidence levels per submission** (low/medium/high). Today: the trust filter on the author lets readers scope to known-credible submissions; per-action scoring adds noise without clear product value. Revisit when the catalog grows large enough that author-level trust under-discriminates.
+- **Confidence levels per submission** (low/medium/high). Today: the trust filter on the author lets readers scope to known-credible submissions; per-action scoring adds noise without clear product value. Per-event attestation lives in the review layer (v0.6), which names reviewers rather than computing a level, so what stays deferred here is a platform-computed score on the submission itself. Revisit when the catalog grows large enough that author-level trust under-discriminates.
 - **Reputation system per scope/conflict.** Today: gameable (Goodhart); the admin-curated trust flag plus moderation is sufficient. Reconsider only with a concrete anti-gaming design.
 - **Community-driven moderation governance.** Today: community is too small for democracy; admin-driven is faster and cleaner. Revisit when contributor count outgrows what a small admin team can review.
 - **Comments / discussion threads** on geolocations. Today: high abuse surface, large DSA UGC moderation burden, low marginal value over X/Discord. Reconsider only with a design that closes the abuse + DSA cost gap.
