@@ -10,6 +10,11 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Nothing yet._
 
+## v0.4.8, 2026-07-31
+
+### Changed
+- **Landing roadmap trimmed to the near term** ([#204](https://github.com/vidithq/vidit/pull/204), [`frontend/src/app/page.tsx`](frontend/src/app/page.tsx)). The public roadmap section shows the current version and the next committed milestones only (v0.4 current, then Analyst portfolio, Collaboration & reviews, Public v1): shipped versions leave the projection (the CHANGELOG is the history home) and the later milestones stay internal until they firm up. The open-source mention and the GitHub link, previously on the shipped v0.3 card, render as a footer line under the list. The same PR reworked the internal planning ladder (v0.6 becomes Collaboration & reviews with organizations and approve-first reviews, verify-by-post moves to v1.0) and relocated shipped-history content out of the planning docs into `docs/` and the CHANGELOG.
+
 ## v0.4.7, 2026-07-31
 
 ### Changed
