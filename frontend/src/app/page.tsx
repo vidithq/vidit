@@ -89,45 +89,68 @@ const FEATURES: {
 
 const GITHUB_URL = "https://github.com/vidithq/vidit";
 
-// Reader-facing roadmap. Optional `link` surfaces an in-card link to a
-// concrete artifact (e.g. the repo for "Open source launch").
+// Reader-facing roadmap, the public projection of `planning/roadmap.md`.
+// `state` drives the treatment: the current version carries the accent card and
+// pill, shipped ones carry the completed-end-state pill next to their title.
+// Optional `link` surfaces an in-card link to a concrete artifact (e.g. the
+// repo for "Open source launch").
+type RoadmapState = "shipped" | "current" | "upcoming";
+
 const ROADMAP: {
   version: string;
-  current: boolean;
+  state: RoadmapState;
   title: string;
   body: string;
   link?: { href: string; label: string };
 }[] = [
   {
     version: "v0.3",
-    current: true,
+    state: "shipped",
     title: "Open source launch",
     body: "Vidit is open source under AGPL-3.0, the clearest answer to “closed / unknown tool”.",
     link: { href: GITHUB_URL, label: "View on GitHub" },
   },
   {
     version: "v0.4",
-    current: false,
+    state: "shipped",
     title: "Curated onboarding",
     body: "Read opens to everyone: the map and the archive go public. Invited analysts bring their existing work with them: upload your X archive or tag the bot, with no manual re-entry.",
   },
   {
     version: "v0.5",
-    current: false,
+    state: "current",
     title: "Analyst portfolio",
-    body: "Your body of work becomes a first-class object: a profile that stands as a portfolio, rich link previews, batch completion of imported drafts, verification in the bot's replies, and sources archived so they outlive their tweets.",
+    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported drafts, a mobile pass on the pages readers land on, and sources archived at creation so the work outlives its tweets.",
   },
   {
     version: "v0.6",
-    current: false,
-    title: "Collaboration",
-    body: "Notifications, shared credit on events, corroboration between analysts, self-serve handle verification, and requests as a collaborative queue.",
+    state: "upcoming",
+    title: "Collaboration & reviews",
+    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given revision.",
+  },
+  {
+    version: "v0.7",
+    state: "upcoming",
+    title: "Moderation",
+    body: "Report anything from inside the product, into an admin queue backed by automated scanning of uploads and a written, public content policy.",
+  },
+  {
+    version: "v0.8",
+    state: "upcoming",
+    title: "Catalogue intelligence",
+    body: "Events that carry several points, search that reaches proof bodies and source URLs, and related geolocations surfaced next to the one you are reading.",
+  },
+  {
+    version: "v0.9",
+    state: "upcoming",
+    title: "Recognition",
+    body: "Community credits, badges, and activity on your profile, plus leaderboards. Recognition for the work, kept separate from the trust mark.",
   },
   {
     version: "v1.0",
-    current: false,
+    state: "upcoming",
     title: "Public v1",
-    body: "Open self-registration behind a hardened moderation and legal stack, catalogue density, deeper search, and the closed-beta framing removed. The full release.",
+    body: "Open self-registration behind a hardened moderation and legal stack, catalogue density, and the closed-beta framing removed. The full release.",
   },
 ];
 
@@ -211,25 +234,28 @@ export default function LandingPage() {
             </h2>
           </div>
           <ol className="mt-6 space-y-3">
-            {ROADMAP.map(({ version, current, title, body, link }) => (
+            {ROADMAP.map(({ version, state, title, body, link }) => (
               <li
                 key={title}
                 className={`flex gap-4 rounded-lg border p-4 ${
-                  current
+                  state === "current"
                     ? "border-orange-500/40 bg-orange-500/4"
                     : "border-neutral-800 bg-neutral-900"
                 }`}
               >
                 <Pill
-                  tone={current ? "accent" : "neutral"}
+                  tone={state === "current" ? "accent" : "neutral"}
                   className="self-start font-mono"
                 >
                   {version}
                 </Pill>
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-100">
-                    {title}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-medium text-neutral-100">
+                      {title}
+                    </h3>
+                    {state === "shipped" && <Pill tone="strong">Shipped</Pill>}
+                  </div>
                   <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
                     {body}
                   </p>
