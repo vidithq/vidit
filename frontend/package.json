@@ -48,7 +48,7 @@
     "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.20",
     "tailwindcss": "^4.3.0",
-    "typescript": "^6",
+    "typescript": "^7",
     "vitest": "^4.1.10"
   },
   "overrides": {
