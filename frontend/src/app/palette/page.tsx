@@ -40,7 +40,6 @@ import { Dot } from "@/components/ui/Dot";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -472,9 +471,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<FieldHelp> + <OptionalHint>" usage="Help ? on labels/sections + optional marker">
+          <Item name="<FieldHelp>" usage="Help ? on labels/sections">
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordinates <FieldHelp concept="coordinates" /> <OptionalHint />
+              Coordinates <FieldHelp concept="coordinates" />
             </span>
           </Item>
 
@@ -508,7 +507,12 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author.">
+          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
+            <Variant label="avatar (detail-page signature)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.owner} avatar />
+              </span>
+            </Variant>
             <Variant label="default (subtitle)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} />
@@ -640,7 +644,7 @@ export default function PalettePage() {
 
           <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
             <SectionHeading title="Source media" concept="source_media" />
-            <SectionHeading title="Proof" concept="section_proof" optional />
+            <SectionHeading title="Proof" concept="section_proof" />
           </Item>
 
           <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow)">

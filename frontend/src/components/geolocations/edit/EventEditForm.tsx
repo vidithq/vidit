@@ -292,8 +292,6 @@ export function EventEditForm({
           conflicts={conflicts}
           selectedConflictIds={selectedConflictIds}
           setSelectedConflictIds={setSelectedConflictIds}
-          requireConflict
-          requireCaptureSource
           conflictInvalid={invalidKeys.has("conflict_tag")}
           captureSourceInvalid={invalidKeys.has("capture_source_tag")}
         />

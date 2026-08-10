@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { TEXT_LINK } from "@/components/ui/styles";
 
 const ProofEditor = dynamic(
   () => import("@/components/editor/ProofEditor"),
@@ -26,9 +28,8 @@ interface ProofEditorPanelProps {
    *  into a live preview on mount (see `components/editor/ProofEditor.tsx`). */
   initialProofFiles?: File[];
   /** Request mode: a request's proof is in-progress (else it'd be a
-   *  geolocation), so it's optional and image-free — see ProofEditor. */
+   *  geolocation), so it's image-free (see ProofEditor). */
   allowImages?: boolean;
-  optional?: boolean;
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
 }
@@ -43,7 +44,6 @@ export function ProofEditorPanel({
   onProofFilesChange,
   initialProofFiles,
   allowImages = true,
-  optional = false,
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
@@ -51,11 +51,21 @@ export function ProofEditorPanel({
       as="section"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
+      {/* The guide sits in the heading's `trailing` slot: both the submit
+          form and the edit form render this panel, so the link reaches the
+          analyst at the point of need in each without duplicating markup. */}
       <SectionHeading
         title="Proof"
         concept="section_proof"
-        optional={optional}
         invalid={invalid}
+        trailing={
+          <Link
+            href="/methodology"
+            className={`ml-1 text-[11px] font-normal ${TEXT_LINK}`}
+          >
+            Methodology guide
+          </Link>
+        }
       />
 
       {/* Re-mount the editor on every import. ``importGen`` changes even

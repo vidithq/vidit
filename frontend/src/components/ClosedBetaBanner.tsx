@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { isAuthRoute } from "@/lib/auth-routes";
 import { Pill } from "@/components/ui/Pill";
-import { Dot } from "@/components/ui/Dot";
 
 // Baked into the bundle by next.config.mjs — the deploy ref's
 // `git describe --tags --always --dirty`, or "dev" with no git history. See
@@ -31,7 +30,6 @@ export default function ClosedBetaBanner() {
       className="fixed bottom-3 right-3 z-1200 pointer-events-none select-none"
     >
       <Pill tone="accent" className="gap-2 tracking-tight backdrop-blur-xs">
-        <Dot />
         <span>Closed beta · {displayVersion}</span>
         <a
           href={REPORT_URL}

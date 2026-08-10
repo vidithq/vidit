@@ -29,7 +29,7 @@ export default function EventPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={<AuthorByline author={geo.owner} />}
+      subtitle={<AuthorByline author={geo.owner} avatar />}
       actions={
         <ShareButtons
           id={geo.id}

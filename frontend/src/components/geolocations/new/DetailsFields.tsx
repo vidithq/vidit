@@ -3,7 +3,6 @@
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { OptionalHint } from "@/components/ui/OptionalHint";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { LockedHint } from "./LockedHint";
@@ -61,7 +60,7 @@ export function DetailsFields({
             the depicted event happened; an empty date reads as "Unknown". */}
         <div className="space-y-1.5">
           <label htmlFor="event_date" className={FORM_LABEL}>
-            Event date <FieldHelp concept="event_date" /> <OptionalHint />
+            Event date <FieldHelp concept="event_date" />
           </label>
           <Input
             id="event_date"
@@ -73,7 +72,7 @@ export function DetailsFields({
         </div>
         <div className="space-y-1.5">
           <label htmlFor="event_time" className={FORM_LABEL}>
-            Event time <FieldHelp concept="event_time" /> <OptionalHint />
+            Event time <FieldHelp concept="event_time" />
           </label>
           <Input
             id="event_time"

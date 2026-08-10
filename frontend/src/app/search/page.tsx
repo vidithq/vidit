@@ -301,10 +301,7 @@ function SearchPageBody() {
   };
 
   return (
-    <PageShell
-      title="Search"
-      subtitle="One discovery surface across the platform: type to search geolocations, requests and analysts at once. Matched fragments are highlighted in each result."
-    >
+    <PageShell title="Search">
         <Input
           type="search"
           icon={<SearchIcon size={14} />}

@@ -42,13 +42,14 @@ import { TitleField } from "@/components/geolocations/TitleField";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
-// Two submission modes, picked at the top. `single` is one event by hand,
-// optionally pre-filled from an X post; `bulk` is the archive on-ramp that
-// backfills many. There is no geolocation vs request pick: the analyst fills what
-// they have and the two publish actions unlock from the content (a placed
-// coordinate plus evidence publishes a geolocation, the bare footage posts a
-// request for others to locate).
-type Mode = "single" | "bulk";
+// Three entry paths, picked at the top: they differ only in where the work
+// starts from. `single` is one event by hand, `xpost` is the same form with the
+// import banner above it (paste your own X post, the form comes back filled),
+// `bulk` is the archive on-ramp that backfills many. There is no geolocation vs
+// request pick: the analyst fills what they have and the two publish actions
+// unlock from the content (a placed coordinate plus evidence publishes a
+// geolocation, the bare footage posts a request for others to locate).
+type Mode = "single" | "xpost" | "bulk";
 
 // A publish-floor requirement, shown as a tick in the readiness list. `keys` are
 // the `missingEvent*` field keys it covers (proof needs two, "no proof" vs
@@ -75,8 +76,9 @@ const GEO_EXTRA_REQS: Req[] = [
   { label: FIELD_LABELS.capture_source_tag, keys: ["capture_source_tag"] },
 ];
 
-// Inline X logo: lucide ships none, and "from an X post" reads clearer with the
-// source platform's mark than a generic import glyph.
+// Inline X logo for the "From an X post" segment: lucide ships none, and the
+// segment reads clearer with the platform's own mark than a generic import
+// glyph. Sized to sit with the lucide icons on the sibling segments.
 function XGlyph({ size = 14 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
@@ -141,13 +143,11 @@ function SubmitForm() {
   const [request, setRequest] = useState<EventDetail | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  // Single vs bulk. Seeded to the archive on-ramp from `?import=1` (the
+  // Which entry path. Seeded to the archive on-ramp from `?import=1` (the
   // onboarding + /import redirect target); otherwise the single-event form.
   const [mode, setMode] = useState<Mode>(
     searchParams.get("import") === "1" ? "bulk" : "single"
   );
-  // The inline "pre-fill from an X post" affordance, revealed inside single mode.
-  const [tweetPrefillOpen, setTweetPrefillOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [lat, setLat] = useState("");
@@ -472,28 +472,11 @@ function SubmitForm() {
     return <PageLoading label="Loading request…" />;
   }
 
-  // Fulfilment is a distinct entry: it keeps its own title + instructions and
-  // publishes only a geolocation. A fresh submit gets the neutral framing (fill
-  // what you have, then publish a geolocation or a request).
+  // Fulfilment is a distinct entry (its own title, only a geolocation to
+  // publish); no subtitle in either mode: locked fields carry their own
+  // LockedHint, and the readiness list teaches the floor at the point of
+  // action.
   const pageTitle = lockedFromRequest ? "Geolocate a request" : "Submit";
-  const subtitle = lockedFromRequest ? (
-    <>
-      You&apos;re fulfilling a request posted by{" "}
-      <Link
-        href={`/profile/${request!.owner.username}`}
-        className={TEXT_LINK}
-      >
-        @{request!.owner.username}
-      </Link>
-      . Title, tags, dates, and the proof so far are pre-filled from the request;
-      refine them. Source and media stay locked (that&apos;s the request&apos;s
-      evidence). Add the coordinates and finish the proof (cross-referenced
-      satellite imagery). When you submit, this request becomes a geolocation and
-      keeps a note of who requested it.
-    </>
-  ) : (
-    "Fill in what you have. Publish it as a geolocation once you've placed it, or as a request for others to locate."
-  );
 
   const showBulk = canImport && mode === "bulk";
   // On a fulfilment, media is supplied by the request, so it drops out of the
@@ -504,15 +487,33 @@ function SubmitForm() {
   ];
 
   return (
-    <PageShell title={pageTitle} subtitle={subtitle}>
-      {/* Single vs bulk (fresh create only). Single hosts the one-event form
-          plus the optional X-post pre-fill; bulk is the archive on-ramp. */}
+    <PageShell title={pageTitle}>
+      {/* The three entry paths (fresh create only), ordered by how much comes
+          in with you: nothing, one post, a whole archive. Single and From an X
+          post share the one-event form; bulk swaps in the archive on-ramp. */}
       {canImport && (
         <div className="mt-4">
           <SegmentedControl
             aria-label="Submission mode"
             options={[
-              { value: "single", label: "Single" },
+              {
+                value: "single",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin size={13} strokeWidth={1.8} />
+                    Single
+                  </span>
+                ),
+              },
+              {
+                value: "xpost",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <XGlyph size={12} />
+                    From an X post
+                  </span>
+                ),
+              },
               {
                 value: "bulk",
                 label: (
@@ -545,22 +546,12 @@ function SubmitForm() {
         className={showBulk ? "hidden" : "mt-4 space-y-6"}
         noValidate
       >
-        {/* Single mode carries a "pre-fill from an X post" affordance; the banner
-            stays once a post is imported so the "Imported from @x" confirmation
-            shows. */}
-        {canImport && mode === "single" && (
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => setTweetPrefillOpen((v) => !v)}
-              aria-pressed={tweetPrefillOpen}
-            >
-              <XGlyph size={12} />
-              Pre-fill from an X post
-            </Button>
-          </div>
-        )}
-        {canImport && (tweetPrefillOpen || importedFrom) && (
+        {/* The X-post entry path front-loads the form with the import banner:
+            paste your own geolocation post and the fields below come back
+            filled. It stays put after a successful import, since it carries the
+            "Imported from @x" confirmation and the Clear action; switching to
+            Single hides it and keeps whatever it filled in. */}
+        {canImport && mode === "xpost" && (
           <TweetImportBanner
             onImported={(parsed) => {
               // The editor remounts on import (its key changes); its inline
@@ -649,15 +640,13 @@ function SubmitForm() {
           conflicts={conflicts}
           selectedConflictIds={selectedConflictIds}
           setSelectedConflictIds={setSelectedConflictIds}
-          requireConflict={false}
-          requireCaptureSource={false}
           conflictInvalid={invalidKeys.has("conflict_tag")}
           captureSourceInvalid={invalidKeys.has("capture_source_tag")}
         />
 
-        {/* One proof editor, images allowed. Optional at the field level: a
-            geolocation needs an image (named in the readiness list); a request
-            may attach images (work in progress) or stay imageless. */}
+        {/* One proof editor, images allowed: a geolocation needs an image
+            (named in the readiness list); a request may attach images (work in
+            progress) or stay imageless. */}
         <ProofEditorPanel
           importedFrom={importedFrom}
           importGen={importGen}
@@ -665,7 +654,6 @@ function SubmitForm() {
           onChange={setProof}
           onProofFilesChange={setProofFiles}
           initialProofFiles={importedProofFiles}
-          optional
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
 

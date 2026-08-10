@@ -403,23 +403,6 @@ export default function BotGuidePage() {
           </div>
         </section>
 
-        <section className="pb-20 text-center">
-          <p className="text-[13px] text-neutral-400">
-            See the result on{" "}
-            <Link href="/map" className={TEXT_LINK}>
-              the live map
-            </Link>{" "}
-            · Vidit is{" "}
-            <a
-              href="https://github.com/vidithq/vidit"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={TEXT_LINK}
-            >
-              open source
-            </a>
-          </p>
-        </section>
       </PageFrame>
     </main>
   );

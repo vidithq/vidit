@@ -5,7 +5,6 @@ import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_INVALID_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
 
 interface LocationPickerProps {
@@ -70,8 +69,7 @@ export function LocationPicker({
           lifecycle. */}
       <div className="space-y-1.5">
         <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
-          Camera position <FieldHelp concept="capture_source_coords" />{" "}
-          <OptionalHint />
+          Camera position <FieldHelp concept="capture_source_coords" />
         </span>
         <CoordinateInputs
           idPrefix="capture_"

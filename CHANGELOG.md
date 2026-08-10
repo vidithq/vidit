@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+- **Discovery and de-noising pass across the public surfaces** ([#216](https://github.com/vidithq/vidit/pull/216)). New public guides: `/guide` ("How Vidit works", the loop from reading the map to publishing) and `/methodology` ("Building a proof", moved out of `/about`), hubbed in a Guides section leading the About page; the About rail entry stays lit on all guide pages, and the bot tab left the rail (the guide is reached from About and from X itself). Landing: feature cards rebuilt around the proof and the two on-ramp channels plus an open-source card, the hero stripped of the beta pill and every invite-code mention (the subtitle links the source instead), the roadmap section trimmed to the current version and the next committed milestones, and the demo placeholder links the guide. About: privacy copy corrected (no stored IP addresses, cookieless aggregate metrics and crash reporting stated as such), the metadata-strip claim scoped to images, section subtitles and the closing line removed. Forms: the "optional" field markers left both event forms (`OptionalHint` deleted; the readiness list and per-field invalid highlighting are the one guide), the submission mode toggle gains a third entry path ("From an X post", replacing the standalone pre-fill button and its pre-import nudge), and page subtitles left Submit, Requests, Search and the detections queue. Author bylines lead with the avatar on the detail pages and the map side panel. Map filters start collapsed; Requests and Timeline rail entries: Requests stays (live usage), Timeline waits for its collaboration mechanics.
 
 ## v0.4.8, 2026-07-31
 

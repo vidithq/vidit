@@ -101,7 +101,6 @@ export default function DetectionsPage() {
     <PageShell
       back
       title="Detections"
-      subtitle="Machine-detected geolocations awaiting your submission. Edit and submit, or reject each."
     >
       {listBody}
     </PageShell>
