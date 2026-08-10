@@ -51,7 +51,7 @@ class AdminInviteRedeemerRead(BaseModel):
     """Onboarding snapshot of the account a code was redeemed by.
 
     Nested in `AdminInviteCodeRead` so the admin onboarding table renders
-    activity and hosts the per-user actions (trust, X handle, delete, purge
+    activity and hosts the per-user actions (X handle, delete, purge
     detected) without a second request per row. Carries the same acting
     fields as `AdminUserRead` plus read-side counters.
     """
@@ -60,8 +60,6 @@ class AdminInviteRedeemerRead(BaseModel):
     username: str
     email: str | None
     is_admin: bool
-    is_trusted: bool
-    trust_reason: str | None
     x_handle: str | None
     # ``done`` archive-import jobs (a queued / failed upload is not an import).
     archives_imported: int
@@ -121,9 +119,9 @@ class AdminMeResponse(BaseModel):
 class AdminUserRead(BaseModel):
     """User shape returned by the admin search endpoint.
 
-    Carries the bits the admin acts on (`is_trusted` + `trust_reason` +
-    the bot-attribution `x_handle`) plus `email` (NULL on legacy
-    credential-less rows), which the public `UserProfile` omits.
+    Carries the bit the admin acts on (the bot-attribution `x_handle`) plus
+    `email` (NULL on legacy credential-less rows), which the public
+    `UserProfile` omits.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -132,8 +130,6 @@ class AdminUserRead(BaseModel):
     username: str
     email: str | None
     is_admin: bool
-    is_trusted: bool
-    trust_reason: str | None
     x_handle: str | None
     created_at: datetime
 
@@ -185,27 +181,6 @@ class AdminPurgeDetectedResponse(BaseModel):
     # Storage objects swept: every media file, source and proof roles alike,
     # hero / thumb derivatives included.
     media_count: int = 0
-
-
-class AdminTrustUpdate(BaseModel):
-    """Body for `PATCH /admin/users/{id}/trust`.
-
-    On grant, ``trust_reason`` is mandatory at the app layer (a checkmark with
-    no public rationale is opaque favouritism). On revoke, the API ignores any
-    body reason and clears the column server-side — a populated ``trust_reason``
-    on a non-trusted row would be a stale-data bug.
-    """
-
-    is_trusted: bool
-    trust_reason: str | None = None
-
-    @field_validator("trust_reason")
-    @classmethod
-    def _strip_reason(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        cleaned = v.strip()
-        return cleaned or None
 
 
 class UserXHandleUpdate(BaseModel):

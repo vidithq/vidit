@@ -3,7 +3,6 @@
 import { Pencil } from "lucide-react";
 
 import type { PublicProfile } from "@/lib/users";
-import TrustBadge from "./TrustBadge";
 import FollowButton from "./FollowButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -45,13 +44,8 @@ export function ProfileHeader({ profile, isOwn, email, edit }: ProfileHeaderProp
           <div className="min-w-0">
             {/* h2 under PageShell's generic "Profile" h1 so the username is
                 exposed to screen readers and the document outline. */}
-            <h2 className="text-base font-medium text-neutral-100 inline-flex items-center gap-2">
+            <h2 className="text-base font-medium text-neutral-100">
               {profile.username}
-              <TrustBadge
-                isTrusted={profile.is_trusted}
-                trustReason={profile.trust_reason}
-                size={14}
-              />
             </h2>
             {isOwn && (
               <p className="text-sm text-neutral-400 mt-0.5 truncate">

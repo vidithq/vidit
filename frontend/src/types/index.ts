@@ -19,8 +19,6 @@ export interface User {
   id: string;
   username: string;
   email: string;
-  is_trusted: boolean;
-  trust_reason: string | null;
   bio: string | null;
   avatar_url: string | null;
   external_links: ExternalLinks;

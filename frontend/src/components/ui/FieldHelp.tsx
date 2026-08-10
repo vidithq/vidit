@@ -12,7 +12,7 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
  * A `?` help affordance next to a field or section: surfaces a one-line
  * explanation on hover / focus, pinned on click, dismissed by outside-click,
  * Escape, scroll, or pointer-leave. The machinery lives in
- * `usePinnedPopover` (shared with `TrustBadge`), including the portal +
+ * `usePinnedPopover`, including the portal +
  * viewport clamp so an `overflow` ancestor (e.g. the map detail side panel)
  * can't clip the tooltip.
  *

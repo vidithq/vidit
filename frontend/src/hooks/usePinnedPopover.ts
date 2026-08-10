@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
  * The pin + dismiss + placement machinery shared by the anchored popovers
- * (`FieldHelp`, `TrustBadge`): shown from JS hover state on the anchor (not a
+ * (`FieldHelp`): shown from JS hover state on the anchor (not a
  * CSS `group-hover`, so a surrounding `.group` can't trigger it), pinned on
  * click (touch devices don't hover), closed by outside-click, Escape, scroll,
  * resize, or pointer-leave.

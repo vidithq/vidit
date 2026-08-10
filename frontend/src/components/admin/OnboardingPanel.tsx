@@ -367,8 +367,6 @@ export function OnboardingPanel() {
             username: managed.username,
             email: managed.email,
             is_admin: managed.is_admin,
-            is_trusted: managed.is_trusted,
-            trust_reason: managed.trust_reason,
             x_handle: managed.x_handle,
           }}
           detectedCount={managed.detected_count}

@@ -438,10 +438,7 @@ def test_search_users_returns_matches_for_admin(admin_user, regular_user):
     assert response.status_code == 200
     rows = response.json()
     assert any(r["id"] == str(regular_user.id) for r in rows)
-    # Schema includes is_trusted + trust_reason for the toggle UI
     target = next(r for r in rows if r["id"] == str(regular_user.id))
-    assert target["is_trusted"] is False
-    assert target["trust_reason"] is None
     assert target["email"] == regular_user.email
 
 
@@ -457,93 +454,6 @@ def test_search_users_returns_empty_for_blank_query(admin_user):
     response = client.get("/api/v1/admin/users?q=", headers=login_as(client, admin_user))
     assert response.status_code == 200
     assert response.json() == []
-
-
-def test_grant_trust_sets_flag_and_reason(admin_user, regular_user, db):
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "Established OSINT track record"},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["is_trusted"] is True
-    assert body["trust_reason"] == "Established OSINT track record"
-
-    db.expire_all()
-    refreshed = db.query(User).filter(User.id == regular_user.id).first()
-    assert refreshed.is_trusted is True
-    assert refreshed.trust_reason == "Established OSINT track record"
-
-    event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "trust_granted")
-        .order_by(AdminEvent.created_at.desc())
-        .first()
-    )
-    assert event is not None
-    assert event.target == {
-        "user_id": str(regular_user.id),
-        "trust_reason": "Established OSINT track record",
-    }
-
-
-def test_grant_trust_rejects_empty_reason(admin_user, regular_user):
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "   "},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 422
-    assert response.json()["detail"] == {
-        "code": "trust_reason_required",
-        "message": "trust_reason is required when granting trust",
-    }
-
-
-def test_revoke_trust_clears_reason(admin_user, regular_user, db):
-    # First grant
-    client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "Long-standing analyst"},
-        headers=login_as(client, admin_user),
-    )
-    # Then revoke — body's trust_reason is intentionally ignored on revoke
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": False, "trust_reason": "shouldn't persist"},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["is_trusted"] is False
-    assert body["trust_reason"] is None
-
-    db.expire_all()
-    refreshed = db.query(User).filter(User.id == regular_user.id).first()
-    assert refreshed.trust_reason is None
-
-
-def test_set_trust_403_for_regular_user(regular_user):
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "x"},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-def test_set_trust_404_for_unknown_user(admin_user):
-    response = client.patch(
-        f"/api/v1/admin/users/{uuid.uuid4()}/trust",
-        json={"is_trusted": True, "trust_reason": "x"},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == {
-        "code": "user_not_found",
-        "message": "User not found",
-    }
 
 
 def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
@@ -1107,28 +1017,15 @@ def test_admin_user_delete_404_for_unknown_id(admin_user):
     }
 
 
-def test_user_profile_carries_trust_fields(admin_user, regular_user):
-    """Regression: `/users/{username}` was constructing `UserProfile(...)`
-    by hand and didn't pass `is_trusted` / `trust_reason`. After the schema
-    made both required, the route 500'd on serialization."""
-    # Grant trust so the field is non-default
-    client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "Cross-checks against satellite"},
-        headers=login_as(client, admin_user),
-    )
-
+def test_user_profile_carries_expected_field_set(regular_user):
+    """`/users/{username}` builds `UserProfile(...)` by hand, so a field the
+    schema requires but the route forgets to pass 500s on serialization."""
     response = client.get(f"/api/v1/users/{regular_user.username}")
     assert response.status_code == 200
     body = response.json()
-    assert body["is_trusted"] is True
-    assert body["trust_reason"] == "Cross-checks against satellite"
-    # Regression-guard against the field set drifting again
     assert {
         "id",
         "username",
-        "is_trusted",
-        "trust_reason",
         "avatar_url",
         "created_at",
         "geolocations_count",
@@ -1148,23 +1045,6 @@ def test_search_users_excludes_soft_deleted(admin_user, regular_user, db):
     assert response.status_code == 200
     rows = response.json()
     assert all(r["id"] != str(regular_user.id) for r in rows)
-
-
-def test_set_trust_404_for_soft_deleted_user(admin_user, regular_user, db):
-    regular_user.deleted_at = datetime.now(UTC)
-    db.commit()
-
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/trust",
-        json={"is_trusted": True, "trust_reason": "should not apply"},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
-
-    db.expire_all()
-    refreshed = db.query(User).filter(User.id == regular_user.id).first()
-    assert refreshed.is_trusted is False
-    assert refreshed.trust_reason is None
 
 
 def test_login_runs_bcrypt_for_unknown_email(monkeypatch):

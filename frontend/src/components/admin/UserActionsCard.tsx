@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { BadgeCheck } from "lucide-react";
 
 import {
   deleteUser,
   purgeDetectedEvents,
-  setUserTrust,
   setUserXHandle,
   type AdminPurgeDetectedResponse,
   type AdminUser,
@@ -26,9 +24,9 @@ type ActionableUser = Omit<AdminUser, "created_at">;
 
 type DangerMode = "soft" | "hard" | "purge";
 
-/** One user's admin actions: trust grant/revoke, X-handle link, soft/hard
- *  delete, and the detected-drafts purge. Shared between the Manage-analysts
- *  search and the onboarding table so the two never drift. */
+/** One user's admin actions: X-handle link, soft/hard delete, and the
+ *  detected-drafts purge. Shared between the Manage-analysts search and the
+ *  onboarding table so the two never drift. */
 export function UserActionsCard({
   user,
   detectedCount,
@@ -43,41 +41,9 @@ export function UserActionsCard({
   onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
   onPurged?: (response: AdminPurgeDetectedResponse) => void;
 }) {
-  const [reason, setReason] = useState(user.trust_reason ?? "");
-  const [showReasonForm, setShowReasonForm] = useState(false);
   const [xHandle, setXHandle] = useState(user.x_handle ?? "");
   const [showXHandleForm, setShowXHandleForm] = useState(false);
   const [dangerMode, setDangerMode] = useState<DangerMode | null>(null);
-
-  const grantMutation = useMutation(
-    () =>
-      setUserTrust(user.id, {
-        is_trusted: true,
-        trust_reason: reason.trim(),
-      }),
-    {
-      fallback: "Failed to grant trust",
-      onSuccess: (updated) => {
-        onUpdated(updated);
-        setShowReasonForm(false);
-      },
-    },
-  );
-
-  const revokeMutation = useMutation(
-    () =>
-      setUserTrust(user.id, {
-        is_trusted: false,
-        trust_reason: null,
-      }),
-    {
-      fallback: "Failed to revoke trust",
-      onSuccess: (updated) => {
-        onUpdated(updated);
-        setReason("");
-      },
-    },
-  );
 
   const xHandleMutation = useMutation(
     (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
@@ -112,42 +78,19 @@ export function UserActionsCard({
     },
   });
 
-  const granting = grantMutation.loading || revokeMutation.loading;
   const linking = xHandleMutation.loading;
   const acting = deleteMutation.loading || purgeMutation.loading;
   // One shared error slot across the card's actions; each action clears
   // the others.
   const error =
-    grantMutation.error ??
-    revokeMutation.error ??
-    xHandleMutation.error ??
-    deleteMutation.error ??
-    purgeMutation.error;
+    xHandleMutation.error ?? deleteMutation.error ?? purgeMutation.error;
 
-  const trusted = user.is_trusted;
-
-  const resetOthers = (keep: "grant" | "revoke" | "xhandle" | "danger") => {
-    if (keep !== "grant") grantMutation.reset();
-    if (keep !== "revoke") revokeMutation.reset();
+  const resetOthers = (keep: "xhandle" | "danger") => {
     if (keep !== "xhandle") xHandleMutation.reset();
     if (keep !== "danger") {
       deleteMutation.reset();
       purgeMutation.reset();
     }
-  };
-
-  const submitGrant = () => {
-    resetOthers("grant");
-    if (!reason.trim()) {
-      grantMutation.setError("A reason is required when granting trust.");
-      return;
-    }
-    void grantMutation.run();
-  };
-
-  const submitRevoke = () => {
-    resetOthers("revoke");
-    void revokeMutation.run();
   };
 
   const submitXHandle = () => {
@@ -186,14 +129,12 @@ export function UserActionsCard({
   const cancelDanger = () => {
     setDangerMode(null);
     confirmDanger.cancel();
-    grantMutation.reset();
-    revokeMutation.reset();
     xHandleMutation.reset();
     deleteMutation.reset();
     purgeMutation.reset();
   };
 
-  const idle = dangerMode === null && !showReasonForm && !showXHandleForm;
+  const idle = dangerMode === null && !showXHandleForm;
 
   return (
     <div className="border border-neutral-800 rounded-md p-3 space-y-2">
@@ -201,13 +142,6 @@ export function UserActionsCard({
         <div className="min-w-0">
           <div className="text-sm text-neutral-100 inline-flex items-center gap-1.5">
             @{user.username}
-            {trusted && (
-              <BadgeCheck
-                size={14}
-                className="text-orange-500"
-                strokeWidth={1.8}
-              />
-            )}
             {user.is_admin && (
               <Pill className="uppercase tracking-wider">admin</Pill>
             )}
@@ -222,31 +156,8 @@ export function UserActionsCard({
               <Pill>X: @{user.x_handle}</Pill>
             </div>
           )}
-          {trusted && user.trust_reason && (
-            <div className="text-xs text-neutral-400 mt-1 italic">
-              “{user.trust_reason}”
-            </div>
-          )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
-          {trusted ? (
-            <Button
-              variant="danger"
-              disabled={granting}
-              onClick={submitRevoke}
-              className="whitespace-nowrap"
-            >
-              Revoke trust
-            </Button>
-          ) : showReasonForm ? null : (
-            <Button
-              variant="ghost"
-              onClick={() => setShowReasonForm(true)}
-              className="whitespace-nowrap"
-            >
-              Grant trust
-            </Button>
-          )}
           {idle && (
             <Button
               variant="ghost"
@@ -287,40 +198,6 @@ export function UserActionsCard({
         </div>
       </div>
 
-      {!trusted && showReasonForm && (
-        <div className="space-y-2">
-          <label className={FORM_LABEL} htmlFor={`reason-${user.id}`}>
-            Reason (public, surfaces in the badge tooltip)
-          </label>
-          <Input
-            variant="compact"
-            id={`reason-${user.id}`}
-            type="text"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Established OSINT track record on X"
-          />
-          <div className="flex gap-2">
-            <Button variant="primary" onClick={submitGrant} disabled={granting}>
-              {granting ? "Granting…" : "Confirm grant"}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowReasonForm(false);
-                setReason(user.trust_reason ?? "");
-                grantMutation.reset();
-                revokeMutation.reset();
-                deleteMutation.reset();
-                purgeMutation.reset();
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
       {showXHandleForm && (
         <div className="space-y-2">
           <label className={FORM_LABEL} htmlFor={`x-handle-${user.id}`}>
@@ -357,8 +234,6 @@ export function UserActionsCard({
               onClick={() => {
                 setShowXHandleForm(false);
                 setXHandle(user.x_handle ?? "");
-                grantMutation.reset();
-                revokeMutation.reset();
                 xHandleMutation.reset();
                 deleteMutation.reset();
                 purgeMutation.reset();

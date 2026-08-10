@@ -89,25 +89,6 @@ def soft_deleted_user(db):
     db.commit()
 
 
-@pytest.fixture
-def trusted_user(db):
-    user = User(
-        username=f"trust{uuid.uuid4().hex[:8]}",
-        email=f"trust-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_trusted=True,
-        trust_reason="Established OSINT analyst, verified track record.",
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
 def _make_geo(
     db,
     *,
@@ -142,8 +123,6 @@ def test_profile_returns_user_shape(live_user):
     body = response.json()
     assert body["id"] == str(live_user.id)
     assert body["username"] == live_user.username
-    assert body["is_trusted"] is False
-    assert body["trust_reason"] is None
     assert body["bio"] is None
     assert body["avatar_url"] is None
     # Default ``{}``  — never NULL — so the frontend renders a stable shape.
@@ -172,20 +151,6 @@ def test_profile_does_not_leak_email(db):
     finally:
         db.delete(user)
         db.commit()
-
-
-def test_profile_surfaces_trust_signal(trusted_user):
-    """The trust mark + substantiation are public — they're the credibility signal.
-
-    Asserts the public schema carries `is_trusted` AND `trust_reason`
-    together. Surfacing the flag without its reason would defeat the
-    "substantiated trust" design intent.
-    """
-    response = client.get(f"/api/v1/users/{trusted_user.username}")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["is_trusted"] is True
-    assert body["trust_reason"] == "Established OSINT analyst, verified track record."
 
 
 def test_profile_404_for_unknown_username():
@@ -420,11 +385,11 @@ def test_patch_me_rejects_overlong_bio(live_user):
 
 
 def test_patch_me_ignores_extra_fields(live_user):
-    """The schema is ``extra=forbid`` — guarding against a future caller
-    that thinks it can set ``is_trusted`` via the self-edit endpoint."""
+    """The schema is ``extra=forbid``, guarding against a future caller that
+    thinks it can set an unlisted column via the self-edit endpoint."""
     response = client.patch(
         "/api/v1/users/me",
-        json={"is_trusted": True},
+        json={"is_admin": True},
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422

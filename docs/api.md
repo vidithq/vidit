@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `trust_reason_required`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -77,7 +77,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
-| PATCH | `/admin/users/{id}/trust` | 🛡️ | Grant / revoke `is_trusted` + `trust_reason` |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
@@ -121,7 +120,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
-| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/trust` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
+| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
@@ -253,8 +252,6 @@ Returns the current user.
   "id": "uuid",
   "username": "kalush",
   "email": "kalush@example.com",
-  "is_trusted": false,
-  "trust_reason": null,
   "bio": null,
   "avatar_url": null,
   "external_links": {},
@@ -262,7 +259,7 @@ Returns the current user.
 }
 ```
 
-`is_trusted` / `trust_reason` are public on purpose: the trust mark is a credibility signal, and the reason is what makes it credible. The profile fields (`bio`, `avatar_url`, `external_links`) ship with the self-payload so the sidebar avatar and "edit profile" form can render without a second fetch. **`is_admin` is not on this shape**; the admin role only surfaces via `GET /admin/me`. `email_verified_at` is not exposed: the pre-creation flow means there's no unverified-user state.
+The profile fields (`bio`, `avatar_url`, `external_links`) ship with the self-payload so the sidebar avatar and "edit profile" form can render without a second fetch. **`is_admin` is not on this shape**; the admin role only surfaces via `GET /admin/me`. `email_verified_at` is not exposed: the pre-creation flow means there's no unverified-user state.
 
 ---
 
@@ -360,9 +357,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "before_closed_status": null,
     "owner": {
       "id": "uuid",
-      "username": "kalush",
-      "is_trusted": false,
-      "trust_reason": null
+      "username": "kalush"
     },
     "media": {
       "id": "uuid",
@@ -399,7 +394,7 @@ to 60/min/IP.
 `submitted_from`, `submitted_to`, `author` (see `GET /events` for semantics), plus
 map-only filters `media` (repeatable, `?media=image&media=video`, matches a geolocation
 carrying any attachment of a listed type; values are constrained to `image`/`video`, else
-422), `trusted_only` (author `is_trusted`), and `hide_demo` (exclude demo rows). The date
+422) and `hide_demo` (exclude demo rows). The date
 params are still accepted but the map now filters dates client-side from the payload.
 
 **Response 200:**
@@ -449,9 +444,7 @@ Inputs are tolerated gracefully:
     "distance_m": 55.4,
     "owner": {
       "id": "uuid",
-      "username": "kalush",
-      "is_trusted": true,
-      "trust_reason": "Bellingcat affiliate"
+      "username": "kalush"
     }
   }
 ]
@@ -667,7 +660,7 @@ Full detail for a single event, in any lifecycle state.
   },
   "requested_by": null,
   "geolocators": [
-    { "id": "uuid", "username": "kalush", "is_trusted": false, "trust_reason": null }
+    { "id": "uuid", "username": "kalush" }
   ],
   "investigator_count": 0,
   "investigators": [],
@@ -935,7 +928,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
 | `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `trusted_only`, `hide_demo`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
+| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `hide_demo`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
 Any active filter empties the users group (the filters are event predicates; an unfiltered analyst list next to a filtered event view would read as if the filter applied). With an empty `q` and at least one active filter, **browse mode**: the filtered view, newest first, plain titles as their own highlight (the profile's "Show more" entry point); typing then narrows within it.
 
@@ -957,7 +950,7 @@ Any active filter empties the users group (the filters are event predicates; an 
       "event_date": "2026-04-15",
       "is_demo": false,
       "status": "geolocated",
-      "owner": { "id": "uuid", "username": "osint_analyst", "is_trusted": true, "trust_reason": "…" },
+      "owner": { "id": "uuid", "username": "osint_analyst" },
       "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
       "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
     }
@@ -984,8 +977,6 @@ Any active filter empties the users group (the filters are event predicates; an 
       "username_highlight": "kharkiv_osint",
       "bio": "Tracking armoured movement in Eastern Ukraine.",
       "bio_highlight": null,
-      "is_trusted": true,
-      "trust_reason": "Established public track record",
       "avatar_url": null
     }
   ],
@@ -1108,8 +1099,6 @@ Public profile of an analyst.
 {
   "id": "uuid",
   "username": "kalush",
-  "is_trusted": false,
-  "trust_reason": null,
   "bio": "OSINT analyst tracking armoured movement in Eastern Ukraine.",
   "avatar_url": "https://cdn.example.com/avatars/kalush.jpg",
   "external_links": {
@@ -1126,7 +1115,7 @@ Public profile of an analyst.
 }
 ```
 
-`is_trusted` toggles via `PATCH /admin/users/{id}/trust`; `trust_reason` is required when granting. `bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me`, defaults are `null` / `null` / `{}`. `is_following` is `true` only when the caller is authenticated and follows this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
+`bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me`, defaults are `null` / `null` / `{}`. `is_following` is `true` only when the caller is authenticated and follows this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
 **Errors:**
 | Code | Case |
@@ -1282,7 +1271,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>16 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, trust toggle, X handle link, demo seeding, maintenance reapers). Expand for full contracts.</summary>
+<summary>16 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance reapers). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1368,8 +1357,6 @@ List every invite code (newest first), including exhausted / revoked / expired o
       "username": "osint_hawk",
       "email": "hawk@example.com",
       "is_admin": false,
-      "is_trusted": false,
-      "trust_reason": null,
       "x_handle": "osint_hawk",
       "archives_imported": 1,
       "bot_detection_count": 3,
@@ -1403,8 +1390,6 @@ Case-insensitive substring match on username or email. Empty `q` returns `[]`. C
     "username": "tester2",
     "email": "tester2@example.com",
     "is_admin": false,
-    "is_trusted": true,
-    "trust_reason": "Established OSINT track record",
     "x_handle": "tester2",
     "created_at": "…"
   }
@@ -1473,21 +1458,6 @@ Remove an event. Default is soft delete (sets `deleted_at`); pass `?hard=true` f
 For `mode = "hard"`, `deleted_at` is `null` and `media_count` (every file swept) reflects what was removed.
 
 **Response 404:** unknown id.
-
-### `PATCH /admin/users/{id}/trust` 🛡️
-
-Grant or revoke `is_trusted`. Granting requires a non-empty `trust_reason` (rejected with 422 otherwise). Revoking ignores any reason in the body and clears `trust_reason` server-side. Audited via `admin_events` (`action = "trust_granted"` / `"trust_revoked"`).
-
-**Request body:**
-```json
-{ "is_trusted": true, "trust_reason": "Established OSINT track record" }
-```
-
-**Response 200:** the updated `AdminUserRead`.
-
-**Response 422:** granting trust without a reason.
-
-**Response 404:** unknown user id.
 
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
 

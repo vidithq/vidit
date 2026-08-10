@@ -18,8 +18,6 @@ from shapely.geometry import Point
 from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, Event
 from app.models.tag import Tag
-from app.models.user import User
-from app.services.auth import hash_password
 from tests.events._helpers import _make_geo, client
 
 # ── GET /geolocations — list ──────────────────────────────────────────────
@@ -230,8 +228,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
         "id",
         "username",
         "avatar_url",
-        "is_trusted",
-        "trust_reason",
     }
     assert [g["username"] for g in body["geolocators"]] == []
     assert body["investigator_count"] == 0
@@ -369,8 +365,8 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     assert len(filtered.json()) < len(unfiltered.json())
 
 
-def test_points_filters_media_trusted_and_demo(db, author):
-    """``media``, ``trusted_only`` and ``hide_demo`` each narrow the point set."""
+def test_points_filters_media_and_demo(db, author):
+    """``media`` and ``hide_demo`` each narrow the point set."""
     from app.models.media import Media
 
     plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
@@ -380,17 +376,7 @@ def test_points_filters_media_trusted_and_demo(db, author):
     )
     demo = _make_geo(db, author=author, lat=42.0, lng=42.0)
     demo.is_demo = True
-
-    trusted = User(
-        username=f"tr{uuid.uuid4().hex[:8]}",
-        email=f"tr-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_trusted=True,
-        trust_reason="verified",
-    )
-    db.add(trusted)
     db.commit()
-    by_trusted = _make_geo(db, author=trusted, lat=43.0, lng=43.0)
 
     def ids(query: str) -> set[str]:
         return {row[0] for row in client.get(f"/api/v1/events/points{query}").json()}
@@ -398,10 +384,6 @@ def test_points_filters_media_trusted_and_demo(db, author):
     media_ids = ids("?media=video")
     assert str(with_video.id) in media_ids
     assert str(plain.id) not in media_ids
-
-    trusted_ids = ids("?trusted_only=true")
-    assert str(by_trusted.id) in trusted_ids
-    assert str(plain.id) not in trusted_ids
 
     nodemo_ids = ids("?hide_demo=true")
     assert str(plain.id) in nodemo_ids
@@ -415,11 +397,6 @@ def test_points_filters_media_trusted_and_demo(db, author):
 
     # A junk media value is rejected (422), not silently treated as "no match".
     assert client.get("/api/v1/events/points?media=bogus").status_code == 422
-
-    # ``by_trusted`` belongs to a user the ``author`` fixture won't clean up.
-    db.query(Event).filter(Event.owner_id == trusted.id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == trusted.id).delete(synchronize_session=False)
-    db.commit()
 
 
 def test_points_cache_key_builder_is_separator_safe():

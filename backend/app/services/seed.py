@@ -74,32 +74,22 @@ DEMO_AUTHORS: list[dict[str, Any]] = [
     {
         "username": "demo-analyst-1",
         "email": "demo-analyst-1@vidit.invalid",
-        "is_trusted": True,
-        "trust_reason": "Demo account: established OSINT presence (synthetic).",
     },
     {
         "username": "demo-analyst-2",
         "email": "demo-analyst-2@vidit.invalid",
-        "is_trusted": False,
-        "trust_reason": None,
     },
     {
         "username": "demo-analyst-3",
         "email": "demo-analyst-3@vidit.invalid",
-        "is_trusted": True,
-        "trust_reason": "Demo account: long-standing contributor (synthetic).",
     },
     {
         "username": "demo-analyst-4",
         "email": "demo-analyst-4@vidit.invalid",
-        "is_trusted": False,
-        "trust_reason": None,
     },
     {
         "username": "demo-analyst-5",
         "email": "demo-analyst-5@vidit.invalid",
-        "is_trusted": False,
-        "trust_reason": None,
     },
 ]
 
@@ -326,8 +316,6 @@ def _ensure_demo_authors(db: Session) -> list[User]:
             "email": spec["email"],
             "password_hash": _DEMO_UNLOGGABLE_HASH,
             "is_demo": True,
-            "is_trusted": spec["is_trusted"],
-            "trust_reason": spec["trust_reason"],
         }
         for spec in DEMO_AUTHORS
     ]

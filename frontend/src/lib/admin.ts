@@ -53,8 +53,6 @@ export interface AdminUser {
   // NULL on legacy credential-less rows, mirroring `AdminUserRead`.
   email: string | null;
   is_admin: boolean;
-  is_trusted: boolean;
-  trust_reason: string | null;
   /** The X handle the bot attributes mentions to; admin-linked, null when
    *  no handle is linked. */
   x_handle: string | null;
@@ -66,16 +64,6 @@ export function searchUsers(query: string): Promise<AdminUser[]> {
   return apiFetch<AdminUser[]>(
     `/admin/users?q=${encodeURIComponent(query.trim())}`
   );
-}
-
-export function setUserTrust(
-  userId: string,
-  body: { is_trusted: boolean; trust_reason: string | null }
-): Promise<AdminUser> {
-  return apiFetch<AdminUser>(`/admin/users/${userId}/trust`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
 }
 
 export function setUserXHandle(

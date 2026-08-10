@@ -21,7 +21,6 @@ from app.schemas.admin import (
     AdminSeedDemoRequestsRequest,
     AdminSeedDemoRequestsResponse,
     AdminSeedDemoResponse,
-    AdminTrustUpdate,
     AdminUserDeleteResponse,
     AdminUserRead,
     AdminWipeDemoRequestsResponse,
@@ -37,7 +36,6 @@ router = APIRouter()
 _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
-    "trust_reason_required": 422,
     "x_handle_conflict": 409,
 }
 
@@ -124,27 +122,6 @@ def search_users(
     """Case-insensitive substring match on username or email. Empty query
     returns []; the admin search box doesn't preload the whole user table."""
     return admin_service.search_users(db, query=q)
-
-
-@router.patch("/users/{user_id}/trust", response_model=AdminUserRead)
-@limiter.limit("60/hour")
-def set_user_trust(
-    request: Request,
-    user_id: uuid.UUID,
-    body: AdminTrustUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> User:
-    try:
-        return admin_service.set_user_trust(
-            db,
-            actor_id=current_user.id,
-            user_id=user_id,
-            is_trusted=body.is_trusted,
-            trust_reason=body.trust_reason,
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
 
 
 @router.patch("/users/{user_id}/x-handle", response_model=AdminUserRead)

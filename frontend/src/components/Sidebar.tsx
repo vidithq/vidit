@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import TrustBadge from "@/components/profile/TrustBadge";
 
 const X_URL = "https://x.com/vidithq";
 const DISCORD_URL = "https://discord.gg/9wPtsrrKyJ";
@@ -312,13 +311,8 @@ export default function Sidebar() {
               )}
             </span>
             {labelsVisible && (
-              <span className="truncate flex-1 inline-flex items-center gap-1 animate-label-in">
+              <span className="truncate flex-1 animate-label-in">
                 {user.username}
-                <TrustBadge
-                  isTrusted={user.is_trusted}
-                  trustReason={user.trust_reason}
-                  size={12}
-                />
               </span>
             )}
             {detectionCount > 0 && (

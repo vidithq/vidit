@@ -61,8 +61,6 @@ function hit(id: string, title: string): PossibleDuplicate {
     owner: {
       id: "u1",
       username: "ana",
-      is_trusted: false,
-      trust_reason: null,
     },
   };
 }

@@ -127,8 +127,6 @@ const MOCK_DETAIL: EventDetail = {
     id: "a1",
     username: "analyst",
     avatar_url: null,
-    is_trusted: true,
-    trust_reason: "Verified analyst",
   },
   tags: [
     { id: "t2", name: "Drone", category: "capture_source" },
@@ -333,7 +331,7 @@ export default function PalettePage() {
             <PaletteChipBucket />
           </Item>
 
-          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter (Trusted only, Hide demo): the whole row is the switch (role + click), the <Switch> rendering as its visual span. Shared by the map overlay and the search filter area.">
+          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter (the map's Hide demo): the whole row is the switch (role + click), the <Switch> rendering as its visual span. Shared by the map overlay and the search filter area.">
             <PaletteToggleRow />
           </Item>
 
@@ -512,7 +510,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
+          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -935,7 +933,7 @@ function PaletteToggleRow() {
   const [on, setOn] = useState(true);
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <ToggleRow label="Trusted analysts only" on={on} onToggle={() => setOn((v) => !v)} />
+      <ToggleRow label="Hide demo rows" on={on} onToggle={() => setOn((v) => !v)} />
     </div>
   );
 }

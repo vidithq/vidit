@@ -25,14 +25,11 @@ export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
 
 /**
  * Shape returned by `GET /users/{username}`. The profile page calls
- * `apiFetch<PublicProfile>(...)` directly rather than via a wrapper so the
- * admin trust-toggle path can refetch the same shape without a second helper.
+ * `apiFetch<PublicProfile>(...)` directly rather than via a wrapper.
  */
 export interface PublicProfile {
   id: string;
   username: string;
-  is_trusted: boolean;
-  trust_reason: string | null;
   bio: string | null;
   avatar_url: string | null;
   external_links: ExternalLinks;

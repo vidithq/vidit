@@ -47,10 +47,6 @@ class EventNotFoundError(AdminError):
     code = "geolocation_not_found"
 
 
-class TrustReasonRequiredError(AdminError):
-    code = "trust_reason_required"
-
-
 class XHandleConflictError(AdminError):
     code = "x_handle_conflict"
 
@@ -124,8 +120,6 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             username=u.username,
             email=u.email,
             is_admin=u.is_admin,
-            is_trusted=u.is_trusted,
-            trust_reason=u.trust_reason,
             x_handle=u.x_handle,
             archives_imported=archives.get(u.id, 0),
             bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
@@ -293,46 +287,6 @@ def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
     )
 
 
-def set_user_trust(
-    db: Session,
-    *,
-    actor_id: uuid.UUID,
-    user_id: uuid.UUID,
-    is_trusted: bool,
-    trust_reason: str | None,
-) -> User:
-    """Grant or revoke ``is_trusted`` on a user, with audit.
-
-    Granting requires a non-empty ``trust_reason`` (the schema validator
-    strips whitespace). Revoking clears any existing reason in the same
-    transaction so yesterday's rationale doesn't leak onto a non-trusted row.
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None or user.deleted_at is not None:
-        # Flipping is_trusted on a tombstoned account would resurrect a
-        # stale signal the moment the row is ever un-deleted.
-        raise UserNotFoundError("User not found")
-
-    if is_trusted and not trust_reason:
-        raise TrustReasonRequiredError("trust_reason is required when granting trust")
-
-    if is_trusted:
-        user.is_trusted = True
-        user.trust_reason = trust_reason
-        action = "trust_granted"
-        target = {"user_id": str(user.id), "trust_reason": trust_reason}
-    else:
-        user.is_trusted = False
-        user.trust_reason = None
-        action = "trust_revoked"
-        target = {"user_id": str(user.id)}
-
-    log_admin_event(db, actor_id=actor_id, action=action, target=target)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
 def set_user_x_handle(
     db: Session,
     *,
@@ -347,8 +301,8 @@ def set_user_x_handle(
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or user.deleted_at is not None:
-        # Same guard as trust: mutating a tombstoned account would plant a
-        # stale link that resurrects with the row.
+        # Mutating a tombstoned account would plant a stale link that
+        # resurrects with the row.
         raise UserNotFoundError("User not found")
 
     if x_handle is not None:

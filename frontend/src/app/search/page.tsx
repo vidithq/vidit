@@ -12,7 +12,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import TrustBadge from "@/components/profile/TrustBadge";
 import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
@@ -101,7 +100,6 @@ function SearchPageBody() {
       const raw = searchParams.get("author") ?? "";
       return AUTHOR_FILTER_RE.test(raw) ? raw : "";
     })(),
-    trustedOnly: searchParams.get("trusted_only") === "true",
   };
   const initialDates: DateWindows = {
     eventFrom: searchParams.get("event_date_from") ?? "",
@@ -116,8 +114,7 @@ function SearchPageBody() {
     initialValues.captureSources.length > 0 ||
     initialValues.tags.length > 0 ||
     initialValues.mediaTypes.length > 0 ||
-    !!initialValues.author ||
-    initialValues.trustedOnly;
+    !!initialValues.author;
   // A filtered link without an explicit type (the profile's "Show more")
   // lands on the Events scope: filters are event predicates.
   const initialType =
@@ -207,7 +204,6 @@ function SearchPageBody() {
       if (dates.eventTo) params.set("event_date_to", dates.eventTo);
       if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
       if (dates.addedTo) params.set("submitted_to", dates.addedTo);
-      if (values.trustedOnly) params.set("trusted_only", "true");
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     }, DEBOUNCE_MS);
@@ -228,7 +224,6 @@ function SearchPageBody() {
       v.tags.length > 0 ||
       v.mediaTypes.length > 0 ||
       !!v.author.trim() ||
-      v.trustedOnly ||
       Object.values(d).some(Boolean);
     if (!q && !filtersActive) {
       setResults(null);
@@ -252,7 +247,6 @@ function SearchPageBody() {
       eventDateTo: d.eventTo || undefined,
       submittedFrom: d.addedFrom || undefined,
       submittedTo: d.addedTo || undefined,
-      trustedOnly: v.trustedOnly,
     })
       .then((response) => {
         // Stale response (a newer request started since) — drop so the
@@ -595,11 +589,6 @@ function UserResult({ hit }: { hit: SearchUserHit }) {
       <div className="flex-1 min-w-0 space-y-1">
         <h3 className="text-sm font-medium text-neutral-100 inline-flex items-center gap-1.5">
           @<Highlighted value={hit.username_highlight} />
-          <TrustBadge
-            isTrusted={hit.is_trusted}
-            trustReason={hit.trust_reason}
-            size={12}
-          />
         </h3>
         {hit.bio_highlight && (
           <p className="text-xs text-neutral-400 line-clamp-2">

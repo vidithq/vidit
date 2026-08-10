@@ -60,7 +60,6 @@ def _build_points_cache_key(
     submitted_to: str | None,
     author: str | None,
     media: list[str] | None = None,
-    trusted_only: bool = False,
     hide_demo: bool = False,
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
@@ -86,7 +85,6 @@ def _build_points_cache_key(
             submitted_to,
             author,
             sorted(media) if media else None,
-            trusted_only,
             hide_demo,
         ]
     )
@@ -143,7 +141,6 @@ def list_points(
     # ``media`` accepts multiple values (``?media=image&media=video``); an event
     # matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
-    trusted_only: bool = False,
     hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
@@ -174,7 +171,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        trusted_only=trusted_only,
         hide_demo=hide_demo,
     )
 
@@ -206,7 +202,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        trusted_only=trusted_only,
         hide_demo=hide_demo,
     )
     # Map-only narrowing on top of the located view: a closed detection stays
