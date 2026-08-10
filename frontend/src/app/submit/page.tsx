@@ -548,10 +548,11 @@ function SubmitForm() {
       >
         {/* The X-post entry path front-loads the form with the import banner:
             paste your own geolocation post and the fields below come back
-            filled. It stays put after a successful import, since it carries the
-            "Imported from @x" confirmation and the Clear action; switching to
-            Single hides it and keeps whatever it filled in. */}
-        {canImport && mode === "xpost" && (
+            filled. Once an import has landed the banner stays rendered in
+            Single too: it carries the provenance ("Imported from @x"), the
+            authorship warning, and the Clear action, all of which belong with
+            the imported content wherever the analyst finishes it. */}
+        {canImport && (mode === "xpost" || importedFrom !== null) && (
           <TweetImportBanner
             onImported={(parsed) => {
               // The editor remounts on import (its key changes); its inline

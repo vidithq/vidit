@@ -20,6 +20,9 @@ const REPORT_URL = "https://discord.gg/9wPtsrrKyJ";
 export default function ClosedBetaBanner() {
   const pathname = usePathname() ?? "";
   if (isAuthRoute(pathname)) return null;
+  // The landing dropped its beta framing, so the corner pill follows it there;
+  // it stays on every app surface.
+  if (pathname === "/") return null;
   return (
     // `pointer-events-none` so the badge never eats map drags; only the report
     // link inside opts back in. The wrapper owns the fixed placement, the

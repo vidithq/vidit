@@ -79,7 +79,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.7*. The moderation pipelin
 
 ---
 
-## v0.8: Catalog intelligence
+## v0.8: Search & discovery
 
 Strategic context: [`roadmap.md`](roadmap.md) → *v0.8*. The corpus becomes smarter than the sum of its pins: events that carry their real structure, search that reaches everything the platform stores, discovery across events.
 
@@ -88,7 +88,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.8*. The corpus becomes sma
 | P1 | Data model | Multi-point events (`event_points` child table) | One event carries one subject coordinate + one optional camera position today. Real footage spans several subject points (a convoy, multiple impacts from one clip, N coordinates detected from one thread), which currently forces one event per point. The proper fix is a child `event_points` table, not more coordinate columns on `events`. |
 | P1 | Search | JSONB content search (geolocation + request proof bodies) | Flatten via `jsonb_path_query_array` materialised into a column or trigger. |
 | P1 | Search | URL-fragment search (host + path units) | Paste a tweet ID and find the geo. |
-| P1 | Discovery | Related-events suggestions on the event page | Spatial + temporal + tag proximity. Promoted from *Future considerations*: catalog density by now makes manual discovery slow. |
+| P1 | Discovery | Related-events suggestions on the event page | Spatial + temporal + tag proximity. Promoted from *Future considerations*: map density by now makes manual discovery slow. |
 | P2 | Search | Infinite scroll per group | Cursor keyed by `(rank, created_at, id)`. |
 | P2 | Search | `'english'` stemming opt-in | DDL one-line swap if "strikes" misses "strike". |
 | P2 | UX | Display `capture_source_coords` on the event detail page | The camera position is write-only in the UI today: captured at submit ([`LocationPicker.tsx`](../frontend/src/components/geolocations/new/LocationPicker.tsx)) and edit ([`EventEditForm.tsx`](../frontend/src/components/geolocations/edit/EventEditForm.tsx)), but no read surface renders it ([`EventDetailBody.tsx`](../frontend/src/components/event/EventDetailBody.tsx) shows only `event_coords`). The value already travels in `EventRead`; add a "Camera position" row next to the coordinates row, same `toFixed(6)` rendering. |
@@ -112,7 +112,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.9*. The recognition layer:
 
 ## v1.0: Public v1
 
-Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. The public switch: open write (self-registration + the anti-abuse stack it needs), the auth-hardening tiers, the legal foundation, catalog density, cost tuning, and the closed-beta framing retired. The P0 rows are the gate; P1 before P2 within the version.
+Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. The public switch: open write (self-registration + the anti-abuse stack it needs), the auth-hardening tiers, the legal foundation, map density, cost tuning, and the closed-beta framing retired. The P0 rows are the gate; P1 before P2 within the version.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|
@@ -190,6 +190,7 @@ Concept-level only, **no commitment** to design or ship. Promote a candidate int
 
 | Area | Item | Why / how |
 |---|---|---|
+| UX | Timeline re-entry point | `/timeline` is URL-only since the rail trimmed its entry: the page still renders, nothing links to it. The entry returns with the v0.6 collaboration mechanics, which give the chronological view a reason to be checked; promote it back then. |
 | Social | Follower / following list pages + frontend routes | Counters ship and suffice at the current scale; the lists (`GET /users/{username}/followers` etc.) only earn their build when follow usage shows they are asked for. Descoped from v0.6. |
 | Backfill | Archive `note-tweet.js` long-form bodies | The intake reads only `tweets.js` + `tweets_media/`; long-form posts keep their full text in a separate `note-tweet.js`, so a coordinate buried in a long post's body is missed until that file is read too. Add it to the copy-allowlist and merge the long text in the tweet read. Near-zero cost; descoped from v0.4, promote back if a real archive shows long-form geolocations being dropped. |
 | Submit | Confirm before an X-post import overwrites a typed proof | Applying the "From an X post" import replaces the proof body (and `source_url` / `source_posted_at`) silently; with the import reachable mid-composition, a filled proof can be lost to one click. A confirm step gated on a non-empty proof closes it. Promote when the import path sees real use. |

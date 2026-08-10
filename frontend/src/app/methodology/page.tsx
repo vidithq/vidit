@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 // Public methodology guide, reachable without an account (see
@@ -38,7 +39,7 @@ export const metadata: Metadata = {
   },
 };
 
-const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
+const PROOF_STEPS: NumberedStep[] = [
   {
     title: "Verify and archive the source",
     body: (
@@ -93,21 +94,7 @@ export default function MethodologyPage() {
           reach the same conclusion, without taking your word for the
           coordinates. Six short steps:
         </p>
-        <ol className="space-y-3 list-none">
-          {PROOF_STEPS.map(({ title, body }, i) => (
-            <li key={title} className="flex items-start gap-3">
-              <span className="mt-0.5 size-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[11px] text-neutral-400 font-medium shrink-0">
-                {i + 1}
-              </span>
-              <div>
-                <p className="text-sm font-medium text-neutral-100">{title}</p>
-                <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
-                  {body}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <NumberedSteps steps={PROOF_STEPS} />
       </Card>
 
     </PageShell>

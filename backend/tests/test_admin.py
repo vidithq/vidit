@@ -1129,6 +1129,7 @@ def test_user_profile_carries_trust_fields(admin_user, regular_user):
         "username",
         "is_trusted",
         "trust_reason",
+        "avatar_url",
         "created_at",
         "geolocations_count",
     }.issubset(body.keys())

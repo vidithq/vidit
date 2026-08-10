@@ -21,14 +21,16 @@ interface ProofEditorPanelProps {
   proof: Record<string, unknown> | null;
   onChange: (proof: Record<string, unknown> | null) => void;
   /** The inline proof images the editor is holding locally; the form uploads
-   *  them as `proof_files[]` at publish. Omitted in request mode (image-free). */
+   *  them as `proof_files[]` at publish. */
   onProofFilesChange?: (files: File[]) => void;
   /** Files the tweet-import flow already downloaded and matched to
    *  ``placeholder://<filename>`` nodes in `proof`, for the editor to hydrate
    *  into a live preview on mount (see `components/editor/ProofEditor.tsx`). */
   initialProofFiles?: File[];
-  /** Request mode: a request's proof is in-progress (else it'd be a
-   *  geolocation), so it's image-free (see ProofEditor). */
+  /** Drop the editor's image control (see ProofEditor). Both publish paths
+   *  keep it: a geolocation's proof must carry an image (the readiness list
+   *  names it), and a request's in-progress proof may attach one or stay
+   *  imageless, so every call site today takes the default. */
   allowImages?: boolean;
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;

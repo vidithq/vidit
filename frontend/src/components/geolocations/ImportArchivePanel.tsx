@@ -14,9 +14,13 @@ import {
 } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { ACCENT_SURFACE, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
+import {
+  NumberedSteps,
+  type NumberedStep,
+} from "@/components/ui/NumberedSteps";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
@@ -42,33 +46,33 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const STEPS = [
+const STEPS: NumberedStep[] = [
   {
     icon: Settings,
     title: "Request your archive on X",
-    detail: 'On X: Settings → "Your account" → "Download an archive of your data".',
+    body: 'On X: Settings → "Your account" → "Download an archive of your data".',
   },
   {
     icon: Clock,
     title: "Wait for X to build it",
-    detail:
+    body:
       "Confirm your password. X prepares the file and notifies you when it's ready (often minutes, up to 24h).",
   },
   {
     icon: Download,
     title: "Download the .zip",
-    detail: "Open the link from X's email or in-app banner and save the zip to your device.",
+    body: "Open the link from X's email or in-app banner and save the zip to your device.",
   },
   {
     icon: Scissors,
     title: "Trim it to your posts (recommended)",
-    detail:
+    body:
       "Open the archive and keep only your tweets.js and tweets_media folder (inside the data folder); delete the rest, then re-zip. We strip it automatically too, this is for full control.",
   },
   {
     icon: Upload,
     title: "Upload it here",
-    detail: "Drop the zip below. We map the geolocations in your posts for you to review.",
+    body: "Drop the zip below. We map the geolocations in your posts for you to review.",
   },
 ];
 
@@ -249,23 +253,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
     <div className="space-y-6">
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-neutral-200">How to export from X</h2>
-        <ol className="space-y-2">
-          {STEPS.map((step, i) => (
-            <li
-              key={step.title}
-              className="flex items-start gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-3"
-            >
-              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${ACCENT_SURFACE}`}>
-                {i + 1}
-              </span>
-              <step.icon size={18} strokeWidth={1.8} className="mt-0.5 shrink-0 text-neutral-500" />
-              <div className="min-w-0">
-                <p className="text-sm text-neutral-200">{step.title}</p>
-                <p className="text-xs text-neutral-500">{step.detail}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <NumberedSteps steps={STEPS} variant="boxed" />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span className="inline-flex items-center gap-1.5 text-neutral-400">
             <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />

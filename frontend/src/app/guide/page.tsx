@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 // Public getting-started guide, reachable without an account (see
@@ -41,7 +42,7 @@ export const metadata: Metadata = {
   },
 };
 
-const STEPS: { title: string; body: React.ReactNode }[] = [
+const STEPS: NumberedStep[] = [
   {
     title: "Explore the map",
     body: (
@@ -53,8 +54,8 @@ const STEPS: { title: string; body: React.ReactNode }[] = [
         : every located event is a pin you can open. Each event carries a
         status, so you always know what you are reading. Geolocated means a
         person placed it and stands behind it. Detected is a machine-imported
-        draft, rendered marked everywhere until its owner reviews and publishes
-        it. Requested is footage nobody has placed yet.{" "}
+        draft, flagged as machine-detected everywhere until its owner reviews
+        and publishes it. Requested is footage nobody has placed yet.{" "}
         <Link href="/search" className={TEXT_LINK}>
           Search
         </Link>{" "}
@@ -88,7 +89,25 @@ const STEPS: { title: string; body: React.ReactNode }[] = [
     body: (
       <>
         Accounts are invite-only today, so reading is open to everyone and
-        publishing is not. Three ways in, all landing on the same map:
+        publishing is not: request an invite by DM to{" "}
+        <a
+          href="https://x.com/vidithq"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={TEXT_LINK}
+        >
+          @vidithq
+        </a>{" "}
+        on X, or in the{" "}
+        <a
+          href="https://discord.gg/9wPtsrrKyJ"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={TEXT_LINK}
+        >
+          Discord
+        </a>
+        . Three ways in once you are in, all landing on the same map:
         <ul className="mt-1.5 space-y-1.5 list-disc pl-4">
           <li>
             The{" "}
@@ -147,21 +166,7 @@ export default function GuidePage() {
           the proof that ties them together. Four steps, in the order an analyst
           meets them:
         </p>
-        <ol className="space-y-3 list-none">
-          {STEPS.map(({ title, body }, i) => (
-            <li key={title} className="flex items-start gap-3">
-              <span className="mt-0.5 size-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[11px] text-neutral-400 font-medium shrink-0">
-                {i + 1}
-              </span>
-              <div>
-                <p className="text-sm font-medium text-neutral-100">{title}</p>
-                <div className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
-                  {body}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <NumberedSteps steps={STEPS} />
       </Card>
 
     </PageShell>

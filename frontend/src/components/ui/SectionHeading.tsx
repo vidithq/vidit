@@ -20,7 +20,10 @@ export function SectionHeading({
   invalid?: boolean;
 }) {
   return (
-    <header>
+    // `trailing` renders as the heading's sibling, not its child: a badge or a
+    // guide link inside the <h2> would join its accessible name ("Proof
+    // Methodology guide"). The flex row keeps them on one line.
+    <header className="flex items-center gap-1.5">
       <h2
         className={`text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5${
           invalid ? ` ${FORM_INVALID_LABEL}` : ""
@@ -28,8 +31,8 @@ export function SectionHeading({
       >
         {title}
         <FieldHelp concept={concept} />
-        {trailing}
       </h2>
+      {trailing}
     </header>
   );
 }

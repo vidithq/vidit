@@ -47,6 +47,7 @@ export function AuthorByline({
     >
       {avatar && (
         <Avatar
+          as="span"
           src={author.avatar_url}
           username={author.username}
           size={size === "xs" ? "size-4 text-[9px]" : "size-5 text-[10px]"}
