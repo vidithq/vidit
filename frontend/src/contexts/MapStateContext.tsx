@@ -96,7 +96,9 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [submittedEnd, setSubmittedEnd] = useState("");
   const [submittedPlaying, setSubmittedPlaying] = useState(false);
   const [authorFilter, setAuthorFilter] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  // Collapsed by default: the map leads with the catalogue, and the pills row
+  // (ActiveFilterPills) still surfaces any active filter while collapsed.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Memoised for a referentially-stable value across renders that don't
   // change any state slot. React re-runs every consumer on value-identity

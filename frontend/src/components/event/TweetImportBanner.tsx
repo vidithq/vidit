@@ -6,7 +6,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import type { TweetImportResponse } from "@/types";
 
 
@@ -48,7 +48,9 @@ export function authorshipState(
 /**
  * Single-input banner that front-loads the submit form: paste a tweet URL, the
  * parent populates title / source / event date / media / coordinates. A
- * shortcut, not an authority — the analyst still reviews and submits.
+ * shortcut, not an authority — the analyst still reviews and submits. The
+ * submit form renders it above the form sections in its "From an X post" entry
+ * mode.
  *
  * Hidden in request-fulfilment mode (source URL + media are locked to the
  * request, so a pre-fill has nothing to land in). The fetch + state population
@@ -118,9 +120,8 @@ export function TweetImportBanner({
   return (
     <div className="space-y-3">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-      {/* Pre-import nudge surfaces the no-linked-X signal before the analyst
-          pastes; post-import, ``AuthorshipWarning`` covers it more pointedly. */}
-      {!imported && !linkedX && <AuthorshipNudgeNoLink />}
+      {/* No pre-import nudge: ``AuthorshipWarning`` covers the missing or
+          mismatched X link after import, when there is something to say. */}
       {imported && state !== "match" && (
         <AuthorshipWarning
           state={state}
@@ -196,26 +197,3 @@ function AuthorshipWarning({
   );
 }
 
-/**
- * Tighter ``AuthorshipWarning`` shown before import, on the empty banner, when
- * no X handle is linked. Nudges the analyst to link one (or accept they won't
- * get the match check on their own work).
- */
-function AuthorshipNudgeNoLink() {
-  return (
-    <div className="text-xs text-neutral-500 flex items-start gap-1.5">
-      <AlertTriangle size={12} className="shrink-0 mt-0.5 text-amber-400/70" />
-      <span>
-        No X account linked on your{" "}
-        <a
-          href="/settings"
-          className={`${TEXT_LINK} underline-offset-2`}
-        >
-          profile
-        </a>
-        . We&apos;ll flag a heads-up on import to make sure you have
-        permission to publish the tweet.
-      </span>
-    </div>
-  );
-}

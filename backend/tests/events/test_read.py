@@ -224,6 +224,15 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["event_coords"]["lng"] == pytest.approx(34.7)
     assert body["capture_source_coords"] is None
     assert body["owner"]["username"] == author.username
+    # `AuthorRef` field-set guard: the byline renders handle + avatar + trust
+    # signal off this block, so a dropped field silently empties a surface.
+    assert set(body["owner"]) == {
+        "id",
+        "username",
+        "avatar_url",
+        "is_trusted",
+        "trust_reason",
+    }
     assert [g["username"] for g in body["geolocators"]] == []
     assert body["investigator_count"] == 0
     assert any(tag["name"] == free_tag.name for tag in body["tags"])

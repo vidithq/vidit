@@ -4,20 +4,26 @@ import { User } from "lucide-react";
 // the username initial). Shared by the profile header and the search user
 // results, which hand-rolled the same circle. The clickable initial-avatar on
 // the geolocation feed card is a different (link + hover) treatment, left as-is.
+//
+// A `<div>` by default. Pass `as="span"` inside phrasing content (the
+// `AuthorByline`, itself a `<span>` that sits in paragraphs and headings),
+// where a block-level child is invalid nesting.
 export function Avatar({
   src,
   username,
   size,
   fallback = "initial",
+  as: Tag = "div",
 }: {
   src?: string | null;
   username: string;
   /** Sizing utility, e.g. `w-16 h-16` or `size-10`. */
   size: string;
   fallback?: "initial" | "icon";
+  as?: "div" | "span";
 }) {
   return (
-    <div
+    <Tag
       className={`${size} rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0`}
     >
       {src ? (
@@ -34,6 +40,6 @@ export function Avatar({
           {username[0]?.toUpperCase() ?? "?"}
         </span>
       )}
-    </div>
+    </Tag>
   );
 }

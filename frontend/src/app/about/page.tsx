@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   ShieldCheck,
   Users,
   AtSign,
   MessageCircle,
   Mail,
-  Crosshair,
   Lock,
   Coins,
+  BookOpen,
+  Compass,
+  Crosshair,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
@@ -23,14 +25,13 @@ import { LinkRow } from "@/components/ui/LinkRow";
 export const metadata: Metadata = {
   title: "About Vidit",
   description:
-    "Commitments, methodology, funding, and privacy posture behind Vidit, the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
+    "Commitments, funding, and privacy posture behind Vidit, the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
   openGraph: {
     type: "website",
     url: "https://vidit.app/about",
     siteName: "Vidit",
     title: "About Vidit",
-    description:
-      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+    description: "Commitments, funding, and privacy posture behind Vidit.",
     locale: "en_US",
   },
   twitter: {
@@ -38,8 +39,7 @@ export const metadata: Metadata = {
     site: "@vidithq",
     creator: "@vidithq",
     title: "About Vidit",
-    description:
-      "Commitments, methodology, funding, and privacy posture behind Vidit.",
+    description: "Commitments, funding, and privacy posture behind Vidit.",
   },
 };
 
@@ -54,52 +54,11 @@ const COMMITMENTS = [
   },
   {
     title: "Your work, kept safe and verifiable",
-    body: "Every file you submit is copied to our own storage the instant it lands: stripped of EXIF and location metadata to protect you, fingerprinted with a SHA-256 content hash, and held under a retention lock so it can't be silently altered or deleted. The geolocation you submit today still resolves a year from now, even if the original post is gone.",
+    body: "Every file you submit is copied to our own storage the instant it lands: images stripped of EXIF and location metadata to protect you (video metadata stripping is coming), fingerprinted with a SHA-256 content hash, and held under a retention lock so it can't be silently altered or deleted. The geolocation you submit today still resolves a year from now, even if the original post is gone.",
   },
   {
     title: "Transparency",
     body: "Every geolocation displays its source URL, the analyst behind it, and the event date. The submission stays publicly tied to the analyst who posted it.",
-  },
-];
-
-const PROOF_STEPS: { title: string; body: React.ReactNode }[] = [
-  {
-    title: "Verify and archive the source",
-    body: (
-      <>
-        Reverse-image-search the source to rule out recycled footage from
-        another conflict, and snapshot the link on{" "}
-        <a
-          href="https://archive.today"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={TEXT_LINK}
-        >
-          archive.today
-        </a>{" "}
-        so it survives if the original gets deleted.
-      </>
-    ),
-  },
-  {
-    title: "Pin the visual anchors",
-    body: "Pick three or more durable features in the source media: signage, road geometry, building footprints, infrastructure. Skip vehicles, smoke, or anything mobile.",
-  },
-  {
-    title: "Cross-reference on satellite imagery",
-    body: "Open the coordinates in Google Earth or Sentinel Hub. Confirm shape, scale, and relative position.",
-  },
-  {
-    title: "Annotate the match",
-    body: "On both images, draw matching coloured boxes around each anchor. Same colour for the same feature.",
-  },
-  {
-    title: "Check the time-of-day",
-    body: "Validate shadow direction and length against the timestamp. SunCalc takes 30 seconds.",
-  },
-  {
-    title: "Optional: aerial alignment",
-    body: "When the source is a drone or FPV clip, align camera trajectory and terrain profile to strengthen the match.",
   },
 ];
 
@@ -130,26 +89,45 @@ const CONTACT = [
   },
 ];
 
+// The in-product guides, gathered here since About is their hub: the rail
+// carries no per-guide entry, and the bot guide's external readers arrive
+// from the bot's X bio and replies. Getting started leads: it teaches the
+// whole loop, and the other two go deeper into one part of it.
+const GUIDES = [
+  {
+    icon: Compass,
+    label: "Getting started",
+    value: "How Vidit works",
+    href: "/guide",
+  },
+  {
+    icon: Crosshair,
+    label: "Methodology",
+    value: "Building a proof",
+    href: "/methodology",
+  },
+  {
+    icon: Bot,
+    label: "Bot guide",
+    value: "Import by tagging @ViditBot on X",
+    href: "/bot",
+  },
+];
+
 interface SectionProps {
   icon: LucideIcon;
   title: string;
-  description?: string;
   children: React.ReactNode;
 }
 
-function Section({ icon: Icon, title, description, children }: SectionProps) {
+function Section({ icon: Icon, title, children }: SectionProps) {
   return (
     <Card as="section">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2.5">
-          <span className="size-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400 shrink-0">
-            <Icon size={14} />
-          </span>
-          <h2 className="text-sm font-medium text-neutral-200">{title}</h2>
-        </div>
-        {description && (
-          <p className="text-xs text-neutral-500 pl-9">{description}</p>
-        )}
+      <div className="flex items-center gap-2.5">
+        <span className="size-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400 shrink-0">
+          <Icon size={14} />
+        </span>
+        <h2 className="text-sm font-medium text-neutral-200">{title}</h2>
       </div>
       <div className="space-y-3">{children}</div>
     </Card>
@@ -158,11 +136,28 @@ function Section({ icon: Icon, title, description, children }: SectionProps) {
 
 export default function AboutPage() {
   return (
-    <PageShell title="About Vidit">
+    <PageShell title="About">
+        <Section
+          icon={BookOpen}
+          title="Guides"
+        >
+          <div className="space-y-2">
+            {GUIDES.map(({ icon, label, value, href }) => (
+              <LinkRow
+                key={label}
+                icon={icon}
+                label={label}
+                value={value}
+                href={href}
+                external={false}
+              />
+            ))}
+          </div>
+        </Section>
+
         <Section
           icon={ShieldCheck}
           title="Commitments"
-          description="What Vidit promises analysts in return."
         >
           <ul className="space-y-3">
             {COMMITMENTS.map(({ title, body }) => (
@@ -177,38 +172,8 @@ export default function AboutPage() {
         </Section>
 
         <Section
-          icon={Crosshair}
-          title="Methodology"
-          description="How a Vidit proof comes together."
-        >
-          <p className="text-sm text-neutral-300 leading-relaxed">
-            A geolocation proof is a visual argument: the source frame next to
-            a satellite screenshot, with matching coloured boxes on the
-            features that prove the match. Six short steps:
-          </p>
-          <ol className="space-y-3 list-none">
-            {PROOF_STEPS.map(({ title, body }, i) => (
-              <li key={title} className="flex items-start gap-3">
-                <span className="mt-0.5 size-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[11px] text-neutral-400 font-medium shrink-0">
-                  {i + 1}
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-neutral-100">
-                    {title}
-                  </p>
-                  <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
-                    {body}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </Section>
-
-        <Section
           icon={Coins}
           title="Funding"
-          description="How Vidit pays for itself, today and longer-term."
         >
           <p className="text-sm text-neutral-300 leading-relaxed">
             The aim is independence and longevity, not maximising revenue. In
@@ -236,12 +201,12 @@ export default function AboutPage() {
         <Section
           icon={Lock}
           title="Privacy"
-          description="What we collect, and how to be removed."
         >
           <p className="text-sm text-neutral-300 leading-relaxed">
             Vidit only collects what it needs to operate: your email and
-            username, the geolocations you submit, and your IP plus sign-in
-            timestamps (kept for abuse detection and to protect your account).
+            username, the geolocations you submit, and sign-in timestamps.
+            Vidit does not store IP addresses; network-level context exists
+            only in our CDN&apos;s edge logs, outside the application.
             Everything is hosted in Europe today; the long-term ambition is a
             fully sovereign, self-hosted infrastructure that matches the
             threat model the community works under.
@@ -256,9 +221,11 @@ export default function AboutPage() {
             work; the platform is built around that.
           </p>
           <p className="text-sm text-neutral-300 leading-relaxed">
-            We don&apos;t share user data with third parties, and we don&apos;t
-            run analytics or ad trackers. To delete your account and your
-            submissions, email{" "}
+            We don&apos;t share user data with third parties, we don&apos;t run
+            ads or cross-site trackers, we don&apos;t build user profiles, and
+            we don&apos;t resell data. The platform does run cookieless,
+            aggregate page metrics and crash reporting, neither of them tied to
+            a person. To delete your account and your submissions, email{" "}
             <a
               href="mailto:hello@vidit.app"
               className={TEXT_LINK}
@@ -274,7 +241,6 @@ export default function AboutPage() {
         <Section
           icon={Users}
           title="Behind Vidit"
-          description="Who&rsquo;s building the platform."
         >
           <p className="text-sm text-neutral-300 leading-relaxed">
             Vidit is a one-person project, maintained pseudonymously under
@@ -289,7 +255,6 @@ export default function AboutPage() {
         <Section
           icon={MessageCircle}
           title="Stay in touch"
-          description="Reach the team, file a bug, or hang out with the community."
         >
           <div className="space-y-2">
             {CONTACT.map(({ icon, label, value, href, external }) => (
@@ -305,23 +270,6 @@ export default function AboutPage() {
           </div>
         </Section>
 
-        <p className="text-xs text-neutral-500 text-center">
-          The best way to learn about the project is still to use it. Start on
-          the{" "}
-          <Link href="/map" className={TEXT_LINK}>
-            map
-          </Link>
-          , or read the source on{" "}
-          <a
-            href="https://github.com/vidithq/vidit"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={TEXT_LINK}
-          >
-            GitHub
-          </a>
-          .
-        </p>
     </PageShell>
   );
 }

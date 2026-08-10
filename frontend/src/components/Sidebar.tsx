@@ -13,13 +13,11 @@ import {
   Plus,
   User,
   Settings,
-  Newspaper,
   Search,
   Info,
   LogIn,
   Megaphone,
   Swords,
-  Bot,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -93,12 +91,14 @@ interface NavItem {
   activeFor?: (pathname: string) => boolean;
 }
 
-// Map (the catalogue), Submit (add your work), Requests (the board) are the
-// working surfaces; Timeline + Search are alternate lenses on the catalogue.
-// About (public/meta) sits last. Home has no rail slot: the logo already links
-// it, so a second entry was pure noise once signed in. Anonymous read is open,
-// so only the write surface (Submit) and the follow-feed (Timeline) carry
-// `auth: true` and hide signed-out.
+// Map (the catalogue), Submit (add your work), Requests (the board), Search
+// (the other lens on the catalogue), About (public/meta plus the guides hub)
+// last. Every entry is a living surface: Timeline leaves the rail until its
+// collaboration mechanics arrive, and the bot guide is reached from About and
+// from X itself (bot bio, replies), where its readers actually come from.
+// Home has no rail slot: the logo already links it, so a second entry was
+// pure noise once signed in. Anonymous read is open, so only the write
+// surface (Submit) carries `auth: true` and hides signed-out.
 // Profile/Settings/Sign-in/Sign-out are a separate identity block at the bottom,
 // not here.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
@@ -119,12 +119,19 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     // Every /requests/* path is a Requests page (creation lives at /submit).
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
-  { href: "/timeline", icon: Newspaper, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search" },
-  // The public @ViditBot format guide: an on-ramp surface, so it rides the
-  // rail like About rather than hiding behind the bot's X bio alone.
-  { href: "/bot", icon: Bot, label: "Bot" },
-  { href: "/about", icon: Info, label: "About" },
+  {
+    href: "/about",
+    icon: Info,
+    label: "About",
+    // About is the hub for the guide pages (its Guides section links them),
+    // so it stays lit on them, the same way Map stays lit on an event detail.
+    activeFor: (p) =>
+      p === "/about" ||
+      p === "/guide" ||
+      p === "/methodology" ||
+      p === "/bot",
+  },
 ];
 
 function isActive(item: NavItem, pathname: string): boolean {

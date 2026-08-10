@@ -48,7 +48,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
             </h2>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
-                <AuthorByline author={detail.owner} size="xs" />
+                <AuthorByline author={detail.owner} size="xs" avatar />
               </p>
             </div>
           </div>

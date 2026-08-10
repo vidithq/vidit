@@ -27,10 +27,7 @@ export default function RequestsPage() {
   );
 
   return (
-    <PageShell
-      title="Requests"
-      subtitle="A queue of events someone has spotted but couldn't geolocate: title, media, source and tags, but no coordinates and no proof yet. Anyone with an account can post one; analysts pick them up, do the geolocation work, and promote the result into a full geolocation."
-    >
+    <PageShell title="Requests">
       <div className="flex justify-end">
         <Link
           href="/submit"

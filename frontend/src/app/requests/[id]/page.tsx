@@ -129,7 +129,7 @@ export default function RequestDetailPage() {
     <PageShell
       back
       title={request.title}
-      subtitle={<AuthorByline author={request.owner} />}
+      subtitle={<AuthorByline author={request.owner} avatar />}
     >
         {/* A request is an event with no coordinates, so the body renders with
             an empty Location and the missing detected-from / requested-by rows

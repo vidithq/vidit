@@ -1679,11 +1679,14 @@ export interface components {
          * AuthorRef
          * @description Compact author handle used wherever one payload references another.
          *
-         *     The public ``User`` fields other schemas need for the byline + trust signal
-         *     (geolocation card, request claimers, search hit). ``from_attributes=True``
-         *     lets call sites assign a live SQLAlchemy row directly, no field-by-field build.
+         *     The public ``User`` fields other schemas need for the byline: handle,
+         *     avatar, trust signal (geolocation card, request claimers, search hit).
+         *     ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
+         *     directly, no field-by-field build, so ``avatar_url`` flows off the column.
          */
         AuthorRef: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /**
              * Id
              * Format: uuid

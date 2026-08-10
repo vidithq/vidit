@@ -24,6 +24,14 @@ const PUBLIC_PREFIXES = [
   // The bot format guide: the destination behind the bot's bio and pinned
   // post, read by analysts with no Vidit session yet.
   "/bot",
+  // The getting-started guide: the platform's overall loop, linked from the
+  // about page and the landing, and read by analysts sizing up the platform
+  // before they have a session.
+  "/guide",
+  // The proof methodology guide: linked from the about page and from the
+  // proof section of the submit / edit forms, and read by analysts sizing
+  // up the platform before they have a session.
+  "/methodology",
   // The Sentry tunnel: browsers POST error envelopes here (rewritten to
   // Sentry ingest by next.config's tunnelRoute). Anonymous readers crash
   // too; behind the wall their reports redirected to /login and died 405.

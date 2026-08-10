@@ -4,13 +4,16 @@ import { useState } from "react";
 import { notFound } from "next/navigation";
 import {
   AtSign,
+  BookOpen,
   Calendar,
   Check,
   Circle,
+  Download,
   Mail,
   MapPin,
   MessageCircle,
   Search as SearchIcon,
+  Upload,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -28,6 +31,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { ActivityBars } from "@/components/ui/ActivityBars";
+import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
@@ -40,7 +44,6 @@ import { Dot } from "@/components/ui/Dot";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -123,6 +126,7 @@ const MOCK_DETAIL: EventDetail = {
   owner: {
     id: "a1",
     username: "analyst",
+    avatar_url: null,
     is_trusted: true,
     trust_reason: "Verified analyst",
   },
@@ -472,9 +476,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<FieldHelp> + <OptionalHint>" usage="Help ? on labels/sections + optional marker">
+          <Item name="<FieldHelp>" usage="Help ? on labels/sections">
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordinates <FieldHelp concept="coordinates" /> <OptionalHint />
+              Coordinates <FieldHelp concept="coordinates" />
             </span>
           </Item>
 
@@ -499,7 +503,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
 
-          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial)">
+          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial). Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant).">
             <Variant label='fallback="icon"'>
               <Avatar username="demo" size="w-16 h-16" fallback="icon" />
             </Variant>
@@ -508,7 +512,12 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author.">
+          <Item name="<AuthorByline>" usage="The 'by @user + TrustBadge' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
+            <Variant label="avatar (detail-page signature)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.owner} avatar />
+              </span>
+            </Variant>
             <Variant label="default (subtitle)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} />
@@ -526,7 +535,7 @@ export default function PalettePage() {
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges, landing + beta pills, detections entry. Position / ring / size via className.">
+          <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges and the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -573,6 +582,42 @@ export default function PalettePage() {
                   { month: "2026-07", count: 7 },
                 ]}
               />
+            </div>
+          </Item>
+
+          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
+            <div className="w-full max-w-md space-y-4">
+              <Variant label="plain (the guides)">
+                <NumberedSteps
+                  steps={[
+                    {
+                      title: "Pin the visual anchors",
+                      body: "Three or more durable features: signage, road geometry, building footprints.",
+                    },
+                    {
+                      title: "Cross-reference on satellite imagery",
+                      body: "Confirm shape, scale, and relative position.",
+                    },
+                  ]}
+                />
+              </Variant>
+              <Variant label="boxed + per-step icon (the archive walkthrough)">
+                <NumberedSteps
+                  variant="boxed"
+                  steps={[
+                    {
+                      icon: Download,
+                      title: "Download the .zip",
+                      body: "Save the archive X built for you.",
+                    },
+                    {
+                      icon: Upload,
+                      title: "Upload it here",
+                      body: "We map the geolocations in your posts for you to review.",
+                    },
+                  ]}
+                />
+              </Variant>
             </div>
           </Item>
 
@@ -630,9 +675,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch (About)">
+          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch and Guides (About). The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
+              <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
               <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
             </div>
@@ -640,7 +686,7 @@ export default function PalettePage() {
 
           <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
             <SectionHeading title="Source media" concept="source_media" />
-            <SectionHeading title="Proof" concept="section_proof" optional />
+            <SectionHeading title="Proof" concept="section_proof" />
           </Item>
 
           <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow)">

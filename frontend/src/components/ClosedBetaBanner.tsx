@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { isAuthRoute } from "@/lib/auth-routes";
 import { Pill } from "@/components/ui/Pill";
-import { Dot } from "@/components/ui/Dot";
 
 // Baked into the bundle by next.config.mjs — the deploy ref's
 // `git describe --tags --always --dirty`, or "dev" with no git history. See
@@ -21,6 +20,9 @@ const REPORT_URL = "https://discord.gg/9wPtsrrKyJ";
 export default function ClosedBetaBanner() {
   const pathname = usePathname() ?? "";
   if (isAuthRoute(pathname)) return null;
+  // The landing dropped its beta framing, so the corner pill follows it there;
+  // it stays on every app surface.
+  if (pathname === "/") return null;
   return (
     // `pointer-events-none` so the badge never eats map drags; only the report
     // link inside opts back in. The wrapper owns the fixed placement, the
@@ -31,7 +33,6 @@ export default function ClosedBetaBanner() {
       className="fixed bottom-3 right-3 z-1200 pointer-events-none select-none"
     >
       <Pill tone="accent" className="gap-2 tracking-tight backdrop-blur-xs">
-        <Dot />
         <span>Closed beta · {displayVersion}</span>
         <a
           href={REPORT_URL}

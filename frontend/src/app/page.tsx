@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Globe, Megaphone, Import, Tags, Archive, Filter, Play } from "lucide-react";
+import Link from "next/link";
+import { Globe, AtSign, Import, Crosshair, Archive, Code, Play } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
-import { Dot } from "@/components/ui/Dot";
 import { PageFrame } from "@/components/ui/PageFrame";
 import HeroCtas from "@/components/landing/HeroCtas";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -19,14 +19,14 @@ import DemoVideo from "@/components/landing/DemoVideo";
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
-    "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events. In closed beta.",
+    "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
   openGraph: {
     type: "website",
     url: "https://vidit.app",
     siteName: "Vidit",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+      "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
     locale: "en_US",
   },
   twitter: {
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     creator: "@vidithq",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "An open, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+      "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
   },
 };
 
@@ -48,8 +48,8 @@ const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL;
 const DEMO_VIDEO_IS_FILE =
   !!DEMO_VIDEO_URL && /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(DEMO_VIDEO_URL);
 
-// Icons reuse the product's vocabulary: `Globe`/`Megaphone`/`Filter` echo
-// Map, Requests, and the trust mark elsewhere in the app.
+// Icons reuse the product's vocabulary: `Globe` echoes the map,
+// `AtSign`/`Import` the two on-ramp channels, `Crosshair` the proof.
 const FEATURES: {
   icon: typeof Globe;
   title: string;
@@ -61,19 +61,19 @@ const FEATURES: {
     body: "Every geolocation the community submits, on one map you can filter by conflict, capture source, date, or analyst.",
   },
   {
-    icon: Megaphone,
-    title: "Requests for the community",
-    body: "Post a request to point the community at an event that needs geolocating, and steer effort where it matters.",
+    icon: Crosshair,
+    title: "Proof, not just a pin",
+    body: "Each geolocation carries its argument: the source media next to the satellite view, annotated anchors, coordinates, event date, and capture source.",
   },
   {
     icon: Import,
-    title: "Import straight from a tweet",
-    body: "Paste a tweet URL and the form pre-fills itself: title, source, date, media, even coordinates.",
+    title: "Your history, imported in one step",
+    body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and publish. No manual re-entry.",
   },
   {
-    icon: Tags,
-    title: "Structured, not a caption",
-    body: "Every geolocation is structured data you can filter the catalogue by: coordinates, event date, source, conflict, and capture source.",
+    icon: AtSign,
+    title: "Tag @ViditBot, it's archived",
+    body: "Tag @ViditBot under a geolocation post on X and it lands here as a structured draft, with an in-thread reply telling you what was captured. You never leave your workflow.",
   },
   {
     icon: Archive,
@@ -81,9 +81,9 @@ const FEATURES: {
     body: "Every image and video is copied to Vidit's own storage as a permanent, locked record, so it survives even when the original is deleted, the channel vanishes, or an account is banned.",
   },
   {
-    icon: Filter,
-    title: "A trust filter, never a gate",
-    body: "Any registered analyst can submit. A visible trust mark flags known-credible analysts, and readers can filter to vetted-only: a quality signal, never a barrier.",
+    icon: Code,
+    title: "Open source, end to end",
+    body: "The entire platform is AGPL-3.0 on GitHub: auditable, forkable, self-hostable. Infrastructure the community can trust because it can read it.",
   },
 ];
 
@@ -124,7 +124,7 @@ const ROADMAP: {
     version: "v1.0",
     state: "upcoming",
     title: "Public v1",
-    body: "Open self-registration behind a hardened moderation and legal stack, catalogue density, and the closed-beta framing removed. The full release.",
+    body: "Open self-registration behind a hardened moderation and legal stack, map density, and the closed-beta framing removed. The full release.",
   },
 ];
 
@@ -136,17 +136,21 @@ export default function LandingPage() {
           rhythm. */}
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
-          <Pill tone="accent" className="gap-2 tracking-tight">
-            <Dot />
-            <span>Closed beta · invite-only</span>
-          </Pill>
-          <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
             The home for conflict geolocations
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
-            Vidit is an open, professional platform for OSINT/GEOINT analysts to
-            archive, reference, and visualise geolocations of armed-conflict
-            events.
+            Vidit is an{" "}
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={TEXT_LINK}
+            >
+              open-source
+            </a>
+            , professional platform for OSINT/GEOINT analysts to archive,
+            reference, and visualise geolocations of armed-conflict events.
           </p>
           <HeroCtas />
         </section>
@@ -174,6 +178,15 @@ export default function LandingPage() {
                 <p className="text-xs text-neutral-600">
                   A short walkthrough: map to geolocation to submission. Coming
                   soon.
+                </p>
+                {/* Placeholder-only: while there is no video, the written
+                    guide covers the same ground. When a video ships, how the
+                    two pair gets decided then. */}
+                <p className="text-xs text-neutral-600">
+                  In the meantime, read{" "}
+                  <Link href="/guide" className={TEXT_LINK}>
+                    how Vidit works
+                  </Link>
                 </p>
               </div>
             )}
@@ -244,17 +257,6 @@ export default function LandingPage() {
               </li>
             ))}
           </ol>
-          <p className="mt-6 text-center text-[13px] text-neutral-400">
-            Vidit is open source under AGPL-3.0.{" "}
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={TEXT_LINK}
-            >
-              View on GitHub →
-            </a>
-          </p>
         </section>
       </PageFrame>
     </main>

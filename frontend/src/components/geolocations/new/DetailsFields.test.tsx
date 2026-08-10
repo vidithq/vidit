@@ -36,9 +36,9 @@ describe("DetailsFields", () => {
     ).toBeInTheDocument();
   });
 
-  it("marks the event date and event time optional", () => {
+  it("carries no optional marker on the event date and event time", () => {
     render(<DetailsFields {...baseProps} />);
-    expect(screen.getAllByText("optional")).toHaveLength(2);
+    expect(screen.queryByText("optional")).toBeNull();
   });
 
   it("does not render a title field (the title leads the form)", () => {
@@ -81,7 +81,7 @@ describe("DetailsFields", () => {
     expect(screen.getByText("Source URL").closest("label")).toHaveClass(
       "!text-red-400"
     );
-    // The always-optional event date and time never get flagged.
+    // Event date and time are never required, so they never get flagged.
     expect(screen.getByText("Event date").closest("label")).not.toHaveClass(
       "!text-red-400"
     );

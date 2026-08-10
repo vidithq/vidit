@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { OptionalHint } from "@/components/ui/OptionalHint";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -34,10 +33,6 @@ interface TagPickerProps {
   conflicts: Conflict[];
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** Required-by-default: when false, the group shows an "optional" marker.
-   *  Hint only — enforcement lives in the parent's submit handler. */
-  requireConflict?: boolean;
-  requireCaptureSource?: boolean;
   /** Flag a curated group as a missing required field (red label + outline)
    *  when the form's submit/validate was blocked on it. */
   conflictInvalid?: boolean;
@@ -46,12 +41,11 @@ interface TagPickerProps {
 
 /**
  * Shared tag-selection section for the geolocation + request submit forms.
- * Both render *this* so they can't drift apart — only `subtitle` and the
- * `require*` flags differ. Conflict is a multi-select typeahead over the
- * conflicts referential (not a tag category); capture source is single-select
- * (one lens per piece of media) from the curated taxonomy, free tags from the
- * live list. The capture-source group doesn't render when no `capture_source`
- * tags are passed.
+ * Both render *this* so they can't drift apart. Conflict is a multi-select
+ * typeahead over the conflicts referential (not a tag category); capture
+ * source is single-select (one lens per piece of media) from the curated
+ * taxonomy, free tags from the live list. The capture-source group doesn't
+ * render when no `capture_source` tags are passed.
  */
 export function TagPicker({
   tags,
@@ -62,8 +56,6 @@ export function TagPicker({
   conflicts,
   selectedConflictIds,
   setSelectedConflictIds,
-  requireConflict = false,
-  requireCaptureSource = false,
   conflictInvalid = false,
   captureSourceInvalid = false,
 }: TagPickerProps) {
@@ -98,8 +90,7 @@ export function TagPicker({
       {conflicts.length > 0 && (
         <div className="space-y-2">
           <span className={`${FORM_LABEL}${conflictInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
-            Conflict <FieldHelp concept="conflict" />{" "}
-            {!requireConflict && <OptionalHint />}
+            Conflict <FieldHelp concept="conflict" />
           </span>
           <div className={conflictInvalid ? invalidChips : undefined}>
             <ConflictTypeahead
@@ -116,9 +107,7 @@ export function TagPicker({
           <span
             className={`${FORM_LABEL}${captureSourceInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
           >
-            Capture source{" "}
-            <FieldHelp concept="capture_source" />{" "}
-            {!requireCaptureSource && <OptionalHint />}
+            Capture source <FieldHelp concept="capture_source" />
           </span>
           <div className={`flex flex-wrap gap-2${captureSourceInvalid ? ` ${invalidChips}` : ""}`}>
             {captureSourceTags.map((tag) => (
@@ -135,9 +124,7 @@ export function TagPicker({
       )}
 
       <div className="space-y-2">
-        <span className={FORM_LABEL}>
-          Free tags <OptionalHint />
-        </span>
+        <span className={FORM_LABEL}>Free tags</span>
         {freeTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {freeTags.map((tag) => (

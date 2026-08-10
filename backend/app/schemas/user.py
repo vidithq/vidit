@@ -67,15 +67,17 @@ class ExternalLinks(BaseModel):
 class AuthorRef(BaseModel):
     """Compact author handle used wherever one payload references another.
 
-    The public ``User`` fields other schemas need for the byline + trust signal
-    (geolocation card, request claimers, search hit). ``from_attributes=True``
-    lets call sites assign a live SQLAlchemy row directly, no field-by-field build.
+    The public ``User`` fields other schemas need for the byline: handle,
+    avatar, trust signal (geolocation card, request claimers, search hit).
+    ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
+    directly, no field-by-field build, so ``avatar_url`` flows off the column.
     """
 
     id: uuid.UUID
     username: str
     is_trusted: bool
     trust_reason: str | None
+    avatar_url: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
