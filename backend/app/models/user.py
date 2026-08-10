@@ -29,11 +29,6 @@ class User(Base):
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    is_trusted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Mandatory at the app layer when is_trusted=true (the trust mark must be
-    # substantiated to be a useful public signal). Not DB-enforced because
-    # historical rows would fight a NOT NULL.
-    trust_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set to created_at by the pre-creation registration flow — a ``users`` row
     # exists only because the analyst clicked the confirmation link, so this is
     # non-NULL for any row minted after the pending_registrations migration.

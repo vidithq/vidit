@@ -56,7 +56,6 @@ def search(
         description="Scope the event groups to this owner username (exact, case-insensitive)",
     ),
     media: list[str] | None = Query(None),
-    trusted_only: bool = False,
     hide_demo: bool = False,
     db: Session = Depends(get_db),
 ) -> SearchResponse:
@@ -92,7 +91,6 @@ def search(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        trusted_only=trusted_only,
         hide_demo=hide_demo,
     )
     grouped = search_service.search_all(db, query=q, types=types, limit=limit, filters=filters)

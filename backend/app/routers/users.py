@@ -39,8 +39,6 @@ def _profile_payload(
     return UserProfile(
         id=user.id,
         username=user.username,
-        is_trusted=user.is_trusted,
-        trust_reason=user.trust_reason,
         bio=user.bio,
         avatar_url=user.avatar_url,
         external_links=user.external_links or {},

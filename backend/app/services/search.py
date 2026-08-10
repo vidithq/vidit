@@ -362,8 +362,6 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
                 "username_highlight": username_hl,
                 "bio": u.bio,
                 "bio_highlight": bio_highlight,
-                "is_trusted": u.is_trusted,
-                "trust_reason": u.trust_reason,
                 "avatar_url": u.avatar_url,
             }
         )

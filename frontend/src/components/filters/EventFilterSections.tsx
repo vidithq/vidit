@@ -10,13 +10,12 @@ import { ChipBucket } from "@/components/ui/ChipBucket";
 import { Input } from "@/components/ui/Input";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
 import { Pill } from "@/components/ui/Pill";
-import { ToggleRow } from "@/components/ui/ToggleRow";
 import type { Concept } from "@/lib/fieldHelp";
 
 /**
  * THE event filter panel, shared by the map overlay and the search page: one
  * component owns the section list (Status → Conflict → Capture source →
- * Source media → the surface's date sections → Tags → Author → Trusted), so a change to the
+ * Source media → the surface's date sections → Tags → Author), so a change to the
  * filter vocabulary lands on both surfaces at once. The surfaces differ only
  * in their date controls (the map's timeline scrubbers vs the search page's
  * date inputs), injected as data via `dateSections`, and in surface-only
@@ -37,7 +36,6 @@ export interface EventFilterValues {
   tags: string[];
   mediaTypes: string[];
   author: string;
-  trustedOnly: boolean;
 }
 
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
@@ -47,7 +45,6 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   tags: [],
   mediaTypes: [],
   author: "",
-  trustedOnly: false,
 };
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
@@ -130,9 +127,6 @@ export function buildActiveFilterPills(
       label: capitalize(n),
       onRemove: () => drop("mediaTypes", n),
     })),
-    ...(values.trustedOnly
-      ? [{ key: "trusted", label: "Trusted only", onRemove: () => onPatch({ trustedOnly: false }) }]
-      : []),
   ];
 }
 
@@ -152,7 +146,7 @@ export function EventFilterSections({
   values: EventFilterValues;
   onPatch: EventFilterPatch;
   dateSections?: InjectedSection[];
-  /** Surface-only toggle rows appended after Trusted (the map's hide-demo). */
+  /** Surface-only toggle rows appended after Author (the map's hide-demo). */
   extraToggles?: ReactNode;
   /** Whether to render the Status section. Default on; a surface scoped to a
    *  view where neither offered status can match (the search page's legacy
@@ -389,11 +383,6 @@ export function EventFilterSections({
         </div>
       </FilterSection>
 
-      <ToggleRow
-        label="Trusted analysts only"
-        on={values.trustedOnly}
-        onToggle={() => onPatch({ trustedOnly: !values.trustedOnly })}
-      />
       {extraToggles}
     </div>
   );

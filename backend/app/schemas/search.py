@@ -99,8 +99,6 @@ class SearchUserHit(BaseModel):
     # username-only matches so the UI hides the snippet block instead of
     # rendering an un-highlighted bio.
     bio_highlight: str | None
-    is_trusted: bool
-    trust_reason: str | None
     avatar_url: str | None
 
     model_config = {"from_attributes": True}

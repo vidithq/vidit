@@ -23,8 +23,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     owner: {
       id: "u1",
       username: "ana",
-      is_trusted: true,
-      trust_reason: "Established track record",
     },
     tags: [],
     conflicts: [
@@ -71,8 +69,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     requested_by: {
       id: "u2",
       username: "poster",
-      is_trusted: false,
-      trust_reason: null,
     },
     geolocators: [],
     investigator_count: 0,

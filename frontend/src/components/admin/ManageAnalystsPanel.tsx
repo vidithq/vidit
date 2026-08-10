@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/Input";
 import { ActionReceipt, PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
-export function TrustPanel() {
+export function ManageAnalystsPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AdminUser[] | null>(null);
   const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(

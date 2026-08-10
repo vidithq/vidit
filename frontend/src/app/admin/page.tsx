@@ -11,7 +11,7 @@ import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
-import { TrustPanel } from "@/components/admin/TrustPanel";
+import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 
 export default function AdminPage() {
@@ -41,7 +41,7 @@ export default function AdminPage() {
     <PageShell title="Admin">
       <OnboardingPanel />
       <DetectionStatsPanel />
-      <TrustPanel />
+      <ManageAnalystsPanel />
       <EventDeletePanel />
       <DemoDataPanel />
       <DemoRequestsPanel />

@@ -142,7 +142,7 @@ vidit/
 │   │   │   ├── tags.py
 │   │   │   └── users.py
 │   │   └── services/               # Business logic
-│   │       ├── admin.py            # Invite mint, trust toggle, soft/hard delete
+│   │       ├── admin.py            # Invite mint, X-handle link, soft/hard delete
 │   │       ├── audit.py            # auth_events + admin_events writes
 │   │       ├── auth.py             # JWT, hashing, invite-code consume (atomic UPDATE)
 │   │       ├── auth_cookies.py     # Session + CSRF cookie issuance / clearing
@@ -191,7 +191,7 @@ vidit/
 │   │   │   ├── geolocations/       # Submit/edit form sections (LocationPicker, MediaManager, etc.)
 │   │   │   ├── landing/            # Public landing-page sections
 │   │   │   ├── map/                # MapLibre GL components + map overlays (FilterPanel, etc.)
-│   │   │   ├── profile/            # TrustBadge, ProfileHeader, useProfileEdit, etc.
+│   │   │   ├── profile/            # ProfileHeader, useProfileEdit, etc.
 │   │   │   ├── ui/                 # PageShell, styles.ts, FieldHelp, etc.
 │   │   │   ├── ClosedBetaBanner.tsx
 │   │   │   ├── PathTracker.tsx

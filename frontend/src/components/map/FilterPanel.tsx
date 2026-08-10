@@ -56,8 +56,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setSelectedTags,
     selectedMediaTypes,
     setSelectedMediaTypes,
-    trustedOnly,
-    setTrustedOnly,
     hideDemo,
     setHideDemo,
     eventStart,
@@ -87,7 +85,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     tags: selectedTags,
     mediaTypes: selectedMediaTypes,
     author: authorFilter,
-    trustedOnly,
   };
   const onPatch: EventFilterPatch = (patch) => {
     if (patch.statuses !== undefined) setSelectedStatuses(patch.statuses);
@@ -96,7 +93,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     if (patch.tags !== undefined) setSelectedTags(patch.tags);
     if (patch.mediaTypes !== undefined) setSelectedMediaTypes(patch.mediaTypes);
     if (patch.author !== undefined) setAuthorFilter(patch.author);
-    if (patch.trustedOnly !== undefined) setTrustedOnly(patch.trustedOnly);
   };
 
   const clearFilters = () => {
@@ -107,7 +103,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
       tags: [],
       mediaTypes: [],
       author: "",
-      trustedOnly: false,
     });
     setHideDemo(false);
     setEventStart("");

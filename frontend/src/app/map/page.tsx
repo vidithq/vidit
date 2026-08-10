@@ -28,7 +28,6 @@ export default function HomePage() {
     selectedCaptureSources,
     selectedTags,
     selectedMediaTypes,
-    trustedOnly,
     hideDemo,
     eventStart,
     eventEnd,
@@ -65,7 +64,6 @@ export default function HomePage() {
     selectedCaptureSources.forEach((s) => params.append("capture_source", s));
     selectedTags.forEach((t) => params.append("tag", t));
     selectedMediaTypes.forEach((m) => params.append("media", m));
-    if (trustedOnly) params.set("trusted_only", "true");
     if (hideDemo) params.set("hide_demo", "true");
     // The commit-style Author section only applies gated values, but the
     // context could carry a stale one; the shared gate (same source as the
@@ -85,7 +83,6 @@ export default function HomePage() {
     selectedCaptureSources,
     selectedTags,
     selectedMediaTypes,
-    trustedOnly,
     hideDemo,
     authorFilter,
   ]);

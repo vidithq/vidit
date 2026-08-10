@@ -12,8 +12,6 @@ function profileFixture(overrides: Partial<PublicProfile> = {}): PublicProfile {
   return {
     id: "p1",
     username: "ana",
-    is_trusted: false,
-    trust_reason: null,
     bio: "OSINT analyst.",
     avatar_url: "https://cdn.example/a.png",
     external_links: { x: "@ana" },

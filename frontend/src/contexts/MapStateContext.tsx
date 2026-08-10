@@ -45,11 +45,9 @@ interface MapState {
   selectedTags: string[];
   setSelectedTags: (v: string[] | ((prev: string[]) => string[])) => void;
   // Media presence — image / video; a geo matches if it has any attachment of
-  // a selected type. ``trustedOnly`` / ``hideDemo`` are global quality toggles.
+  // a selected type. ``hideDemo`` is a global toggle.
   selectedMediaTypes: string[];
   setSelectedMediaTypes: (v: string[] | ((prev: string[]) => string[])) => void;
-  trustedOnly: boolean;
-  setTrustedOnly: (v: boolean | ((prev: boolean) => boolean)) => void;
   hideDemo: boolean;
   setHideDemo: (v: boolean | ((prev: boolean) => boolean)) => void;
 
@@ -87,7 +85,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>([]);
-  const [trustedOnly, setTrustedOnly] = useState(false);
   const [hideDemo, setHideDemo] = useState(false);
   const [eventStart, setEventStart] = useState("");
   const [eventEnd, setEventEnd] = useState("");
@@ -120,8 +117,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setSelectedTags,
       selectedMediaTypes,
       setSelectedMediaTypes,
-      trustedOnly,
-      setTrustedOnly,
       hideDemo,
       setHideDemo,
       eventStart,
@@ -149,7 +144,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       selectedCaptureSources,
       selectedTags,
       selectedMediaTypes,
-      trustedOnly,
       hideDemo,
       eventStart,
       eventEnd,

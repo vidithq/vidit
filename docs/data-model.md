@@ -12,8 +12,6 @@ erDiagram
         VARCHAR x_handle "nullable, UNIQUE, admin-linked bot-attribution handle"
         BOOLEAN is_active
         BOOLEAN is_admin
-        BOOLEAN is_trusted
-        TEXT trust_reason "nullable"
         TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         BOOLEAN is_demo "synthetic demo author"
@@ -194,8 +192,6 @@ erDiagram
 | `x_handle` | `VARCHAR(50)` | UNIQUE, nullable, the X handle the bot attributes mentions to (lowercased, no `@`). Set at registration from an invite-bound handle, or admin-linked via `PATCH /admin/users/{id}/x-handle`; never self-serve, and the bot never mints rows for it. Distinct from `external_links["x"]`, a free-text display link the owner sets. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`, auto-flipped on login/register if email matches `ADMIN_EMAILS` |
-| `is_trusted` | `BOOLEAN` | NOT NULL, default `false`, substantiated trust mark (toggle UI lands later; column ships now) |
-| `trust_reason` | `TEXT` | nullable, required at the application layer when `is_trusted=true` |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable, set to `created_at` by the pre-creation registration flow. Every row minted after the `pending_registrations` migration only exists because the analyst clicked the confirmation link, so this is non-NULL for new accounts. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable, non-NULL = soft-deleted (login rejected, profile 404s, filtered from public reads). Soft-deleting a user cascade-soft-deletes every event they own. Hard-delete (the GDPR escape hatch) drops the row + the events they own + their contributor rows + sweeps S3; because the owner is always among an event's geolocators, no `geolocated` event is left below one geolocator. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`, TRUE iff created by the admin Demo data seeder (5 fixed `demo-analyst-N` accounts with unloggable hashes + `@vidit.invalid` emails). The wipe button drops every flagged user + their geolocations in one go. |
@@ -624,7 +620,7 @@ PostGIS unlocks native geospatial queries (bounding-box filtering, distance comp
 Both are read from both sides: an event's contributors, and a user's geolocations / investigations (the profile). A junction table indexes both directions and carries a per-row `created_at`; an id-array on `events` forces a GIN scan for the reverse query and stores no timestamp. They stay two tables rather than one `event_contributors` with a `role` because their lifecycles differ (durable attribution vs a transient signal) and a person can be a geolocator without ever having been an investigator.
 
 ### Why split `author_id` into `owner_id` + `event_geolocators`?
-Edit rights and credit are different facts. `owner_id` is a single mutable permission holder (it moves to the fulfiller on geolocate); `event_geolocators` is the durable, potentially collaborative record of who vouched the location. Single-author read surfaces (profile, byline, search, trust filter) stay on `owner_id` until a second-geolocator write path exists, then re-home onto `event_geolocators`.
+Edit rights and credit are different facts. `owner_id` is a single mutable permission holder (it moves to the fulfiller on geolocate); `event_geolocators` is the durable, potentially collaborative record of who vouched the location. Single-author read surfaces (profile, byline, search) stay on `owner_id` until a second-geolocator write path exists, then re-home onto `event_geolocators`.
 
 ### Why upload proof images at publish, not while typing?
 So `media` keeps a NOT NULL `event_id`: no staging table, no `event_id IS NULL` orphan, no reaper. The editor holds local previews and submit uploads every file through the one evidence intake. The trade is a browser-side editor that batches uploads at submit rather than on drop.

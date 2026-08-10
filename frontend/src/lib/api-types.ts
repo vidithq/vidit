@@ -272,23 +272,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/users/{user_id}/trust": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Set User Trust */
-        patch: operations["set_user_trust_api_v1_admin_users__user_id__trust_patch"];
-        trace?: never;
-    };
     "/api/v1/admin/users/{user_id}/x-handle": {
         parameters: {
             query?: never;
@@ -1370,7 +1353,7 @@ export interface components {
          * @description Onboarding snapshot of the account a code was redeemed by.
          *
          *     Nested in `AdminInviteCodeRead` so the admin onboarding table renders
-         *     activity and hosts the per-user actions (trust, X handle, delete, purge
+         *     activity and hosts the per-user actions (X handle, delete, purge
          *     detected) without a second request per row. Carries the same acting
          *     fields as `AdminUserRead` plus read-side counters.
          */
@@ -1387,12 +1370,8 @@ export interface components {
             geolocated_count: number;
             /** Is Admin */
             is_admin: boolean;
-            /** Is Trusted */
-            is_trusted: boolean;
             /** Last Login At */
             last_login_at: string | null;
-            /** Trust Reason */
-            trust_reason: string | null;
             /**
              * User Id
              * Format: uuid
@@ -1513,21 +1492,6 @@ export interface components {
             templates: number;
         };
         /**
-         * AdminTrustUpdate
-         * @description Body for `PATCH /admin/users/{id}/trust`.
-         *
-         *     On grant, ``trust_reason`` is mandatory at the app layer (a checkmark with
-         *     no public rationale is opaque favouritism). On revoke, the API ignores any
-         *     body reason and clears the column server-side — a populated ``trust_reason``
-         *     on a non-trusted row would be a stale-data bug.
-         */
-        AdminTrustUpdate: {
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason?: string | null;
-        };
-        /**
          * AdminUserDeleteResponse
          * @description Response for `DELETE /admin/users/{id}`.
          *
@@ -1564,9 +1528,9 @@ export interface components {
          * AdminUserRead
          * @description User shape returned by the admin search endpoint.
          *
-         *     Carries the bits the admin acts on (`is_trusted` + `trust_reason` +
-         *     the bot-attribution `x_handle`) plus `email` (NULL on legacy
-         *     credential-less rows), which the public `UserProfile` omits.
+         *     Carries the bit the admin acts on (the bot-attribution `x_handle`) plus
+         *     `email` (NULL on legacy credential-less rows), which the public
+         *     `UserProfile` omits.
          */
         AdminUserRead: {
             /**
@@ -1583,10 +1547,6 @@ export interface components {
             id: string;
             /** Is Admin */
             is_admin: boolean;
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason: string | null;
             /** Username */
             username: string;
             /** X Handle */
@@ -1679,8 +1639,8 @@ export interface components {
          * AuthorRef
          * @description Compact author handle used wherever one payload references another.
          *
-         *     The public ``User`` fields other schemas need for the byline: handle,
-         *     avatar, trust signal (geolocation card, request claimers, search hit).
+         *     The public ``User`` fields other schemas need for the byline: handle and
+         *     avatar (geolocation card, request claimers, search hit).
          *     ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
          *     directly, no field-by-field build, so ``avatar_url`` flows off the column.
          */
@@ -1692,10 +1652,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason: string | null;
             /** Username */
             username: string;
         };
@@ -2321,10 +2277,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason: string | null;
             /** Username */
             username: string;
             /** Username Highlight */
@@ -2459,8 +2411,8 @@ export interface components {
          * @description Public profile payload for ``GET /users/{username}``.
          *
          *     Excludes ``email`` (free-harvest vector) and ``is_admin`` (admin role is
-         *     private). Everything else is the analyst's public face — bio, avatar, links,
-         *     the credibility signal (``is_trusted`` + ``trust_reason``), submission count.
+         *     private). Everything else is the analyst's public face: bio, avatar, links,
+         *     submission count.
          */
         UserProfile: {
             /** Avatar Url */
@@ -2492,10 +2444,6 @@ export interface components {
              * @default false
              */
             is_following: boolean;
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason: string | null;
             /** Username */
             username: string;
         };
@@ -2529,10 +2477,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Is Trusted */
-            is_trusted: boolean;
-            /** Trust Reason */
-            trust_reason: string | null;
             /** Username */
             username: string;
         };
@@ -3094,43 +3038,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminPurgeDetectedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_user_trust_api_v1_admin_users__user_id__trust_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminTrustUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
                 };
             };
             /** @description Validation Error */
@@ -3807,7 +3714,6 @@ export interface operations {
                 submitted_to?: string | null;
                 author?: string | null;
                 media?: string[] | null;
-                trusted_only?: boolean;
                 hide_demo?: boolean;
             };
             header?: never;
@@ -4125,7 +4031,6 @@ export interface operations {
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
-                trusted_only?: boolean;
                 hide_demo?: boolean;
             };
             header?: never;
