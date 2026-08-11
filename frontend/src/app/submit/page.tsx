@@ -8,8 +8,8 @@ import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiFetch } from "@/lib/api";
+import { cleanNumber } from "@/lib/coordinates";
 import {
-  cleanNumber,
   createEvent,
   createEventRequest,
   FIELD_LABELS,

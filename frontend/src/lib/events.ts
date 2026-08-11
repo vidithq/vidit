@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { archiveTooLarge } from "./archive";
-import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
+import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
   ArchiveImportJob,
@@ -133,16 +133,6 @@ export function parseGuessCoords(
   const lng = cleanNumber(lngStr);
   if (lat === null || lng === null) return {};
   return { lat, lng };
-}
-
-/** Parse a whole string as a finite number, or `null`. Unlike `parseFloat`,
- *  this rejects partially-numeric input (`"50.1abc"`), so a malformed pair
- *  clears the coordinates rather than storing a truncated value. Blank /
- *  whitespace-only reads as absent (`null`), preserving both-or-neither. */
-export function cleanNumber(value: string): number | null {
-  if (value.trim() === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 export function getEvent(id: string): Promise<EventDetail> {
@@ -645,13 +635,7 @@ export function missingEventFields(
   // to 48.85 at publish, so the readiness gate matches what actually posts.
   const lat = cleanNumber(s.lat);
   const lng = cleanNumber(s.lng);
-  const coordsValid =
-    lat !== null &&
-    lat >= LAT_MIN &&
-    lat <= LAT_MAX &&
-    lng !== null &&
-    lng >= LNG_MIN &&
-    lng <= LNG_MAX;
+  const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
 
   const missing: MissingField[] = [];
   if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
