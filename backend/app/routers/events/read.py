@@ -27,7 +27,7 @@ from app.models.event import (
     EventInvestigator,
 )
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
 from app.schemas.event import (
     EventList,
@@ -137,6 +137,7 @@ def investigator_aggregates(
 
 
 @router.get("/points")
+@authenticated_read_quota
 @limiter.limit("60/minute")
 def list_points(
     request: Request,
@@ -271,6 +272,7 @@ def list_points(
 
 
 @router.get("", response_model=list[EventList])
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def list_events(
     request: Request,
@@ -378,6 +380,7 @@ def list_events(
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def list_detections(
     request: Request,
@@ -431,6 +434,7 @@ def list_detections(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),
+            selectinload(Event.source_links),
         )
         .filter(*detected)
         .order_by(Event.created_at.desc())

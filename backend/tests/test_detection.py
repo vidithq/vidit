@@ -74,6 +74,7 @@ def _dto(
     proof_media: list[ParsedMedia] | None = None,
     source_url: str | None = None,
     source_posted_at: datetime | None = None,
+    secondary_source_urls: list[str] | None = None,
 ) -> DetectedGeoloc:
     """A detection DTO. Source-less by default, matching the resolve contract:
     a tweet that neither quotes nor links footage declares no source. Sourced
@@ -88,6 +89,7 @@ def _dto(
         event_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
+        secondary_source_urls=secondary_source_urls or [],
         source_media=media or [],
         proof_media=proof_media or [],
     )
@@ -174,6 +176,23 @@ async def test_assemble_persists_detected_row(db, owner):
     assert media[0].role == "source"
     assert media[0].media_type == "image"
     assert media[0].sha256 and len(media[0].sha256) == 64
+
+
+async def test_assemble_prefills_secondary_source_links(db, owner):
+    # The mirrors the resolution found land as ordered child rows, so the owner
+    # reviews them at submit instead of re-finding the links by hand.
+    sourced = _dto(
+        source_url="https://x.com/src/status/9",
+        secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
+    )
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
+    )
+    geo = outcome.created[0]
+    assert [(link.position, link.url) for link in geo.source_links] == [
+        (0, "https://t.me/channel/11"),
+        (1, "https://www.youtube.com/watch?v=M1"),
+    ]
 
 
 async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner):

@@ -27,6 +27,10 @@ class ParsedTweet:
     # OP is a messenger, not the footage source, so its own URL never fills
     # this): the ``source_url`` form field then starts empty.
     source_url: str | None
+    # The mirrors: the post's other declared links, ordered, normalized and
+    # capped. Prefills the form's secondary-source rows; empty when the post
+    # linked nothing beyond its source.
+    secondary_source_urls: list[str]
     # The source's post instant (ISO 8601 UTC), only when actually known: the
     # quoted tweet's date or a chased Telegram post's date. None when the source
     # is a bare link or the tweet declares none; never the OP's own post date.
@@ -74,6 +78,7 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
 
     return ParsedTweet(
         source_url=resolved.source_url,
+        secondary_source_urls=resolved.secondary_source_urls,
         source_posted_at=resolved.source_posted_at,
         original_tweet_url=resolved.detected_from_url,
         posted_at=resolved.created_at,

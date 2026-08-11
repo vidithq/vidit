@@ -26,7 +26,7 @@ from app.models.event import (
     EventInvestigator,
 )
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._forms import (
     parse_iso_datetime,
     parse_json_id_list,
@@ -34,7 +34,11 @@ from app.routers._forms import (
     parse_optional_iso_time,
     parse_optional_json_object,
 )
-from app.routers.events._common import _raise_event_error, build_event_read
+from app.routers.events._common import (
+    SecondarySourceUrl,
+    _raise_event_error,
+    build_event_read,
+)
 from app.schemas.event import EventCloseRequest, EventRead
 from app.services import events as events_service
 from app.services import permissions
@@ -56,6 +60,7 @@ _DETAIL_LOADS = (
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
     selectinload(Event.investigators).joinedload(EventInvestigator.user),
+    selectinload(Event.source_links),
 )
 
 
@@ -94,6 +99,7 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
 
 
 @router.get("/{geolocation_id}", response_model=EventRead)
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def get_event(request: Request, geolocation_id: uuid.UUID, db: Session = Depends(get_db)):
     row = (
@@ -169,6 +175,10 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The mirrors, repeated once per link. The submitted list REPLACES whatever
+    # the row held, on a requested fulfilment too: unlike ``source_url`` these
+    # carry no requester protection (see the service docstring).
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     # Optional, mirroring create: the footage doesn't always establish when the
     # depicted event happened; NULL reads as "Unknown".
     event_date: str | None = Form(None),
@@ -223,6 +233,7 @@ async def geolocate_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { EventDetailBody } from "./EventDetailBody";
@@ -37,6 +37,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       },
     ],
     source_url: "https://t.me/channel/12345",
+    secondary_source_urls: [],
     proof: {
       type: "doc",
       content: [
@@ -381,5 +382,49 @@ describe("EventDetailBody", () => {
   it("omits the Event time row when no time is set", () => {
     render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
+  });
+
+  it("omits the Secondary sources row when the event declares no mirror", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    expect(screen.queryByText("Secondary sources")).not.toBeInTheDocument();
+  });
+
+  it("collapses the secondary sources behind a count, expanding to the links", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          secondary_source_urls: [
+            "https://x.com/user/status/9",
+            "https://www.youtube.com/watch?v=abc",
+          ],
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Secondary sources")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /2 more sources/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Collapsed: no link is reachable yet.
+    expect(screen.queryByRole("link", { name: "x.com" })).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const link = screen.getByRole("link", { name: "x.com" });
+    expect(link).toHaveAttribute("href", "https://x.com/user/status/9");
+    // Same new-tab affordance as the primary Source row.
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("singularises the toggle on a lone secondary source", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({ secondary_source_urls: ["https://t.me/mirror/1"] })}
+        variant="panel"
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /1 more source$/ })
+    ).toBeInTheDocument();
   });
 });

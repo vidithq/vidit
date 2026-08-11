@@ -306,7 +306,7 @@ def compose_reply(
 # constants; keep each short (the composed reply must stay under
 # ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`) and linkless.
 _FAILURE_DIAGNOSES: dict[str, str] = {
-    MARKERS_INCOMPLETE: "Incomplete T:/C:/S: marker set",
+    MARKERS_INCOMPLETE: "Incomplete marker set",
     COORDS_MISSING: "No coordinate line",
     COORDS_AMBIGUOUS: "Several coordinate lines",
     COORDS_INVALID: "Coordinate pair malformed or out of bounds",

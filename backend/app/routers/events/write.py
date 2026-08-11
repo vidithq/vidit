@@ -32,7 +32,11 @@ from app.routers._forms import (
     parse_optional_iso_time,
     parse_optional_json_object,
 )
-from app.routers.events._common import _raise_event_error, build_event_read
+from app.routers.events._common import (
+    SecondarySourceUrl,
+    _raise_event_error,
+    build_event_read,
+)
 from app.schemas.event import (
     EventRead,
 )
@@ -68,6 +72,9 @@ async def create_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # Mirrors of the same media elsewhere, repeated once per link. Optional and
+    # ordered; the service normalizes and caps them.
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     # Optional: the footage doesn't always establish when the depicted event
     # happened; NULL reads as "Unknown". No ``max_length``:
     # ``date.fromisoformat`` is the source of truth (and implicitly bounds
@@ -122,6 +129,7 @@ async def create_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,
@@ -150,6 +158,8 @@ async def create_event_request(
     # attached file has already hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # Mirrors of the same media elsewhere, as on the direct-create form.
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     proof: str | None = Form(None),
     # An approximate guess is allowed on a request (both halves or neither).
     lat: float | None = Form(None),
@@ -200,6 +210,7 @@ async def create_event_request(
             current_user=current_user,
             title=title,
             source_url=source_url,
+            secondary_source_urls=secondary_source_urls,
             proof_data=proof_data,
             lat=lat,
             lng=lng,

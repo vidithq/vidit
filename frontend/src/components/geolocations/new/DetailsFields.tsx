@@ -2,15 +2,22 @@
 
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
+import { LinkListInput } from "@/components/ui/LinkListInput";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 
 interface DetailsFieldsProps {
   sourceUrl: string;
   /** Omit when `sourceUrlLocked` — a read-only field never calls it. */
   setSourceUrl?: (v: string) => void;
+  /** Optional mirrors of the same media. Editable on every path, including a
+   *  fulfilment (the geolocate transition replaces the whole list), so unlike
+   *  the primary source it has no locked mode here. */
+  secondarySourceUrls: string[];
+  setSecondarySourceUrls: (v: string[]) => void;
   eventDate: string;
   setEventDate: (v: string) => void;
   /** Optional event time-of-day ("HH:MM", UTC). */
@@ -40,6 +47,8 @@ interface DetailsFieldsProps {
 export function DetailsFields({
   sourceUrl,
   setSourceUrl,
+  secondarySourceUrls,
+  setSecondarySourceUrls,
   eventDate,
   setEventDate,
   eventTime,
@@ -120,6 +129,23 @@ export function DetailsFields({
           onChange={(e) => setSourceUrl?.(e.target.value)}
           placeholder="https://t.me/channel/12345"
           invalid={sourceUrlInvalid}
+        />
+      </div>
+
+      {/* The mirrors sit under the primary they mirror. Never required, so no
+          invalid state and no readiness entry: an empty list is a complete
+          form. A `span` label, not a `label`: the rows are a list, and each
+          input carries its own accessible name. */}
+      <div className="space-y-1.5">
+        <span className={FORM_LABEL}>
+          Secondary sources <FieldHelp concept="secondary_source_urls" />
+        </span>
+        <LinkListInput
+          values={secondarySourceUrls}
+          onChange={setSecondarySourceUrls}
+          max={MAX_SECONDARY_SOURCE_LINKS}
+          itemLabel="Secondary source"
+          placeholder="https://x.com/user/status/12345"
         />
       </div>
 

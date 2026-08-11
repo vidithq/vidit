@@ -1,11 +1,13 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { DetailsFields } from "./DetailsFields";
 
 const baseProps = {
   sourceUrl: "",
   setSourceUrl: () => {},
+  secondarySourceUrls: [] as string[],
+  setSecondarySourceUrls: () => {},
   eventDate: "",
   setEventDate: () => {},
   eventTime: "",
@@ -88,5 +90,50 @@ describe("DetailsFields", () => {
     expect(screen.getByText("Event time").closest("label")).not.toHaveClass(
       "!text-red-400"
     );
+  });
+
+  it("offers the secondary sources list, empty and collapsed to its add button", () => {
+    render(<DetailsFields {...baseProps} />);
+    expect(screen.getByText("Secondary sources")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "What are secondary sources?" })
+    ).toBeInTheDocument();
+    // No rows until one is added: an optional field starts out of the way.
+    expect(screen.queryByLabelText("Secondary source 1")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Add secondary source" })
+    ).toBeEnabled();
+  });
+
+  it("renders one field per secondary source, in order", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        secondarySourceUrls={["https://t.me/c/2", "https://x.com/u/status/3"]}
+      />
+    );
+    expect(screen.getByLabelText("Secondary source 1")).toHaveValue(
+      "https://t.me/c/2"
+    );
+    expect(screen.getByLabelText("Secondary source 2")).toHaveValue(
+      "https://x.com/u/status/3"
+    );
+  });
+
+  it("keeps the secondary sources editable while the primary is locked", () => {
+    const setSecondarySourceUrls = vi.fn();
+    render(
+      <DetailsFields
+        {...baseProps}
+        sourceUrlLocked
+        sourceUrl="https://t.me/c/1"
+        secondarySourceUrls={["https://t.me/c/2"]}
+        setSecondarySourceUrls={setSecondarySourceUrls}
+      />
+    );
+    const row = screen.getByLabelText("Secondary source 1");
+    expect(row).not.toHaveAttribute("readonly");
+    fireEvent.change(row, { target: { value: "https://t.me/c/9" } });
+    expect(setSecondarySourceUrls).toHaveBeenCalledWith(["https://t.me/c/9"]);
   });
 });

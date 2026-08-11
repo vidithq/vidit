@@ -73,6 +73,11 @@ export function EventEditForm({
   // A ``detected`` draft may be born with no declared source, so the field
   // starts empty (not `String(null)`) rather than showing a fabricated value.
   const [sourceUrl, setSourceUrl] = useState(geo.source_url ?? "");
+  // The mirrors the import found, editable here: submitting replaces the whole
+  // list, so a row the owner deletes is gone from the published event.
+  const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
+    geo.secondary_source_urls
+  );
   const [eventDate, setEventDate] = useState(geo.event_date ?? "");
   const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
   const [sourcePostedAt, setSourcePostedAt] = useState(
@@ -130,6 +135,7 @@ export function EventEditForm({
     lng: parseFloat(lng),
     ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
+    secondary_source_urls: secondarySourceUrls,
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
     source_posted_at: sourcePostedAt,
@@ -259,6 +265,8 @@ export function EventEditForm({
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
+          secondarySourceUrls={secondarySourceUrls}
+          setSecondarySourceUrls={setSecondarySourceUrls}
           eventDate={eventDate}
           setEventDate={setEventDate}
           eventTime={eventTime}

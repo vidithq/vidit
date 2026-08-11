@@ -54,6 +54,7 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
         monkeypatch,
         returns=ParsedTweet(
             source_url="https://x.com/handle/status/1234567890",
+            secondary_source_urls=["https://t.me/mirror/1"],
             source_posted_at=None,
             original_tweet_url="https://x.com/handle/status/1234567890",
             posted_at="2025-11-12T14:33:00.000Z",
@@ -84,6 +85,8 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
     assert body["suggested_title"].startswith("Strike")
     assert body["parsed_coords"] == [{"lat": 48.012345, "lng": 37.802411}]
     assert body["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
+    # The mirrors ride along so the form can prefill its secondary-source rows.
+    assert body["secondary_source_urls"] == ["https://t.me/mirror/1"]
 
 
 def test_import_from_tweet_surfaces_detection_preview_without_persisting(author, monkeypatch, db):
@@ -94,6 +97,7 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
         monkeypatch,
         returns=ParsedTweet(
             source_url="https://x.com/handle/status/1",
+            secondary_source_urls=[],
             source_posted_at=None,
             original_tweet_url="https://x.com/handle/status/1",
             posted_at="2025-11-12T14:33:00.000Z",
