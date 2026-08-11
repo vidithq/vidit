@@ -27,7 +27,7 @@ export function CoordinateActions({ lat, lng }: { lat: number; lng: number }) {
         <ExternalLink size={11} />
       </a>
       <CopyButton
-        value={formatCoordinates(lat, lng)}
+        value={() => formatCoordinates(lat, lng)}
         label="Copy coordinates"
         copiedLabel="Coordinates copied"
       />
