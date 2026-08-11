@@ -9,8 +9,10 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
  * The one copy-to-clipboard control: a square ghost icon button whose copy
  * glyph flips to a check for the flash window, on `useCopyToClipboard`.
  *
- * Every place the app hands a value over (a profile URL, an event URL, an
- * invite code) uses this, so the gesture and its feedback can't drift.
+ * Every icon-shaped copy affordance is this component (the profile share link,
+ * the event share row), so the gesture and its feedback can't drift. A call
+ * site needing a different shape (the admin invite row copies a code from a
+ * text button) composes `useCopyToClipboard` directly instead.
  *
  * Accessibility: the button's name is static (`label`), because a name that
  * changes on click is re-announced as a new control. The "copied" feedback is
