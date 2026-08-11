@@ -8,6 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- **Secondary source links on events** ([#229](https://github.com/vidithq/vidit/pull/229), [`backend/app/models/event.py`](backend/app/models/event.py), [`frontend/src/components/ui/LinkListInput.tsx`](frontend/src/components/ui/LinkListInput.tsx), [`docs/api.md`](docs/api.md), [`docs/data-model.md`](docs/data-model.md)). An event still carries one primary `source_url` (the first place the media was posted, frozen at publication) and can now also carry up to 10 ordered mirrors: the same media on other networks, or other same-POV posts. New `event_source_links` table, a repeated `secondary_source_urls` field on the three write paths, a `LinkListInput` form primitive, and a collapsed row in the event detail. Tweet import prefills the mirrors the ingest previously discarded, and the duplicate probe matches them.
+
 ### Fixed
 - **Archive import no longer imports retweets** ([#222](https://github.com/vidithq/vidit/pull/222), [`backend/app/services/tweet_ingest/archive.py`](backend/app/services/tweet_ingest/archive.py), [`docs/ingestion.md`](docs/ingestion.md#archive-formats)). An X export lists the account's retweets among its tweets, so a geo-tagged retweet became a `detected` draft attributed to the analyst running the import, crediting them with someone else's geolocation. `read_tweets` drops them at parse time, the earliest point that can tell them apart: an export flags none of them, so the discriminator is the `RT @<handle>:` prefix X stores in a retweet's text, anchored so a post that mentions RT further in is kept. No job count moves, all four being counted from detections.
 
