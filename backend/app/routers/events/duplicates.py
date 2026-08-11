@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.dependencies import get_current_user, get_db
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.event import (
     CoordsRead,
     PossibleDuplicateRead,
@@ -84,6 +84,7 @@ def _extract_host(source_url: str) -> str | None:
 
 @router.get("/possible-duplicates", response_model=list[PossibleDuplicateRead])
 @limiter.limit("60/minute")
+@authenticated_read_quota
 def list_possible_duplicates(
     request: Request,
     lat: float = Query(..., ge=-90, le=90),

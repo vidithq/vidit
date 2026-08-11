@@ -27,7 +27,7 @@ from app.models.event import (
     EventInvestigator,
 )
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
 from app.schemas.event import (
     EventList,
@@ -125,6 +125,7 @@ def investigator_aggregates(
 
 @router.get("/points")
 @limiter.limit("60/minute")
+@authenticated_read_quota
 def list_points(
     request: Request,
     # ``conflict``, ``capture_source`` and ``tag`` accept multiple values
@@ -242,6 +243,7 @@ def list_points(
 
 @router.get("", response_model=list[EventList])
 @limiter.limit("120/minute")
+@authenticated_read_quota
 def list_events(
     request: Request,
     view: str = Query("located"),
@@ -349,6 +351,7 @@ def list_events(
 
 @router.get("/detections", response_model=PaginatedEventDetails)
 @limiter.limit("120/minute")
+@authenticated_read_quota
 def list_detections(
     request: Request,
     page: int = 1,

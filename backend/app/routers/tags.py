@@ -6,7 +6,7 @@ from app.dependencies import get_current_user, get_db
 from app.models.event import Event
 from app.models.tag import Tag, event_tags
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
 
 router = APIRouter()
@@ -25,6 +25,7 @@ CURATED_CATEGORIES = ("capture_source",)
 
 @router.get("", response_model=list[TagRead])
 @limiter.limit("60/minute")
+@authenticated_read_quota
 def list_tags(
     request: Request,
     category: str | None = None,

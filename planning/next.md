@@ -27,8 +27,6 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.5*. The v0.4 on-ramp moves
 | P1 | UX | Mobile pass on the shared surfaces (profile, event detail) | Links shared on X are mostly opened on phones; the two pages the share cards point at must hold up under 375px. The full golden-path mobile audit stays at v1.0. |
 | P0 | Anti-scraping | `?bbox=` required on `/events/points` + viewport-driven map fetch | Catalog size stops mattering, viewport size matters instead. Kills the dominant Phase-3 cost line + the "one curl loads the catalog" vector. PostGIS `ST_MakeEnvelope` + MapLibre viewport listener. ~2 days. |
 | P0 | Anti-scraping | Hard server-side `LIMIT 100` on every list endpoint + `Link: rel="next"` cursor | Single biggest other scraping mitigation. Validate `limit`/`page` params in the same pass; garbage values 500 today instead of 422, and one list endpoint hydrates unbounded. |
-| P0 | Anti-scraping | Per-user limit on authenticated reads (~1000 req/hr) | Logged-in scraper rotating IPs still hits a wall. Keyed by `User.id`. |
-| P0 | Anti-scraping | Behavioral tests on every documented write limit | The read surface is pinned per documented limit and the wiring has its own coverage ([`test_rate_limits.py`](../backend/tests/test_rate_limits.py)), but the write / auth / admin limits don't: dropping a `@limiter.limit` on a specific write endpoint still passes CI green. One parametrized test per remaining documented limit: N requests pass, N+1 returns 429. |
 
 ---
 

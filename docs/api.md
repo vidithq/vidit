@@ -85,7 +85,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 
 ## Rate limits
 
-One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP, the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev). Every read limit in this table is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)); write limits have wiring-level coverage only.
+One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)) enforces two layers: the per-endpoint limits in the table below, keyed per client IP (the right-most `X-Forwarded-For` entry, see [`engineering.md`](engineering.md) → *Particularities*), and the per-user read quota below it. Per-endpoint limits have **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`, whichever layer rejected it. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev). Every limit on this page is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)), so dropping one fails CI.
 
 | Endpoint | Limit (per IP) |
 |---|---|
@@ -125,6 +125,16 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /admin/maintenance/reap-*` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+
+### Per-user read quota
+
+**1000/hour per account**, one bucket shared by the whole read surface rather than one per endpoint:
+
+`GET /events` · `/events/{id}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/timeline`
+
+The key is `User.id`, read from the signature-verified session cookie, so a forged `sub` cannot mint a bucket and rotating source addresses buys nothing: the per-IP table caps one client, this caps one account. The two layers stack, so a read answers only when the caller is inside both.
+
+Anonymous callers are exempt from the quota and keep the per-IP limits alone. Two authenticated reads sit outside it, `GET /events/import-archive/{job_id}` and `GET /events/import-from-tweet/media`: neither returns catalog data, and both are polled hard by a single import flow that the shared budget would otherwise starve.
 
 ---
 

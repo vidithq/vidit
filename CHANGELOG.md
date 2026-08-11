@@ -8,6 +8,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- **Per-user quota on authenticated reads** ([#225](https://github.com/vidithq/vidit/pull/225), [`backend/app/ratelimit.py`](backend/app/ratelimit.py), [`docs/api.md`](docs/api.md#rate-limits)). 1000/hour per account, one bucket shared by the whole read surface (catalog, search, tags, conflicts, profiles, timeline), keyed by `User.id` read from the signature-verified session cookie. The per-endpoint limits cap one client and a scraper rotating source addresses walked straight past them; this caps one account, so the two layers stack. Anonymous traffic is exempt and keeps the per-IP limits alone, as do the archive-job poll and the tweet media proxy (neither returns catalog data).
+
+### Changed
+- **Every documented rate limit is now behaviorally pinned** ([#225](https://github.com/vidithq/vidit/pull/225), [`backend/tests/test_rate_limits.py`](backend/tests/test_rate_limits.py)). The write, auth and admin limits had wiring-level coverage only, so dropping a `@limiter.limit` from a specific endpoint shipped green. One parametrized case per row of the documented table now proves N requests answer and N+1 returns 429.
+
 ### Fixed
 - **Archive import no longer imports retweets** ([#222](https://github.com/vidithq/vidit/pull/222), [`backend/app/services/tweet_ingest/archive.py`](backend/app/services/tweet_ingest/archive.py), [`docs/ingestion.md`](docs/ingestion.md#archive-formats)). An X export lists the account's retweets among its tweets, so a geo-tagged retweet became a `detected` draft attributed to the analyst running the import, crediting them with someone else's geolocation. `read_tweets` drops them at parse time, the earliest point that can tell them apart: an export flags none of them, so the discriminator is the `RT @<handle>:` prefix X stores in a retweet's text, anchored so a post that mentions RT further in is kept. No job count moves, all four being counted from detections.
 

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import coords_or_none, thumbnail_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.services import social
@@ -13,6 +13,7 @@ router = APIRouter()
 
 @router.get("/timeline", response_model=PaginatedEvents)
 @limiter.limit("120/minute")
+@authenticated_read_quota
 def get_timeline(
     request: Request,
     page: int = Query(1, ge=1),
