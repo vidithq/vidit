@@ -171,6 +171,36 @@ def test_image_protocol_relative_url_dropped():
     assert cleaned["content"] == []
 
 
+def test_image_backslash_protocol_relative_url_dropped():
+    """The backslash spelling of a protocol-relative URL must also drop:
+    browsers normalise a backslash to a forward slash (WHATWG), so a src of
+    ``/`` followed by a backslash and ``evil.com`` resolves to ``//evil.com``
+    and leaks the viewer's IP/UA exactly like the plain ``//`` form."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "image", "attrs": {"src": "/\\attacker.example/pixel.gif"}},
+        ],
+    }
+    cleaned = sanitize_tiptap_doc(doc)
+    assert cleaned["content"] == []
+
+
+def test_image_tab_obfuscated_protocol_relative_url_dropped():
+    """A browser strips ASCII tab/CR/LF from a URL before parsing (WHATWG), so
+    a src of ``/`` + TAB + ``/evil.com`` resolves to ``//evil.com`` just like
+    the plain form. The sanitiser must strip the same characters, or the tab
+    spelling reopens the tracking-pixel leak the backslash guard closed."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "image", "attrs": {"src": "/\t/attacker.example/pixel.gif"}},
+        ],
+    }
+    cleaned = sanitize_tiptap_doc(doc)
+    assert cleaned["content"] == []
+
+
 def test_image_off_cdn_dropped_when_cdn_configured(monkeypatch):
     """With cloudfront_domain set, only that host's https URLs are allowed."""
     monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")

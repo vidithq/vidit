@@ -54,6 +54,7 @@ import {
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -337,6 +338,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose copy glyph flips to a check for the flash window (useCopyToClipboard). Used by the profile share control and the event share row. `value` is a getter so the call site can read window at click time; `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
+            <CopyButton value={() => "https://vidit.app/profile/demo"} label="Copy profile link" />
+          </Item>
+
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
             <PaletteActiveFilterPills />
           </Item>
@@ -542,8 +547,11 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
 
-          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial). Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant).">
-            <Variant label='fallback="icon"'>
+          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial). `size` is the only dimension a caller sets: the icon fallback scales with the circle. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant).">
+            <Variant label='fallback="icon" (profile header)'>
+              <Avatar username="demo" size="w-11 h-11" fallback="icon" />
+            </Variant>
+            <Variant label='fallback="icon" (larger circle)'>
               <Avatar username="demo" size="w-16 h-16" fallback="icon" />
             </Variant>
             <Variant label='fallback="initial"'>

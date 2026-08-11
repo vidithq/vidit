@@ -41,11 +41,22 @@ export function PageShell({
             <ArrowLeft size={18} />
           </Button>
         )}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
+        {/* The action cluster drops under the title once the two can't share a
+            row (a phone-width viewport with a long title): `basis-56` is the
+            14rem the title asks for, which is what flex wrapping measures, so
+            a heading is never squeezed into a one-word column. It is a
+            preference and not a floor (`min-w-0`, `grow` rather than `flex-1`
+            so the basis survives): as a hard minimum it outgrew the frame on
+            the narrowest phones and scrolled the whole page sideways. */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="basis-56 grow min-w-0 space-y-2">
             <h1 className="text-xl font-medium text-neutral-100">{title}</h1>
             {subtitle && (
-              <div className="text-sm text-neutral-400">{subtitle}</div>
+              // The owner's email is one unbreakable token; without an
+              // anywhere-break it runs past the frame on a phone.
+              <div className="text-sm text-neutral-400 break-words [overflow-wrap:anywhere]">
+                {subtitle}
+              </div>
             )}
           </div>
           {actions && <div className="shrink-0">{actions}</div>}

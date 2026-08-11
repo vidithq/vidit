@@ -5,6 +5,7 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_JWT_SECRET = "changeme-in-production"
+DEFAULT_CORS_ORIGIN_REGEX = r"^https?://localhost:\d+$"
 LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -36,11 +37,13 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
     # Extra origin regex OR'd with `cors_origins` by Starlette's CORSMiddleware.
     # Default whitelists every `localhost:<port>` so one backend can serve
-    # several concurrent frontends (worktrees, a/b sessions). Safe in prod:
-    # auth cookies are domain-scoped to `.vidit.app`, so a localhost:N page in
-    # someone's browser can't include them in a request to api.vidit.app even
-    # if CORS lets the request through.
-    cors_origin_regex: str = r"^https?://localhost:\d+$"
+    # several concurrent frontends (worktrees, a/b sessions). Only this shipped
+    # default is dropped automatically on a non-local deployment (see
+    # `effective_cors_origin_regex`): with `allow_credentials=True` a live
+    # localhost origin regex would let any localhost page in a victim's browser
+    # read authenticated API responses. Prod leans on the explicit `cors_origins`
+    # allowlist; any operator-set pattern (e.g. staging) is always honoured.
+    cors_origin_regex: str = DEFAULT_CORS_ORIGIN_REGEX
     # Cookie auth: set SameSite=none + Secure when frontend and backend live on
     # different registrable domains (e.g. vercel.app → up.railway.app). Locally
     # (localhost:3000 → localhost:8000) lax + insecure is enough.
@@ -132,6 +135,24 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def effective_cors_origin_regex(self) -> str:
+        """`cors_origin_regex`, with the shipped localhost dev-convenience
+        default dropped on a non-local deployment. Left on, the default
+        (`^https?://localhost:\\d+$`) plus `allow_credentials=True` would let any
+        localhost page in a victim's browser make credentialed cross-origin reads
+        against the deployed API (writes stay blocked by the double-submit CSRF
+        token a cross-origin script can't read). Only the exact shipped default
+        is auto-dropped: an operator who sets any other pattern owns it, so a
+        staging regex is always honoured and a deliberately-kept localhost regex
+        must be set explicitly. Prod otherwise uses the `cors_origins` allowlist."""
+        if self.cors_origin_regex != DEFAULT_CORS_ORIGIN_REGEX:
+            return self.cors_origin_regex
+        host = urlparse(self.database_url).hostname
+        if host is not None and host.lower() in LOCAL_DB_HOSTS:
+            return self.cors_origin_regex
+        return ""
 
     @field_validator("database_url", mode="after")
     @classmethod

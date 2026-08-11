@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -33,7 +33,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
 | **Events** | | | |
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
-| GET | `/events/points` | 🌐 | Compact map-points tuples (cached) |
+| GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
@@ -86,9 +86,13 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 
 ## Rate limits
 
-One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP, the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev). Every read limit in this table is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)); write limits have wiring-level coverage only.
+One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)) enforces two layers: the per-endpoint limits in the table below, and the per-user read quota below it. Table limits are keyed per client IP (the right-most `X-Forwarded-For` entry, see [`engineering.md`](engineering.md) → *Particularities*) unless the row says otherwise. They have **no global floor**, so any endpoint absent from the table is unlimited. Buckets are in-process (one replica today). `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev).
 
-| Endpoint | Limit (per IP) |
+A rejected request gets `429` with the typed envelope, `{"detail": {"code": "rate_limited", "message": "…"}}` for a table limit and `{"detail": {"code": "read_quota_exceeded", "message": "…"}}` for the read quota, plus a `Retry-After` header in whole seconds counted to the exact bucket reset. Branch on the `code`: the two waits differ by orders of magnitude, a per-minute throttle clearing in seconds against a fixed hour-long quota window.
+
+Every limit on this page is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)), so dropping one fails CI. One tier is not: `POST /auth/login`'s 30/hour. Reaching it requires exhausting the 5/min tier six times over, and the minute tier answers `429` from request 6, so no test can drive the hourly bucket to its own wall.
+
+| Endpoint | Limit |
 |---|---|
 | **Auth** | |
 | `POST /auth/login` | 5/min + 30/hour |
@@ -126,6 +130,18 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+
+### Per-user read quota
+
+**1000/hour per account**, one bucket shared by the whole read surface rather than one per endpoint:
+
+`GET /events` · `/events/{id}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/timeline`
+
+The key is `User.id`, read from the signature-verified session cookie, so a forged `sub` cannot mint a bucket and the cap travels with the account instead of with its source address: the per-IP table caps one client, this caps one account's read throughput wherever it reads from. The two layers stack, and the table limit is evaluated first, so a request it rejects costs the account nothing.
+
+This is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so a caller that drops the session cookie leaves the quota behind and lands back under the per-IP limits alone. What the quota adds is a ceiling the per-IP table cannot express: a bound on how much any one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
+
+Anonymous callers are exempt from the quota and keep the per-IP limits alone. So does every authenticated read absent from the list above, `GET /auth/me` and the read-only admin probes among them. Two are absent by decision rather than by nature, `GET /events/import-archive/{job_id}` and `GET /events/import-from-tweet/media`: a single import flow polls both hard enough to drain a shared budget on one import. Exempting them cannot widen the catalog surface, because neither returns catalog rows. The archive poll returns one job's own progress counters, and the media proxy returns bytes for a URL the caller already holds, one attachment per call, with no listing, search, or enumeration to walk.
 
 ---
 
@@ -387,16 +403,33 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
 
-Results are cached in-memory for 60s per unique filter combination; the response
-echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
-to 60/min/IP.
+`bbox` is **required**: the payload tracks the area asked for, and the map's own
+calls are viewport-sized. Nothing caps that area, since the map legitimately asks
+for the world box at low zoom. Unlike on `GET /events`, an empty `?bbox=` is a
+rejection here, not an omitted filter.
 
-**Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`
-`submitted_from`, `submitted_to`, `author` (see `GET /events` for semantics), plus
-map-only filters `media` (repeatable, `?media=image&media=video`, matches a geolocation
-carrying any attachment of a listed type; values are constrained to `image`/`video`, else
-422) and `hide_demo` (exclude demo rows). The date
-params are still accepted but the map now filters dates client-side from the payload.
+Results are cached in-memory for 60s per unique `bbox` + filter combination; the
+response echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
+Rate-limited to 60/min/IP.
+
+The `bbox` is snapped outward onto a fixed 0.05° server-side grid before it is
+keyed and queried. Two viewports inside one cell therefore share a cache entry
+and get a payload covering the snapped (slightly larger) box, which always
+contains the box requested.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `bbox` | string, **required** | `south,west,north,east` (four comma-separated floats), same shape and validation as on `GET /events`: latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. Missing, empty, or malformed → 422. Boxes crossing the antimeridian are not modelled: the map widens such a viewport to the full longitude range rather than splitting it into two calls. |
+| `media` | string (repeatable) | `?media=image&media=video`, matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
+| `hide_demo` | bool | Exclude demo rows. |
+| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | See `GET /events` for semantics. The date params are accepted, and the map filters dates client-side off the payload instead of sending them. |
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Points inside `bbox` |
+| 422 | `bbox` missing or malformed, a malformed `event_date_from` / `event_date_to` / `submitted_from` / `submitted_to` (ISO `YYYY-MM-DD`), or a `media` / `author` value outside its domain |
 
 **Response 200:**
 ```json
@@ -1628,7 +1661,7 @@ Endpoints that return paginated lists use this shape:
 }
 ```
 
-`GET /events` and `GET /events/points` are intentionally **unpaginated** today. A hard server-side `LIMIT` will land before public read access.
+`GET /events` and `GET /events/points` are intentionally **unpaginated**. `/events` caps its result set with `?limit=` (200 max); `/events/points` bounds its own with the required `bbox`, so the requested box decides the payload size.
 
 ### Errors
 
