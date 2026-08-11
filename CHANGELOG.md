@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.4.10, 2026-08-11
+
 ### Fixed
 - **Archive import: staged-zip guard raised to 4 GB, and an over-cap upload names itself** ([#220](https://github.com/vidithq/vidit/pull/220), [`backend/app/services/tweet_ingest/archive_zip.py`](backend/app/services/tweet_ingest/archive_zip.py), [`frontend/src/lib/archive.ts`](frontend/src/lib/archive.ts), [`frontend/src/lib/events.ts`](frontend/src/lib/events.ts), [`frontend/src/components/geolocations/ImportArchivePanel.tsx`](frontend/src/components/geolocations/ImportArchivePanel.tsx)). `MAX_UPLOAD_BYTES` goes to 4 GB, still under S3's 5 GB single-part POST ceiling, so an export that clears the browser strip by a hair no longer bounces off the presigned policy. The browser strip mirrors the constant and refuses an over-cap result before the upload starts, and `uploadArchive` maps S3's `EntityTooLarge` (and the dev upload endpoint's 413) to `archive_too_large` instead of the generic transit error, which had invited a retry that could never succeed.
 
