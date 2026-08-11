@@ -318,7 +318,7 @@ cd frontend
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 npx next dev -p 3030
 ```
 
-The override is *only* the localhost regex; explicit `CORS_ORIGINS` (production hosts) still apply. The localhost regex is a dev convenience and is dropped automatically when `DATABASE_URL` points at a non-local host ([`config.py`](../backend/app/config.py) `effective_cors_origin_regex`): with `allow_credentials=True`, a live `localhost:<port>` origin regex would otherwise let any localhost page in a viewer's browser make credentialed cross-origin reads against the deployed API. Prod therefore relies on the `CORS_ORIGINS` allowlist alone, independent of the cookie `SameSite` attribute, and no manual `CORS_ORIGIN_REGEX=` step is required.
+The override is *only* the localhost regex; explicit `CORS_ORIGINS` (production hosts) still apply. The shipped localhost default is a dev convenience and is dropped automatically when `DATABASE_URL` points at a non-local host ([`config.py`](../backend/app/config.py) `effective_cors_origin_regex`): with `allow_credentials=True`, a live `localhost:<port>` origin regex would otherwise let any localhost page in a viewer's browser make credentialed cross-origin reads against the deployed API. Prod therefore relies on the `CORS_ORIGINS` allowlist alone, independent of the cookie `SameSite` attribute, and no manual `CORS_ORIGIN_REGEX=` step is required.
 
 ---
 

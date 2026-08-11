@@ -151,6 +151,19 @@ def test_cors_origin_regex_non_localhost_pattern_kept_on_remote_db(monkeypatch):
     assert settings.effective_cors_origin_regex == r"^https://.*\.staging\.vidit\.app$"
 
 
+def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypatch):
+    """Only the exact shipped default is auto-dropped: a custom pattern that
+    merely contains the substring 'localhost' is the operator's and stands, so
+    the drop can't silently break a real origin that happens to spell it."""
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    monkeypatch.setenv("CORS_ORIGIN_REGEX", r"^https://localhost-preview\.vidit\.app$")
+    settings = Settings()
+    assert settings.effective_cors_origin_regex == r"^https://localhost-preview\.vidit\.app$"
+
+
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)

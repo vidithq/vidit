@@ -38,11 +38,13 @@ function isSafeLinkHref(href: string): boolean {
  * or an https:// / local-dev host): the FE can't read the backend's
  * `storage_backend` / CDN settings, so this is conservative rather than an
  * exact mirror. The point is to never let a `javascript:`, `data:`, or
- * protocol-relative (`//host`) src reach the DOM. Browsers treat a backslash
- * as a slash in URLs (WHATWG), so `/\host` is protocol-relative too; normalise
- * the first two chars before the check. */
+ * protocol-relative (`//host`) src reach the DOM. Normalise the value the way a
+ * browser will first (WHATWG): strip ASCII tab/CR/LF from anywhere and treat a
+ * backslash as a slash, so `/\host`, `/<TAB>/host` and `//host` all reduce to
+ * the network path `//host`. */
 function isSafeImageSrc(src: string): boolean {
-  if (src.slice(0, 2).replace(/\\/g, "/") === "//") return false;
+  const normalized = src.replace(/[\t\r\n]/g, "").replace(/\\/g, "/");
+  if (normalized.slice(0, 2) === "//") return false;
   if (src.startsWith("/")) return true;
   let parsed: URL;
   try {
