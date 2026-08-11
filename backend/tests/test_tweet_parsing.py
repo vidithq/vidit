@@ -472,6 +472,9 @@ def test_parse_tweet_source_url_prefers_quoted_tweet(monkeypatch):
     assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
     assert parsed.quoted_tweet is not None
     assert parsed.quoted_tweet.author_handle == "victim"
+    # The Telegram link the quote outranked is a mirror, not a discard: it
+    # prefills the form's secondary-source rows.
+    assert parsed.secondary_source_urls == ["https://t.me/realsource/9"]
 
 
 def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
@@ -495,6 +498,37 @@ def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
     parsed = parse_tweet("https://x.com/alice/status/1234567890")
     assert parsed.source_url == "https://t.me/somechannel/100"
     assert parsed.quoted_tweet is None
+    # The sole link took the source slot, so nothing is left to mirror it.
+    assert parsed.secondary_source_urls == []
+
+
+def test_parse_tweet_secondary_sources_skip_non_footage_links(monkeypatch):
+    """A profile link and a maps pin are not mirrors of the footage any more
+    than they are sources: only footage-host links prefill the secondary rows."""
+    _stub_syndication(
+        monkeypatch,
+        {
+            "user": _user_block("alice"),
+            "created_at": "2026-05-01T00:00:00.000Z",
+            "text": "Strike 48.012345, 37.802411, credit https://t.co/abc",
+            "entities": {
+                "urls": [
+                    {"expanded_url": "https://t.me/somechannel/100"},
+                    {"expanded_url": "https://x.com/Osinttechnical"},
+                    {"expanded_url": "https://maps.google.com/?q=48.01,37.80"},
+                    {"expanded_url": "https://www.youtube.com/watch?v=MIRROR001"},
+                ]
+            },
+            "mediaDetails": [_photo_media("op.jpg")],
+        },
+    )
+    parsed = parse_tweet("https://x.com/alice/status/1234567890")
+    # Two footage candidates make the source ambiguous, so both stay for review.
+    assert parsed.source_url is None
+    assert parsed.secondary_source_urls == [
+        "https://t.me/somechannel/100",
+        "https://www.youtube.com/watch?v=MIRROR001",
+    ]
 
 
 def test_parse_tweet_source_posted_at_from_quoted_date(monkeypatch):

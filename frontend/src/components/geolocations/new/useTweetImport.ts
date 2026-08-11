@@ -24,6 +24,7 @@ interface TweetImportFormBindings {
   setLat: (v: string) => void;
   setLng: (v: string) => void;
   setSourceUrl: (v: string) => void;
+  setSecondarySourceUrls: (v: string[]) => void;
   setEventDate: (v: string) => void;
   setSourcePostedAt: (v: string) => void;
   setFiles: (files: File[]) => void;
@@ -92,6 +93,9 @@ export function useTweetImport(form: TweetImportFormBindings) {
     // Always set, never just on truthy: a source-less import after a sourced
     // one must clear the field rather than leave the previous URL behind.
     form.setSourceUrl(parsed.source_url ?? "");
+    // Same rule as the primary: always written, so a re-import with no mirrors
+    // clears the rows the previous one filled.
+    form.setSecondarySourceUrls(parsed.secondary_source_urls);
     // The source's own post instant, when the backend actually resolved one
     // (a dated quote). Never fabricated from the OP's own post time; empty
     // when null, same as `toDatetimeLocalUTC` handles any unparsable input.
@@ -158,6 +162,7 @@ export function useTweetImport(form: TweetImportFormBindings) {
     form.setLat("");
     form.setLng("");
     form.setSourceUrl("");
+    form.setSecondarySourceUrls([]);
     form.setEventDate("");
     form.setSourcePostedAt("");
     form.setFiles([]);

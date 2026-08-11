@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.conflict import Conflict
 from app.models.event import (
+    MAX_SECONDARY_SOURCE_LINKS,
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -38,6 +39,7 @@ from app.models.event import (
     Event,
     EventGeolocator,
     EventInvestigator,
+    EventSourceLink,
 )
 from app.models.tag import Tag
 from app.models.user import User
@@ -96,6 +98,16 @@ class SourceUrlRequiredError(EventError):
     code = "source_url_required"
 
 
+class TooManySourceLinksError(EventError):
+    """More secondary source links than :data:`MAX_SECONDARY_SOURCE_LINKS`.
+
+    Counted after normalization, so blanks and duplicates the client sent don't
+    push a legitimate submission over the cap. Maps to 400.
+    """
+
+    code = "too_many_source_links"
+
+
 class EventStateError(EventError):
     """The event's lifecycle state forbids the requested transition.
 
@@ -115,6 +127,71 @@ def validate_coordinates(lat: float, lng: float) -> None:
         raise InvalidCoordinatesError("Latitude must be between -90 and 90")
     if not -180 <= lng <= 180:
         raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+
+
+def _clean_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
+    """Strip, drop blanks, drop duplicates and drop the primary, order-preserving.
+
+    The shared body of :func:`normalize_secondary_source_urls` (the write forms)
+    and :func:`truncate_secondary_source_urls` (the ingest prefill); the two
+    differ only in what they do past the cap. Dropping an entry equal to
+    ``source_url`` keeps the primary anchor from being listed twice.
+    """
+    primary = (source_url or "").strip()
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in urls:
+        url = raw.strip()
+        if not url or url == primary or url in seen:
+            continue
+        seen.add(url)
+        cleaned.append(url)
+    return cleaned
+
+
+def normalize_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
+    """The submitted secondary source links, normalized: the one home every write
+    path runs before the rows are written.
+
+    Raises :class:`TooManySourceLinksError` past
+    :data:`MAX_SECONDARY_SOURCE_LINKS`. Rejecting rather than truncating is the
+    point: an analyst who pasted eleven mirrors should be told, not have the
+    eleventh silently dropped.
+    """
+    cleaned = _clean_secondary_source_urls(urls, source_url)
+    if len(cleaned) > MAX_SECONDARY_SOURCE_LINKS:
+        raise TooManySourceLinksError(
+            f"An event carries at most {MAX_SECONDARY_SOURCE_LINKS} secondary source links"
+        )
+    return cleaned
+
+
+def truncate_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
+    """The machine-path variant: same normalization, over-cap links dropped.
+
+    A tweet that links twelve mirrors is not an error the ingest can report to
+    anyone, so the prefill keeps the first ten and the owner adds the rest by
+    hand if they matter.
+    """
+    return _clean_secondary_source_urls(urls, source_url)[:MAX_SECONDARY_SOURCE_LINKS]
+
+
+def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
+    """The ordered child rows for an event's secondary links: one home so
+    ``position`` is always the list index."""
+    return [EventSourceLink(position=index, url=url) for index, url in enumerate(urls)]
+
+
+def _replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
+    """Swap an existing event's secondary links for ``urls``.
+
+    The deletes are FLUSHED before the replacements insert: SQLAlchemy emits a
+    mapper's inserts ahead of its deletes, so a reused ``position`` would
+    otherwise collide on the composite PK mid-flush.
+    """
+    geo.source_links.clear()
+    db.flush()
+    geo.source_links = build_source_link_rows(urls)
 
 
 def _optional_point(lat: float | None, lng: float | None, *, field: str):
@@ -211,6 +288,7 @@ async def create_with_evidence(
     capture_source_lat: float | None,
     capture_source_lng: float | None,
     source_url: str,
+    secondary_source_urls: list[str],
     event_date: date | None,
     event_time: time | None = None,
     source_posted_at: datetime,
@@ -243,6 +321,8 @@ async def create_with_evidence(
     * No proof image (:class:`ProofImageRequiredError`)
     * Missing required conflict / `capture_source` tag
       (:class:`TagRequirementsError`)
+    * More secondary source links than the cap
+      (:class:`TooManySourceLinksError`)
     * File type/size rejected, a proof placeholder/file mismatch, or the
       uploader raises (``InvalidFileError`` / ``ProofFilesMismatchError`` /
       ``EvidenceProcessingFailedError``)
@@ -253,6 +333,7 @@ async def create_with_evidence(
     """
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     # Every event needs its footage: exactly one source file.
     _require_submission_media(file is not None)
@@ -281,6 +362,7 @@ async def create_with_evidence(
     )
     geo.tags = effective_tags
     geo.conflicts = effective_conflicts
+    geo.source_links = build_source_link_rows(secondary_links)
 
     db.add(geo)
     db.flush()
@@ -309,6 +391,7 @@ async def create_request(
     current_user: User,
     title: str,
     source_url: str,
+    secondary_source_urls: list[str],
     proof_data: dict | None,
     lat: float | None = None,
     lng: float | None = None,
@@ -343,11 +426,14 @@ async def create_request(
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
-    :class:`InvalidProofError` on an unsanitisable proof, plus the shared
-    file-validation errors. Any failure rolls back and sweeps whatever landed.
+    :class:`InvalidProofError` on an unsanitisable proof,
+    :class:`TooManySourceLinksError` past the secondary-link cap, plus the
+    shared file-validation errors. Any failure rolls back and sweeps whatever
+    landed.
     """
     guess_point = _optional_point(lat, lng, field="event_coords")
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     _require_submission_media(file is not None)
 
@@ -377,6 +463,7 @@ async def create_request(
     )
     geo.tags = _resolve_tags(db, tag_ids)
     geo.conflicts = _resolve_conflicts(db, conflict_ids)
+    geo.source_links = build_source_link_rows(secondary_links)
 
     db.add(geo)
     db.flush()
@@ -405,6 +492,7 @@ async def geolocate(
     capture_source_lat: float | None,
     capture_source_lng: float | None,
     source_url: str,
+    secondary_source_urls: list[str],
     event_date: date | None,
     event_time: time | None,
     source_posted_at: datetime,
@@ -454,10 +542,16 @@ async def geolocate(
     source media (kept or new), at least one proof image in the final proof
     body, a conflict, and the curated ``capture_source`` tag.
 
+    The secondary source links are NOT part of that frozen anchor: unlike
+    ``source_url``, the submitted list replaces whatever the row held, on a
+    requested fulfilment as well as an owner's detected submit. They are
+    mirrors, not the evidence origin, so a fulfiller correcting them is an
+    edit, not a rewrite of the requester's claim.
+
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
     values, :class:`SourceUrlRequiredError` / :class:`MediaRequiredError` /
-    :class:`ProofImageRequiredError` /
+    :class:`ProofImageRequiredError` / :class:`TooManySourceLinksError` /
     :class:`TagRequirementsError` (400) when the floor is unmet,
     :class:`TooManyFilesError` (422) past the one-source cap, or a
     file-validation error. Returns the refreshed ``geolocated`` row.
@@ -491,6 +585,10 @@ async def geolocate(
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    # Normalized against the source URL that will actually be stored, so a
+    # fulfiller who repeats the requester's anchor among the mirrors has it
+    # dropped rather than stored twice.
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, effective_source_url)
 
     # Source accounting counts what survives the geolocate: kept existing +
     # new uploads must land on exactly one. Compare on the string form; ids
@@ -535,6 +633,10 @@ async def geolocate(
     # through ``_credit_geolocator`` so the owner-among-geolocators invariant is
     # written in one place. Idempotent by PK; a first geolocate has no prior row.
     _credit_geolocator(db, geo, current_user)
+
+    # The submitted mirrors replace the stored ones wholesale (see the
+    # docstring: they carry none of ``source_url``'s requester protection).
+    _replace_source_links(db, geo, secondary_links)
 
     # Drop the source media flagged for removal: snapshot their S3 keys, delete
     # the rows, and FLUSH the deletes so the replacement insert below can't

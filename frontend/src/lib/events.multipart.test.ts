@@ -73,6 +73,34 @@ describe("createEvent multipart", () => {
     expect(body.getAll("files")).toEqual([]);
   });
 
+  it("appends one secondary_source_urls entry per link, in order", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["https://x.com/u/status/2", "https://t.me/c/3"],
+    });
+    expect(lastBody().getAll("secondary_source_urls")).toEqual([
+      "https://x.com/u/status/2",
+      "https://t.me/c/3",
+    ]);
+  });
+
+  it("trims links and drops the rows left blank", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["  https://t.me/c/3  ", "", "   "],
+    });
+    expect(lastBody().getAll("secondary_source_urls")).toEqual([
+      "https://t.me/c/3",
+    ]);
+  });
+
+  it("sends no secondary_source_urls part when none are given", async () => {
+    await createEvent(createInput);
+    expect(lastBody().has("secondary_source_urls")).toBe(false);
+    await createEvent({ ...createInput, secondary_source_urls: [] });
+    expect(lastBody().has("secondary_source_urls")).toBe(false);
+  });
+
   it("encodes tag_ids and conflict_ids as JSON arrays", async () => {
     await createEvent(createInput);
     const body = lastBody();
@@ -123,6 +151,18 @@ describe("geolocateEvent multipart", () => {
     const [path] = mockFetch.mock.calls.at(-1) as [string];
     expect(path).toBe("/events/e1/geolocate");
   });
+
+  it("carries the secondary source links (the transition replaces the list)", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await geolocateEvent("e1", {
+      ...createInput,
+      remove_media_ids: [],
+      secondary_source_urls: ["https://t.me/c/3"],
+    });
+    expect(lastBody().getAll("secondary_source_urls")).toEqual([
+      "https://t.me/c/3",
+    ]);
+  });
 });
 
 describe("createEventRequest multipart", () => {
@@ -140,6 +180,21 @@ describe("createEventRequest multipart", () => {
     expect(body.get("capture_source_lat")).toBe("50.1");
     expect(body.get("capture_source_lng")).toBe("30.2");
     expect(body.has("proof_files")).toBe(false);
+  });
+
+  it("posts the secondary source links a request declares", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
+    await createEventRequest({
+      title: "Footage wanted",
+      source_url: "https://t.me/c/2",
+      secondary_source_urls: ["https://x.com/u/status/4", ""],
+      source_posted_at: "2026-01-01T00:00",
+      files: [vid],
+      proof_files: [],
+    });
+    expect(lastBody().getAll("secondary_source_urls")).toEqual([
+      "https://x.com/u/status/4",
+    ]);
   });
 
   it("uploads proof_files when a request carries proof images", async () => {

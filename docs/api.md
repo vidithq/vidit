@@ -411,7 +411,7 @@ params are still accepted but the map now filters dates client-side from the pay
 
 Soft-warning probe for the submit form: geolocations that might describe the same event. **Never blocks submission** (advisory only).
 
-Match rule: within ~500 m geodesic of the proposed `(lat, lng)` **AND** (same source-URL host *or* same `event_date`). Auth-required; rate-limited to 60/min/IP.
+Match rule: within ~500 m geodesic of the proposed `(lat, lng)` **AND** (same source-URL host *or* same `event_date`). The host leg also matches against an existing event's secondary source links, not only its primary `source_url`: an analyst pasting a mirror of an already-catalogued event still surfaces it. Auth-required; rate-limited to 60/min/IP.
 
 Inputs are tolerated gracefully:
 
@@ -469,6 +469,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 ```json
 {
   "source_url": "https://x.com/source_handle/status/1234567890123456789",
+  "secondary_source_urls": ["https://t.me/mirror_channel/456"],
   "original_tweet_url": "https://x.com/analyst_handle/status/1234567890123456790",
   "posted_at": "2025-11-12T14:33:00.000Z",
   "author_handle": "analyst_handle",
@@ -494,6 +495,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
       "proof_text": "<cleaned tweet text>",
       "detected_from_url": "https://x.com/analyst_handle/status/1234567890123456790",
       "event_date": "2025-11-12",
+      "secondary_source_urls": ["https://t.me/mirror_channel/456"],
       "media": [
         { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
       ]
@@ -512,6 +514,8 @@ Every field is best-effort. `parsed_coords` runs four coordinate extractors (dec
 2. **First X / Telegram / YouTube link in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` in the body. `source_posted_at` stays `null`, the link carries no date. A coordinate link (Google Maps) or any other host is not a footage source.
 
 Without either signal, `source_url` and `source_posted_at` are both `null` and the form field starts empty. The OP's own URL is never a fallback.
+
+`secondary_source_urls` carries the footage links the OP declared that the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post declared nothing else. It prefills the submit form's secondary-source rows. `detected[].secondary_source_urls` is the same list on the machine path's view. See [`ingestion.md`](ingestion.md) for how the two slots are decided from the same candidate set.
 
 `original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
 
@@ -638,6 +642,7 @@ Full detail for a single event, in any lifecycle state.
   "event_coords": { "lat": 48.123, "lng": 37.456 },
   "capture_source_coords": null,
   "source_url": "https://t.me/channel/12345",
+  "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
   "event_time": "14:30:00",
@@ -691,7 +696,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
@@ -713,6 +718,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `capture_source_lat` | float | no | Latitude of the camera position (where the footage was shot from). Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | no | Longitude of the camera position. |
 | `source_url` | string | yes | Original source URL, ≤2000 chars. |
+| `secondary_source_urls` | string[] (repeated field) | no | Optional mirrors of the same media (another network, or another post from the same point of view), one form field per link, each ≤2000 chars. Normalized server-side (stripped, blanks dropped, duplicates dropped, an entry equal to `source_url` dropped, order preserved); more than 10 after normalization is `too_many_source_links`. |
 | `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Omitted / empty → stored NULL (the footage doesn't always establish the date; renders as *Unknown*). |
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date. Distinct from `event_date` and the submission time. |
@@ -729,10 +735,10 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitiser rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa) |
+| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitiser rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa) |
 | 409 | `source_media_conflict`, a concurrent request raced past the one-source-per-event index |
 | 413 | Request body exceeds the platform body-size cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
-| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than `max_proof_images_per_event` files** in `proof_files` (`too_many_files`), `title` over 255 chars, `source_url` over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
+| 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than `max_proof_images_per_event` files** in `proof_files` (`too_many_files`), `title` over 255 chars, `source_url` or a single `secondary_source_urls` item over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
 
 ---
 
@@ -788,6 +794,7 @@ Open a request: creates a `requested` event with no coordinates yet (ex `POST /r
 |-------|------|----------|-------------|
 | `title` | string | yes | Title; empty / whitespace-only rejected. Max 255 chars. |
 | `source_url` | string | yes | URL where the media was found. Max 2000 chars. |
+| `secondary_source_urls` | string[] (repeated field) | no | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). |
 | `proof` | string (JSON) | no | In-progress proof (Tiptap document); sanitised server-side and image-free (no `proof_files` on this path, inline images are dropped by the sanitiser) |
 | `lat` | float | no | Latitude of an approximate guess. Both-or-neither with `lng`. |
 | `lng` | float | no | Longitude of an approximate guess. |
@@ -805,9 +812,9 @@ Open a request: creates a `requested` event with no coordinates yet (ex `POST /r
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `invalid_file`, `evidence_processing_failed` |
+| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file`, `evidence_processing_failed` |
 | 413 | Request body exceeds the platform body-size cap, same middleware as `POST /events` |
-| 422 | `title` over 255 chars / `source_url` over 2000 chars, malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, or `event_time` without `event_date` |
+| 422 | `title` over 255 chars / `source_url` or a single `secondary_source_urls` item over 2000 chars, malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, or `event_time` without `event_date` |
 
 ---
 
@@ -824,6 +831,7 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
 | `source_url` | string | ≤2000 chars, the footage origin. A `detected` draft may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url` (a fulfiller must not rewrite the requester's evidence anchor) |
+| `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). Unlike `source_url`, this field is **not** ignored on a `requested` fulfilment: the submitted list replaces whatever the row held, since the mirrors sit outside the frozen evidence anchor. |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Optional, mirroring create: empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required on this path; the analyst supplies it, since an off-platform source doesn't always carry a machine-readable date |
@@ -841,11 +849,11 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, or `source_url_required` (a `detected` draft with no declared source, geolocated with a blank `source_url` field) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, or `source_url_required` (a `detected` draft with no declared source, geolocated with a blank `source_url` field) |
 | 403 | Caller is not the owner of a `detected` draft (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
-| 422 | Kept + new source media over one (`too_many_files`), or more than `max_proof_images_per_event` proof files |
+| 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 

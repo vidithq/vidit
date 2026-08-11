@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { formatDate, formatInstant } from "@/lib/format";
@@ -177,6 +178,17 @@ function DetailRows({
           className={sourceClass}
         />
       </DetailRow>
+      {/* Mirrors of the same media, directly under the primary they mirror.
+          Collapsed: they are corroboration, not the evidence anchor, so they
+          must not push the rest of the Details block down. */}
+      {geo.secondary_source_urls.length > 0 && (
+        <SecondarySourcesRow
+          urls={geo.secondary_source_urls}
+          isDemo={sourceIsSynthetic(geo)}
+          compact={compact}
+          maxWidthClass={sourceMaxWidth}
+        />
+      )}
       {/* The post a detection was imported from, distinct from Source (the
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
@@ -273,6 +285,68 @@ function DetailRows({
       <SectionEyebrow title="Details" concept="section_details" />
       <DetailCard>{rows}</DetailCard>
     </div>
+  );
+}
+
+/**
+ * The Secondary sources row: a count that expands into the list. Rendered only
+ * for a non-empty list (the caller guards), so the Details block gains nothing
+ * on an event that declares no mirror. Each link is a `SourceLabel`, the same
+ * host-reduced new-tab affordance as the Source row above, so the primary and
+ * its mirrors read alike.
+ */
+function SecondarySourcesRow({
+  urls,
+  isDemo,
+  compact,
+  maxWidthClass,
+}: {
+  urls: string[];
+  isDemo: boolean;
+  compact: boolean;
+  maxWidthClass: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const textSize = compact ? "" : "text-sm";
+  return (
+    <DetailRow
+      label="Secondary sources"
+      concept="secondary_source_urls"
+      compact={compact}
+      align="start"
+    >
+      <div className="flex flex-col items-end gap-1 ml-4">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
+        >
+          {open ? (
+            <>
+              Hide
+              <ChevronUp size={12} />
+            </>
+          ) : (
+            <>
+              {urls.length} more source{urls.length === 1 ? "" : "s"}
+              <ChevronDown size={12} />
+            </>
+          )}
+        </button>
+        {open &&
+          urls.map((url) => (
+            <SourceLabel
+              key={url}
+              isDemo={isDemo}
+              url={url}
+              variant="link"
+              maxWidthClass={maxWidthClass}
+              className={textSize}
+            />
+          ))}
+      </div>
+    </DetailRow>
   );
 }
 

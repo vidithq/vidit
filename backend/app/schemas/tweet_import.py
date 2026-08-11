@@ -66,6 +66,8 @@ class DetectedGeolocPreview(BaseModel):
     proof_text: str
     detected_from_url: str
     event_date: date | None
+    # The mirrors the detection would carry (the post's other declared links).
+    secondary_source_urls: list[str]
     media: list[TweetImportMedia]
 
 
@@ -88,6 +90,10 @@ class TweetImportResponse(BaseModel):
     """
 
     source_url: str | None
+    # Mirrors of the same media: the post's other declared links, ordered and
+    # capped at the event's secondary-link ceiling. Prefills the form's
+    # secondary-source rows; empty when the post linked nothing else.
+    secondary_source_urls: list[str]
     original_tweet_url: str
     posted_at: str  # ISO 8601 from X — frontend truncates to date for the form
     # The source's own post instant (the quote's timestamp), ISO 8601 UTC.
