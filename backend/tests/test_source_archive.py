@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
-from app.models.event import STATUS_DETECTED, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, STATUS_DETECTED, Event
 from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import source_archive
@@ -151,6 +151,38 @@ def test_collect_links_orders_source_first_and_tags_origin(event):
     ]
 
 
+def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
+    """A malformed URL is a link to skip, not a 500 on a committed write.
+
+    ``urlparse`` raises on an unterminated IPv6 literal; a crafted
+    ``source_url`` reaching the enqueue must not turn a durable event write
+    into an error response.
+    """
+    row = Event(
+        owner_id=owner.id,
+        title="Malformed source",
+        source_url="http://[::1",
+        proof=_proof_doc("https://[fe80::1"),
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.commit()
+    assert source_archive.collect_links(row) == []
+
+
+def test_collect_links_drops_an_oversized_url(db, owner):
+    """A href past the ``source_url`` column width would abort the insert that
+    carries it, so it never enters the queue."""
+    long_url = "https://example.org/" + "a" * SOURCE_URL_MAX_LENGTH
+    assert (
+        source_archive.collect_links(
+            Event(owner_id=owner.id, title="Long href", proof=_proof_doc(long_url))
+        )
+        == []
+    )
+
+
 def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
     row = Event(
         owner_id=owner.id,
@@ -201,9 +233,70 @@ def test_enqueue_event_best_effort_swallows_a_database_failure(db, event, monkey
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
 
 
+def test_enqueue_event_best_effort_swallows_any_failure(db, event, monkeypatch):
+    """Not only database errors: nothing an enqueue raises may reach the
+    analyst as the response to a write that already committed."""
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("something else entirely")
+
+    monkeypatch.setattr(source_archive, "enqueue_event", boom)
+    source_archive.enqueue_event_best_effort(db, event)
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
+
+
 def test_enqueue_catalog_covers_an_event_written_before_archival(db, event):
     result = source_archive.enqueue_catalog(db)
     assert result["links_enqueued"] >= 2
+    assert (
+        db.query(SourceArchive)
+        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
+        .count()
+        == 1
+    )
+
+
+def test_enqueue_catalog_skips_events_it_already_covered(db, event):
+    """The scan is an anti-join, so a sweep converges: what the first click
+    enqueued drops out of the second click's scan entirely."""
+    source_archive.enqueue_event(db, event)
+    assert event.id not in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
+    source_archive.enqueue_catalog(db)
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 2
+
+
+def test_enqueue_catalog_skips_demo_rows(db, owner):
+    """Seeded demo events carry a sentinel source that resolves nowhere;
+    submitting it would spend real Wayback budget on nothing."""
+    row = Event(
+        owner_id=owner.id,
+        title="Demo event",
+        source_url="https://vidit.app/demo-data",
+        is_demo=True,
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.commit()
+    source_archive.enqueue_catalog(db)
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
+
+
+def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, event):
+    """A source-less draft yields nothing to enqueue; the keyset cursor still
+    advances, or the sweep would re-read it forever."""
+    row = Event(
+        owner_id=owner.id,
+        title="Source-less draft",
+        source_url=None,
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.commit()
+    result = source_archive.enqueue_catalog(db)
+    assert result["events_scanned"] >= 2
     assert (
         db.query(SourceArchive)
         .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
@@ -238,6 +331,15 @@ def test_claim_next_stamps_running_and_counts_the_attempt(db, event):
     assert row.status == "running"
     assert row.attempts == 1
     assert row.started_at is not None
+
+
+def test_claim_next_skips_a_soft_deleted_event(db, event):
+    """An admin taking an event down must not be followed by this queue
+    pushing its links to a public archive."""
+    source_archive.enqueue_event(db, event)
+    event.deleted_at = datetime.now(UTC)
+    db.commit()
+    assert source_archive.claim_next(db) is None
 
 
 # ── capture ────────────────────────────────────────────────────────────
@@ -320,6 +422,43 @@ def test_capture_falls_back_to_archive_today_only_when_enabled(monkeypatch):
     assert url.startswith("https://archive.ph/")
 
 
+def test_capture_falls_back_when_wayback_is_unreachable(monkeypatch):
+    """The real outage case: web.archive.org refuses the connection.
+
+    A transport failure never reaches the service's own error contract, so
+    without this the fallback would be skipped exactly when it is needed.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "web.archive.org":
+            raise httpx.ConnectError("no route to host")
+        return httpx.Response(302, headers={"Refresh": f"0; url=https://archive.ph/abcde/{SOURCE}"})
+
+    monkeypatch.setattr(source_archive.settings, "archive_today_enabled", True)
+    with _spn_client(handler) as client:
+        provider, url = source_archive.capture(SOURCE, client=client)
+    assert provider == "archive_today"
+    assert url.startswith("https://archive.ph/")
+
+
+def test_capture_rejects_a_snapshot_url_that_is_not_a_link(monkeypatch):
+    """archive.today's snapshot URL comes off a header this code parses itself
+    and the detail surface renders as an href, so a non-http(s) value is a
+    failed capture rather than something to store."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "web.archive.org":
+            return httpx.Response(503)
+        return httpx.Response(200, headers={"Refresh": "0; url=javascript:alert(1)"})
+
+    monkeypatch.setattr(source_archive.settings, "archive_today_enabled", True)
+    with (
+        _spn_client(handler) as client,
+        pytest.raises(source_archive.ArchiveUnavailableError, match="not an http"),
+    ):
+        source_archive.capture(SOURCE, client=client)
+
+
 # ── process + retry policy ─────────────────────────────────────────────
 
 
@@ -373,10 +512,46 @@ def test_process_reschedules_a_transport_error(db, event):
     assert row.error.startswith("transport:")
 
 
+def test_process_reschedules_an_unexpected_failure(db, event, monkeypatch):
+    """Anything the named branches miss must still land on the retry ladder;
+    an escaping exception would leave the row ``running`` for the whole stale
+    window."""
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("provider answered something new")
+
+    source_archive.enqueue_event(db, event)
+    row = source_archive.claim_next(db)
+    monkeypatch.setattr(source_archive, "capture", boom)
+    assert source_archive.process(db, row) is False
+    db.refresh(row)
+    assert row.status == "queued"
+    assert row.error == "unexpected: ValueError"
+
+
+def test_reschedule_clears_the_claim_stamp(db, event):
+    """``started_at`` belongs to the claim that ended; a queued row carrying an
+    old one reads as a claim in flight to the stale-window reclaim."""
+    source_archive.enqueue_event(db, event)
+    row = source_archive.claim_next(db)
+    with _spn_client(lambda _r: httpx.Response(429)) as client:
+        source_archive.process(db, row, client=client)
+    db.refresh(row)
+    assert row.status == "queued"
+    assert row.started_at is None
+
+
 def test_backoff_grows_and_is_capped():
     assert source_archive._backoff(1) == source_archive.BASE_BACKOFF
     assert source_archive._backoff(2) == source_archive.BASE_BACKOFF * 2
     assert source_archive._backoff(99) == source_archive.MAX_BACKOFF
+
+
+def test_the_attempt_ladder_actually_reaches_the_cap():
+    """The retry horizon is a claim the docs make, so it is asserted here: the
+    last wait before a row is buried is ``MAX_BACKOFF``."""
+    last_wait = source_archive._backoff(source_archive.MAX_ATTEMPTS - 1)
+    assert last_wait == source_archive.MAX_BACKOFF
 
 
 # ── drain ──────────────────────────────────────────────────────────────
@@ -392,6 +567,22 @@ def test_run_once_stops_at_the_pass_budget(db, event):
         .count()
     )
     assert done == 1
+
+
+def test_run_once_does_not_sleep_after_the_last_row(db, event, monkeypatch):
+    """The pacing gap belongs between two captures. Paying it after the final
+    row is pure latency: an idle worker would hold the pass open for nothing."""
+    slept: list[float] = []
+    monkeypatch.setattr(source_archive, "REQUEST_SPACING", timedelta(seconds=6))
+    monkeypatch.setattr(source_archive.time, "sleep", lambda seconds: slept.append(seconds))
+
+    source_archive.enqueue_event(db, event)
+    # An inline snapshot, so the only sleep a capture can add is the pacing gap.
+    inline = lambda _r: httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})  # noqa: E731
+    with _spn_client(inline) as client:
+        assert source_archive.run_once(db, budget=5, client=client) == 2
+    # Two rows, so exactly one gap, and it falls between them.
+    assert slept == [6.0]
 
 
 def test_archived_url_for_matches_the_original(db, event):

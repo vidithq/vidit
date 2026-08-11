@@ -157,7 +157,7 @@ vidit/
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
 │   │       ├── seed.py             # Admin demo-data seeder
 │   │       ├── social.py           # Follow edges, timeline assembly
-│   │       ├── source_archive.py   # Wayback capture queue for every event link
+│   │       ├── source_archive.py   # Wayback capture queue for published events' links
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
@@ -472,7 +472,7 @@ EOF
 
 **Generate curated demo geolocations from the admin panel**: `make seed` covers the auto-generated 50-point dataset for onboarding. For curated demos (promo recordings, screenshots, manually-themed content), populate `s3://<bucket>/demo-pool/geo-XX/{media,proof}/` (or `.local-storage/demo-pool/geo-XX/{media,proof}/` when `STORAGE_BACKEND=local`) with photos per template, then go to `/admin` → *Demo data* panel → enter a count → Generate. Seeded geos carry a `demo` tag for filtering; the same panel wipes them.
 
-**Backfill source archival over the existing catalog**: `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. Inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns; the import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). Idempotent per link, so clicking it again after a catalog grows only picks up what is new.
+**Backfill source archival over the existing catalog**: `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. Inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns; the import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events it already covered, so clicking it again walks further down the catalog and picks up what has been written since.
 
 **Clean up an orphan Railway domain** (e.g. an auto-generated `*.up.railway.app` host, which leaks the project name to scanners):
 

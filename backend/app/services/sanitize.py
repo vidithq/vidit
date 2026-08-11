@@ -108,12 +108,25 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     return value
 
 
-def _safe_link_href(value: Any) -> str | None:
-    """Link href must be an explicit http(s):// URL — no javascript:,
-    data:, mailto:, or schemeless paths."""
+def safe_link_href(value: Any) -> str | None:
+    """The value if it is an explicit ``http(s)://`` URL, else ``None``.
+
+    Rejects ``javascript:``, ``data:``, ``mailto:``, and schemeless paths.
+    The one home for the link allowlist: the Tiptap sanitiser applies it at
+    write time and source archival applies it again before handing a stored
+    link to an archiving service.
+
+    A value ``urlparse`` refuses outright (``http://[::1``, an unterminated
+    IPv6 literal) is rejected rather than raised: callers run it over content
+    they did not author, and a malformed href is a link to drop, not a request
+    to fail.
+    """
     if not isinstance(value, str):
         return None
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
     if parsed.scheme.lower() not in {"http", "https"}:
         return None
     if not parsed.hostname:
@@ -156,7 +169,7 @@ def extract_link_hrefs(doc: Any) -> list[str]:
     Source archival uses it to enqueue every link a proof body carries, so a
     cited post outlives its deletion the same way the event's own source does.
     Only ``http(s)`` hrefs come back (the same allowlist
-    :func:`_safe_link_href` applies at write time, re-applied here because a
+    :func:`safe_link_href` applies at write time, re-applied here because a
     row persisted before a rule tightened is still readable). Returns hrefs in
     tree order, deduped.
     """
@@ -174,7 +187,7 @@ def extract_link_hrefs(doc: Any) -> list[str]:
                 attrs = mark.get("attrs")
                 if not isinstance(attrs, dict):
                     continue
-                href = _safe_link_href(attrs.get("href"))
+                href = safe_link_href(attrs.get("href"))
                 if href is not None and href not in seen:
                     seen.add(href)
                     hrefs.append(href)
@@ -310,7 +323,7 @@ def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
         attrs = raw.get("attrs")
         if not isinstance(attrs, dict):
             return None
-        href = _safe_link_href(attrs.get("href"))
+        href = safe_link_href(attrs.get("href"))
         if href is None:
             return None
         cleaned: dict[str, Any] = {"type": "link", "attrs": {"href": href}}

@@ -400,7 +400,8 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    const archived = screen.getByRole("link", { name: "archived" });
+    // Named for a screen reader, not by the "archived" label alone.
+    const archived = screen.getByRole("link", { name: "Archived copy of the source" });
     expect(archived).toHaveAttribute(
       "href",
       "https://web.archive.org/web/2026/t.me/channel/12345"
@@ -411,6 +412,8 @@ describe("EventDetailBody", () => {
 
   it("shows no archived link before the worker has a capture", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    expect(screen.queryByRole("link", { name: "archived" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Archived copy of the source" })
+    ).not.toBeInTheDocument();
   });
 });

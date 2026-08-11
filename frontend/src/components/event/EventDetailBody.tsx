@@ -186,6 +186,10 @@ function DetailRows({
               target="_blank"
               rel="noopener noreferrer"
               title="Archived copy, readable if the source is taken down"
+              /* The link text alone reads as "archived" out of context, and
+                 `title` is not announced: name the target for a screen
+                 reader. */
+              aria-label="Archived copy of the source"
               className={`${TEXT_LINK} ml-2 shrink-0 text-xs`}
             >
               archived

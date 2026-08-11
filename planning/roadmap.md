@@ -33,7 +33,7 @@ They need a single place to centralize geolocations, a structured format to pres
 
 ## v0.5: Analyst portfolio
 
-The v0.4 on-ramp moves an analyst's published work in; v0.5 makes that body of work a first-class object: a public profile that stands as a portfolio (insights, a personal map, a share affordance), link previews that render the work wherever a profile or event URL lands, a batch completion flow so publishing an import costs one decision rather than one form per draft, a mobile pass on the surfaces those links land on, and automated archival of source links at event creation, drafts included, so the work outlives its tweets. Read stays open (since v0.4), write stays invite-gated, and the anti-scraping floor that public read earns lands here.
+The v0.4 on-ramp moves an analyst's published work in; v0.5 makes that body of work a first-class object: a public profile that stands as a portfolio (insights, a personal map, a share affordance), link previews that render the work wherever a profile or event URL lands, a batch completion flow so publishing an import costs one decision rather than one form per draft, a mobile pass on the surfaces those links land on, and automated archival of source links when an event is published, so the work outlives its tweets. Read stays open (since v0.4), write stays invite-gated, and the anti-scraping floor that public read earns lands here.
 
 Work breakdown: [`next.md`](next.md) → *v0.5*.
 
