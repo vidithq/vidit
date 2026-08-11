@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ArchiveUploadError,
   missingEventFields,
   missingEventRequestFields,
   submitReadiness,
+  uploadArchive,
   type EventFieldsState,
 } from "./events";
 
@@ -175,5 +177,87 @@ describe("missingEventRequestFields", () => {
         mediaCount: 1,
       })
     ).toEqual(["Title"]);
+  });
+});
+
+/** Stand in for the browser XHR `uploadArchive` drives: it only opens, sends,
+ *  and reads the status plus the body back on load. */
+function stubUpload(status: number, body = "") {
+  class StubXhr {
+    status = 0;
+    responseText = "";
+    upload: { onprogress: ((e: ProgressEvent) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    open() {
+      // The stub never opens a connection.
+    }
+    send() {
+      this.status = status;
+      this.responseText = body;
+      this.onload?.();
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", StubXhr);
+}
+
+const target = { url: "https://bucket.s3.amazonaws.com/", fields: { key: "k" } };
+const zip = new File(["z"], "vidit-archive.zip", { type: "application/zip" });
+
+describe("uploadArchive", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("resolves on the POST policy's 204", async () => {
+    stubUpload(204);
+    await expect(uploadArchive(target, zip)).resolves.toBeUndefined();
+  });
+
+  it("maps S3's EntityTooLarge to archive_too_large, not a retry prompt", async () => {
+    // What S3 answers when the body breaks the policy's content-length-range.
+    stubUpload(
+      400,
+      '<?xml version="1.0" encoding="UTF-8"?><Error><Code>EntityTooLarge</Code>' +
+        "<Message>Your proposed upload exceeds the maximum allowed size</Message></Error>"
+    );
+    await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
+      "code",
+      "archive_too_large"
+    );
+  });
+
+  it("maps the dev upload endpoint's 413 to the same code", async () => {
+    // The route's own streaming guard (main.py::dev_staging_upload).
+    stubUpload(413, '{"detail":"Upload exceeds the size guard"}');
+    await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
+      "code",
+      "archive_too_large"
+    );
+  });
+
+  it("maps the dev body-size middleware's 413 to the same code", async () => {
+    // The other 413 the dev endpoint can answer with: the body-size middleware
+    // ahead of the route, whose detail carries the cap in bytes.
+    stubUpload(413, '{"detail":"Request body too large (max 4305453056 bytes)"}');
+    await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
+      "code",
+      "archive_too_large"
+    );
+  });
+
+  it("keeps ArchiveUploadError for a 413 from an intermediary", async () => {
+    // A corporate proxy capping request bodies can 413 an upload that is under
+    // our cap, which the strip just proved. Calling that archive too large
+    // would steer the analyst away from a retry that works.
+    stubUpload(
+      413,
+      "<html><head><title>413 Request Entity Too Large</title></head>" +
+        "<body><center><h1>413 Request Entity Too Large</h1></center></body></html>"
+    );
+    await expect(uploadArchive(target, zip)).rejects.toBeInstanceOf(ArchiveUploadError);
+  });
+
+  it("keeps ArchiveUploadError for a transit failure", async () => {
+    stubUpload(500, "<Error><Code>InternalError</Code></Error>");
+    await expect(uploadArchive(target, zip)).rejects.toBeInstanceOf(ArchiveUploadError);
   });
 });

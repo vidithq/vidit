@@ -556,7 +556,7 @@ Auth-required. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 
 ### `POST /events/import-archive/presign` 🔒
 
-Step one of the archive import: mint a staging key and a presigned direct-to-storage upload for the caller's (browser-stripped) zip. The archive never transits the API. The target is an S3 POST policy (or the dev upload endpoint against local storage, same shape): POST a `multipart/form-data` form to `upload.url` carrying every `upload.fields` entry ahead of the file part, no credentials. The policy pins the exact key, `application/zip`, and the size guard (2 GB), and expires after 15 minutes. No content validation here.
+Step one of the archive import: mint a staging key and a presigned direct-to-storage upload for the caller's (browser-stripped) zip. The archive never transits the API. The target is an S3 POST policy (or the dev upload endpoint against local storage, same shape): POST a `multipart/form-data` form to `upload.url` carrying every `upload.fields` entry ahead of the file part, no credentials. The policy pins the exact key, `application/zip`, and the size guard (4 GB), and expires after 15 minutes. No content validation here.
 
 **Request:** empty body.
 

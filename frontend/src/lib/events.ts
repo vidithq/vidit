@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { archiveTooLarge } from "./archive";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
@@ -357,14 +358,55 @@ export function presignArchiveUpload(): Promise<ArchiveImportPresign> {
   });
 }
 
-/** The upload leg failed in transit (network drop, an expired presign, a
- *  storage-side reject): nothing is staged or enqueued, so a retry of the
- *  same import is always safe. Distinct from an enqueue `ApiError`. */
+/** The upload leg failed in transit (network drop, an expired presign):
+ *  nothing is staged or enqueued, so a retry of the same import is always
+ *  safe. Distinct from an enqueue `ApiError`, and from the over-cap reject,
+ *  which is terminal and carries `archive_too_large` instead. */
 export class ArchiveUploadError extends Error {
   constructor() {
     super("The upload didn't complete. Check your connection and try again.");
     this.name = "ArchiveUploadError";
   }
+}
+
+/** The `detail` prefixes the dev upload endpoint answers 413 with
+ *  (`backend/app/main.py`): the route's own streaming size guard, and the
+ *  body-size middleware sitting ahead of it, whose message carries the byte
+ *  cap after this prefix. */
+const DEV_UPLOAD_TOO_LARGE_DETAILS = [
+  "Upload exceeds the size guard",
+  "Request body too large",
+];
+
+/** Whether a 413 came from our own dev upload endpoint rather than from
+ *  something in between. FastAPI answers `{"detail": "…"}`; anything that
+ *  isn't that JSON shape with one of the known messages is an intermediary. */
+function isDevUploadTooLarge(body: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  const detail = (parsed as { detail?: unknown } | null)?.detail;
+  if (typeof detail !== "string") return false;
+  return DEV_UPLOAD_TOO_LARGE_DETAILS.some((prefix) => detail.startsWith(prefix));
+}
+
+/** Classify a non-2xx from the storage POST. An over-cap body is terminal, so
+ *  it must not surface as the retryable transit message: S3 rejects the POST
+ *  policy's `content-length-range` with a 400 whose XML body carries
+ *  `EntityTooLarge`, and the dev upload endpoint answers 413 on the same
+ *  condition. The 413 is matched on that endpoint's own body, never on the
+ *  status alone: a proxy between the analyst and storage can 413 a body that
+ *  is under the cap (which the strip just proved), and calling that archive
+ *  too large would steer them away from a retry that works. Everything else
+ *  is transit. */
+function uploadFailure(status: number, body: string): Error {
+  const tooLarge =
+    body.includes("<Code>EntityTooLarge</Code>") ||
+    (status === 413 && isDevUploadTooLarge(body));
+  return tooLarge ? archiveTooLarge() : new ArchiveUploadError();
 }
 
 /**
@@ -394,7 +436,7 @@ export function uploadArchive(
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new ArchiveUploadError());
+        : reject(uploadFailure(xhr.status, xhr.responseText ?? ""));
     xhr.onerror = () => reject(new ArchiveUploadError());
     xhr.send(fd);
   });
