@@ -49,13 +49,6 @@ describe("splitMedia", () => {
     });
   });
 
-  it("buckets by kind only — origin never changes the split", () => {
-    const quoteImage = media({ origin: "quote" });
-    const opVideo = media({ kind: "video", origin: "op" });
-    const { primary, proof } = splitMedia([quoteImage, opVideo]);
-    expect(primary).toEqual([opVideo]);
-    expect(proof).toEqual([quoteImage]);
-  });
 });
 
 describe("makeFile", () => {

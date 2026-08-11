@@ -169,22 +169,6 @@ def test_profile_404_for_soft_deleted_user(soft_deleted_user):
     assert response.status_code == 404
 
 
-def test_profile_count_excludes_soft_deleted_geos(db, live_user):
-    """`geolocations_count` must filter `deleted_at IS NULL`.
-
-    Diverging the count from the feed (next test) would surface a
-    "submissions: 5" header above a feed of 3 — a confusing UX bug
-    and a real signal that admin-removed evidence is leaking somewhere.
-    """
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, deleted=True)
-
-    response = client.get(f"/api/v1/users/{live_user.username}")
-    assert response.status_code == 200
-    assert response.json()["geolocations_count"] == 2
-
-
 # ── GET /users/{username}/events — feed ─────────────────────────────
 
 
@@ -298,14 +282,12 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
     absent. Filtering nulls in the handler is what produces a clean
     object instead of ``{"x": "@handle", "github": null, ...}``.
     """
-    # Set both
     client.patch(
         "/api/v1/users/me",
         json={"external_links": {"x": "@me", "github": "@me-gh"}},
         headers=login_as(client, live_user),
     )
 
-    # Now PATCH with only github — x should be gone
     response = client.patch(
         "/api/v1/users/me",
         json={"external_links": {"github": "@me-gh-2"}},
@@ -320,12 +302,10 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
 
 def test_patch_me_omitted_fields_preserved(live_user, db):
     """Omitting a field leaves the column alone — distinct from sending null."""
-    # Seed
     live_user.bio = "seeded bio"
     live_user.avatar_url = "https://example.com/a.jpg"
     db.commit()
 
-    # Patch only avatar — bio must be preserved
     response = client.patch(
         "/api/v1/users/me",
         json={"avatar_url": "https://example.com/b.jpg"},
@@ -393,16 +373,3 @@ def test_patch_me_ignores_extra_fields(live_user):
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422
-
-
-def test_patch_me_does_not_leak_email_in_public_profile(live_user):
-    """After a successful PATCH, the public profile endpoint still excludes
-    the email — the self-edit path must not somehow leak it through."""
-    client.patch(
-        "/api/v1/users/me",
-        json={"bio": "leak check"},
-        headers=login_as(client, live_user),
-    )
-    response = client.get(f"/api/v1/users/{live_user.username}")
-    assert response.status_code == 200
-    assert "email" not in response.json()

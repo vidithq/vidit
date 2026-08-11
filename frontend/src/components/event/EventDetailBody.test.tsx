@@ -96,7 +96,6 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Source media")).toBeInTheDocument();
     expect(screen.getByText("Location")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
-    // Shared fields + proof render
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("48.015883, 37.802411")).toBeInTheDocument();
     // An ongoing conflict carries its years too.
@@ -172,7 +171,6 @@ describe("EventDetailBody", () => {
 
   it("geolocated geo shows the Geolocated status, not detected markers", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    // Status is always shown now; a geolocated (non-detected) row reads "Geolocated".
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Geolocated")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
@@ -198,7 +196,6 @@ describe("EventDetailBody", () => {
       "href",
       "https://x.com/ana/status/123"
     );
-    // ? help on the Status + Detected-from fields.
     expect(
       screen.getByRole("button", { name: "What does the status mean?" })
     ).toBeInTheDocument();
@@ -297,8 +294,6 @@ describe("EventDetailBody", () => {
     expect(
       screen.getByText("Duplicate of an existing request.")
     ).toBeInTheDocument();
-    // Closed badge tooltip distinguishes a withdrawn request from a rejected
-    // detection via before_closed_status.
     expect(screen.getByText("Closed").closest("[title]")).toHaveAttribute(
       "title",
       "The author withdrew this request"
@@ -354,7 +349,6 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("To confirm")).toBeInTheDocument();
-    // Muted, not a link: no anchor renders for the sourceless row.
     expect(screen.queryByRole("link", { name: "To confirm" })).not.toBeInTheDocument();
   });
 
@@ -365,7 +359,6 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // The time is a separate row, not folded into the date value.
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
     expect(screen.getByText("1 Jun 2026")).toBeInTheDocument();

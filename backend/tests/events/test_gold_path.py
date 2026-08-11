@@ -1,4 +1,4 @@
-"""The v0.4 gold-path integration pass: the curated-onboarding seam end to end.
+"""The gold-path integration pass: the curated-onboarding seam end to end.
 
 Every hop below has its own unit suite (registration, archive intake, the
 detection spine, the owner flow, the read surfaces); this test pins the

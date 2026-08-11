@@ -28,8 +28,7 @@ export function MaintenancePanel() {
     onSuccess: setPendingResult,
   });
 
-  // Both actions share one error slot, cleared when either fires (the other's
-  // `reset()` mirrors the old single `setError(null)` at the top of each).
+  // Both actions share one error slot, cleared when either fires.
   const error = reapAuth.error ?? reapPending.error;
   const running = reapAuth.loading || reapPending.loading;
 

@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 // A labelled metric tile (icon + uppercase label + value) and the responsive
-// grid that lays a row of them out. Extracted from the profile's four stat
-// tiles; generic enough to carry any KPI grid (author geolocation stats, admin
-// metrics, ...). `small` shrinks the value for long content like a date.
+// grid that lays a row of them out. Generic enough to carry any KPI grid
+// (author geolocation stats, admin metrics, ...). `small` shrinks the value
+// for long content like a date.
 export function StatTile({
   icon: Icon,
   label,

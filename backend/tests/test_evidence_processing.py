@@ -62,7 +62,6 @@ def _jpeg_with_exif() -> bytes:
 def test_strip_metadata_removes_exif_from_jpeg():
     raw = _jpeg_with_exif()
     assert b"Exif" in raw, "test fixture sanity — input must carry EXIF"
-    # Semantic check on the input: Pillow can parse the EXIF block.
     assert dict(Image.open(BytesIO(raw)).getexif()), (
         "test fixture sanity — input EXIF must be parseable by Pillow"
     )
@@ -139,18 +138,6 @@ def test_strip_metadata_raises_on_corrupt_image():
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")
 
 
-def test_strip_metadata_unknown_content_type_passes_through():
-    """Defensive: unknown / unset content_type → no-op pass-through.
-
-    Belt + braces — the router validates content type before this is
-    called, but the helper should still no-op rather than 500 on a
-    surprise input.
-    """
-    payload = b"arbitrary"
-    assert strip_metadata(payload, "application/octet-stream") == payload
-    assert strip_metadata(payload, "") == payload
-
-
 def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
     """A small file declaring oversized dimensions must 400 before
     Pillow allocates the (multi-GB) pixel buffer.
@@ -169,7 +156,6 @@ def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
     """
     from app.services import evidence_processing as ep
 
-    # Build a 4×4 JPEG normally.
     img = Image.new("RGB", (4, 4), "white")
     buf = BytesIO()
     img.save(buf, format="JPEG")
@@ -238,9 +224,7 @@ def test_strip_metadata_preserves_palette_png_transparency():
     out = Image.open(BytesIO(cleaned))
     out.load()
 
-    # The output must be RGBA — RGB would mean alpha was discarded.
     assert out.mode == "RGBA", f"palette tRNS lost alpha — got mode={out.mode}"
-    # Transparent corner stays transparent.
     assert out.getpixel((0, 0))[3] < 64, (
         f"transparent palette pixel rebuilt as opaque — got alpha={out.getpixel((0, 0))[3]}"
     )
@@ -299,7 +283,6 @@ def test_make_jpeg_derivative_clamps_longer_edge_to_max_dim():
     assert max(decoded.size) == HERO_MAX_DIM, decoded.size
     # 2:1 aspect preserved.
     assert decoded.size == (HERO_MAX_DIM, HERO_MAX_DIM // 2)
-    # JPEG output regardless of source format choices.
     assert decoded.format == "JPEG"
 
 

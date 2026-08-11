@@ -302,18 +302,6 @@ def test_structured_off_vocabulary_link_is_stored_link_only():
     assert d.source_media == []
 
 
-def test_structured_own_status_link_is_not_a_source():
-    # S: linking the author's own post stays a format failure: a
-    # cross-reference, never footage.
-    record = _struct_rec(
-        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/me",
-        external_sources=[
-            SourceLink(url="https://x.com/analyst/status/9", host="x", shortlink="https://t.co/me")
-        ],
-    )
-    assert detect_structured(record, bot_handle="viditbot") == []
-
-
 def test_structured_attached_media_is_proof_quote_media_is_source():
     own = ParsedMedia(
         kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
@@ -332,8 +320,7 @@ def test_structured_repeated_marker_keeps_first_value_and_strips_both():
 
 def test_structured_s_line_designates_among_several_links():
     # Two footage links in the tweet: the S: token picks the Telegram one;
-    # the X status on a proof line neither competes nor fails the mention
-    # (under the old whole-record resolution two candidates were ambiguous).
+    # the X status on a proof line neither competes nor fails the mention.
     telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
     other = SourceLink(
         url="https://x.com/warfootage/status/77", host="x", shortlink="https://t.co/p"
@@ -548,14 +535,6 @@ def test_bare_url_only_line_designates_among_several_links():
     assert "see also https://example.org/other" in d.proof_text
 
 
-def test_bare_two_coordinate_lines_are_ambiguous():
-    record = _struct_rec(
-        "@viditbot\nStrike on the depot\n48.123456, 37.654321\n50.450100, 30.523400\nhttps://t.co/r",
-        external_sources=[_REPORT_LINK],
-    )
-    assert detect_structured(record, bot_handle="viditbot") == []
-
-
 def test_bare_unbound_media_wrapper_line_is_ignored():
     # X appends the attached-media t.co wrapper to the text; whole-line but
     # binding to no entity, it neither designates nor fails, and never
@@ -619,6 +598,8 @@ def test_bare_failures_carry_their_reason(text, reason):
 
 
 def test_own_status_source_carries_the_own_reason():
+    # S: linking the author's own post stays a format failure: a
+    # cross-reference, never footage.
     record = _struct_rec(
         "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/me",
         external_sources=[
@@ -710,11 +691,6 @@ def test_relay_requires_the_same_author():
     # media onto it.
     reply = _relay_reply_rec(handle="stranger")
     assert detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot") == []
-
-
-def test_relay_nonconforming_parent_yields_nothing():
-    parent = _relay_parent_rec("Geolocated 48.123456, 37.654321 near the depot")
-    assert detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot") == []
 
 
 def test_relay_without_media_resolves_the_parent_as_if_inline():

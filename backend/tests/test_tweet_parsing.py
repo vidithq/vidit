@@ -520,27 +520,10 @@ def test_parse_tweet_source_posted_at_from_quoted_date(monkeypatch):
     assert parsed.source_posted_at == datetime(2026, 4, 30, 9, 15, tzinfo=UTC)
 
 
-def test_parse_tweet_source_posted_at_none_without_source(monkeypatch):
-    """A tweet that neither quotes nor links footage declares no source, so
-    ``source_posted_at`` stays None: no date is fabricated from the OP's own
-    post time."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike 48.012345, 37.802411",
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url is None
-    assert parsed.source_posted_at is None
-
-
 def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
     """No quote and no footage link: the tweet declared no source, so
-    ``source_url`` is None and the form field starts empty. The OP's own URL is
+    ``source_url`` is None and the form field starts empty. No date is
+    fabricated from the OP's own post time either. The OP's own URL is
     provenance (``original_tweet_url``), never a deduced source."""
     _stub_syndication(
         monkeypatch,
@@ -554,6 +537,7 @@ def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
     )
     parsed = parse_tweet("https://x.com/alice/status/1234567890")
     assert parsed.source_url is None
+    assert parsed.source_posted_at is None
     assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
 
 
@@ -632,7 +616,6 @@ def test_cache_lru_evicts_oldest_when_full(monkeypatch):
     # Touch ``a`` so ``b`` is now the LRU entry.
     assert syndication._cache_get("a") == {"x": 1}
     syndication._cache_put("d", {"x": 4})
-    # ``b`` should have been evicted, ``a`` / ``c`` / ``d`` kept.
     assert syndication._cache_get("b") is None
     assert syndication._cache_get("a") == {"x": 1}
     assert syndication._cache_get("c") == {"x": 3}
