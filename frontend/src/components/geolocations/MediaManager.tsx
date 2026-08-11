@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 
 import { FileManager, type FileManagerItem } from "@/components/ui/FileManager";
+import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
+import { MediaLightboxBody } from "@/components/ui/MediaLightbox";
 import { ACCEPTED_MEDIA_MIME } from "@/lib/mediaTypes";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
@@ -72,7 +74,13 @@ export function MediaManager({
             className="object-cover"
           />
         ) : (
-          <video src={m.storage_url} className="h-full w-full object-cover" muted />
+          <video
+            src={`${m.storage_url}#t=0.1`}
+            preload="metadata"
+            playsInline
+            className="h-full w-full object-cover"
+            muted
+          />
         ),
       onRemove: !locked && onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
       removeLabel: "Remove media",
@@ -80,25 +88,13 @@ export function MediaManager({
       // persisted source is actually reviewable, same as the read-only detail
       // page's MediaGallery (playable video, uncropped image), so editing a
       // detection doesn't lose the ability to watch/inspect its source media.
-      viewContent:
-        m.media_type === "image" ? (
-          <div className="relative h-[80vh] w-[85vw] max-w-4xl">
-            <Image
-              src={displayUrlsFor(m).hero}
-              alt=""
-              fill
-              sizes="90vw"
-              className="object-contain"
-            />
-          </div>
-        ) : (
-          <video
-            src={`${m.storage_url}#t=0.1`}
-            controls
-            preload="metadata"
-            className="max-h-[80vh] max-w-[85vw]"
-          />
-        ),
+      // It is literally the same viewer: `MediaLightboxBody` inside
+      // FileManager's shared `MediaOverlay` shell.
+      viewContent: <MediaLightboxBody source={m} />,
+      // A clip's download sits in the player's own control bar, so only an
+      // image needs one in the overlay corner (same rule as MediaLightbox).
+      viewActions:
+        m.media_type === "image" ? <MediaDownloadButton source={m} /> : undefined,
       viewLabel: m.media_type === "image" ? "View image" : "Play video",
     })),
     // Render staged tiles only once their object URLs line up 1:1, else a brief
@@ -107,7 +103,13 @@ export function MediaManager({
       ? staged.map((f, i) => ({
           key: `${f.name}-${i}`,
           content: f.type.startsWith("video/") ? (
-            <video src={stagedUrls[i]} className="h-full w-full object-cover" muted />
+            <video
+              src={`${stagedUrls[i]}#t=0.1`}
+              preload="metadata"
+              playsInline
+              className="h-full w-full object-cover"
+              muted
+            />
           ) : (
             // Object-URL bytes can't round-trip Next's image optimiser.
             // eslint-disable-next-line @next/next/no-img-element
@@ -115,14 +117,16 @@ export function MediaManager({
           ),
           onRemove: onRemoveStaged ? () => onRemoveStaged(i) : undefined,
           removeLabel: "Remove file",
-          viewContent: f.type.startsWith("video/") ? (
-            <video src={stagedUrls[i]} controls className="max-h-[80vh] max-w-[85vw]" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={stagedUrls[i]}
+          // A staged file has no id and no derivatives, so it reaches the same
+          // viewer through the plain `{src, kind}` source shape.
+          viewContent: (
+            <MediaLightboxBody
+              source={{
+                src: stagedUrls[i],
+                kind: f.type.startsWith("video/") ? "video" : "image",
+                filename: f.name,
+              }}
               alt={f.name}
-              className="max-h-[80vh] max-w-[85vw] object-contain"
             />
           ),
           viewLabel: f.type.startsWith("video/") ? "Play video" : "View image",
