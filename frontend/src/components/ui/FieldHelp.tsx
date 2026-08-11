@@ -49,7 +49,11 @@ export function FieldHelp({
         aria-label={label}
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={pinned}
-        className="inline-flex items-center text-neutral-500 hover:text-neutral-300 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400 rounded-xs transition-colors"
+        /* The glyph is 13px, so on a phone the padding / negative-margin pair
+           grows the hit area to ~29px without moving the `?` or the label it
+           sits next to. Desktop keeps the bare glyph, where the pointer is
+           precise and the extra box would swallow hover on the label. */
+        className="inline-flex items-center p-2 -m-2 sm:p-0 sm:m-0 text-neutral-500 hover:text-neutral-300 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400 rounded-xs transition-colors"
       >
         <HelpCircle size={size} strokeWidth={1.8} />
       </button>

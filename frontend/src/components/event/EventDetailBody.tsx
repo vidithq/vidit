@@ -372,8 +372,12 @@ function SecondarySourcesRow({
 }
 
 function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
+  // A proof body carries pasted URLs, and a link whose text is the full URL is
+  // one unbreakable token: without an anywhere-break it ran past the frame and
+  // scrolled the whole page sideways on a phone. The one wrapper both the page
+  // and the map panel render through, so neither can regress alone.
   const body = geo.proof ? (
-    <div className="text-sm text-neutral-300 leading-relaxed">
+    <div className="text-sm text-neutral-300 leading-relaxed break-words [overflow-wrap:anywhere]">
       {renderProof(geo.proof)}
     </div>
   ) : (

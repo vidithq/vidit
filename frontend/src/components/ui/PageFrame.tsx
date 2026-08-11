@@ -7,6 +7,10 @@ import type { ReactNode } from "react";
 // here, so the SEO landing (a server component) can use it directly, and
 // PageShell (client, for its back button) composes it too. Single source of
 // truth for the offset + content column; change the column in one place.
+//
+// The side padding drops a step on a phone (`px-4`, `px-6` from `sm`): the rail
+// already takes a fixed 56px off a 375px screen, and the desktop gutter on top
+// of it left the cards too narrow to hold a title beside a thumbnail.
 export function PageFrame({
   children,
   className = "",
@@ -16,7 +20,9 @@ export function PageFrame({
 }) {
   return (
     <div className="min-h-screen pl-14">
-      <div className={`max-w-4xl mx-auto px-6 ${className}`}>{children}</div>
+      <div className={`max-w-4xl mx-auto px-4 sm:px-6 ${className}`}>
+        {children}
+      </div>
     </div>
   );
 }

@@ -31,7 +31,10 @@ export function MediaThumb({ media, className }: { media?: Media; className?: st
   return (
     <div
       className={cn(
-        "relative w-28 aspect-video rounded-md overflow-hidden bg-neutral-800 shrink-0",
+        // `self-start` keeps the aspect ratio: in a stretch-aligned flex row a
+        // tall neighbour otherwise pulls the slot to full card height and the
+        // thumbnail renders as a column.
+        "relative w-28 aspect-video self-start rounded-md overflow-hidden bg-neutral-800 shrink-0",
         className,
       )}
     >
@@ -149,8 +152,10 @@ export function EntityCard({
     />
   );
   // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
-  // real media or its own "no media" box.
-  const thumb = <MediaThumb media={media} />;
+  // real media or its own "no media" box. Narrower on a phone, where the
+  // desktop 112px slot plus the status badge left the title column no width at
+  // all and the heading rendered as an empty strip.
+  const thumb = <MediaThumb media={media} className="w-20 sm:w-28" />;
 
   if (variant === "feed") {
     return (
@@ -190,11 +195,17 @@ export function EntityCard({
     <div className={`${SHELL} ${TAPPABLE_HOVER}`}>
       {stretched}
       {thumb}
-      <div className="flex-1 min-w-0 flex items-start gap-2">
+      {/* The badge shares the row with the text from `sm` up and drops under it
+          on a phone: as a `shrink-0` column beside a `min-w-0` one it took its
+          full width out of the title's, and a status pill is wide enough to
+          leave nothing behind. */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
         {/* Fixed min-height keeps every compact card the same height. Content
             packs to the top, so a 1-line title leaves its slack at the bottom
-            of the card rather than as a gap under the title. */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5 min-h-[5.75rem]">
+            of the card rather than as a gap under the title. Dropped on a
+            phone, where the badge's own row already fills it and the floor only
+            added dead space. */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:min-h-[5.75rem]">
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
             {title}
           </h3>

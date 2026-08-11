@@ -83,7 +83,11 @@ export default function EventPage() {
                   align="center"
                   className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
                 >
-                  <span className="inline-flex items-center gap-2">
+                  {/* The pair plus its two actions is wider than the row on a
+                      narrow phone, so the group wraps and the actions take a
+                      second line under the coordinates rather than pushing the
+                      page sideways. */}
+                  <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 ml-4 min-w-0">
                     <span className="text-sm text-neutral-200 font-mono">
                       {formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)}
                     </span>

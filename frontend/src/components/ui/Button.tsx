@@ -29,8 +29,12 @@ const BASE =
 // the same hover/colour treatment but drops the text padding for a compact
 // square affordance (share, a × close), so a bare icon button doesn't have to
 // re-roll its own size.
-const TEXT_SHAPE = "gap-1.5 px-3 py-1.5 text-xs font-medium";
-const ICON_SHAPE = "size-8";
+// Both shapes take a step up on a phone, where the pointer is a fingertip: the
+// desktop text button stands 28px tall and the icon square 32px, under what a
+// thumb reliably hits. The type scale and the horizontal padding are untouched,
+// so only the tappable height grows; from `sm` up the desktop shape is exact.
+const TEXT_SHAPE = "gap-1.5 px-3 py-1.5 min-h-9 sm:min-h-0 text-xs font-medium";
+const ICON_SHAPE = "size-9 sm:size-8";
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary:
