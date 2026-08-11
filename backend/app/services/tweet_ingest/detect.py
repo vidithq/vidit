@@ -182,6 +182,60 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     return dataclasses.replace(record, quoted=None, external_sources=[link]), None
 
 
+def _positional_title_index(lines: list[str], *, skip: frozenset[int] = frozenset()) -> int | None:
+    """Index of the line the positional title rule picks, or ``None`` when no
+    line qualifies.
+
+    One home for the rule both spellings apply: the first line that is not
+    blank, not a bare URL (the ``t.co`` wrapper X appends for attached media,
+    or a source line), and not a bare coordinate pair. ``skip`` holds the
+    indices another field already consumed.
+    """
+    return next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if i not in skip
+            and line.strip()
+            and not _URL_ONLY_LINE_RE.match(line)
+            and not _STRUCTURED_COORD_RE.match(line.strip())
+        ),
+        None,
+    )
+
+
+def _marker_fields(text: str) -> tuple[MarkerFields | None, str | None]:
+    """The marker (prefixed) shape of the strict format, or ``(None, reason)``
+    when the markers don't carry it.
+
+    ``C:`` and ``S:`` are required. ``T:`` is optional: with no ``T:`` line at
+    all, the title is the positional pick (:func:`_positional_title_index`),
+    the same rule the bare form applies (:func:`_bare_fields`), and that line
+    leaves the proof. A ``T:`` line that IS present with an empty payload
+    fails instead: an explicitly half-marked field is a mistake to teach, not
+    an omission to fill in.
+    """
+    fields = split_marker_lines(text)
+    if fields.coords is None or fields.source is None:
+        return None, MARKERS_INCOMPLETE
+    if fields.title is not None:
+        return fields, None
+    if fields.title_marked:
+        return None, MARKERS_INCOMPLETE
+    lines = fields.proof_text.splitlines()
+    title_idx = _positional_title_index(lines)
+    if title_idx is None:
+        return None, TITLE_MISSING
+    return (
+        dataclasses.replace(
+            fields,
+            title=lines[title_idx].strip(),
+            proof_text="\n".join(line for i, line in enumerate(lines) if i != title_idx),
+        ),
+        None,
+    )
+
+
 def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, str | None]:
     """The bare (unprefixed) shape of the strict format, or ``(None, reason)``
     when the text doesn't carry it.
@@ -200,7 +254,8 @@ def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, s
       designates that link. A post with no bound line, no quote, and zero or
       several link entities fails: with several links, the source must sit
       alone on its own line.
-    * **Title**: the first remaining non-empty, non-URL-only line.
+    * **Title**: the positional pick (:func:`_positional_title_index`), the
+      same rule the marker form applies with no ``T:`` line.
     * Every other line is the proof note.
 
     The trade against the marker form: a shape failure still fails loudly
@@ -243,14 +298,7 @@ def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, s
     consumed = {coord_idx[0]}
     if source_idx is not None:
         consumed.add(source_idx)
-    title_idx = next(
-        (
-            i
-            for i, line in enumerate(lines)
-            if i not in consumed and i not in url_only and line.strip()
-        ),
-        None,
-    )
+    title_idx = _positional_title_index(lines, skip=frozenset(consumed))
     if title_idx is None:
         return None, TITLE_MISSING
     consumed.add(title_idx)
@@ -334,15 +382,18 @@ def detect_structured_diagnosed(
 
     Two spellings of one structure, both all-or-nothing:
 
-    * **Marker form**: ``T:`` (non-empty title), ``C:`` (one decimal pair
-      inside bounds), ``S:`` (a line designating the source: one URL token
-      bound to a link entity, or the inline quote when X swallowed the token
-      into the quote card, see :func:`_designated_source`). Any marker LINE
-      present, even one with an empty payload, pins this form
-      (:func:`has_marker_lines`): an incomplete or empty marker set fails
-      rather than falling back to the bare shape, where the literal marker
-      line would leak into the title (a half-marked post is a mistake to
-      teach, not a guess to absorb).
+    * **Marker form**: ``C:`` (one decimal pair inside bounds), ``S:`` (a
+      line designating the source: one URL token bound to a link entity, or
+      the inline quote when X swallowed the token into the quote card, see
+      :func:`_designated_source`), and ``T:`` (a non-empty title) when the
+      analyst pins one, the first remaining non-empty, non-URL-only,
+      non-coordinate line otherwise (:func:`_marker_fields`). Any marker
+      LINE present, even one with an empty payload, pins this form
+      (:func:`has_marker_lines`): a missing
+      ``C:`` / ``S:``, or a ``T:`` line left empty, fails rather than falling
+      back to the bare shape, where the literal marker line would leak into
+      the title (a half-marked post is a mistake to teach, not a guess to
+      absorb).
     * **Bare form**: no marker lines at all; the shape carries the fields
       (:func:`_bare_fields`): the whole-line decimal pair, the whole-line
       source link (or the quote card / the post's only link), the first
@@ -360,14 +411,13 @@ def detect_structured_diagnosed(
     """
     text = re.sub(rf"@{re.escape(bot_handle)}\b", "", record.text, flags=re.IGNORECASE)
     if has_marker_lines(text):
-        fields = split_marker_lines(text)
+        fields, reason = _marker_fields(text)
     else:
-        bare, reason = _bare_fields(record, text)
-        if bare is None:
-            return [], reason
-        fields = bare
-    # Only the marker path can leave a field unfilled (``_bare_fields``
-    # always fills all three); the shared check also narrows the Optionals.
+        fields, reason = _bare_fields(record, text)
+    if fields is None:
+        return [], reason
+    # Both splitters fill all three fields or return a reason; the check
+    # narrows the Optionals.
     if fields.title is None or fields.coords is None or fields.source is None:
         return [], MARKERS_INCOMPLETE
     match = _STRUCTURED_COORD_RE.match(fields.coords)
@@ -398,9 +448,10 @@ def detect_structured_diagnosed(
         return [], SOURCE_MISSING
     from app.models.event import TITLE_MAX_LENGTH
 
-    # Non-empty by the split contract (a marker only records a non-empty
-    # payload); collapse whitespace and truncate on a word boundary, same
-    # policy as ``derive_title``, so a column-cap cut never splits a word.
+    # Non-empty by the split contract (a marker records only a non-empty
+    # payload, a derived title only a non-blank line); collapse whitespace and
+    # truncate on a word boundary, same policy as ``derive_title``, so a
+    # column-cap cut never splits a word.
     title = " ".join(fields.title.split())
     if len(title) > TITLE_MAX_LENGTH:
         clipped = title[:TITLE_MAX_LENGTH]

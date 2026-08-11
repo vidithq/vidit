@@ -12,6 +12,7 @@ from datetime import date
 import httpx
 import pytest
 
+from app.models.event import TITLE_MAX_LENGTH
 from app.services.tweet_ingest import (
     SOURCE_MISSING,
     SOURCE_OWN,
@@ -234,7 +235,7 @@ def test_structured_markers_are_case_insensitive():
 @pytest.mark.parametrize(
     "text",
     [
-        # Missing T
+        # No T: line and no prose line to derive a title from
         "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/q",
         # Empty T with no later value
         "@viditbot\nT:\nC: 48.123456, 37.654321\nS: https://t.co/q",
@@ -285,6 +286,92 @@ def test_structured_empty_marker_line_does_not_shadow_a_later_value(text):
     # Both marker lines (the empty and the real one) are stripped from proof.
     assert "Strike on the depot" not in d.proof_text
     assert "T:" not in d.proof_text and "C:" not in d.proof_text and "S:" not in d.proof_text
+
+
+_DERIVED_TITLE_TEXT = (
+    "@viditbot\nIranian air defence site on the rooftop\n"
+    "C: 35.700886, 51.391665\nS: https://t.co/q\nRooftop layout matches"
+)
+
+
+def test_structured_missing_t_derives_the_title_from_the_first_line():
+    # C: and S: pinned, no T: line: the title is the first remaining line,
+    # the same positional rule the bare shape applies, and it leaves the proof.
+    (d,) = detect_structured(_quoted_rec(_DERIVED_TITLE_TEXT), bot_handle="viditbot")
+    assert d.title == "Iranian air defence site on the rooftop"
+    assert d.coordinate.lat == pytest.approx(35.700886)
+    assert d.proof_text == "Rooftop layout matches"
+
+
+def test_structured_derived_title_collapses_and_truncates_on_a_word_boundary():
+    # Same whitespace-collapse and word-boundary cut the pinned T: value gets.
+    long_line = "Strike   on the depot at" + " word" * 60
+    collapsed = " ".join(long_line.split())
+    # Guard the assertion below against going vacuous: the cap has to land
+    # inside a word for the word-boundary rule to do anything.
+    assert collapsed[TITLE_MAX_LENGTH - 1] != " " and collapsed[TITLE_MAX_LENGTH] != " "
+    text = f"@viditbot\n{long_line}\nC: 48.123456, 37.654321\nS: https://t.co/q"
+    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    assert d.title.startswith("Strike on the depot at word")
+    assert d.title.endswith("word")
+    assert len(d.title) <= TITLE_MAX_LENGTH
+
+
+def test_structured_derived_title_skips_a_stray_coordinate_line():
+    # A whole-line decimal pair above the markers is not a title: the value's
+    # home is the C: field, so the prose line below it wins.
+    text = "@viditbot\n48.1, 37.6\nStrike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q"
+    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+
+
+def test_structured_derived_title_skips_a_url_only_line():
+    # The t.co wrapper X appends for attached media is not a title, exactly
+    # as in the bare shape.
+    text = (
+        "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/q\n"
+        "https://t.co/media\nStrike on the depot"
+    )
+    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert "t.co" not in d.proof_text
+
+
+def test_structured_empty_t_line_fails_even_with_a_prose_line():
+    # An explicitly half-marked field is a mistake to teach: only a fully
+    # absent T: line derives a title.
+    text = "@viditbot\nT:\nStrike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q"
+    assert detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # C: missing, prose available for a title.
+        "@viditbot\nStrike on the depot\nS: https://t.co/q",
+        # S: missing.
+        "@viditbot\nStrike on the depot\nC: 48.123456, 37.654321",
+        # C: present but empty, S: pinned.
+        "@viditbot\nStrike on the depot\nC:\nS: https://t.co/q",
+    ],
+)
+def test_structured_missing_c_or_s_still_fails_the_marker_set(text):
+    assert detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot") == (
+        [],
+        "markers_incomplete",
+    )
+
+
+def test_structured_markers_without_any_derivable_title_fail():
+    # No T: line and nothing left to derive from: the bare shape's verdict.
+    text = "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/q"
+    assert detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot") == (
+        [],
+        "title_missing",
+    )
 
 
 def test_structured_off_vocabulary_link_is_stored_link_only():
@@ -726,6 +813,17 @@ def test_relay_accepts_a_bare_parent():
     assert d.title == "Strike on the depot"
     assert d.source_url == "https://www.tiktok.com/@war/video/7"
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
+
+
+def test_relay_accepts_a_parent_without_a_title_marker():
+    # T: is optional on the parent too: the prose line titles the draft.
+    parent = _relay_parent_rec(
+        "Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/tk\nSmoke plume matches"
+    )
+    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    assert d.title == "Strike on the depot"
+    assert d.source_url == "https://www.tiktok.com/@war/video/7"
+    assert d.proof_text == "Smoke plume matches\nfootage saved below"
 
 
 def test_relay_reply_markers_never_shadow_the_parent():
