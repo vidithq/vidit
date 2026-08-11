@@ -127,10 +127,8 @@ def test_seed_demo_creates_geos_and_authors(db, demo_pool):
     assert all(g.media for g in demo_geos), "every demo geo should have at least one media row"
     assert all(g.proof and g.proof.get("type") == "doc" for g in demo_geos)
 
-    # Every demo Media row now carries a sha256 — the seed's prep pass
-    # hashes each unique pool key once and threads it into the
-    # row constructor. Without this, demo data would be the only
-    # remaining hash-less Media surface after PR 2 lands.
+    # Every demo Media row carries a sha256: the seed's prep pass hashes each
+    # unique pool key once and threads it into the row constructor.
     for g in demo_geos:
         for m in g.media:
             assert m.sha256 is not None and len(m.sha256) == 64, (
@@ -202,7 +200,6 @@ def test_seed_demo_reseed_skips_existing_derivatives(db, demo_pool, caplog):
     seed_service.seed_demo(db, count=3)
     pool_root = Path(demo_pool) / "demo-pool"
     hero_files = sorted(pool_root.rglob("*_hero.jpg"))
-    # Snapshot mtimes after the first pass.
     first_mtimes = {h: h.stat().st_mtime_ns for h in hero_files}
 
     # A re-seed walks the same templates. The prep pass sees existing
@@ -246,8 +243,6 @@ def test_seed_demo_half_completed_prior_seed_only_fills_the_gap(db, demo_pool):
     hero_mtimes_before = {h: h.stat().st_mtime_ns for h in hero_files}
     time.sleep(0.01)  # filesystem mtime granularity
 
-    # Wipe demo rows + re-seed. Prep pass should ONLY write the
-    # missing thumbs back; hero mtimes must stay the same.
     seed_service.wipe_demo(db)
     seed_service.seed_demo(db, count=2)
     hero_mtimes_after = {h: h.stat().st_mtime_ns for h in hero_files}
@@ -283,7 +278,6 @@ def test_seed_demo_picks_tags_from_known_pool(db, demo_pool):
     assert seen_names.issubset(allowed_names), (
         f"unexpected tags surfaced: {seen_names - allowed_names}"
     )
-    # Every demo geo should carry the `demo` filter tag.
     assert all(any(t.name == seed_service.DEMO_TAG_NAME for t in g.tags) for g in geos), (
         "every demo geo must carry the always-on `demo` tag"
     )

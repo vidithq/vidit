@@ -1,7 +1,7 @@
 """source archives
 
-Revision ID: q9s1u3w5y7a9
-Revises: p8r0t2v4x6z8
+Revision ID: r0t2v4x6z8b0
+Revises: q9s1u3w5y7a9
 Create Date: 2026-08-11 12:00:00.000000
 
 One row per link carried by an event (its ``source_url`` plus every href in
@@ -16,8 +16,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "q9s1u3w5y7a9"
-down_revision: Union[str, None] = "p8r0t2v4x6z8"
+revision: str = "r0t2v4x6z8b0"
+down_revision: Union[str, None] = "q9s1u3w5y7a9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

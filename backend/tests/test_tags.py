@@ -59,7 +59,6 @@ def test_create_free_tag_passes(authed_user, db):
     )
     assert response.status_code == 201
     assert response.json()["category"] == "free"
-    # cleanup
     tag = db.query(Tag).filter(Tag.name == name).first()
     if tag:
         db.delete(tag)

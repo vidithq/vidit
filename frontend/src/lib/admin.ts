@@ -161,8 +161,7 @@ export interface SeedDemoRequestsResponse {
   authors: number;
   with_claims: number;
   // Per-status breakdown so the admin can confirm the mix used; drives the
-  // lifecycle UI (status chips + trace banner). Typed as required — the
-  // schema bump shipped with the panel update, no compat window.
+  // lifecycle UI (status chips + trace banner).
   open: number;
   fulfilled: number;
   closed: number;

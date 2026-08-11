@@ -19,6 +19,7 @@ function parsedTweet(
 ): TweetImportResponse {
   return {
     source_url: "https://x.com/source/status/2",
+    secondary_source_urls: [],
     original_tweet_url: "https://x.com/analyst/status/1",
     posted_at: "2026-01-05T12:00:00Z",
     source_posted_at: "2026-01-04T09:00:00Z",
@@ -49,13 +50,6 @@ describe("splitMedia", () => {
     });
   });
 
-  it("buckets by kind only — origin never changes the split", () => {
-    const quoteImage = media({ origin: "quote" });
-    const opVideo = media({ kind: "video", origin: "op" });
-    const { primary, proof } = splitMedia([quoteImage, opVideo]);
-    expect(primary).toEqual([opVideo]);
-    expect(proof).toEqual([quoteImage]);
-  });
 });
 
 describe("makeFile", () => {

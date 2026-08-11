@@ -105,7 +105,6 @@ export function resolveLinkHref(
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  // A pasted full URL takes priority.
   const direct = asHttpUrl(trimmed);
   if (direct) return direct;
 

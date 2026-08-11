@@ -66,6 +66,7 @@ import {
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
+import { LinkListInput } from "@/components/ui/LinkListInput";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
@@ -145,6 +146,11 @@ const MOCK_DETAIL: EventDetail = {
     },
   ],
   source_url: "synthetic://demo",
+  // Two mirrors so the detail body's collapsed Secondary sources row shows.
+  secondary_source_urls: [
+    "https://t.me/mirror/1",
+    "https://www.youtube.com/watch?v=demo",
+  ],
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
@@ -250,6 +256,7 @@ export default function PalettePage() {
   ]);
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
+  const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
 
   return (
     <PageShell
@@ -457,6 +464,29 @@ export default function PalettePage() {
                 <div className={`rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
                   A section card flagged as missing.
                 </div>
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling; `locked` renders the list read-only (the <Input> locked variant, no add / remove). Blank rows are the caller's to drop at assembly.">
+            <div className="w-full max-w-sm space-y-4">
+              <Variant label="editable (max 3 here)">
+                <LinkListInput
+                  values={links}
+                  onChange={setLinks}
+                  max={3}
+                  itemLabel="Secondary source"
+                  placeholder="https://x.com/user/status/12345"
+                />
+              </Variant>
+              <Variant label="locked (inherited list)">
+                <LinkListInput
+                  values={["https://t.me/channel/12345"]}
+                  onChange={() => {}}
+                  max={3}
+                  itemLabel="Secondary source"
+                  locked
+                />
               </Variant>
             </div>
           </Item>

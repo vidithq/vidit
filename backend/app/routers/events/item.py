@@ -34,7 +34,11 @@ from app.routers._forms import (
     parse_optional_iso_time,
     parse_optional_json_object,
 )
-from app.routers.events._common import _raise_event_error, build_event_read
+from app.routers.events._common import (
+    SecondarySourceUrl,
+    _raise_event_error,
+    build_event_read,
+)
 from app.schemas.event import EventCloseRequest, EventRead
 from app.services import events as events_service
 from app.services import permissions
@@ -59,6 +63,7 @@ _DETAIL_LOADS = (
     # The archived-source fallback in ``build_event_read`` reads this set; a
     # detail loader without it pays a lazy query per event.
     selectinload(Event.archives),
+    selectinload(Event.source_links),
 )
 
 
@@ -131,8 +136,6 @@ def delete_event(
     image derivatives) are swept after the commit lands. Admin soft-delete
     lives behind the admin router and stamps ``deleted_at`` instead.
     """
-    # Filter out soft-deleted rows: an admin-removed row shouldn't be
-    # owner-actionable either, same observed behaviour as a genuine 404.
     geo = _resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 
@@ -174,6 +177,10 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The mirrors, repeated once per link. The submitted list REPLACES whatever
+    # the row held, on a requested fulfilment too: unlike ``source_url`` these
+    # carry no requester protection (see the service docstring).
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     # Optional, mirroring create: the footage doesn't always establish when the
     # depicted event happened; NULL reads as "Unknown".
     event_date: str | None = Form(None),
@@ -228,6 +235,7 @@ async def geolocate_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,

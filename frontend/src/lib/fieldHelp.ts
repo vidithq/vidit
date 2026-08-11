@@ -33,6 +33,10 @@ export const FIELD_HELP = {
     text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet.",
     label: "What is the source?",
   },
+  secondary_source_urls: {
+    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published.",
+    label: "What are secondary sources?",
+  },
   source_media: {
     text: "The footage being located. Not a map screenshot or an annotated export.",
     label: "What is the source media?",

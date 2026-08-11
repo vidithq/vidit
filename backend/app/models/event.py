@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     Time,
@@ -52,6 +53,10 @@ BeforeClosedStatus = Literal["requested", "detected"]
 # unbounded ``Text``, but the API caps accepted input at the boundary.
 TITLE_MAX_LENGTH = 255
 SOURCE_URL_MAX_LENGTH = 2000
+# Ceiling on ``event_source_links`` rows per event (see ``EventSourceLink``).
+# The same ceiling the write forms enforce; a submission past it is rejected
+# rather than silently truncated.
+MAX_SECONDARY_SOURCE_LINKS = 10
 
 
 class EventInvestigator(Base):
@@ -125,6 +130,32 @@ class EventGeolocator(Base):
         # this covers the reverse "a user's geolocations" profile query.
         Index("ix_event_geolocators_user_created_at", "user_id", "created_at"),
     )
+
+
+class EventSourceLink(Base):
+    """One secondary source link: the same media mirrored on another network,
+    or another post from the same point of view.
+
+    The primary evidence anchor stays the scalar ``Event.source_url`` (the first
+    place the media was posted, frozen against a fulfiller's rewrite). These are
+    ordered extras and carry no such protection: the geolocate transition
+    replaces the whole list with whatever the fulfiller submits. ``position`` is
+    part of the composite PK, so the stored order IS the read order and a
+    duplicate slot is rejected by Postgres; the ``event_id`` cascade drops the
+    rows on hard-delete.
+    """
+
+    __tablename__ = "event_source_links"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unbounded ``Text`` like ``Event.source_url``; the API caps accepted input
+    # at ``SOURCE_URL_MAX_LENGTH`` at the boundary.
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    event = relationship("Event", back_populates="source_links")
 
 
 class Event(Base):
@@ -267,6 +298,12 @@ class Event(Base):
         "SourceArchive",
         back_populates="event",
         cascade="all, delete-orphan",
+    )
+    source_links = relationship(
+        "EventSourceLink",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="EventSourceLink.position",
     )
 
     __table_args__ = (

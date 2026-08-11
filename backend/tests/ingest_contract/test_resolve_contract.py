@@ -15,7 +15,12 @@ from typing import Any
 import pytest
 
 from app.services.tweet_ingest import detect, stitch
-from app.services.tweet_ingest.records import SourceLink, TelegramFootage, TweetRecord
+from app.services.tweet_ingest.records import (
+    QuotedTweet,
+    SourceLink,
+    TelegramFootage,
+    TweetRecord,
+)
 from app.services.tweet_ingest.resolve import ResolvedTweet, resolve_thread
 from app.services.tweet_ingest.syndication import ParsedMedia
 
@@ -49,6 +54,7 @@ def _assert_matches(resolved: ResolvedTweet, expected: dict[str, Any]) -> None:
         [round(lat, _COORD_PLACES), round(lng, _COORD_PLACES)] for lat, lng in expected["coords"]
     ]
     assert resolved.source_url == expected["source_url"]
+    assert resolved.secondary_source_urls == expected["secondary_source_urls"]
 
     expected_posted = expected["source_posted_at"]
     if expected_posted is None:
@@ -88,6 +94,7 @@ def test_detect_fans_one_dto_per_coordinate(typology: str, tmp_path: Path) -> No
     assert len(dtos) == len(expected["coords"])
     for dto in dtos:
         assert dto.source_url == expected["source_url"]
+        assert dto.secondary_source_urls == expected["secondary_source_urls"]
         assert _roles(dto.source_media) == [list(pair) for pair in expected["source_media"]]
         assert _roles(dto.proof_media) == [list(pair) for pair in expected["proof_media"]]
         assert dto.title == expected["title"]
@@ -205,6 +212,100 @@ def test_ambiguous_footage_links_ignore_chased_telegram() -> None:
     assert resolved.source_url is None
     assert resolved.source_posted_at is None
     assert resolved.source_media == []
+    # No primary was picked, so both candidates land as mirrors and the owner
+    # promotes one at submit rather than losing them.
+    assert resolved.secondary_source_urls == [
+        _TG_URL,
+        "https://www.youtube.com/watch?v=FAKEVIDEO01",
+    ]
+
+
+def test_second_footage_link_becomes_a_secondary_source() -> None:
+    """A quoted footage tweet takes the source slot; the mirror the OP also
+    linked lands as a secondary source instead of being discarded."""
+    record = TweetRecord(
+        tweet_id="8400000000000000009",
+        handle="osint_stork",
+        text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nMirror: {_TG_URL}",
+        created_at="2026-03-04T13:20:00+00:00",
+        permalink="https://x.com/osint_stork/status/8400000000000000009",
+        external_sources=[SourceLink(_TG_URL, "telegram")],
+        quoted=QuotedTweet(
+            tweet_id="8400000000000000002",
+            handle="front_cam",
+            text="raw footage",
+            created_at="2026-03-04T09:00:00+00:00",
+        ),
+    )
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == "https://x.com/front_cam/status/8400000000000000002"
+    assert resolved.secondary_source_urls == [_TG_URL]
+
+
+def _links_record(links: list[SourceLink]) -> TweetRecord:
+    """A geoloc tweet carrying ``links`` and nothing else that could source it."""
+    return TweetRecord(
+        tweet_id="8400000000000000010",
+        handle="osint_stork",
+        text="Geolocated 44.612300, 33.522100 airfield perimeter",
+        created_at="2026-03-04T13:20:00+00:00",
+        permalink="https://x.com/osint_stork/status/8400000000000000010",
+        external_sources=links,
+    )
+
+
+def test_primary_link_is_not_repeated_as_a_secondary() -> None:
+    """The source link written in another spelling (``twitter.com``, a tracking
+    query) is the primary, not a mirror of it."""
+    status = "https://x.com/source_gull/status/8500000000000000002"
+    resolved = resolve_thread(
+        [
+            _links_record(
+                [
+                    SourceLink(f"{status}?s=20", "x"),
+                    SourceLink("https://twitter.com/source_gull/status/8500000000000000002", "x"),
+                    SourceLink(status, "x"),
+                ]
+            )
+        ]
+    )
+    assert resolved is not None
+    assert resolved.source_url == f"{status}?s=20"
+    assert resolved.secondary_source_urls == []
+
+
+def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
+    """The identity strip is what drops it: same video id, share provenance only
+    in the query, so the second spelling is the primary and not a mirror."""
+    video = "https://www.youtube.com/watch?v=FAKEVIDEO01"
+    resolved = resolve_thread(
+        [
+            _links_record(
+                [
+                    SourceLink(video, "youtube"),
+                    SourceLink(f"{video}&si=abc123&utm_source=x", "youtube"),
+                ]
+            )
+        ]
+    )
+    assert resolved is not None
+    assert resolved.source_url == video
+    assert resolved.secondary_source_urls == []
+
+
+def test_distinct_videos_sharing_a_path_are_separate_mirrors() -> None:
+    """Two YouTube ids on the one ``/watch`` path are two videos: the source slot
+    collapses them onto one path and takes the first, the second is a mirror
+    rather than silently gone."""
+    primary = "https://www.youtube.com/watch?v=FAKEVIDEO01"
+    mirror = "https://www.youtube.com/watch?v=FAKEVIDEO02"
+    resolved = resolve_thread(
+        [_links_record([SourceLink(primary, "youtube"), SourceLink(mirror, "youtube")])]
+    )
+    assert resolved is not None
+    assert resolved.source_url == primary
+    assert resolved.secondary_source_urls == [mirror]
 
 
 def test_every_typology_has_both_fixture_files() -> None:

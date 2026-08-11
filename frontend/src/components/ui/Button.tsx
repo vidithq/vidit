@@ -8,11 +8,8 @@ import { cn } from "@/lib/cn";
 // ever changes. `fullWidth` stretches it (auth submits); pass orthogonal extras
 // (margins, font-mono, an icon's own classes) via `className`.
 //
-// Replaces the PRIMARY_BUTTON / SECONDARY_BUTTON / NEUTRAL_BUTTON /
-// DANGER_BUTTON / GHOST_BUTTON_* constants, which carried colour only and left
-// every call site to hand-write the shape (the source of the size drift this
-// removes). Defaults to `type="button"` so a button never submits a form by
-// accident; pass `type="submit"` explicitly where it should.
+// Defaults to `type="button"` so a button never submits a form by accident;
+// pass `type="submit"` explicitly where it should.
 // Four variants on two axes: tone (accent or danger) and emphasis (filled,
 // outline, text). Everything clickable is the accent colour; red is only for
 // destructive. There is no grey button (grey lives in the <Pill> neutral tone +

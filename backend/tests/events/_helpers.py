@@ -29,6 +29,7 @@ from app.models.event import (
 )
 from app.models.tag import Tag
 from app.models.user import User
+from app.services.events import build_source_link_rows
 from tests._fixtures import TINY_JPEG
 
 client = TestClient(app)
@@ -51,6 +52,7 @@ def _make_geo(
     # None models a source-less machine draft; only valid with status
     # ``detected`` (``ck_events_source_url_status``).
     source_url: str | None = "https://example.com/source",
+    secondary_source_urls: list[str] | None = None,
     with_media: bool = False,
 ) -> Event:
     now = datetime.now(UTC)
@@ -87,6 +89,8 @@ def _make_geo(
         geo.tags = tags
     if conflicts:
         geo.conflicts = conflicts
+    if secondary_source_urls:
+        geo.source_links = build_source_link_rows(secondary_source_urls)
     db.add(geo)
     db.flush()
     if with_media:

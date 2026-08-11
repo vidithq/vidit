@@ -24,6 +24,9 @@
 # app/ reads it back yet (the claim flow is a v0.5 item), so it still reads as
 # unused to vulture.
 created_by  # app/models/invite_code.py
+# Set positionally in build_source_link_rows and read only through the
+# relationship's string order_by ("EventSourceLink.position").
+position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
 claimed_at  # app/models/user.py
 processed_at  # app/models/bot_mention.py — audit stamp, written at insert only

@@ -12,8 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
 // One card for every catalogue entity (geolocated / detected geolocation,
-// requested event), in either layout. The two surfaces had drifted into three separate
-// components with three click models; this is the single, data-driven card.
+// requested event), in either layout.
 //
 // - Click model is uniform: the whole card navigates to `detailHref` via a
 //   stretched link. The author byline sits above it (`relative z-20`) and

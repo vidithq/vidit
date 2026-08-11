@@ -59,6 +59,10 @@ class DetectedGeoloc:
     # When the analyst posted THIS geolocation (the geoloc tweet) → the nullable
     # ``detected_post_at``.
     detected_post_at: datetime | None
+    # Mirrors of the same media the post also linked, ordered, normalized and
+    # capped by the resolution. Prefills the row's secondary source links, which
+    # the owner edits at submit; empty when the post linked nothing else.
+    secondary_source_urls: list[str] = field(default_factory=list)
     # Footage (role=source, capped at one) vs the analyst's annotation (role=proof).
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
@@ -81,6 +85,7 @@ def detect(thread: list[TweetRecord]) -> list[DetectedGeoloc]:
             event_date=resolved.event_date,
             source_posted_at=resolved.source_posted_at,
             detected_post_at=resolved.detected_post_at,
+            secondary_source_urls=resolved.secondary_source_urls,
             source_media=resolved.source_media,
             proof_media=resolved.proof_media,
         )
@@ -414,6 +419,11 @@ def detect_structured_diagnosed(
             event_date=resolved.event_date,
             source_posted_at=resolved.source_posted_at,
             detected_post_at=resolved.detected_post_at,
+            # Empty by construction: ``_designated_source`` prunes the record to
+            # the one link the ``S:`` line designates, so the strict format
+            # never carries mirrors. An analyst who wants them adds them at
+            # submit.
+            secondary_source_urls=resolved.secondary_source_urls,
             source_media=resolved.source_media,
             proof_media=resolved.proof_media,
         )

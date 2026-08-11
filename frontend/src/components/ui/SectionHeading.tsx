@@ -4,8 +4,7 @@ import { FORM_INVALID_LABEL } from "./form-styles";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Form-section heading: the `<header><h2>` + section `FieldHelp` (+ an optional
-// `trailing` slot for a per-section badge like a locked hint) that every
-// submit/edit form section hand-rolled identically.
+// `trailing` slot for a per-section badge like a locked hint).
 export function SectionHeading({
   title,
   concept,

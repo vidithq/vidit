@@ -112,6 +112,12 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
+    event_source_links {
+        UUID event_id FK
+        INT position
+        TEXT url
+    }
+
     media {
         UUID id PK
         UUID event_id FK
@@ -173,6 +179,7 @@ erDiagram
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_investigators : "event_id"
     users ||--o{ event_investigators : "user_id"
+    events ||--o{ event_source_links : "event_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -425,6 +432,24 @@ Composite PK: `(event_id, user_id)`
 - `ix_event_investigators_user_id` on `(user_id)`, profile / dashboard "what is this user working on?"
 
 The signal doesn't gate the lifecycle: an event can be geolocated by an analyst who never signalled, and rows aren't cleared when the event terminates. Kept as a table (not an id-array) for the reverse `user_id` query and the per-row `created_at`. Hard-delete on the event cascade-drops the rows.
+
+---
+
+### `event_source_links`
+
+An event's ordered secondary source links: mirrors of the same footage on another network, or another post from the same point of view. The primary evidence anchor stays the scalar `events.source_url`; these are optional extras with no such protection, see [`api.md`](api.md#post-events).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `position` | `INTEGER` | list index, `0`-based |
+| `url` | `TEXT` | NOT NULL |
+
+Composite PK: `(event_id, position)`. `position` sits in the key, so the stored order is the read order and a duplicate slot is rejected by Postgres.
+
+No secondary index: every read is "this event's links, in order", served by the PK's leading `event_id`. `MAX_SECONDARY_SOURCE_LINKS = 10` (`backend/app/models/event.py`) caps how many rows an event carries; the write forms normalize and enforce it before insert (strip, drop blanks, drop duplicates, drop the entry equal to `source_url`, order-preserving).
+
+Written wholesale, not row-by-row: a create sets the full ordered list once, and a geolocate replaces the whole list with whatever the fulfiller submits, requested events included (unlike `source_url`, no requester protection here). Hard-deleting the event cascades the rows.
 
 ---
 

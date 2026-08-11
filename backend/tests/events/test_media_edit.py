@@ -109,7 +109,6 @@ def test_geolocate_adds_source_media(db, author, conflict, capture_source_tag):
     assert body["media"][0]["role"] == "source"
     assert body["status"] == "geolocated"
     db.expire_all()
-    # One source + the resolved proof image.
     assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").count() == 1
     assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 1
 

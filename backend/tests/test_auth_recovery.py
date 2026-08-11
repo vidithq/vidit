@@ -397,7 +397,7 @@ def test_credential_less_account_cannot_log_in(client, user_factory):
     cleanly with 401 rather than crash on the NULL hash.
     """
     user, _ = user_factory(password=None)
-    assert user.password_hash is None  # premise: the row is credential-less
+    assert user.password_hash is None
 
     response = client.post(
         "/api/v1/auth/login",

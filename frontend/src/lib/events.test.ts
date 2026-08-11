@@ -26,7 +26,6 @@ const complete: EventFieldsState = {
   hasCaptureSourceTag: true,
 };
 
-// missingEventFields returns {key,label}[]; assert on the labels.
 const labels = (s: EventFieldsState, opts?: Parameters<typeof missingEventFields>[1]) =>
   missingEventFields(s, opts).map((m) => m.label);
 
@@ -147,7 +146,6 @@ describe("submitReadiness", () => {
 });
 
 describe("missingEventRequestFields", () => {
-  // missingEventRequestFields returns {key,label}[]; assert on the labels.
   const requestLabels = (s: Parameters<typeof missingEventRequestFields>[0]) =>
     missingEventRequestFields(s).map((m) => m.label);
 

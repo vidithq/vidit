@@ -45,6 +45,12 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   capture_source_tag: "Capture source tag",
 };
 
+/** How many secondary source links an event carries at most. Mirrors
+ *  `models/event.MAX_SECONDARY_SOURCE_LINKS`: the form stops the analyst at the
+ *  cap instead of letting the server 400 (`too_many_source_links`) after the
+ *  media has uploaded. */
+export const MAX_SECONDARY_SOURCE_LINKS = 10;
+
 /** Whether a row's source renders as the inert "synthetic" placeholder instead
  *  of its real link. Demo rows carry a non-resolving `source_url`, so it's
  *  hidden. A `detected` row is the exception: its source IS its provenance post
@@ -165,6 +171,9 @@ export interface EventEditInput {
   capture_source_lat?: number;
   capture_source_lng?: number;
   source_url: string;
+  /** Optional mirrors of the same media, in the order the analyst listed them.
+   *  Blank entries are dropped at assembly; the server normalizes the rest. */
+  secondary_source_urls?: string[];
   /** Optional ISO `YYYY-MM-DD`; omitted when the footage doesn't establish
    *  the date (reads as "Unknown"). */
   event_date?: string;
@@ -199,6 +208,7 @@ function appendSharedEventFields(
   input: {
     title: string;
     source_url: string;
+    secondary_source_urls?: string[];
     source_posted_at: string;
     proof?: Record<string, unknown> | null;
     capture_source_lat?: number;
@@ -210,6 +220,14 @@ function appendSharedEventFields(
 ): void {
   fd.append("title", input.title);
   fd.append("source_url", input.source_url);
+  // One append per link: the backend reads `secondary_source_urls` as a
+  // repeated form field, not a JSON blob (unlike the id lists below, whose
+  // items are opaque uuids). A row the analyst left blank is dropped here so an
+  // untouched field never posts an empty entry.
+  for (const url of input.secondary_source_urls ?? []) {
+    const trimmed = url.trim();
+    if (trimmed) fd.append("secondary_source_urls", trimmed);
+  }
   // Both-or-neither: only send the camera point when both halves are present,
   // matching the backend `_optional_point` contract (a lone half is a 400).
   if (input.capture_source_lat !== undefined && input.capture_source_lng !== undefined) {
@@ -299,6 +317,8 @@ export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
 export interface EventRequestInput {
   title: string;
   source_url: string;
+  /** Optional mirrors, same contract as a geolocation's (see `EventEditInput`). */
+  secondary_source_urls?: string[];
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
   /** Optional approximate guess: both halves or neither. */

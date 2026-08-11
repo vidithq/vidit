@@ -73,7 +73,6 @@ describe("FileManager", () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    // The view button is still there and still opens the lightbox on its own.
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

@@ -1716,6 +1716,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */
@@ -1747,6 +1752,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */
@@ -1780,6 +1790,11 @@ export interface components {
             proof_files?: string[] | null;
             /** Remove Media Ids */
             remove_media_ids?: string | null;
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
             /** Source Url */
@@ -1879,6 +1894,8 @@ export interface components {
             media: components["schemas"]["TweetImportMedia"][];
             /** Proof Text */
             proof_text: string;
+            /** Secondary Source Urls */
+            secondary_source_urls: string[];
             /** Title */
             title: string;
         };
@@ -1977,6 +1994,8 @@ export interface components {
             /** Requested At */
             requested_at: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
+            /** Secondary Source Urls */
+            secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string | null;
             /** Source Url */
@@ -2428,6 +2447,8 @@ export interface components {
             /** Posted At */
             posted_at: string;
             quoted_tweet?: components["schemas"]["TweetImportQuotedTweet"] | null;
+            /** Secondary Source Urls */
+            secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string | null;
             /** Source Url */
