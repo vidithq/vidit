@@ -6,6 +6,7 @@ import {
   fetchProofFiles,
   isXStatusUrl,
   makeFile,
+  sourceMediaCandidates,
   splitMedia,
   tweetIdFrom,
 } from "./tweetImport";
@@ -107,12 +108,26 @@ describe("makeFile", () => {
 });
 
 describe("isXStatusUrl", () => {
-  it("recognises both hosts, the www / mobile prefixes, and a trailing path", () => {
+  it("recognises both hosts, the www prefix, and a trailing path", () => {
     expect(isXStatusUrl("https://x.com/kalush/status/1234567890")).toBe(true);
     expect(isXStatusUrl("  http://twitter.com/kalush/status/1234  ")).toBe(true);
     expect(isXStatusUrl("https://www.x.com/kalush/status/1234")).toBe(true);
-    expect(isXStatusUrl("https://mobile.twitter.com/kalush/status/1234")).toBe(true);
+    expect(isXStatusUrl("https://www.twitter.com/kalush/status/1234")).toBe(true);
     expect(isXStatusUrl("https://x.com/kalush/status/1234/photo/1")).toBe(true);
+  });
+
+  it("recognises the handle-less /i/web/status form the backend accepts", () => {
+    expect(isXStatusUrl("https://x.com/i/web/status/1234567890")).toBe(true);
+    expect(isXStatusUrl("https://twitter.com/i/status/1234567890")).toBe(true);
+  });
+
+  it("rejects the mobile. host the backend's allowlist leaves out", () => {
+    // `normalise_tweet_url` accepts x.com / twitter.com ± www. only, so
+    // offering the download here would offer a button that always 400s.
+    expect(isXStatusUrl("https://mobile.twitter.com/kalush/status/1234")).toBe(
+      false
+    );
+    expect(isXStatusUrl("https://mobile.x.com/kalush/status/1234")).toBe(false);
   });
 
   it("rejects another host, a profile URL, and an empty field", () => {
@@ -124,8 +139,36 @@ describe("isXStatusUrl", () => {
 });
 
 describe("tweetIdFrom", () => {
-  it("takes the trailing status id", () => {
+  it("reads the status id, whatever trails it", () => {
     expect(tweetIdFrom("https://x.com/kalush/status/1234")).toBe("1234");
+    expect(tweetIdFrom("https://x.com/kalush/status/1234/")).toBe("1234");
+    expect(tweetIdFrom("https://x.com/kalush/status/1234/photo/1")).toBe("1234");
+    expect(tweetIdFrom("https://x.com/i/web/status/1234")).toBe("1234");
+  });
+
+  it("falls back when the URL carries no status id", () => {
+    expect(tweetIdFrom("https://x.com/kalush")).toBe("tweet");
+    expect(tweetIdFrom("")).toBe("tweet");
+  });
+});
+
+describe("sourceMediaCandidates", () => {
+  it("puts the post's own video ahead of its images", () => {
+    const i1 = media({ remote_url: "https://pbs.twimg.com/1.jpg" });
+    const v1 = media({ kind: "video", remote_url: "https://video.twimg.com/a.mp4" });
+    const i2 = media({ remote_url: "https://pbs.twimg.com/2.jpg" });
+    expect(sourceMediaCandidates([i1, v1, i2])).toEqual([v1, i1, i2]);
+  });
+
+  it("drops the quoted post's media, down to nothing when it is all there is", () => {
+    const own = media({ remote_url: "https://pbs.twimg.com/own.jpg" });
+    const quoted = media({
+      kind: "video",
+      remote_url: "https://video.twimg.com/quoted.mp4",
+      origin: "quote",
+    });
+    expect(sourceMediaCandidates([quoted, own])).toEqual([own]);
+    expect(sourceMediaCandidates([quoted])).toEqual([]);
   });
 });
 
