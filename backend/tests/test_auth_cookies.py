@@ -126,7 +126,6 @@ def test_csrf_blocks_cookie_auth_without_header(user_with_password):
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
     )
-    # POST /logout with cookie but no X-CSRF-Token header → 403
     response = client.post("/api/v1/auth/logout")
     assert response.status_code == 403
     assert "CSRF" in response.json()["detail"]

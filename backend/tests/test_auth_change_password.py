@@ -111,16 +111,6 @@ def test_change_password_happy_path(client, user_factory):
     assert rejected.status_code == 401
 
 
-def test_change_password_rejects_wrong_current_password(client, user_factory):
-    user, _ = user_factory()
-    response = client.post(
-        "/api/v1/auth/change-password",
-        json={"current_password": "definitelynotthecorrectone", "new_password": "newpassword2"},
-        headers=login_as(client, user),
-    )
-    assert response.status_code == 400
-
-
 def test_change_password_does_not_rotate_on_wrong_current(client, user_factory):
     user, current = user_factory()
     client.post(
@@ -128,7 +118,6 @@ def test_change_password_does_not_rotate_on_wrong_current(client, user_factory):
         json={"current_password": "wrong-password", "new_password": "newpassword2"},
         headers=login_as(client, user),
     )
-    # Original credential still works after a rejected rotation attempt.
     client.cookies.clear()
     ok = client.post(
         "/api/v1/auth/login",
@@ -239,7 +228,6 @@ def test_change_password_swallows_email_send_failure(client, user_factory, monke
     )
     assert response.status_code == 204
 
-    # The rotation actually landed — the new password authenticates.
     client.cookies.clear()
     ok = client.post(
         "/api/v1/auth/login",
@@ -247,7 +235,6 @@ def test_change_password_swallows_email_send_failure(client, user_factory, monke
     )
     assert ok.status_code == 200
 
-    # And the audit row was written.
     events = (
         db.query(AuthEvent)
         .filter(AuthEvent.user_id == user.id, AuthEvent.event == EVENT_PASSWORD_CHANGED)

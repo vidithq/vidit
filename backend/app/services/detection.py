@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
+from app.services.events import build_source_link_rows
 from app.services.sanitize import tiptap_doc_from_text
 from app.services.storage import (
     PreparedMedia,
@@ -210,6 +211,9 @@ async def _persist_one(
             detected_from_url=dto.detected_from_url,
             is_demo=is_demo,
         )
+        # The mirrors the post also linked. Already normalized + capped by the
+        # resolution, so no second pass here.
+        geo.source_links = build_source_link_rows(dto.secondary_source_urls)
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
 

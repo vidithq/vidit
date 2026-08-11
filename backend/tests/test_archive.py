@@ -489,7 +489,6 @@ async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
 
 
 async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
-    """A CDN response within the cap streams back intact."""
     import app.services.tweet_ingest.archive as archive_mod
 
     monkeypatch.setattr(

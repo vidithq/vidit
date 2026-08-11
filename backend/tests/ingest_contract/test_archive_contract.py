@@ -121,7 +121,6 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert all(r.is_demo for r in rows)
     assert all(r.proof and r.proof["content"] for r in rows)
 
-    # no_coord produced nothing.
     assert _rows_for(db, owner, "no_coord") == []
 
     # Source-less typologies: source_url NULL, source_posted_at NULL.

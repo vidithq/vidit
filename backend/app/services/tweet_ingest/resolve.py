@@ -17,10 +17,10 @@ derivations into the bundled ``ResolvedTweet``.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import httpx
 
@@ -83,6 +83,11 @@ def _footage_dedup_key(url: str, host: str, status_id: str | None) -> str:
     An X status keys on the status id, so ``x.com`` / ``twitter.com`` (or
     query / trailing-slash) variants of one status are one candidate; other
     hosts key on host plus path with the query and any trailing slash stripped.
+
+    Collapsing the query is the right call for picking ONE source (a lone
+    YouTube path spelled several ways must not read as ambiguous) and the wrong
+    one for listing mirrors, where ``watch?v=`` carries the video identity;
+    :func:`_mirror_dedup_key` is that stricter key.
     """
     if status_id is not None:
         return f"x:{status_id}"
@@ -90,8 +95,47 @@ def _footage_dedup_key(url: str, host: str, status_id: str | None) -> str:
     return f"{host}:{(parsed.hostname or '').lower()}{parsed.path.rstrip('/')}"
 
 
+# Query parameters that carry share / campaign provenance rather than the
+# target's identity: two links differing only in these point at one video.
+_TRACKING_QUERY_PARAMS = frozenset(
+    {"s", "si", "t", "feature", "ref", "ref_src", "ref_url", "fbclid", "gclid", "igshid"}
+)
+
+
+def _identifying_query(query: str) -> str:
+    """``query`` with the tracking parameters dropped and the rest sorted, so one
+    target spelled with different share provenance yields one string."""
+    kept = sorted(
+        (name, value)
+        for name, value in parse_qsl(query, keep_blank_values=True)
+        if name.lower() not in _TRACKING_QUERY_PARAMS and not name.lower().startswith("utm_")
+    )
+    return urlencode(kept)
+
+
+def _mirror_dedup_key(url: str, host: str, status_id: str | None) -> str:
+    """The identity two footage links share when the question is "are these the
+    same mirror", stricter than :func:`_footage_dedup_key`.
+
+    An X status still keys on the status id (the path carries the identity, the
+    query never does). Every other host keys on host plus path plus the
+    *identifying* query (:func:`_identifying_query`): on the sanctioned footage
+    hosts the video id lives in the query, so ``watch?v=AAA`` and ``watch?v=BBB``
+    are two videos, while ``watch?v=AAA&si=...`` is one video shared twice.
+    """
+    if status_id is not None:
+        return f"x:{status_id}"
+    parsed = urlparse(url)
+    base = f"{host}:{(parsed.hostname or '').lower()}{parsed.path.rstrip('/')}"
+    query = _identifying_query(parsed.query)
+    return f"{base}?{query}" if query else base
+
+
 def footage_candidates(
-    links: Iterable[tuple[str, str]], *, owner_handle: str
+    links: Iterable[tuple[str, str]],
+    *,
+    owner_handle: str,
+    dedup_key: Callable[[str, str, str | None], str] = _footage_dedup_key,
 ) -> list[FootageCandidate]:
     """The deduplicated footage candidates among host-classified source links.
 
@@ -100,7 +144,9 @@ def footage_candidates(
     between them. A link is a candidate when its host is footage
     (X status / Telegram / YouTube); an X status back to ``owner_handle``'s own
     post is a cross-reference, not footage, and is dropped first (only the X host
-    carries a handle to compare). Duplicates collapse per :func:`_footage_dedup_key`.
+    carries a handle to compare). Duplicates collapse per ``dedup_key``, the
+    source slot's :func:`_footage_dedup_key` by default; the mirror list passes
+    :func:`_mirror_dedup_key` so two videos sharing a path stay two candidates.
     """
     candidates: list[FootageCandidate] = []
     seen: set[str] = set()
@@ -113,7 +159,7 @@ def footage_candidates(
                 continue
             match = _X_STATUS_URL_RE.search(url)
             status_id = match.group(1) if match is not None else None
-        key = _footage_dedup_key(url, host, status_id)
+        key = dedup_key(url, host, status_id)
         if key in seen:
             continue
         seen.add(key)
@@ -133,6 +179,63 @@ def _source_link(thread: list[TweetRecord]) -> FootageCandidate | None:
     links = [(link.url, link.host) for record in thread for link in record.external_sources]
     candidates = footage_candidates(links, owner_handle=owner_handle)
     return candidates[0] if len(candidates) == 1 else None
+
+
+def _mirror_identity(url: str) -> str:
+    """The identity two spellings of one mirror share, via :func:`_mirror_dedup_key`.
+
+    Used to compare arbitrary links (the primary source against the thread's
+    other links) where no host classification is in hand: the host prefix is
+    left empty, which is harmless because both sides of every comparison come
+    through here. The X-status collapse still applies, so ``x.com`` /
+    ``twitter.com`` / query variants of one status compare equal, and so does
+    the tracking-parameter strip, so ``?si=`` / ``?utm_source=`` spellings of one
+    video compare equal too.
+    """
+    match = _X_STATUS_URL_RE.search(url)
+    return _mirror_dedup_key(url, "", match.group(1) if match is not None else None)
+
+
+def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None) -> list[str]:
+    """The mirrors: the footage links the source slot did not take.
+
+    Secondary source links are the same footage posted elsewhere, so which links
+    qualify is :func:`footage_candidates`, the same rule that picks the primary:
+    one home for "which link points at footage", and the own-status
+    cross-reference skip comes with it. A bare profile link or a coordinate link
+    classifies as host ``other`` and is not a mirror any more than it is a
+    source, so it stays out.
+
+    What differs is the identity two links share, because a list asks a stricter
+    question than a slot. Mirrors key on :func:`_mirror_dedup_key`: an X status
+    on its status id, every other host on host plus path plus the query minus
+    tracking parameters. So two YouTube ``watch?v=`` ids on one path are two
+    mirrors, while ``?si=`` / ``?utm_source=`` spellings of one video are one.
+    The source slot's own key collapses the whole query, which is right for
+    picking one link and would silently swallow the second video here.
+
+    :func:`resolve_source` keeps at most one candidate and drops the rest; those
+    land here in order instead. The candidate whose mirror identity matches the
+    resolved ``source_url`` is the primary in another spelling and is excluded.
+    When the source was ambiguous (several candidates, so the slot stayed empty)
+    every candidate lands here for the owner to promote one at submit. Blanks
+    and the cap are the shared normalizer's job.
+    """
+    owner_handle = thread[0].handle if thread else ""
+    links = [(link.url, link.host) for record in thread for link in record.external_sources]
+    primary = _mirror_identity(source_url) if source_url else None
+    urls = [
+        candidate.url
+        for candidate in footage_candidates(
+            links, owner_handle=owner_handle, dedup_key=_mirror_dedup_key
+        )
+        if _mirror_identity(candidate.url) != primary
+    ]
+    # Imported locally so the rest of ``tweet_ingest`` stays importable without
+    # the app's service layer, same as ``detect``'s coordinate-bounds check.
+    from app.services.events import truncate_secondary_source_urls
+
+    return truncate_secondary_source_urls(urls, source_url)
 
 
 def _telegram_footage(thread: list[TweetRecord], link: FootageCandidate) -> TelegramFootage | None:
@@ -266,6 +369,9 @@ class ResolvedTweet:
     # Provisional proxy from the geoloc tweet's post date; None when the
     # timestamp is unusable (no epoch fabrication).
     event_date: date | None
+    # The mirrors: the declared links the source slot didn't take, normalized
+    # and capped (:func:`resolve_secondary_sources`).
+    secondary_source_urls: list[str] = field(default_factory=list)
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
 
@@ -297,6 +403,7 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
         source_posted_at=source_posted_at,
         detected_post_at=detected_post_at,
         event_date=_event_date(head.created_at, detected_post_at),
+        secondary_source_urls=resolve_secondary_sources(thread, source_url),
         source_media=source_media,
         proof_media=proof_media,
     )
