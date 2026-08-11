@@ -37,6 +37,15 @@ _YTD_PREFIX_RE = re.compile(r"^\s*window\.YTD\.\w[\w-]*\.part\d+\s*=\s*")
 # Twitter's ``created_at``: ``Wed Nov 12 14:33:00 +0000 2025``.
 _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
+# The retweet discriminator. An export entry carries no flag worth trusting:
+# there is no ``retweeted_status`` object (the exporter drops it) and the
+# ``retweeted`` boolean is written ``false`` on every entry, retweets included.
+# What does survive is the text X stores for a retweet, ``RT @<handle>: <original
+# text>``, so the prefix is the signal. A handle is 1-15 word characters and the
+# colon must follow, which keeps a tweet that merely opens on the letters "RT"
+# out of the match; "RT" later in the text never matches (the pattern anchors).
+_RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
+
 _IMAGE_CONTENT_TYPE = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -63,6 +72,24 @@ def _str_or_none(value: Any) -> str | None:
 
 def _strip_ytd_prefix(text: str) -> Any:
     return json.loads(_YTD_PREFIX_RE.sub("", text, count=1))
+
+
+def _tweet_text(tweet: dict[str, Any]) -> str:
+    """An export entry's text: ``full_text``, falling back to ``text``."""
+    text = tweet.get("full_text") or tweet.get("text") or ""
+    return text if isinstance(text, str) else ""
+
+
+def _is_retweet(tweet: dict[str, Any]) -> bool:
+    """Whether the entry is a retweet rather than a post the owner wrote.
+
+    An export lists the account's retweets alongside its own tweets, and a
+    retweet's content belongs to someone else: importing one would attribute a
+    stranger's geolocation to the analyst running the import. Recognised by
+    ``_RETWEET_PREFIX_RE`` (see there for why the text is the only reliable
+    signal in archive data).
+    """
+    return _RETWEET_PREFIX_RE.match(_tweet_text(tweet)) is not None
 
 
 def _variant_bitrate(variant: dict[str, Any]) -> int:
@@ -195,12 +222,11 @@ def _archive_quoted(
     if quoted_id is not None:
         src = by_id.get(quoted_id)
         if src is not None:
-            text = src.get("full_text") or src.get("text") or ""
             created_at = src.get("created_at")
             return QuotedTweet(
                 tweet_id=quoted_id,
                 handle=handle,  # an in-archive quote is the owner's own tweet
-                text=text if isinstance(text, str) else "",
+                text=_tweet_text(src),
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 media=_archive_media(src, quoted_id),
             )
@@ -253,6 +279,10 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
     ``chase`` is on and the OP links a sole Telegram post, that post's chased
     footage (date + maybe media). ``chase`` stays off by default so the read is
     pure-disk.
+
+    Retweets (:func:`_is_retweet`) are dropped here, the earliest point that
+    can tell them apart, so nothing downstream can attribute another account's
+    post to ``handle``.
     """
     raw = (archive_dir / "tweets.js").read_text(encoding="utf-8")
     entries = _strip_ytd_prefix(raw)
@@ -262,7 +292,9 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
     tweets = [
         entry["tweet"]
         for entry in entries
-        if isinstance(entry, dict) and isinstance(entry.get("tweet"), dict)
+        if isinstance(entry, dict)
+        and isinstance(entry.get("tweet"), dict)
+        and not _is_retweet(entry["tweet"])
     ]
     # For the in-archive quote join (the owner quote-tweeting their own post).
     by_id = {t["id_str"]: t for t in tweets if isinstance(t.get("id_str"), str)}
@@ -275,13 +307,12 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
         # digits-only before it can carry ``..`` or a separator into the path.
         if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
-        text = tweet.get("full_text") or tweet.get("text") or ""
         created_at = tweet.get("created_at")
         records.append(
             TweetRecord(
                 tweet_id=tweet_id,
                 handle=handle,
-                text=text if isinstance(text, str) else "",
+                text=_tweet_text(tweet),
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 permalink=f"https://x.com/{handle}/status/{tweet_id}",
                 media=_archive_media(tweet, tweet_id),

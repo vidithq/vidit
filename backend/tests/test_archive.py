@@ -26,7 +26,8 @@ ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 def test_read_tweets_parses_records():
     records = read_tweets(ARCHIVE, handle="ana")
     by_id = {r.tweet_id: r for r in records}
-    assert set(by_id) == {"1001", "2001", "2002", "3001", "4001", "5001", "6001"}
+    # 7001 is the fixture's retweet and is dropped; 8001 only says "RT" mid-text.
+    assert set(by_id) == {"1001", "2001", "2002", "3001", "4001", "5001", "6001", "8001"}
     # Twitter created_at normalized to ISO 8601.
     assert by_id["1001"].created_at.startswith("2025-11-12")
     # Permalink derives from the verified handle, not the archive.
@@ -43,7 +44,7 @@ def test_stitch_and_detect_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
     detections = [d for thread in stitch(records) for d in detect(thread)]
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
-    # + 6001 multi-coord(2) = 6.
+    # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
     assert len(detections) == 6
     # The self-thread detection carries the head's media (as proof: the thread
     # declares no source) + the head permalink, even though the coordinate
@@ -150,6 +151,43 @@ def test_read_tweets_skips_non_numeric_id(tmp_path):
     )
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["12345"]
+
+
+def test_read_tweets_drops_retweets(tmp_path):
+    """A retweet carries someone else's post, so importing it would attribute a
+    stranger's geolocation to the account running the import. The export flags
+    nothing (``retweeted`` is ``false`` even on the retweet), so the
+    ``RT @handle:`` text prefix is the discriminator: it is anchored, so a tweet
+    the analyst wrote that merely mentions RT further in is kept."""
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "9001",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "retweeted": False,
+                "full_text": "RT @other_osint: Strike 48.012345, 37.802411 confirmed",
+            }
+        },
+        {
+            "tweet": {
+                "id_str": "9002",
+                "created_at": "Wed Nov 12 15:00:00 +0000 2025",
+                "full_text": "Worth an RT @other_osint: same sector 50.450100, 30.523400",
+            }
+        },
+        # ``text`` instead of ``full_text``: the same prefix still decides.
+        {"tweet": {"id_str": "9003", "created_at": "", "text": "RT @a: relayed"}},
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+    records = read_tweets(archive, handle="ana")
+    assert [r.tweet_id for r in records] == ["9002"]
+    # Nothing downstream ever sees the retweet's coordinate.
+    detections = [d for thread in stitch(records) for d in detect(thread)]
+    assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
 
 
 def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, monkeypatch):
