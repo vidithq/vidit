@@ -157,6 +157,24 @@ Editing collapses that order. While the owner is editing, the page renders the h
 
 The copy-link control is the shared [`<CopyButton>`](../frontend/src/components/ui/CopyButton.tsx), the same primitive as the event share row.
 
+### Share cards
+
+A pasted link is how most readers meet the platform, so the two pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*); the palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
+
+| Card | Content |
+|---|---|
+| Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline and subhead. Inherited by every route that generates none of its own. |
+| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and the counts strip: geolocated, followers, media. Top conflicts sit in the footer. |
+| Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge (plus the **Demo** badge on a synthetic row, so a demo link stays labelled once it leaves the site), and the locator panel. |
+
+The **locator panel** ([`_og/MiniMap.tsx`](../frontend/src/app/_og/MiniMap.tsx)) is a plate-carrée graticule with the event's point marked on it, drawn from positioned rectangles: no tiles, no basemap request, no static-map service, no new runtime dependency. What a reader can use at card size is the hemisphere and the rough region, and the real `<Map>` is one click away on the page. The projection is [`lib/og.ts`](../frontend/src/lib/og.ts)'s `projectEquirectangular`, which clamps rather than escapes the frame.
+
+Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, or `GET /events/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream. Any miss (unknown handle, unknown id, upstream timeout) renders a branded fallback card instead of failing, so a dead link still unfurls as Vidit rather than as a broken image.
+
+Both pages are client components, so their `generateMetadata` lives on the segment layout: title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
+
+`users.avatar_url` is a free-form URL its owner types and the renderer runs on the server, so the avatar fetch is guarded: https only, a dotted public hostname, no redirect following, a 2 s budget, a 2 MB ceiling, and a PNG / JPEG / GIF content type. Anything rejected renders the monogram.
+
 ### Buttons
 
 One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). Four variants on two axes, tone (accent or danger) and emphasis (filled, outline, text):
@@ -195,6 +213,7 @@ Decided once, so review doesn't re-litigate them:
 - **Search's `UserResult`** re-declares `EntityCard`'s shell: folding it in would leak avatar / no-thumbnail conditionals into `EntityCard` for one consumer. Commented at the call site.
 - **`ProofSection`** composes `<Card className="p-4">`, one density step tighter than the `p-5` form cards, because proof is a reading surface.
 - **Admin dev tooling** ([`admin/DevToolPanel.tsx`](../frontend/src/components/admin/DevToolPanel.tsx), [`admin/ActionReceipt.tsx`](../frontend/src/components/admin/ActionReceipt.tsx)) is a deliberately lighter register than `<Card as="section">`, admin-local on purpose: admin-only surfaces don't earn `ui/` primitives.
+- **The Satori card surfaces** ([`app/_og/`](../frontend/src/app/_og), the generated icons) render to a PNG on the server, never to a DOM, and Satori supports neither class names nor most of the CSS the primitives rely on. They compose their own shared frame instead (see *Share cards*), which is the boundary: one frame for all of them, not one layout per route.
 
 ## What we avoid
 

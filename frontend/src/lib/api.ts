@@ -1,13 +1,21 @@
 import { CSRF_HEADER, readCsrfToken } from "./auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-if (!API_URL) {
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
+if (!configuredApiUrl) {
   throw new Error(
     "NEXT_PUBLIC_API_URL must be set at build time. " +
       "Set it in Vercel project settings (production/preview), " +
       ".env.local (local dev), or as a CI build env."
   );
 }
+
+/**
+ * Backend base URL, including the `/api/v1` suffix. Exported so the server-side
+ * readers (the generated share cards) resolve the backend from the same place
+ * the browser client does, instead of re-reading the env var and re-writing the
+ * guard above.
+ */
+export const API_URL: string = configuredApiUrl;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

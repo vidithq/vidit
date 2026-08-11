@@ -114,10 +114,12 @@ export const config = {
   // pinned tweet renders login-redirect HTML instead of the og:image.
   //
   // The lookahead is anchored at the path start, so it only excludes
-  // ROOT-LEVEL `/opengraph-image` + `/twitter-image`. The `/about/...`
-  // variants ride on the `/about` entry in `PUBLIC_PREFIXES`. If `/about`
-  // ever moves behind auth, its social card breaks — widen this matcher to
-  // the segment-nested form (e.g. `.*opengraph-image`) then.
+  // ROOT-LEVEL `/opengraph-image` + `/twitter-image`. Every segment-nested
+  // card rides on its page's entry in `PUBLIC_PREFIXES` instead: the per-event
+  // and per-profile cards on `/events` and `/profile`, the `/about` variants on
+  // `/about`. Moving one of those prefixes behind auth breaks its social card,
+  // so widen this matcher to the segment-nested form (e.g. `.*opengraph-image`)
+  // if that ever happens.
   matcher: [
     "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],
