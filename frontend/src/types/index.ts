@@ -130,6 +130,8 @@ export interface DetectedGeolocPreview {
   detected_from_url: string;
   /** Null when the tweet's timestamp is unusable. */
   event_date: string | null;
+  /** The mirrors the detection would carry (the post's other declared links). */
+  secondary_source_urls: string[];
   media: TweetImportMedia[];
 }
 
@@ -139,6 +141,10 @@ export interface TweetImportResponse {
    *  fallback to the OP's own URL). The form binds this directly to its
    *  ``Source URL`` field, starting empty when null. */
   source_url: string | null;
+  /** The post's other declared links, ordered and already capped at the
+   *  event's secondary-link ceiling. Prefills the form's secondary source
+   *  rows; empty when the post linked nothing else. */
+  secondary_source_urls: string[];
   /** The OP's URL, kept separately so the proof body can still credit
    *  the analyst even when ``source_url`` points at the quoted tweet. */
   original_tweet_url: string;

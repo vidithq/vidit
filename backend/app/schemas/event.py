@@ -106,6 +106,11 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
+    # Mirrors of the same media on other networks (or other same-POV posts), in
+    # the order the submitter gave them. Empty when the event declares none;
+    # always serialised. Unlike ``source_url`` these are not the frozen evidence
+    # anchor: a fulfiller replaces the whole list at the geolocate transition.
+    secondary_source_urls: list[str]
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.

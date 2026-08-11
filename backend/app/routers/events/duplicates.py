@@ -16,7 +16,7 @@ from sqlalchemy import ColumnElement, cast, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.dependencies import get_current_user, get_db
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventSourceLink
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.event import (
@@ -151,6 +151,11 @@ def list_possible_duplicates(
         # whitelist-validated to LIKE-safe chars in `_extract_host`, so
         # no escape pass is needed.
         match_clauses.append(Event.source_url.ilike(f"%{host}%"))
+        # The same host leg over the secondary links (an EXISTS on the child
+        # table): the analyst may be pasting the mirror an existing event
+        # recorded as a secondary source while its primary anchor points at a
+        # different network, and that is still the same event.
+        match_clauses.append(Event.source_links.any(EventSourceLink.url.ilike(f"%{host}%")))
     if parsed_date is not None:
         match_clauses.append(Event.event_date == parsed_date)
 
