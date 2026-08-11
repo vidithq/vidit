@@ -1,18 +1,11 @@
 "use client";
 
 import type { ClipboardEvent } from "react";
-import { ExternalLink } from "lucide-react";
 
+import { CoordinateActions } from "@/components/event/CoordinateActions";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { TEXT_LINK } from "@/components/ui/styles";
-import {
-  coordinatePair,
-  formatCoordinates,
-  mapsUrl,
-  parsePastedCoordinates,
-} from "@/lib/coordinates";
+import { coordinatePair, parsePastedCoordinates } from "@/lib/coordinates";
 
 interface CoordinateInputsProps {
   lat: string;
@@ -101,24 +94,7 @@ export function CoordinateInputs({
         </div>
       </div>
 
-      {pair && (
-        <div className="flex items-center gap-1">
-          <a
-            href={mapsUrl(pair.lat, pair.lng)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${TEXT_LINK} inline-flex items-center gap-1 text-xs`}
-          >
-            View on Maps
-            <ExternalLink size={11} />
-          </a>
-          <CopyButton
-            value={formatCoordinates(pair.lat, pair.lng)}
-            label="Copy coordinates"
-            copiedLabel="Coordinates copied"
-          />
-        </div>
-      )}
+      {pair && <CoordinateActions lat={pair.lat} lng={pair.lng} />}
     </div>
   );
 }
