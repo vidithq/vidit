@@ -324,3 +324,93 @@ jobs:
           fi
 
           echo "✓ docs/ and planning/ both touched."
+
+  # Identity gate: `main` only ever carries commits from the allowlisted
+  # identities. A commit authored under an unrelated address attributes
+  # the work to whichever GitHub account owns that address, permanently
+  # and publicly, and the fix once it is on `main` is a history rewrite.
+  # Catching it on the PR costs one rebase instead.
+  #
+  # Checked for every commit in the PR range: the author email, the
+  # committer email (the GitHub web UI and merge queues set it
+  # independently of the author), and every `Co-authored-by:` trailer,
+  # which GitHub resolves to an account exactly like the author field.
+  # Co-authors are allowed a wider set: any GitHub noreply address and
+  # any Anthropic address, so pair work and agent attribution need no
+  # allowlist edit per contributor.
+  #
+  # PR-only, like `docs-pairing`: the range logic needs a base and a head
+  # sha, and by the time a commit is on `main` the gate has already run.
+  commit-authors:
+    name: Commit author identity
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check author, committer and co-author emails
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Allowed as author or committer of a commit reaching main.
+          ALLOWED=$(cat <<'EOF'
+          admin@vidit.app
+          noreply@github.com
+          49699333+dependabot[bot]@users.noreply.github.com
+          EOF
+          )
+
+          allowed() { printf '%s\n' "$ALLOWED" | grep -Fxq -- "$1"; }
+
+          # Co-authors additionally accept any GitHub noreply address and
+          # any Anthropic address.
+          coauthor_allowed() {
+            if allowed "$1"; then return 0; fi
+            case "$1" in
+              *@users.noreply.github.com | *@anthropic.com) return 0 ;;
+            esac
+            return 1
+          }
+
+          MERGE_BASE=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          FAIL=0
+
+          for SHA in $(git rev-list "$MERGE_BASE..$HEAD_SHA"); do
+            AUTHOR=$(git show -s --format='%ae' "$SHA")
+            COMMITTER=$(git show -s --format='%ce' "$SHA")
+
+            if ! allowed "$AUTHOR"; then
+              echo "::error::$SHA: author email '$AUTHOR' is not an allowlisted identity."
+              FAIL=1
+            fi
+
+            if ! allowed "$COMMITTER"; then
+              echo "::error::$SHA: committer email '$COMMITTER' is not an allowlisted identity."
+              FAIL=1
+            fi
+
+            TRAILERS=$(git show -s --format='%(trailers:key=Co-authored-by,valueonly)' "$SHA" \
+              | sed -n 's/.*<\(.*\)>.*/\1/p')
+
+            while IFS= read -r EMAIL; do
+              [ -n "$EMAIL" ] || continue
+              if ! coauthor_allowed "$EMAIL"; then
+                echo "::error::$SHA: Co-authored-by email '$EMAIL' is not an allowed identity."
+                FAIL=1
+              fi
+            done <<< "$TRAILERS"
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::commit-authors check failed. Set the right identity (git config user.email), rewrite the offending commits (git rebase with --reset-author, or git commit --amend), and force-push the branch."
+            exit 1
+          fi
+
+          echo "✓ Every commit in this PR carries an allowlisted identity."
