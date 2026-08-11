@@ -42,7 +42,6 @@ import {
   ringOffsets,
   ringRadius,
 } from "./stack";
-import type { Bounds } from "./bounds";
 
 // CARTO basemap pair, matched light / dark tiles. maplibre paint can't read CSS
 // variables, so the base tiles swap here off the theme rather than in the CSS
@@ -642,12 +641,13 @@ interface MapProps {
   className?: string;
   center?: { lat: number; lng: number };
   zoom?: number;
-  /** Frame the camera on this box (`[west, south, east, north]`) instead of
-   *  reading `center` / `zoom`. For a view derived from its own content (the
-   *  per-analyst profile map) rather than from a remembered camera: MapLibre
-   *  solves the zoom against the real container, so no caller re-derives the
-   *  mercator maths. Applied on mount and whenever the box changes. */
-  fitBounds?: Bounds;
+  /** Frame the camera on this box instead of reading `center` / `zoom`. For a
+   *  view derived from its own content (the per-analyst profile map) rather
+   *  than from a remembered camera: MapLibre solves the zoom against the real
+   *  container, so no caller re-derives the mercator maths. Applied on mount
+   *  and whenever the box changes. Unlike a request box, `east` may run past
+   *  180 for a box crossing the antimeridian, which is how MapLibre reads it. */
+  fitBounds?: MapBounds;
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
@@ -699,9 +699,9 @@ function BoundsReporter({
 /** Frames the camera on a bounds box. A child of `<MapGL>` because the map
  *  instance only exists inside it; the effect keys on the four numbers, not
  *  the array, so a re-render with an equal box doesn't re-fit. */
-function FitBoundsCamera({ bounds }: { bounds: Bounds }) {
+function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
   const { current: map } = useMap();
-  const [west, south, east, north] = bounds;
+  const { west, south, east, north } = bounds;
 
   useEffect(() => {
     if (!map) return;

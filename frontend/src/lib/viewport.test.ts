@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   VIEWPORT_PADDING,
+  WORLD_BOUNDS,
   boundsContain,
   normalizeBounds,
   padBounds,
@@ -134,5 +135,45 @@ describe("toBboxParam", () => {
     const a = toBboxParam({ south: 45.000001, west: 30, north: 50, east: 40 });
     const b = toBboxParam({ south: 45.000002, west: 30, north: 50, east: 40 });
     expect(a).toBe(b);
+  });
+
+  // The framing box `pointsBounds` returns for a set straddling the
+  // antimeridian is unwrapped (`east` past 180), which `parse_bbox` rejects.
+  it("widens an unwrapped crossing box to the full longitude range", () => {
+    expect(toBboxParam({ south: 64, west: 179, north: 65, east: 181 })).toBe(
+      "64,-180,65,180"
+    );
+  });
+});
+
+// Pins the contract `services/event_filters.parse_bbox` enforces, not the
+// literal: four numbers, `south,west,north,east` order, in range, and wide
+// enough that no coordinate on the planet falls outside it. The profile's
+// coverage map sends exactly this value.
+describe("WORLD_BOUNDS", () => {
+  it("serialises to a box parse_bbox accepts that leaves no coordinate out", () => {
+    const parts = toBboxParam(WORLD_BOUNDS).split(",").map(Number);
+    expect(parts).toHaveLength(4);
+    expect(parts.every(Number.isFinite)).toBe(true);
+
+    const [south, west, north, east] = parts;
+    expect(south).toBeGreaterThanOrEqual(-90);
+    expect(north).toBeLessThanOrEqual(90);
+    expect(west).toBeGreaterThanOrEqual(-180);
+    expect(east).toBeLessThanOrEqual(180);
+    expect(south).toBeLessThanOrEqual(north);
+    expect(west).toBeLessThanOrEqual(east);
+
+    for (const [lat, lng] of [
+      [-90, -180],
+      [90, 180],
+      [48.5, 35.0],
+      [-33.9, -70.6],
+    ]) {
+      expect(lat).toBeGreaterThanOrEqual(south);
+      expect(lat).toBeLessThanOrEqual(north);
+      expect(lng).toBeGreaterThanOrEqual(west);
+      expect(lng).toBeLessThanOrEqual(east);
+    }
   });
 });

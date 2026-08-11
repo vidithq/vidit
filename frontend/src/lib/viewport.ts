@@ -23,6 +23,18 @@ export interface MapBounds {
 }
 
 /**
+ * The whole planet. `bbox` is required, so a fetch that wants every matching
+ * point rather than a viewport slice (the profile's coverage map) says so
+ * with this box.
+ */
+export const WORLD_BOUNDS: MapBounds = {
+  south: LAT_MIN,
+  west: LNG_MIN,
+  north: LAT_MAX,
+  east: LNG_MAX,
+};
+
+/**
  * How far past each edge of the viewport the fetched box reaches, as a
  * fraction of the viewport's own span. 0.25 buys a quarter-screen margin on
  * every side: pans shorter than that reuse the points already in memory,

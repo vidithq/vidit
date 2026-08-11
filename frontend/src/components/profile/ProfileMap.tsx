@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { filterPointsByStatus, type MapPoint } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AUTHOR_FILTER_RE } from "@/lib/search";
-import { WORLD_BBOX, hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
+import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
+import { WORLD_BOUNDS, toBboxParam } from "@/lib/viewport";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 
@@ -43,7 +44,7 @@ export function ProfileMap({ username }: { username: string }) {
   // (`useApiResource`), so an ineligible handle makes no request.
   const path = AUTHOR_FILTER_RE.test(username)
     ? `/events/points?author=${encodeURIComponent(username)}` +
-      `&hide_demo=true&bbox=${WORLD_BBOX}`
+      `&hide_demo=true&bbox=${toBboxParam(WORLD_BOUNDS)}`
     : null;
   const { data } = useApiResource<MapPoint[]>(path);
   // One subset drives the camera and the count, so the two can never report
