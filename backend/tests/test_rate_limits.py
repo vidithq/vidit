@@ -46,6 +46,7 @@ from app.services import seed as seed_service
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import SESSION_COOKIE
 from tests.conftest import login_as
+from tests.events._helpers import WORLD_BBOX
 
 client = TestClient(app)
 
@@ -204,7 +205,9 @@ def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
 _READ_LIMITS = [
     ("/api/v1/events", 120),
     (f"/api/v1/events/{uuid.UUID(int=0)}", 120),
-    ("/api/v1/events/points", 60),
+    # ``bbox`` is required here: FastAPI's parameter validation runs before
+    # the limiter, so a bare call would 422 without ever touching the bucket.
+    (f"/api/v1/events/points?bbox={WORLD_BBOX}", 60),
     ("/api/v1/search?q=vidit", 60),
     ("/api/v1/search/authors?q=vidit", 60),
     ("/api/v1/tags", 60),

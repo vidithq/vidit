@@ -33,7 +33,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
 | **Events** | | | |
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
-| GET | `/events/points` | 🌐 | Compact map-points tuples (cached) |
+| GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
@@ -402,16 +402,33 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
 
-Results are cached in-memory for 60s per unique filter combination; the response
-echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
-to 60/min/IP.
+`bbox` is **required**: the payload tracks the area asked for, and the map's own
+calls are viewport-sized. Nothing caps that area, since the map legitimately asks
+for the world box at low zoom. Unlike on `GET /events`, an empty `?bbox=` is a
+rejection here, not an omitted filter.
 
-**Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`
-`submitted_from`, `submitted_to`, `author` (see `GET /events` for semantics), plus
-map-only filters `media` (repeatable, `?media=image&media=video`, matches a geolocation
-carrying any attachment of a listed type; values are constrained to `image`/`video`, else
-422) and `hide_demo` (exclude demo rows). The date
-params are still accepted but the map now filters dates client-side from the payload.
+Results are cached in-memory for 60s per unique `bbox` + filter combination; the
+response echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
+Rate-limited to 60/min/IP.
+
+The `bbox` is snapped outward onto a fixed 0.05° server-side grid before it is
+keyed and queried. Two viewports inside one cell therefore share a cache entry
+and get a payload covering the snapped (slightly larger) box, which always
+contains the box requested.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `bbox` | string, **required** | `south,west,north,east` (four comma-separated floats), same shape and validation as on `GET /events`: latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. Missing, empty, or malformed → 422. Boxes crossing the antimeridian are not modelled: the map widens such a viewport to the full longitude range rather than splitting it into two calls. |
+| `media` | string (repeatable) | `?media=image&media=video`, matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
+| `hide_demo` | bool | Exclude demo rows. |
+| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | See `GET /events` for semantics. The date params are accepted, and the map filters dates client-side off the payload instead of sending them. |
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Points inside `bbox` |
+| 422 | `bbox` missing or malformed, a malformed `event_date_from` / `event_date_to` / `submitted_from` / `submitted_to` (ISO `YYYY-MM-DD`), or a `media` / `author` value outside its domain |
 
 **Response 200:**
 ```json
@@ -1633,7 +1650,7 @@ Endpoints that return paginated lists use this shape:
 }
 ```
 
-`GET /events` and `GET /events/points` are intentionally **unpaginated** today. A hard server-side `LIMIT` will land before public read access.
+`GET /events` and `GET /events/points` are intentionally **unpaginated**. `/events` caps its result set with `?limit=` (200 max); `/events/points` bounds its own with the required `bbox`, so the requested box decides the payload size.
 
 ### Errors
 

@@ -11,6 +11,7 @@ they are the input boundary for query parameters, moved here with the
 predicates so a filter and its validation can't separate.
 """
 
+import math
 from dataclasses import dataclass, fields
 from datetime import date, timedelta
 
@@ -145,7 +146,9 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 
     Validation: four comma-separated floats, lat in [-90, 90], lng in
     [-180, 180], south <= north, west <= east. Antimeridian-crossing boxes
-    (west > east) aren't handled — MapLibre viewports never produce them.
+    (west > east) aren't modelled and are rejected; a client whose viewport
+    straddles the antimeridian widens to the full longitude range instead
+    (``frontend/src/lib/viewport.ts``).
     """
     parts = bbox.split(",")
     if len(parts) != 4:
@@ -169,6 +172,56 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     if west > east:
         raise HTTPException(status_code=422, detail="bbox west must be <= east")
     return south, west, north, east
+
+
+# Server-side grid, in degrees, that ``/events/points`` snaps a requested box
+# onto before it keys its cache. Client viewports arrive at ~11 m precision, so
+# raw boxes are near-unique per caller: keyed on them the cache misses on almost
+# every request, and one caller cycling a low decimal evicts every other entry
+# from the LRU. 0.05 deg is ~5.5 km at the equator, so neighbouring viewports
+# collapse onto one entry while the payload stays viewport-sized.
+POINTS_CACHE_GRID = 0.05
+
+
+def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """Grow a parsed box outward onto :data:`POINTS_CACHE_GRID`.
+
+    Outward only: the snapped box contains the one asked for, so a payload
+    computed for it always covers the caller's viewport. Callers key their
+    cache and build their predicate off the same snapped tuple, so a cached
+    payload is always the one its key describes.
+    """
+    south, west, north, east = bounds
+    return (
+        max(-90.0, _snap_down(south)),
+        max(-180.0, _snap_down(west)),
+        min(90.0, _snap_up(north)),
+        min(180.0, _snap_up(east)),
+    )
+
+
+def _snap_down(value: float) -> float:
+    """Largest grid line at or below ``value`` (rounded off binary float dust)."""
+    return round(math.floor(value / POINTS_CACHE_GRID) * POINTS_CACHE_GRID, 6)
+
+
+def _snap_up(value: float) -> float:
+    """Smallest grid line at or above ``value``."""
+    return round(math.ceil(value / POINTS_CACHE_GRID) * POINTS_CACHE_GRID, 6)
+
+
+def bbox_predicate(bounds: tuple[float, float, float, float]):
+    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`.
+
+    Split from :func:`apply_filters` so a caller that parses the bbox itself
+    (``/events/points`` parses once, for its cache key) applies the same
+    envelope instead of re-deriving it.
+    """
+    south, west, north, east = bounds
+    return ST_Within(
+        Event.event_coords,
+        ST_MakeEnvelope(west, south, east, north, 4326),
+    )
 
 
 def apply_filters(
@@ -259,13 +312,7 @@ def apply_filters(
         query = query.filter(Event.is_demo.is_(False))
 
     if bbox:
-        south, west, north, east = parse_bbox(bbox)
-        query = query.filter(
-            ST_Within(
-                Event.event_coords,
-                ST_MakeEnvelope(west, south, east, north, 4326),
-            )
-        )
+        query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     return query
 
