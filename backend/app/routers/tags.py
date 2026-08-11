@@ -8,6 +8,7 @@ from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
+from app.services.pagination import REFERENTIAL_MAX_ROWS
 
 router = APIRouter()
 
@@ -44,12 +45,18 @@ def list_tags(
     needs *every* option in this required bucket up front so the analyst can
     pick the right one even when they're first to tag it; the usage filter
     that's right for the map is wrong here.
+
+    Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
+    pickers and the filter panel hydrate this vocabulary whole and filter it
+    client-side, so a page of it would be a page of missing options. The
+    ceiling is what keeps ``free``-category growth (the one user-writable
+    category) from turning this into an unbounded hydration.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))
         if category:
             query = query.filter(Tag.category == category)
-        return query.order_by(Tag.category, Tag.name).all()
+        return query.order_by(Tag.category, Tag.name).limit(REFERENTIAL_MAX_ROWS).all()
 
     query = (
         db.query(Tag)
@@ -60,7 +67,7 @@ def list_tags(
     )
     if category:
         query = query.filter(Tag.category == category)
-    return query.order_by(Tag.name).all()
+    return query.order_by(Tag.name).limit(REFERENTIAL_MAX_ROWS).all()
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)

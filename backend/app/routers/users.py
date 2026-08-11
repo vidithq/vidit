@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -11,6 +11,7 @@ from app.routers.events._common import coords_or_none, thumbnail_media
 from app.schemas.event import EventList, PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
+from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
@@ -172,14 +173,22 @@ def unfollow_user(
 def get_user_geolocations(
     request: Request,
     username: str,
-    page: int = 1,
-    per_page: int = 20,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
     db: Session = Depends(get_db),
 ):
+    """One analyst's events, newest event date first, capped at 100 per page.
+
+    Offset-paged rather than cursor-paged: the ordering the profile reads by
+    is ``event_date``, which is nullable and editable and so cannot key a
+    cursor, and one analyst's output is not the enumeration surface the
+    catalog list is. The pager's page is bounded either way.
+    """
     user = _get_live_user_or_404(db, username)
 
-    if per_page > 100:
-        per_page = 100
+    # Over-asking is clamped, not rejected; ``ge=1`` above keeps a page below 1
+    # from reaching Postgres as a negative OFFSET (a 500).
+    per_page = page_size(per_page)
 
     total = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
 

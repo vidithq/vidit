@@ -6,6 +6,7 @@ from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.conflict import ConflictRead
+from app.services.pagination import REFERENTIAL_MAX_ROWS
 
 router = APIRouter()
 
@@ -29,6 +30,11 @@ def list_conflicts(
     ``used=true`` flips to the map-filter view: only conflicts carried by at
     least one live event, so the filter UI never surfaces a chip that matches
     zero results. Mirrors the orphan filter on ``GET /tags``.
+
+    Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
+    submit picker filters the whole referential client-side, and the sync that
+    writes it caps its own row count, so the ceiling bounds the response
+    without ever cutting an option the picker needs.
     """
     query = db.query(Conflict)
     if used:
@@ -38,4 +44,4 @@ def list_conflicts(
             .filter(Event.deleted_at.is_(None))
             .distinct()
         )
-    return query.order_by(Conflict.ongoing.desc(), Conflict.name).all()
+    return query.order_by(Conflict.ongoing.desc(), Conflict.name).limit(REFERENTIAL_MAX_ROWS).all()

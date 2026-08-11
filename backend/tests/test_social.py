@@ -392,6 +392,56 @@ def test_timeline_paginates(db, cleanup):
     assert {it["id"] for it in page1["items"]} & {it["id"] for it in page2["items"]} == set()
 
 
+def test_timeline_cursor_walks_the_whole_feed(db, cleanup):
+    """``Link: rel="next"`` walks the feed to exhaustion, once each."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    author = _make_user(db, suffix="author")
+    record_user(viewer)
+    record_user(author)
+
+    created = set()
+    for i in range(5):
+        geo = _make_geo(db, author=author, title=f"G{i}", event=date(2026, 5, i + 1))
+        record_geo(geo)
+        created.add(str(geo.id))
+    db.add(Follow(follower_id=viewer.id, followed_id=author.id))
+    db.commit()
+
+    headers = login_as(client, viewer)
+    walked: list[str] = []
+    path: str | None = "/api/v1/timeline?per_page=2"
+    pages = 0
+    while path is not None:
+        response = client.get(path, headers=headers)
+        assert response.status_code == 200
+        walked.extend(item["id"] for item in response.json()["items"])
+        link = response.headers.get("Link")
+        path = link[1 : link.index(">")].replace("http://testserver", "") if link else None
+        pages += 1
+        assert pages <= 10, "cursor walk did not terminate"
+
+    assert pages == 3
+    assert len(walked) == len(set(walked)), "a row was served twice"
+    assert set(walked) == created
+
+
+def test_timeline_caps_per_page_and_rejects_garbage(db, cleanup):
+    """Over-asking is clamped to the cap; below 1 or non-numeric is a 422."""
+    record_user, _ = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    record_user(viewer)
+    headers = login_as(client, viewer)
+
+    capped = client.get("/api/v1/timeline?per_page=500", headers=headers)
+    assert capped.status_code == 200
+    assert capped.json()["per_page"] == 100
+
+    for query in ("per_page=0", "page=0", "page=abc", "cursor=garbage"):
+        response = client.get(f"/api/v1/timeline?{query}", headers=headers)
+        assert response.status_code == 422, f"expected 422 for {query!r}"
+
+
 # ── GET /users/{username} — follower counters + is_following ─────────────
 
 
