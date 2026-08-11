@@ -169,7 +169,7 @@ One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and
 
 Every clickable is accent, red is only destructive, there is no grey button (grey lives in `<Pill>` neutral and `disabled`). The one loud filled red is `DANGER_CONFIRM`, applied via `className` to the armed second click of a two-click confirm, so the strongest red shows once, at the point of no return. `fullWidth` stretches it (auth submits); `icon` makes a square icon-only button; a `<Link>` that should look like a button takes `buttonClasses(variant)`.
 
-**Tap size.** Both shapes stand taller on a phone (`min-h-9` on the text shape, `size-9` on the icon square), dropping to the desktop 28px / 32px from `sm` up. Only the tappable height moves: the type scale and the horizontal padding are the same at every width. The `?` of [`FieldHelp`](#field-help-) does the same with padding and a matching negative margin, growing its 13px glyph to a ~29px target without shifting the label it sits beside.
+**Tap size.** Both shapes stand taller on a phone (`min-h-9` on the text shape, `size-9` on the icon square), dropping to the desktop 28px / 32px from `sm` up. Only the tappable height moves: the type scale and the horizontal padding are the same at every width. The `?` of [`FieldHelp`](../frontend/src/components/ui/FieldHelp.tsx) does the same with padding and a matching negative margin, growing its 13px glyph to a ~29px target without shifting the label it sits beside.
 
 ### Forms
 
