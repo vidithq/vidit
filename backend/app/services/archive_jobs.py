@@ -258,7 +258,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             zip_path = tmp_path / "upload.zip"
             archive_dir = tmp_path / "archive"
             archive_dir.mkdir()
-            # Streamed, never buffered: a staged zip can approach the 2 GB
+            # Streamed, never buffered: a staged zip can approach the 4 GB
             # guard, far past what the worker process can hold in memory.
             get_storage().get_to_path(job.zip_key, zip_path)
             archive_zip.extract_allowlisted(zip_path, archive_dir)

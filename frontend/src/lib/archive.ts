@@ -7,6 +7,23 @@ import { ApiError } from "./api";
 const TWEETS_FILE = "tweets.js";
 const MEDIA_DIR = "tweets_media/";
 
+/** Staged-zip size guard, mirroring `MAX_UPLOAD_BYTES` in the same backend
+ *  intake guard. The presigned POST policy pins it as the S3
+ *  `content-length-range`, so an over-cap body is rejected by storage with a
+ *  400 the upload leg can't retry past; checking it here turns that into a
+ *  named failure before a multi-GB upload starts. Change both sides together. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+
+/** The stripped archive is still over the upload cap. Carries the backend's
+ *  `archive_too_large` code so the page maps it to one message, and so the
+ *  storage-side rejection of the same condition reads identically. */
+export const archiveTooLarge = () =>
+  new ApiError(
+    "That archive is still over 4 GB after stripping, so it can't be imported.",
+    0,
+    "archive_too_large"
+  );
+
 /** Rough bytes per `tweets.js` record across real exports (JSON envelope +
  *  text + entities). Feeds only the cosmetic pre-import post estimate the
  *  enqueue carries; the worker's parse stamps the exact totals. */
@@ -145,10 +162,17 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
  * their directory records are. Media is rebased by basename under
  * `tweets_media/`; the tweets.js match is anchored so `deleted-tweets.js`
  * is not picked up. Throws an `ApiError` carrying the same `code` the
- * backend would (`archive_malformed` / `archive_no_tweets`) so the page
- * maps it to one message.
+ * backend would (`archive_malformed` / `archive_no_tweets` /
+ * `archive_too_large`) so the page maps it to one message.
+ *
+ * `maxBytes` is the upload cap the result is checked against; it defaults to
+ * the mirrored backend guard and exists so tests can drive the over-cap path
+ * without a multi-GB fixture.
  */
-export async function stripArchive(file: File): Promise<StrippedArchive> {
+export async function stripArchive(
+  file: File,
+  maxBytes: number = MAX_UPLOAD_BYTES
+): Promise<StrippedArchive> {
   const head = await sliceBytes(file, 0, 4);
   if (!(head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b)) {
     throw malformed();
@@ -237,6 +261,12 @@ export async function stripArchive(file: File): Promise<StrippedArchive> {
     if (e instanceof ApiError) throw e;
     throw malformed();
   }
+
+  // Fail here rather than at the storage POST: the presigned policy answers
+  // an over-cap body with a 400 that no retry can clear, so the analyst gets
+  // the reason instead of an upload that cannot succeed.
+  const outBytes = outChunks.reduce((total, chunk) => total + chunk.length, 0);
+  if (outBytes > maxBytes) throw archiveTooLarge();
 
   return {
     file: new File(outChunks as BlobPart[], "vidit-archive.zip", {

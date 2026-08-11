@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { archiveTooLarge } from "./archive";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
@@ -357,14 +358,25 @@ export function presignArchiveUpload(): Promise<ArchiveImportPresign> {
   });
 }
 
-/** The upload leg failed in transit (network drop, an expired presign, a
- *  storage-side reject): nothing is staged or enqueued, so a retry of the
- *  same import is always safe. Distinct from an enqueue `ApiError`. */
+/** The upload leg failed in transit (network drop, an expired presign):
+ *  nothing is staged or enqueued, so a retry of the same import is always
+ *  safe. Distinct from an enqueue `ApiError`, and from the over-cap reject,
+ *  which is terminal and carries `archive_too_large` instead. */
 export class ArchiveUploadError extends Error {
   constructor() {
     super("The upload didn't complete. Check your connection and try again.");
     this.name = "ArchiveUploadError";
   }
+}
+
+/** Classify a non-2xx from the storage POST. An over-cap body is terminal, so
+ *  it must not surface as the retryable transit message: S3 rejects the POST
+ *  policy's `content-length-range` with a 400 whose XML body carries
+ *  `EntityTooLarge`, and the dev upload endpoint answers 413 on the same
+ *  condition. Everything else is transit. */
+function uploadFailure(status: number, body: string): Error {
+  const tooLarge = status === 413 || body.includes("<Code>EntityTooLarge</Code>");
+  return tooLarge ? archiveTooLarge() : new ArchiveUploadError();
 }
 
 /**
@@ -394,7 +406,7 @@ export function uploadArchive(
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new ArchiveUploadError());
+        : reject(uploadFailure(xhr.status, xhr.responseText ?? ""));
     xhr.onerror = () => reject(new ArchiveUploadError());
     xhr.send(fd);
   });

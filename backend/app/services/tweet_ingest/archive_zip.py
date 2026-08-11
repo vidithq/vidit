@@ -51,8 +51,11 @@ _MEDIA_DIR = "tweets_media"
 # presigned POST policy enforces it at upload, and the enqueue + worker
 # re-check it before reading the staged object. The product limits are the
 # per-media caps at assemble time (``settings.max_image_size`` /
-# ``settings.max_video_size``).
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+# ``settings.max_video_size``). Sits under S3's 5 GB single-part POST
+# ceiling, so the policy stays expressible in one form post. The browser
+# strip mirrors the value (``frontend/src/lib/archive.ts``) to fail an
+# over-cap archive before the upload leg.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 
 # Uncompressed-size caps: anti-zip-bomb only, sized far above any legitimate
 # export so they never bind a real archive. The total bounds the disk one

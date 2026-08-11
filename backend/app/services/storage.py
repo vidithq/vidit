@@ -393,7 +393,7 @@ class S3Storage:
 
     def get_to_path(self, key: str, dest: Path) -> None:
         """Stream the object at ``key`` to ``dest`` without buffering it in
-        memory: the staged archive guard is 2 GB, far past what a worker
+        memory: the staged archive guard is 4 GB, far past what a worker
         process can hold, so the whole-object ``get_bytes`` is off-limits for
         staged zips.
         """
