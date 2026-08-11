@@ -59,5 +59,25 @@ window.YTD.tweets.part0 = [
       "created_at" : "Fri Nov 14 18:30:00 +0000 2025",
       "full_text" : "Two hits 48.012345, 37.802411 and 50.450100, 30.523400 overnight"
     }
+  },
+  {
+    "tweet" : {
+      "id_str" : "7001",
+      "created_at" : "Sat Nov 15 07:15:00 +0000 2025",
+      "retweeted" : false,
+      "full_text" : "RT @other_osint: Strike site 49.988000, 36.232800 confirmed",
+      "extended_entities" : {
+        "media" : [
+          { "type" : "photo", "id_str" : "71", "media_url_https" : "https://pbs.twimg.com/media/CCC3.jpg" }
+        ]
+      }
+    }
+  },
+  {
+    "tweet" : {
+      "id_str" : "8001",
+      "created_at" : "Sat Nov 15 09:45:00 +0000 2025",
+      "full_text" : "Worth an RT @other_osint: their thread covers the same sector"
+    }
   }
 ]
