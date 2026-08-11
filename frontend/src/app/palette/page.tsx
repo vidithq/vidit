@@ -120,6 +120,7 @@ const MOCK_DETAIL: EventDetail = {
   title: "Strike on a depot, Donetsk",
   event_coords: { lat: 48.0159, lng: 37.8024 },
   capture_source_coords: null,
+  archived_source_url: null,
   event_date: "2026-05-09",
   is_demo: true,
   status: "geolocated",
@@ -168,6 +169,16 @@ const MOCK_DETAIL: EventDetail = {
   geolocators: [],
   investigator_count: 0,
   investigators: [],
+};
+
+// The same detail body with a real source and its Wayback capture: the
+// archived fallback is suppressed on a synthetic demo source, so the mock
+// above can never show it.
+const MOCK_DETAIL_ARCHIVED: EventDetail = {
+  ...MOCK_DETAIL,
+  is_demo: false,
+  source_url: "https://t.me/channel/12345",
+  archived_source_url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
 };
 
 // The lighter geolocation-card payload (timeline / recent-submissions shape).
@@ -890,7 +901,12 @@ export default function PalettePage() {
 
           <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
-              <EventDetailBody geo={MOCK_DETAIL} variant="page" />
+              <Variant label="demo source (synthetic, no archived copy)">
+                <EventDetailBody geo={MOCK_DETAIL} variant="page" />
+              </Variant>
+              <Variant label="real source + archived fallback">
+                <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
+              </Variant>
             </div>
           </Item>
 

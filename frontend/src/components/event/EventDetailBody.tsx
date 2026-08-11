@@ -171,13 +171,33 @@ function DetailRows({
         value={formatDate(geo.created_at)}
       />
       <DetailRow label="Source" concept="source_url" compact={compact}>
-        <SourceLabel
-          isDemo={sourceIsSynthetic(geo)}
-          url={geo.source_url}
-          variant="link"
-          maxWidthClass={sourceMaxWidth}
-          className={sourceClass}
-        />
+        {/* The archived copy sits beside the source rather than replacing it:
+            the original stays the primary link while it resolves, and the
+            fallback is one click away the day it stops. */}
+        <span className="flex min-w-0 items-baseline justify-end">
+          <SourceLabel
+            isDemo={sourceIsSynthetic(geo)}
+            url={geo.source_url}
+            variant="link"
+            maxWidthClass={sourceMaxWidth}
+            className={sourceClass}
+          />
+          {geo.archived_source_url && !sourceIsSynthetic(geo) && (
+            <a
+              href={geo.archived_source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Archived copy, readable if the source is taken down"
+              /* The link text alone reads as "archived" out of context, and
+                 `title` is not announced: name the target for a screen
+                 reader. */
+              aria-label="Archived copy of the source"
+              className={`${TEXT_LINK} ml-2 shrink-0 text-xs`}
+            >
+              archived
+            </a>
+          )}
+        </span>
       </DetailRow>
       {/* Mirrors of the same media, directly under the primary they mirror.
           Collapsed: they are corroboration, not the evidence anchor, so they

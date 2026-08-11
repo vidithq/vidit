@@ -291,6 +291,14 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventGeolocator.created_at",
     )
+    # One row per link carried by the event (its ``source_url`` plus every
+    # href in the proof body), each holding that link's archived copy once the
+    # worker has one. See ``models.source_archive``.
+    archives = relationship(
+        "SourceArchive",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
     source_links = relationship(
         "EventSourceLink",
         back_populates="event",

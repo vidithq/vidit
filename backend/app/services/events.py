@@ -55,6 +55,7 @@ from app.services.sanitize import (
     extract_image_srcs,
     sanitize_tiptap_doc,
 )
+from app.services.source_archive import enqueue_event_best_effort as enqueue_source_archival
 from app.services.storage import sweep_keys
 
 
@@ -381,6 +382,10 @@ async def create_with_evidence(
     )
 
     db.refresh(geo)
+    # The row is born public, so its links are archived now: the source tweet
+    # can be deleted at any time, and the capture runs off-request behind the
+    # worker (see ``services/source_archive``).
+    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 
@@ -478,6 +483,9 @@ async def create_request(
     )
 
     db.refresh(geo)
+    # A request is public content the moment it lands, so its links archive on
+    # the same terms as a geolocation's.
+    enqueue_source_archival(db, geo)
     return geo
 
 
@@ -662,6 +670,11 @@ async def geolocate(
     # Committed; sweep the removed media's S3 objects (best-effort).
     sweep_keys(removed_keys, context=f"event {geo.id} geolocate media removal")
     db.refresh(geo)
+    # Publication: this is where a draft's links first go to a public archive.
+    # The promotion also sets the source URL a detected draft was born without
+    # and rewrites the proof body, so what is enqueued here is the published
+    # set, not the draft's.
+    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 

@@ -613,6 +613,27 @@ The durable queue behind `POST /events/import-archive`: the endpoint stages the 
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
 
+### `source_archives`
+
+One row per link carried by an event: its `source_url` plus every `http(s)` href in the proof body's Tiptap document. The row is both the archival job and its result, so a link never travels between a queue table and a read table. The write paths insert `queued` rows; the worker claims them with `FOR UPDATE SKIP LOCKED` and stamps `archived_url` in place. See [`ingestion.md`](ingestion.md#source-archival) for the pipeline and retry semantics.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
+| `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event; never normalised, since it is half the row's identity and what the read surface matches `events.source_url` against. |
+| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source) or `'proof_link'` (an href inside the proof body). A link that is both is stored once as `source_url`. |
+| `status` | `VARCHAR(10)` | NOT NULL, `ck_source_archives_status_valid`: `'queued'` → `'running'` → `'done'` \| `'failed'`. A failed attempt returns to `queued` behind a backoff; a `running` row past the stale window is reclaimable. |
+| `archived_url` | `TEXT` | nullable. The archived copy. `ck_source_archives_done_url` ties it to `status='done'` in both directions, so a non-NULL value is always a usable capture. |
+| `provider` | `VARCHAR(20)` | nullable. `'wayback'` or `'archive_today'`, set with `archived_url`. |
+| `attempts` | `INTEGER` | NOT NULL, default 0. Claim counter; at the budget the row lands `failed` rather than consuming pass budget forever. |
+| `error` | `TEXT` | nullable. Terse reason for the last failed attempt; kept on a row that returns to `queued`, so a retry history stays readable in flight. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+| `next_attempt_at` | `TIMESTAMPTZ` | NOT NULL. When the row becomes claimable; now at insert, pushed out by the exponential backoff after each failure. Indexed with `status` (`ix_source_archives_status_next_attempt`), the claim query. |
+| `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
+
+`UNIQUE (event_id, original_url)` is the idempotency anchor: every enqueue path (create, the geolocate promotion, an edit that adds a citation, the catalog backfill) can run repeatedly and only inserts what is missing.
+
 ---
 
 ## Design decisions
@@ -649,6 +670,9 @@ Edit rights and credit are different facts. `owner_id` is a single mutable permi
 
 ### Why upload proof images at publish, not while typing?
 So `media` keeps a NOT NULL `event_id`: no staging table, no `event_id IS NULL` orphan, no reaper. The editor holds local previews and submit uploads every file through the one evidence intake. The trade is a browser-side editor that batches uploads at submit rather than on drop.
+
+### Why a `source_archives` child table and not an `archived_url` column on `events`?
+An event carries several links: its `source_url` and every citation in the proof body. One column could only hold the source's capture, and each link needs its own attempt counter, backoff schedule and failure reason to be retried independently. The child table also makes the queue and the read surface the same rows, so a capture is never copied from a job table into an event column where the two could disagree.
 
 ### Why `before_closed_status`?
 `close` unifies the old withdraw and reject into one verb, but a closed request and a closed detection are different (the badge copy, the requested-view routing, and re-import all need to tell them apart). `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.

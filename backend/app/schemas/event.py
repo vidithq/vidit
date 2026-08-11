@@ -106,6 +106,10 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
+    # The archived copy of ``source_url``, rendered as the fallback once the
+    # original dies. NULL until the archival worker has a capture (and on a
+    # source-less draft). Required-nullable: the key is always serialised.
+    archived_source_url: str | None
     # Mirrors of the same media on other networks (or other same-POV posts), in
     # the order the submitter gave them. Empty when the event declares none;
     # always serialised. Unlike ``source_url`` these are not the frozen evidence

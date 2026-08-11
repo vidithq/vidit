@@ -434,6 +434,7 @@ def list_detections(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
             selectinload(Event.investigators).joinedload(EventInvestigator.user),
+            selectinload(Event.archives),
             selectinload(Event.source_links),
         )
         .filter(*detected)

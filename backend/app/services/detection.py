@@ -294,6 +294,10 @@ async def _persist_one(
     # No post-commit refresh: a refresh failure here would misclassify an
     # already-durable row as failed. The geo's attributes lazy-load from the
     # still-open session on access.
+    #
+    # No source archival here: a detected row is unpublished working state and
+    # Save Page Now is public and timestamped. The links are enqueued when the
+    # analyst publishes the draft (``events.geolocate``).
     return geo
 
 

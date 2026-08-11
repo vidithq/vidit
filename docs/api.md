@@ -80,6 +80,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
+| POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
 
 ---
 
@@ -126,7 +127,7 @@ Every limit on this page is behaviorally pinned (N requests answer, N+1 returns 
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
-| `POST /admin/maintenance/reap-*` | 30/hour |
+| `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
 
@@ -675,6 +676,7 @@ Full detail for a single event, in any lifecycle state.
   "event_coords": { "lat": 48.123, "lng": 37.456 },
   "capture_source_coords": null,
   "source_url": "https://t.me/channel/12345",
+  "archived_source_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
   "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
@@ -729,7 +731,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source_url` is the Wayback (or archive.today) copy of that `source_url`, `null` on a `detected` draft (whose links are archived when it is published), on a source-less row, and until the archival worker has a capture; the detail surface renders it as a fallback link beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
@@ -1312,7 +1314,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>16 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance reapers). Expand for full contracts.</summary>
+<summary>17 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1598,6 +1600,15 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 **Response 200:**
 ```json
 { "pending_registrations_deleted": 7 }
+```
+
+### `POST /admin/maintenance/enqueue-source-archival` 🛡️
+
+Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live non-demo events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
+
+**Response 200:**
+```json
+{ "events_scanned": 412, "links_enqueued": 173 }
 ```
 
 </details>
