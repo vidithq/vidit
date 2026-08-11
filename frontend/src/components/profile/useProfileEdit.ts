@@ -82,8 +82,7 @@ export function useProfileEdit({
   );
   const saving = saveMutation.loading;
   const saveError = saveMutation.error;
-  // Stable `useState` setter — safe to omit from effect deps, like the old
-  // local `setSaveError`.
+  // Stable `useState` setter, safe to omit from effect deps.
   const setSaveError = saveMutation.setError;
 
   // Drop edit mode when the profile switches usernames, so unsaved drafts

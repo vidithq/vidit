@@ -152,10 +152,10 @@ export function EventEditForm({
     },
   });
 
-  // Reject (close) the detection: the queue's old inline delete moved here so a
-  // detection card is just a click, like every other card. The reason is
-  // captured in an inline `CloseEventForm` (required + publicly visible), which
-  // owns its own close mutation; this flag just toggles the panel.
+  // Reject (close) the detection: a detection card is just a click, like every
+  // other card. The reason is captured in an inline `CloseEventForm` (required
+  // + publicly visible), which owns its own close mutation; this flag just
+  // toggles the panel.
   const [rejecting, setRejecting] = useState(false);
 
   const busy = submitMutation.loading;

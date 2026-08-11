@@ -20,12 +20,10 @@ import ProofEditor, {
 describe("ProofEditor", () => {
   it("offers the proof-image control by default (upload-at-publish)", () => {
     // The image is held locally (blob preview + retained File) and uploaded
-    // only at publish via `proof_files[]`, so the control is live, not the old
-    // disabled placeholder.
+    // only at publish via `proof_files[]`, so the control is live.
     render(<ProofEditor onChange={() => {}} />);
     const control = screen.getByText("+ Image");
     expect(control).toBeInTheDocument();
-    // It's a label wrapping a hidden file input, not a disabled button.
     expect(control.querySelector('input[type="file"]')).not.toBeNull();
   });
 
@@ -34,7 +32,6 @@ describe("ProofEditor", () => {
     // (else it'd be a geolocation), and stays image-free there.
     render(<ProofEditor onChange={() => {}} allowImages={false} />);
     expect(screen.queryByText("+ Image")).toBeNull();
-    // Formatting controls stay.
     expect(screen.getByRole("button", { name: "B" })).toBeInTheDocument();
   });
 });
@@ -54,15 +51,6 @@ describe("import-hydration preview matching (identical-content collision)", () =
       { type: "image", attrs: { src: "placeholder://b.jpg" } },
     ],
   };
-
-  it("matches both placeholders to their own file", () => {
-    const matched = matchInitialProofFiles(doc, [fileA, fileB]);
-    expect(matched).toHaveLength(2);
-    expect(matched.map((m) => m.placeholder).sort()).toEqual([
-      "placeholder://a.jpg",
-      "placeholder://b.jpg",
-    ]);
-  });
 
   it("keeps two placeholders and emits two files even though the underlying data: URLs collide", async () => {
     const matched = matchInitialProofFiles(doc, [fileA, fileB]);

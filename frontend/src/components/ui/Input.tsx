@@ -10,8 +10,7 @@ import { FORM_INVALID_FIELD } from "./form-styles";
 // The one form field. `variant` picks the shape, `invalid` adds the red outline
 // (the same FORM_INVALID_FIELD the section cards use). Native props + className
 // pass through, so a caller keeps its per-field extras (font-mono, has-value,
-// min-h, …). Replaces the FORM_INPUT / FORM_INPUT_COMPACT / FORM_INPUT_LOCKED
-// trio: one component, the difference is a prop.
+// min-h, …). One component, the difference is a prop.
 //
 // - `default`: the standard field; focus turns the border orange (accent).
 // - `compact`: denser, display-leaning data-row field (admin rows, trust reason).

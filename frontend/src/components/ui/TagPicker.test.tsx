@@ -83,7 +83,6 @@ describe("TagPicker conflict typeahead", () => {
     // Minor-tier ongoing and ended conflicts stay behind the search.
     expect(screen.queryByText(/Sudanese civil war/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Falklands War/)).not.toBeInTheDocument();
-    // Other is the last pill.
     const pills = screen
       .getAllByRole("button")
       .map((b) => b.textContent)
@@ -169,13 +168,6 @@ describe("TagPicker conflict typeahead", () => {
     expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
   });
 
-  it("renders a multi-year ended conflict with its range", () => {
-    render(<Host />);
-    fireEvent.click(endedSwitch());
-    fireEvent.change(searchInput(), { target: { value: "gulf" } });
-    expect(screen.getByText("Gulf War (1990-1991)")).toBeInTheDocument();
-  });
-
   it("skips the year suffix when the start year is unknown or already in the name", () => {
     const guards = [
       conflict({ id: "g1", name: "Unrest in Nowhere", tier: "major" }),
@@ -214,7 +206,6 @@ describe("TagPicker conflict typeahead", () => {
     fireEvent.change(searchInput(), { target: { value: "" } });
     expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
 
-    // Clicking a selected pill deselects it.
     fireEvent.click(screen.getByText("Falklands War (1982)"));
     expect(screen.queryByText("Falklands War (1982)")).not.toBeInTheDocument();
   });

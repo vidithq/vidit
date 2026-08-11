@@ -208,9 +208,9 @@ function DetailRows({
       {tagRow("Capture source", captureTags, "capture_source")}
       {tagRow("Tags", freeTags)}
       {/* Compact panel omits requested-by + author rows: the author is in
-          the panel header, the trace belongs to the full page. Since the merge,
-          fulfilment is a lifecycle move on this same row, so the trace is who
-          opened the request (``requested_by``), not a link to a separate request. */}
+          the panel header, the trace belongs to the full page. Fulfilment is
+          a lifecycle move on this same row, so the trace is who opened the
+          request (``requested_by``), not a link to a separate request. */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" compact={compact}>
           <Link

@@ -676,7 +676,6 @@ async def _upload_with_optional_strip(
         return await upload_bytes_with_optional_strip(
             raw, content_type, key, produce_derivatives=produce_derivatives
         )
-    # Video path — stream-hash + upload_fileobj. No derivatives.
     return await get_storage().upload(file, key)
 
 

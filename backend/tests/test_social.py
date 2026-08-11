@@ -197,7 +197,6 @@ def test_unfollow_removes_edge_and_is_idempotent(db, cleanup):
     )
     assert first.status_code == 204
 
-    # Idempotent: no edge → still 204.
     second = client.delete(
         f"/api/v1/users/{target.username}/follow", headers=login_as(client, follower)
     )
@@ -412,13 +411,11 @@ def test_profile_includes_follow_counters_and_is_following(db, cleanup):
     db.add(Follow(follower_id=target.id, followed_id=me.id))
     db.commit()
 
-    # Anonymous viewer — is_following is always False.
     anon = client.get(f"/api/v1/users/{target.username}").json()
     assert anon["followers_count"] == 2
     assert anon["following_count"] == 1
     assert anon["is_following"] is False
 
-    # Logged-in viewer (``me``) — is_following is True.
     authed = client.get(f"/api/v1/users/{target.username}", headers=login_as(client, me)).json()
     assert authed["followers_count"] == 2
     assert authed["following_count"] == 1

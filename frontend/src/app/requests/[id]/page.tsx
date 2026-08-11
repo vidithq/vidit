@@ -42,8 +42,7 @@ export default function RequestDetailPage() {
   } = useApiResource<EventDetail>(
     typeof params.id === "string" ? `/events/${params.id}` : null
   );
-  // Whether the inline close panel is open (replaces the old browser confirm +
-  // fixed reason).
+  // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
   // Optimistic "I'm working on this": flip locally on click so the button
   // reflects the toggle instantly (mirrors FollowButton), then refetch to
@@ -68,7 +67,7 @@ export default function RequestDetailPage() {
   );
   // `deleted` stays true through the post-delete navigation so the actions
   // don't re-enable in the unmount window (the row is gone; a second click
-  // would 404). The old handler left its pending flag set instead of a finally.
+  // would 404).
   const [deleted, setDeleted] = useState(false);
   const deleteMutation = useMutation(() => deleteEvent(request!.id), {
     fallback: "Delete failed",

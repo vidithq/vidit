@@ -113,8 +113,7 @@ export function TweetImportBanner({
   };
 
   // Same layout pre and post import (only the button label + input disabled
-  // state change). An earlier swap-to-a-different-section approach flickered
-  // visibly on the recorded screen capture even at matching height.
+  // state change).
   const imported = importedFrom !== null;
   const state = imported ? authorshipState(linkedX, importedFrom) : "match";
   return (

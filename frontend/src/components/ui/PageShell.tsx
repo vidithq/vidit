@@ -67,8 +67,7 @@ function PageCenter({ children }: { children: ReactNode }) {
   );
 }
 
-// Centered pre-data loading state. One home for the muted "Loading…" the pages
-// showed via copy-pasted spans (which had drifted between `...` and `…`).
+// Centered pre-data loading state. One home for the muted "Loading…".
 export function PageLoading({ label = "Loading…" }: { label?: string }) {
   return (
     <PageCenter>
@@ -78,7 +77,7 @@ export function PageLoading({ label = "Loading…" }: { label?: string }) {
 }
 
 // Centered error state, optionally with a back link. Covers both the bare
-// message and the "message + Back to map" variant the pages hand-rolled.
+// message and the "message + Back to map" variant.
 export function PageError({
   message,
   backHref,

@@ -128,8 +128,6 @@ def delete_event(
     image derivatives) are swept after the commit lands. Admin soft-delete
     lives behind the admin router and stamps ``deleted_at`` instead.
     """
-    # Filter out soft-deleted rows: an admin-removed row shouldn't be
-    # owner-actionable either, same observed behaviour as a genuine 404.
     geo = _resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 

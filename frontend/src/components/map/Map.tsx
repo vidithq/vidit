@@ -1001,7 +1001,6 @@ export default function Map({
         clusterMaxZoom={CLUSTER_MAX_ZOOM}
         clusterRadius={50}
       >
-        {/* Radius scales with point count */}
         <Layer
           id="clusters"
           type="circle"

@@ -78,8 +78,6 @@ describe("useApiResource", () => {
     expect(result.current.data).toBe("A");
 
     rerender({ path: "/b" });
-    // The previous result belongs to /a — it must not leak into /b's
-    // render, and /b reports loading until its own fetch settles.
     expect(result.current.data).toBeNull();
     expect(result.current.loading).toBe(true);
     expect(calls).toHaveLength(2);
@@ -96,8 +94,6 @@ describe("useApiResource", () => {
     rerender({ path: "/b" });
     expect(calls[0].signal.aborted).toBe(true);
 
-    // The aborted /a request settles anyway — must not clobber /b's
-    // pending state.
     await act(async () => calls[0].resolve("stale A"));
     expect(result.current.data).toBeNull();
     expect(result.current.loading).toBe(true);

@@ -4,7 +4,7 @@ import { TAPPABLE_HOVER } from "./styles";
 import { FORM_LABEL } from "./form-styles";
 
 // "icon + label + value" link row, shared by the profile's linked-accounts and
-// the About page's "Stay in touch" channels (it was hand-rolled in both).
+// the About page's "Stay in touch" channels.
 //
 // - `href` present  -> renders a link; the value reads as orange and the row
 //   gets the orange-border hover.
