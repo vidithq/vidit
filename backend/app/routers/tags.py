@@ -24,8 +24,8 @@ CURATED_CATEGORIES = ("capture_source",)
 
 
 @router.get("", response_model=list[TagRead])
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def list_tags(
     request: Request,
     category: str | None = None,

@@ -94,8 +94,8 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
 
 
 @router.get("/{geolocation_id}", response_model=EventRead)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def get_event(request: Request, geolocation_id: uuid.UUID, db: Session = Depends(get_db)):
     row = (
         db.query(

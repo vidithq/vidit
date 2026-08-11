@@ -27,8 +27,10 @@ AUTHENTICATED_READ_LIMIT = "1000/hour"
 # slowapi keys a bucket by (scope, key) and defaults the scope to the request
 # path, which would hand every URL its own allowance. Naming the scope makes
 # every decorated endpoint count into the same bucket, so the quota is a budget
-# for reading the catalog rather than a per-URL one.
-_AUTHENTICATED_READ_SCOPE = "authenticated-read"
+# for reading the catalog rather than a per-URL one. Public because the 429
+# handler in `main` reads it off the failed limit to tell this layer's
+# hour-long lockout apart from a per-minute throttle.
+AUTHENTICATED_READ_SCOPE = "authenticated-read"
 
 # Bucket for requests carrying no valid session. It never accrues (see
 # ``_authenticated_read_cost``), so its only job is to be a non-empty constant:
@@ -76,13 +78,19 @@ def _authenticated_read_cost(request: Request) -> int:
     return 1 if _session_user_id(request) is not None else 0
 
 
-# Stack under the endpoint's own `@limiter.limit(...)`: slowapi collects both
-# limits against the same handler and evaluates them in one pass, so a read
-# answers only when the caller is inside the per-IP limit AND inside their
-# account's hourly read budget.
+# Stack this decorator ABOVE the endpoint's own `@limiter.limit(...)`, never
+# below it. slowapi collects both limits against the same handler and evaluates
+# them in registration order, consuming a token from each in turn and breaking
+# on the first that fails. Decorators apply bottom-up, so the bottom one
+# registers first and is evaluated first: with the quota underneath, a request
+# the per-IP limit is about to reject has already charged the account's hourly
+# budget, and an analyst bursting past a per-minute limit drains an hour of
+# reads on requests that returned nothing. Above, the per-endpoint limit
+# decides first and its rejections cost the account nothing. A read still
+# answers only when the caller is inside both.
 authenticated_read_quota = limiter.shared_limit(
     AUTHENTICATED_READ_LIMIT,
-    scope=_AUTHENTICATED_READ_SCOPE,
+    scope=AUTHENTICATED_READ_SCOPE,
     key_func=authenticated_read_key,
     cost=_authenticated_read_cost,
 )

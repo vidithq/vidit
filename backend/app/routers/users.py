@@ -87,8 +87,8 @@ def update_my_profile(
 
 
 @router.get("/{username}", response_model=UserProfile)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def get_user_profile(
     request: Request,
     username: str,
@@ -116,8 +116,8 @@ def get_user_profile(
 
 
 @router.get("/{username}/stats", response_model=UserStatsRead)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def get_user_stats(
     request: Request,
     username: str,
@@ -167,8 +167,8 @@ def unfollow_user(
 
 
 @router.get("/{username}/events", response_model=PaginatedEvents)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def get_user_geolocations(
     request: Request,
     username: str,

@@ -124,8 +124,8 @@ def investigator_aggregates(
 
 
 @router.get("/points")
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def list_points(
     request: Request,
     # ``conflict``, ``capture_source`` and ``tag`` accept multiple values
@@ -242,8 +242,8 @@ def list_points(
 
 
 @router.get("", response_model=list[EventList])
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def list_events(
     request: Request,
     view: str = Query("located"),
@@ -350,8 +350,8 @@ def list_events(
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def list_detections(
     request: Request,
     page: int = 1,

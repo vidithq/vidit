@@ -11,8 +11,8 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[ConflictRead])
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def list_conflicts(
     request: Request,
     used: bool = False,

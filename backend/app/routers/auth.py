@@ -4,7 +4,6 @@ import uuid
 from typing import NoReturn
 from urllib.parse import urlencode
 
-import jwt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -48,6 +47,7 @@ from app.services.auth import (
     DUMMY_PASSWORD_HASH,
     bump_token_version,
     create_access_token,
+    decode_session_token_with_reason,
     hash_password,
     maybe_promote_admin,
     verify_password,
@@ -344,24 +344,20 @@ def logout(
     cookie = request.cookies.get(SESSION_COOKIE)
     user_id: uuid.UUID | None = None
     if cookie:
-        try:
-            payload = jwt.decode(
-                cookie,
-                settings.jwt_secret,
-                algorithms=[settings.jwt_algorithm],
-            )
+        payload, reason = decode_session_token_with_reason(cookie)
+        if payload is None:
+            # Tampered / expired / malformed cookie. Still log the logout
+            # (user_id NULL) so the request is queryable, but WARN so the
+            # line is greppable: legitimate-no-cookie and forged-cookie
+            # cases produce identical silent NULLs otherwise.
+            logger.warning("logout: rejected session cookie: %s", reason)
+        else:
             sub = payload.get("sub")
             if isinstance(sub, str):
                 try:
                     user_id = uuid.UUID(sub)
                 except ValueError:
                     user_id = None
-        except jwt.InvalidTokenError as exc:
-            # Tampered / expired / malformed cookie. Still log the logout
-            # (user_id NULL) so the request is queryable, but WARN so the
-            # line is greppable — legitimate-no-cookie and forged-cookie
-            # cases produce identical silent NULLs otherwise.
-            logger.warning("logout: rejected session cookie: %s", exc)
 
     # Invalidate every outstanding session for this user, not just the
     # cookie on this device, by bumping `token_version` so older JWTs 401

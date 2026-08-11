@@ -30,8 +30,8 @@ router = APIRouter()
 
 
 @router.get("", response_model=SearchResponse)
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def search(
     request: Request,
     q: str = Query("", description="Free-text query (empty returns an empty result set)"),
@@ -116,8 +116,8 @@ def search(
 
 
 @router.get("/authors", response_model=AuthorSuggestions)
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def suggest_authors(
     request: Request,
     q: str = Query(

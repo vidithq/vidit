@@ -12,8 +12,8 @@ router = APIRouter()
 
 
 @router.get("/timeline", response_model=PaginatedEvents)
-@limiter.limit("120/minute")
 @authenticated_read_quota
+@limiter.limit("120/minute")
 def get_timeline(
     request: Request,
     page: int = Query(1, ge=1),

@@ -83,8 +83,8 @@ def _extract_host(source_url: str) -> str | None:
 
 
 @router.get("/possible-duplicates", response_model=list[PossibleDuplicateRead])
-@limiter.limit("60/minute")
 @authenticated_read_quota
+@limiter.limit("60/minute")
 def list_possible_duplicates(
     request: Request,
     lat: float = Query(..., ge=-90, le=90),
