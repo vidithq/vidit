@@ -155,10 +155,8 @@ def test_read_tweets_skips_non_numeric_id(tmp_path):
 
 def test_read_tweets_drops_retweets(tmp_path):
     """A retweet carries someone else's post, so importing it would attribute a
-    stranger's geolocation to the account running the import. The export flags
-    nothing (``retweeted`` is ``false`` even on the retweet), so the
-    ``RT @handle:`` text prefix is the discriminator: it is anchored, so a tweet
-    the analyst wrote that merely mentions RT further in is kept."""
+    stranger's geolocation to the account running the import. Discriminator, and
+    why the text prefix is it: ``_RETWEET_PREFIX_RE`` in ``archive.py``."""
     archive = tmp_path / "arc"
     archive.mkdir()
     payload = [
@@ -179,6 +177,9 @@ def test_read_tweets_drops_retweets(tmp_path):
         },
         # ``text`` instead of ``full_text``: the same prefix still decides.
         {"tweet": {"id_str": "9003", "created_at": "", "text": "RT @a: relayed"}},
+        # A non-string ``full_text`` must not mask the ``text`` that identifies
+        # this as a retweet.
+        {"tweet": {"id_str": "9004", "created_at": "", "full_text": 123, "text": "RT @a: relayed"}},
     ]
     (archive / "tweets.js").write_text(
         "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"

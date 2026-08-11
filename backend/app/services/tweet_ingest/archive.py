@@ -37,13 +37,20 @@ _YTD_PREFIX_RE = re.compile(r"^\s*window\.YTD\.\w[\w-]*\.part\d+\s*=\s*")
 # Twitter's ``created_at``: ``Wed Nov 12 14:33:00 +0000 2025``.
 _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
-# The retweet discriminator. An export entry carries no flag worth trusting:
-# there is no ``retweeted_status`` object (the exporter drops it) and the
-# ``retweeted`` boolean is written ``false`` on every entry, retweets included.
-# What does survive is the text X stores for a retweet, ``RT @<handle>: <original
-# text>``, so the prefix is the signal. A handle is 1-15 word characters and the
-# colon must follow, which keeps a tweet that merely opens on the letters "RT"
-# out of the match; "RT" later in the text never matches (the pattern anchors).
+# The retweet discriminator, and the one home for why the text is the only
+# reliable signal in archive data. An export entry carries no flag worth
+# trusting: there is no ``retweeted_status`` object (the exporter drops it) and
+# the ``retweeted`` boolean is written ``false`` on every entry, retweets
+# included. What does survive is the text X stores for a retweet,
+# ``RT @<handle>: <original text>``, so the prefix is the signal. A handle is
+# 1-15 word characters and the colon must follow, which keeps a tweet that
+# merely opens on the letters "RT" out of the match. Callers match with
+# ``.match()``, which anchors on its own; the ``^`` is redundant there and stays
+# so the intent survives a move to ``.search()``. The heuristic's deliberate
+# boundary: X writes the canonical form, so variants like a lowercase ``rt`` or
+# a missing colon are out of scope, and a post the owner hand-typed with the
+# canonical prefix is dropped along with real retweets, its content being
+# someone else's either way.
 _RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
 
 _IMAGE_CONTENT_TYPE = {
@@ -75,9 +82,16 @@ def _strip_ytd_prefix(text: str) -> Any:
 
 
 def _tweet_text(tweet: dict[str, Any]) -> str:
-    """An export entry's text: ``full_text``, falling back to ``text``."""
-    text = tweet.get("full_text") or tweet.get("text") or ""
-    return text if isinstance(text, str) else ""
+    """An export entry's text: ``full_text``, falling back to ``text``.
+
+    The first key holding a ``str`` wins, so a malformed non-string ``full_text``
+    cannot mask a usable ``text``. Empty string when neither holds one.
+    """
+    for key in ("full_text", "text"):
+        value = tweet.get(key)
+        if isinstance(value, str):
+            return value
+    return ""
 
 
 def _is_retweet(tweet: dict[str, Any]) -> bool:

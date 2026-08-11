@@ -9,7 +9,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
-- **Archive import no longer imports retweets** ([#222](https://github.com/vidithq/vidit/pull/222), [`backend/app/services/tweet_ingest/archive.py`](backend/app/services/tweet_ingest/archive.py), [`docs/ingestion.md`](docs/ingestion.md#archive-formats)). An X export lists the account's retweets among its tweets, so a geo-tagged retweet became a `detected` draft attributed to the analyst running the import, crediting them with someone else's geolocation. `read_tweets` drops them at parse time, the earliest point that can tell them apart: the export marks nothing (`retweeted` is `false` on every entry, `retweeted_status` is absent), so the discriminator is the `RT @<handle>:` prefix X stores in the text, anchored so a post that mentions RT further in is kept. No job count moves, all four being counted from detections.
+- **Archive import no longer imports retweets** ([#222](https://github.com/vidithq/vidit/pull/222), [`backend/app/services/tweet_ingest/archive.py`](backend/app/services/tweet_ingest/archive.py), [`docs/ingestion.md`](docs/ingestion.md#archive-formats)). An X export lists the account's retweets among its tweets, so a geo-tagged retweet became a `detected` draft attributed to the analyst running the import, crediting them with someone else's geolocation. `read_tweets` drops them at parse time, the earliest point that can tell them apart: an export flags none of them, so the discriminator is the `RT @<handle>:` prefix X stores in a retweet's text, anchored so a post that mentions RT further in is kept. No job count moves, all four being counted from detections.
 
 ## v0.4.10, 2026-08-11
 
