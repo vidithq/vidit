@@ -4,7 +4,9 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
+import { formatCoordinates } from "@/lib/coordinates";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { CoordinateActions } from "@/components/event/CoordinateActions";
 import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -78,10 +80,17 @@ export default function EventPage() {
                 <DetailRow
                   label="Coordinates"
                   concept="coordinates"
+                  align="center"
                   className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
                 >
-                  <span className="text-sm text-neutral-200 font-mono">
-                    {geo.event_coords.lat.toFixed(6)}, {geo.event_coords.lng.toFixed(6)}
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-sm text-neutral-200 font-mono">
+                      {formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)}
+                    </span>
+                    <CoordinateActions
+                      lat={geo.event_coords.lat}
+                      lng={geo.event_coords.lng}
+                    />
                   </span>
                 </DetailRow>
               </div>

@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { formatDate, formatInstant } from "@/lib/format";
+import { formatCoordinates } from "@/lib/coordinates";
 import { sourceIsSynthetic } from "@/lib/events";
 import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
@@ -263,7 +264,7 @@ function DetailRows({
           >
             <span className="text-neutral-200 font-mono text-xs">
               {geo.event_coords
-                ? `${geo.event_coords.lat.toFixed(6)}, ${geo.event_coords.lng.toFixed(6)}`
+                ? formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)
                 : "—"}
             </span>
           </DetailRow>

@@ -6,10 +6,10 @@ import type { TweetImportCoord, TweetImportResponse } from "@/types";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import {
   buildSeedProof,
+  fetchFirstMediaFile,
   fetchProofFiles,
-  fetchProxyBlob,
-  makeFile,
   splitMedia,
+  tweetIdFrom,
 } from "@/lib/tweetImport";
 
 /**
@@ -63,9 +63,11 @@ export function useTweetImport(form: TweetImportFormBindings) {
   // silently keep its previous content.
   const [importGen, setImportGen] = useState(0);
   // Aborts in-flight fetches; Clear and re-Import both abort the previous
-  // controller. The token-ref guard above is a second layer because some
-  // browsers don't propagate aborts to all of ``apiFetch``'s internal
-  // fetches, so we never trust the abort alone.
+  // controller. The token-ref guard above is a second layer at the await
+  // boundaries below, because some browsers don't propagate aborts to all of
+  // ``apiFetch``'s internal fetches. Within one download pass the signal is
+  // the only guard: ``fetchFirstMediaFile`` / ``fetchProofFiles`` iterate
+  // their media on it, and a stale pass is caught on return.
   const importAbortRef = useRef<AbortController | null>(null);
 
   // Abort in-flight imports on unmount: the ``isCurrent`` guards also
@@ -121,17 +123,13 @@ export function useTweetImport(form: TweetImportFormBindings) {
     // only the first successfully-fetched primary is staged (the source-media
     // control is single-file too).
     const { primary, proof: proofMedia } = splitMedia(parsed.media);
-    const tweetId =
-      parsed.original_tweet_url.split("/").pop() ?? "tweet";
+    const tweetId = tweetIdFrom(parsed.original_tweet_url);
 
-    let primaryFile: File | null = null;
-    for (let i = 0; i < primary.length && primaryFile === null; i++) {
-      if (!isCurrent()) return;
-      const m = primary[i];
-      const fetched = await fetchProxyBlob(m.remote_url, controller.signal);
-      if (fetched === null) continue;
-      primaryFile = makeFile(fetched, m, tweetId, i);
-    }
+    const primaryFile = await fetchFirstMediaFile(
+      primary,
+      tweetId,
+      controller.signal
+    );
     if (!isCurrent()) return;
     if (primaryFile !== null) form.setFiles([primaryFile]);
 

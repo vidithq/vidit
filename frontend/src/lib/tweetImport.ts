@@ -34,6 +34,20 @@ import type { TweetImportMedia, TweetImportResponse } from "@/types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+// An X / Twitter status URL, the only shape ``/events/import-from-tweet``
+// accepts. Mirrors the host allowlist and the two path shapes of
+// ``tweet_ingest/syndication.normalise_tweet_url`` (``/<handle>/status/<id>``
+// and the handle-less ``/i/web/status/<id>``); shape recognition only, since
+// the backend still validates and resolves the URL. This gates whether the UI
+// offers to fetch a post's media at all, so accepting a form the backend
+// rejects would offer a button that always fails.
+const X_STATUS_URL =
+  /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/(?:i\/web|[A-Za-z0-9_]{1,15})\/status\/\d+/i;
+
+export function isXStatusUrl(url: string): boolean {
+  return X_STATUS_URL.test(url.trim());
+}
+
 export async function fetchProxyBlob(
   remoteUrl: string,
   signal: AbortSignal
@@ -67,6 +81,31 @@ export function makeFile(
     (media.kind === "video" ? "mp4" : "jpg");
   const filename = `tweet-${tweetId}-${index}.${guessedExt}`;
   return new File([fetched.blob], filename, { type: fetched.contentType });
+}
+
+/** The status id of a tweet URL, which names the files downloaded from it.
+ *  Read out of the ``/status/<id>`` segment rather than off the end, so a
+ *  trailing slash or a ``/photo/1`` suffix still yields the id. Falls back to
+ *  a constant when the URL carries no status id at all. */
+export function tweetIdFrom(tweetUrl: string): string {
+  return tweetUrl.match(/\/status\/(\d+)/)?.[1] ?? "tweet";
+}
+
+/**
+ * Download the first media item the proxy serves, as a `File`. An event holds
+ * one source media, so both callers stage exactly one; an item the proxy
+ * refuses is skipped rather than failing the lot, since the next one may serve.
+ */
+export async function fetchFirstMediaFile(
+  media: TweetImportMedia[],
+  tweetId: string,
+  signal: AbortSignal
+): Promise<File | null> {
+  for (let i = 0; i < media.length; i++) {
+    const fetched = await fetchProxyBlob(media[i].remote_url, signal);
+    if (fetched !== null) return makeFile(fetched, media[i], tweetId, i);
+  }
+  return null;
 }
 
 /**
@@ -146,4 +185,22 @@ export function splitMedia(
     primary: media.filter((m) => m.kind === "video"),
     proof: media.filter((m) => m.kind === "image"),
   };
+}
+
+/**
+ * The parsed post's own media, best candidate first: its videos ahead of its
+ * images (``splitMedia``'s split, so the preference has one home), and nothing
+ * carrying ``origin: "quote"``.
+ *
+ * For the source-media download on an existing detection, where the parsed URL
+ * *is* the source post. Two consequences: a post that leads with screenshots
+ * and ends with the clip still stages the footage, and a quote-retweet with no
+ * media of its own stages nothing rather than the quoted post's media (that
+ * would file another account's footage under this source).
+ */
+export function sourceMediaCandidates(
+  media: TweetImportMedia[]
+): TweetImportMedia[] {
+  const { primary, proof } = splitMedia(media.filter((m) => m.origin === "op"));
+  return [...primary, ...proof];
 }
