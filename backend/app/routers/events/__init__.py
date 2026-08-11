@@ -1,8 +1,8 @@
 """The ``/events`` routers: one ``APIRouter`` per concern.
 
 Each concern (``read`` / ``duplicates`` / ``import_tweet`` / ``write`` /
-``item``) owns its own ``APIRouter``; ``main.py`` mounts each under the shared
-``/api/v1/events`` prefix.
+``batch`` / ``item``) owns its own ``APIRouter``; ``main.py`` mounts each under
+the shared ``/api/v1/events`` prefix.
 
 They're exposed as an **ordered** tuple because the order is load-bearing:
 ``item`` (``GET /{id}`` and the other ``/{geolocation_id}`` ops) must mount
@@ -12,6 +12,7 @@ GETs (``/points``, ``/possible-duplicates``, ``/import-from-tweet/media``) and
 """
 
 from app.routers.events import (
+    batch,
     duplicates,
     import_archive,
     import_tweet,
@@ -26,5 +27,6 @@ routers = (
     import_tweet.router,
     import_archive.router,
     write.router,
+    batch.router,
     item.router,
 )

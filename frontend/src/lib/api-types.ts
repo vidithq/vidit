@@ -153,6 +153,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/maintenance/send-completion-digests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Maintenance Send Completion Digests
+         * @description Email every analyst holding unpublished ``detected`` drafts.
+         *
+         *     One message per analyst: how many drafts wait, and the link back to their
+         *     own Detections queue, where the batch completion publishes them. The
+         *     periodic nudge behind the import: the completion mail scrolls away, the
+         *     backlog does not. Runs on a click like the reapers above; a provider
+         *     failure on one address is counted, not raised.
+         */
+        post: operations["maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -593,6 +619,42 @@ export interface paths {
          *     ``services/events.create_with_evidence``.
          */
         post: operations["create_event_api_v1_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/batch-complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Complete Events
+         * @description Publish the selected ``detected`` drafts: ``detected`` → ``geolocated``.
+         *
+         *     JSON, not multipart: nothing uploads here. The drafts keep the evidence the
+         *     import gave them, and the call supplies only the conflict set (once, for the
+         *     whole selection) and one ``capture_source`` tag per row.
+         *
+         *     Each row commits on its own, so a mixed selection publishes what it can: a
+         *     draft that fails the floor (no proof image, no source media, no
+         *     coordinates, no source URL) rolls back alone and stays a draft with its
+         *     reason in ``rows[]``. Publishing a row credits the caller as its
+         *     geolocator and queues its links for archival, exactly as the single-row
+         *     transition does.
+         *
+         *     Two conditions reject the whole call, before anything is published: no
+         *     resolvable conflict (400, since no row could clear the floor) and a
+         *     targeted draft owned by another analyst (403). Rows are owner-only, so
+         *     there is no fulfil-someone-else's-draft path here.
+         */
+        post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1419,6 +1481,12 @@ export interface components {
          *     only the keys present in the response.
          */
         AdminMaintenanceResponse: {
+            /** Analysts Notified */
+            analysts_notified?: number | null;
+            /** Digest Send Failures */
+            digest_send_failures?: number | null;
+            /** Drafts Pending */
+            drafts_pending?: number | null;
             /** Events Scanned */
             events_scanned?: number | null;
             /** Expired */
@@ -1697,6 +1765,69 @@ export interface components {
         AuthorSuggestions: {
             /** Authors */
             authors: string[];
+        };
+        /**
+         * BatchCompletionCreate
+         * @description Body of ``POST /events/batch-complete``.
+         *
+         *     The conflict set is chosen once for the whole selection (an import is
+         *     usually dominated by one conflict); the capture source varies row to row.
+         */
+        BatchCompletionCreate: {
+            /** Conflict Ids */
+            conflict_ids: string[];
+            /** Rows */
+            rows: components["schemas"]["BatchCompletionRowCreate"][];
+        };
+        /**
+         * BatchCompletionRead
+         * @description Response of ``POST /events/batch-complete``: the per-row verdicts in the
+         *     order they were submitted, plus the two headline counts.
+         */
+        BatchCompletionRead: {
+            /** Failed */
+            failed: number;
+            /** Published */
+            published: number;
+            /** Rows */
+            rows: components["schemas"]["BatchCompletionRowRead"][];
+        };
+        /**
+         * BatchCompletionRowCreate
+         * @description One draft in a batch completion: which row, and the capture source its
+         *     analyst picked for it.
+         */
+        BatchCompletionRowCreate: {
+            /**
+             * Capture Source Tag Id
+             * Format: uuid
+             */
+            capture_source_tag_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+        };
+        /**
+         * BatchCompletionRowRead
+         * @description One row's outcome. ``code`` / ``message`` are NULL when the draft
+         *     published; otherwise they carry the same stable error code the single-row
+         *     geolocate would have answered with, so the queue can render the reason
+         *     against that row.
+         */
+        BatchCompletionRowRead: {
+            /** Code */
+            code: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Message */
+            message: string | null;
+            /** Published */
+            published: boolean;
         };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
@@ -2874,6 +3005,37 @@ export interface operations {
             };
         };
     };
+    maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMaintenanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_me_api_v1_admin_me_get: {
         parameters: {
             query?: never;
@@ -3575,6 +3737,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_complete_events_api_v1_events_batch_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCompletionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchCompletionRead"];
                 };
             };
             /** @description Validation Error */

@@ -90,6 +90,57 @@ class EventCloseRequest(BaseModel):
     close_reason: str = Field(min_length=1, max_length=2000)
 
 
+# How many drafts one batch completion may carry. Matches the detections
+# queue's own ``per_page`` ceiling, so a full page of drafts is always
+# publishable in one call and no client can ask for an unbounded loop of
+# row-level transactions.
+MAX_COMPLETION_ROWS = 100
+
+# How many conflicts one batch may set. The selection shares them, and an
+# import dominated by more than a handful of conflicts is not a batch.
+MAX_COMPLETION_CONFLICTS = 10
+
+
+class BatchCompletionRowCreate(BaseModel):
+    """One draft in a batch completion: which row, and the capture source its
+    analyst picked for it."""
+
+    event_id: uuid.UUID
+    capture_source_tag_id: uuid.UUID
+
+
+class BatchCompletionCreate(BaseModel):
+    """Body of ``POST /events/batch-complete``.
+
+    The conflict set is chosen once for the whole selection (an import is
+    usually dominated by one conflict); the capture source varies row to row.
+    """
+
+    conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
+    rows: list[BatchCompletionRowCreate] = Field(min_length=1, max_length=MAX_COMPLETION_ROWS)
+
+
+class BatchCompletionRowRead(BaseModel):
+    """One row's outcome. ``code`` / ``message`` are NULL when the draft
+    published; otherwise they carry the same stable error code the single-row
+    geolocate would have answered with, so the queue can render the reason
+    against that row."""
+
+    event_id: uuid.UUID
+    published: bool
+    code: str | None
+    message: str | None
+
+
+class BatchCompletionRead(BaseModel):
+    """Response of ``POST /events/batch-complete``: the per-row verdicts in the
+    order they were submitted, plus the two headline counts."""
+
+    published: int
+    failed: int
+    rows: list[BatchCompletionRowRead]
+
+
 class EventRead(BaseModel):
     id: uuid.UUID
     title: str

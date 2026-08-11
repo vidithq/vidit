@@ -1,6 +1,7 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
+  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
 
@@ -65,6 +66,43 @@ export function Input({
     );
   }
   return <input className={fieldClass(variant, invalid, className)} {...props} />;
+}
+
+/**
+ * A pick-one-from-a-short-list field, the same shapes as `<Input>` (it runs the
+ * same `fieldClass` recipe, so a select and a text field sit on one row without
+ * drifting apart). Native `<select>` on purpose: the options are a handful of
+ * curated values, and the platform control is the one that behaves correctly on
+ * a phone. `appearance-none` plus the caret glyph keeps the arrow from rendering
+ * as the browser default light chrome on the dark field.
+ *
+ * Pill chips stay the choice when the options are a taxonomy to browse (see
+ * `<TagPicker>`); this is for a dense row where one column IS the choice.
+ */
+export function Select({
+  variant = "default",
+  invalid = false,
+  className = "",
+  children,
+  ...props
+}: FieldProps & SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select
+        className={cn(
+          fieldClass(variant, invalid, ""),
+          "appearance-none pr-8 cursor-pointer",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none text-[10px]">
+        ▼
+      </span>
+    </div>
+  );
 }
 
 export function Textarea({

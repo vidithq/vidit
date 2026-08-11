@@ -198,14 +198,17 @@ export function getDetectionStats(): Promise<DetectionStats> {
 
 // ── Maintenance ───────────────────────────────────────────────────────
 
-/** One shape for both reapers; the UI renders only the keys present in the
- *  response. Mirrors the backend `AdminMaintenanceResponse`. */
+/** One shape for every maintenance action; the UI renders only the keys present
+ *  in the response. Mirrors the backend `AdminMaintenanceResponse`. */
 export interface MaintenanceResponse {
   expired?: number;
   old_consumed?: number;
   pending_registrations_deleted?: number;
   events_scanned?: number;
   links_enqueued?: number;
+  analysts_notified?: number;
+  drafts_pending?: number;
+  digest_send_failures?: number;
 }
 
 export function reapAuthTokens(): Promise<MaintenanceResponse> {
@@ -227,6 +230,15 @@ export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
 export function enqueueSourceArchival(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>(
     "/admin/maintenance/enqueue-source-archival",
+    { method: "POST" }
+  );
+}
+
+/** Email every analyst holding unpublished `detected` drafts: one message with
+ *  the count and a link to their own Detections queue. */
+export function sendCompletionDigests(): Promise<MaintenanceResponse> {
+  return apiFetch<MaintenanceResponse>(
+    "/admin/maintenance/send-completion-digests",
     { method: "POST" }
   );
 }

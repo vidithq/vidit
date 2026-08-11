@@ -169,6 +169,16 @@ def password_changed_email(*, to: str) -> Email:
     )
 
 
+def detections_link(username: str) -> str:
+    """The absolute URL of an analyst's own Detections queue.
+
+    One home for the address every draft-related message points at: the import
+    completion mail and the completion digest both send an analyst to the same
+    page.
+    """
+    return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
+
+
 def archive_import_complete_email(
     *,
     to: str,
@@ -217,6 +227,33 @@ def archive_import_failed_email(*, to: str) -> Email:
             "re-uploading the same archive skips it and continues from there.\n"
             "If it keeps failing, reach out on the Discord linked from the\n"
             "site footer.\n"
+            "\n"
+            "— Vidit\n"
+        ),
+    )
+
+
+def completion_digest_email(*, to: str, count: int, link: str) -> Email:
+    """The periodic nudge on drafts still awaiting completion.
+
+    One message per analyst, a count and the way back to their queue. It stays
+    this thin on purpose: which drafts are worth publishing is a judgment made
+    in the queue, so listing titles here would only be a second, staler copy of
+    the page the link opens.
+    """
+    plural = "s" if count != 1 else ""
+    return Email(
+        to=to,
+        subject=f"{count} Vidit draft{plural} awaiting completion",
+        text=(
+            f"You have {count} imported draft{plural} that hasn't been published\n"
+            "yet. Each one is waiting on the two calls only you can make: which\n"
+            "conflict it belongs to, and what the footage was shot with.\n"
+            "\n"
+            "The queue publishes them in one pass: pick the conflict once for a\n"
+            "selection, set the capture source per row, publish the lot.\n"
+            "\n"
+            f"  {link}\n"
             "\n"
             "— Vidit\n"
         ),

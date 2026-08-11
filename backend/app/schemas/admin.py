@@ -261,6 +261,11 @@ class AdminMaintenanceResponse(BaseModel):
     # capture across them.
     events_scanned: int | None = None
     links_enqueued: int | None = None
+    # Completion digest: analysts written to, the drafts those messages
+    # covered, and the sends the provider rejected.
+    analysts_notified: int | None = None
+    drafts_pending: int | None = None
+    digest_send_failures: int | None = None
 
 
 class AdminDetectionStatsRead(BaseModel):

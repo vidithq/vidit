@@ -431,3 +431,28 @@ def maintenance_enqueue_source_archival(
     )
     db.commit()
     return AdminMaintenanceResponse(**result)
+
+
+@router.post("/maintenance/send-completion-digests", response_model=AdminMaintenanceResponse)
+@limiter.limit("30/hour")
+def maintenance_send_completion_digests(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminMaintenanceResponse:
+    """Email every analyst holding unpublished ``detected`` drafts.
+
+    One message per analyst: how many drafts wait, and the link back to their
+    own Detections queue, where the batch completion publishes them. The
+    periodic nudge behind the import: the completion mail scrolls away, the
+    backlog does not. Runs on a click like the reapers above; a provider
+    failure on one address is counted, not raised."""
+    result = maintenance_service.send_completion_digests(db)
+    admin_service.log_admin_event(
+        db,
+        actor_id=current_user.id,
+        action="maintenance_send_completion_digests",
+        target=result,
+    )
+    db.commit()
+    return AdminMaintenanceResponse(**result)
