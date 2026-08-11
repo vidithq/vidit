@@ -63,9 +63,11 @@ export function useTweetImport(form: TweetImportFormBindings) {
   // silently keep its previous content.
   const [importGen, setImportGen] = useState(0);
   // Aborts in-flight fetches; Clear and re-Import both abort the previous
-  // controller. The token-ref guard above is a second layer because some
-  // browsers don't propagate aborts to all of ``apiFetch``'s internal
-  // fetches, so we never trust the abort alone.
+  // controller. The token-ref guard above is a second layer at the await
+  // boundaries below, because some browsers don't propagate aborts to all of
+  // ``apiFetch``'s internal fetches. Within one download pass the signal is
+  // the only guard: ``fetchFirstMediaFile`` / ``fetchProofFiles`` iterate
+  // their media on it, and a stale pass is caught on return.
   const importAbortRef = useRef<AbortController | null>(null);
 
   // Abort in-flight imports on unmount: the ``isCurrent`` guards also
