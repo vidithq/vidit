@@ -49,9 +49,19 @@ const DECIMAL = String.raw`[-+]?\d{1,3}(?:\.\d+)?`;
 // "48.015883, 37.802411", "48.015883 37.802411", "48.015883°, 37.802411°":
 // the whole paste is the pair, so an anchored match keeps a longer text
 // (a proof paragraph that happens to contain a coordinate) out.
+//
+// A comma is a separator here, never a decimal mark: "48,015" fills the fields
+// with 48 and 15, not the single European-notation value 48.015. Unresolvable
+// without guessing, and a whole-degree pair is the likelier paste; both fields
+// visibly change, so a wrong read is one the analyst sees.
 const PLAIN_PAIR = new RegExp(
   String.raw`^\s*(${DECIMAL})\s*°?\s*(?:,\s*|\s+)(${DECIMAL})\s*°?\s*$`
 );
+
+// Gate for the two URL forms below: they match mid-string (a map URL carries
+// its pair inside a longer path), which would otherwise let prose containing
+// "@48.5,37.8" or "q=48.5,37.8" hijack an ordinary paste.
+const IS_URL = /^https?:\/\//i;
 
 // Google Maps `?q=lat,lng` / `?query=lat,lng` (the share and the place-search
 // forms), comma or percent-encoded comma.
@@ -64,14 +74,17 @@ const MAPS_QUERY = new RegExp(
 const MAPS_CENTER = new RegExp(String.raw`@(${DECIMAL}),(${DECIMAL})`);
 
 /**
- * Read a "lat, lng" pair out of pasted text: a bare decimal pair or a Google
- * Maps URL. `null` means "not a coordinate", and the caller lets the paste
- * land as ordinary text. Out-of-bounds values are rejected here rather than
- * filling the fields with something the submit floor would reject anyway.
+ * Read a "lat, lng" pair out of pasted text: a bare decimal pair, or a Google
+ * Maps URL when the paste is a URL and nothing else. `null` means "not a
+ * coordinate", and the caller lets the paste land as ordinary text.
+ * Out-of-bounds values are rejected here rather than filling the fields with
+ * something the submit floor would reject anyway.
  */
 export function parsePastedCoordinates(text: string): CoordinatePair | null {
-  const match =
-    PLAIN_PAIR.exec(text) ?? MAPS_QUERY.exec(text) ?? MAPS_CENTER.exec(text);
+  const trimmed = text.trim();
+  const match = IS_URL.test(trimmed)
+    ? (MAPS_QUERY.exec(trimmed) ?? MAPS_CENTER.exec(trimmed))
+    : PLAIN_PAIR.exec(trimmed);
   if (match === null) return null;
   const lat = Number(match[1]);
   const lng = Number(match[2]);

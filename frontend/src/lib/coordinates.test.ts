@@ -110,6 +110,24 @@ describe("parsePastedCoordinates", () => {
     ).toBeNull();
   });
 
+  it("reads the URL forms only out of a paste that is itself a URL", () => {
+    // The two map patterns match mid-string, so anything but a URL paste must
+    // not reach them: prose keeps landing as prose.
+    expect(
+      parsePastedCoordinates("shot from @48.015883,37.802411 looking north")
+    ).toBeNull();
+    expect(parsePastedCoordinates("@48.015883,37.802411")).toBeNull();
+    expect(
+      parsePastedCoordinates("filter by q=48.015883,37.802411 in the search")
+    ).toBeNull();
+    expect(parsePastedCoordinates("maps.google.com/?q=48.015883,37.802411")).toBeNull();
+  });
+
+  it("reads a whole-degree comma pair as two values, not one decimal comma", () => {
+    // European notation is unresolvable here: "48,015" is the pair 48 / 15.
+    expect(parsePastedCoordinates("48,015")).toEqual({ lat: 48, lng: 15 });
+  });
+
   it("returns null for a single number, three numbers, or prose", () => {
     expect(parsePastedCoordinates("48.015883")).toBeNull();
     expect(parsePastedCoordinates("48.015883, 37.802411, 12")).toBeNull();
