@@ -16,7 +16,8 @@ export function Avatar({
 }: {
   src?: string | null;
   username: string;
-  /** Sizing utility, e.g. `w-16 h-16` or `size-10`. */
+  /** Sizing utility, e.g. `w-11 h-11` or `size-10`. The icon fallback scales
+   *  off it, so the circle is the only dimension a caller sets. */
   size: string;
   fallback?: "initial" | "icon";
   as?: "div" | "span";
@@ -33,7 +34,10 @@ export function Avatar({
           className="w-full h-full object-cover"
         />
       ) : fallback === "icon" ? (
-        <User size={28} className="text-neutral-500" />
+        // Sized in CSS, not by lucide's `size` prop: the class wins over the
+        // svg's width/height attributes, so the glyph tracks whatever circle
+        // the caller asked for instead of being pinned to one avatar size.
+        <User className="w-1/2 h-1/2 text-neutral-500" />
       ) : (
         <span className="text-neutral-300 font-medium">
           {username[0]?.toUpperCase() ?? "?"}

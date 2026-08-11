@@ -44,7 +44,7 @@ export function ProfileInsights({ username }: { username: string }) {
 
   return (
     <Card as="section">
-      <SectionEyebrow title="Insights" as="h3" margin="none" />
+      <SectionEyebrow title="Insights" margin="none" />
 
       <StatGrid>
         <StatTile icon={MapPin} label="Geolocated" value={stats.geolocated_count} />
@@ -57,7 +57,7 @@ export function ProfileInsights({ username }: { username: string }) {
 
       {stats.top_conflicts.length > 0 && (
         <div>
-          <SectionEyebrow title="Top conflicts" as="h4" margin="sm" />
+          <SectionEyebrow title="Top conflicts" as="h3" margin="sm" />
           <div className="flex flex-wrap gap-1.5">
             {stats.top_conflicts.map((c) => (
               <Pill key={c.name} tone="accent">
@@ -70,7 +70,7 @@ export function ProfileInsights({ username }: { username: string }) {
 
       {stats.capture_sources.length > 0 && (
         <div>
-          <SectionEyebrow title="Capture sources" as="h4" margin="sm" />
+          <SectionEyebrow title="Capture sources" as="h3" margin="sm" />
           <div className="flex flex-wrap gap-1.5">
             {stats.capture_sources.map((t) => (
               <Pill key={t.name}>
@@ -82,7 +82,7 @@ export function ProfileInsights({ username }: { username: string }) {
       )}
 
       <div>
-        <SectionEyebrow title="Last 12 months" as="h4" margin="sm" />
+        <SectionEyebrow title="Last 12 months" as="h3" margin="sm" />
         <ActivityBars buckets={stats.monthly_activity} />
       </div>
     </Card>
