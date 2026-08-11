@@ -2,9 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
+import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { TEXT_LINK } from "@/components/ui/styles";
 import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -78,10 +82,32 @@ export default function EventPage() {
                 <DetailRow
                   label="Coordinates"
                   concept="coordinates"
+                  align="center"
                   className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
                 >
-                  <span className="text-sm text-neutral-200 font-mono">
-                    {geo.event_coords.lat.toFixed(6)}, {geo.event_coords.lng.toFixed(6)}
+                  {/* The pair, then the two things a reader does with it:
+                      check it against satellite imagery, take it away. */}
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-sm text-neutral-200 font-mono">
+                      {formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)}
+                    </span>
+                    <a
+                      href={mapsUrl(geo.event_coords.lat, geo.event_coords.lng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${TEXT_LINK} inline-flex items-center gap-1 text-xs`}
+                    >
+                      View on Maps
+                      <ExternalLink size={11} />
+                    </a>
+                    <CopyButton
+                      value={formatCoordinates(
+                        geo.event_coords.lat,
+                        geo.event_coords.lng
+                      )}
+                      label="Copy coordinates"
+                      copiedLabel="Coordinates copied"
+                    />
                   </span>
                 </DetailRow>
               </div>
