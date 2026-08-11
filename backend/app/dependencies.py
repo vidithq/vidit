@@ -1,12 +1,11 @@
 from collections.abc import Generator
 
-import jwt
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import SessionLocal
 from app.models.user import User
+from app.services.auth import decode_session_token
 from app.services.auth_cookies import SESSION_COOKIE
 
 
@@ -27,23 +26,17 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    try:
-        payload = jwt.decode(
-            session_cookie,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm],
-        )
-        user_id = payload.get("sub")
-        token_version = payload.get("tv")
-        if not isinstance(user_id, str) or not isinstance(token_version, int):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    except jwt.InvalidTokenError as err:
-        # PyJWT base class for every decode failure (bad signature, expired,
-        # malformed, claim mismatch). One opaque 401 for all modes — granular
-        # errors would help an attacker probe whether a leaked token is live.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from err
+    # One opaque 401 for every decode failure (bad signature, expired,
+    # malformed, claim mismatch), which ``decode_session_token`` collapses into
+    # ``None``: granular errors would help an attacker probe whether a leaked
+    # token is live.
+    payload = decode_session_token(session_cookie)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    user_id = payload.get("sub")
+    token_version = payload.get("tv")
+    if not isinstance(user_id, str) or not isinstance(token_version, int):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
     # Reject soft-deleted accounts like deactivated ones: a deleted user
