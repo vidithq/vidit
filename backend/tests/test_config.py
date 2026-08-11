@@ -119,6 +119,38 @@ def test_default_jwt_secret_with_unparseable_host_fails(monkeypatch):
         Settings()
 
 
+def test_cors_origin_regex_dropped_on_remote_db(monkeypatch):
+    """The localhost dev regex must not survive to a non-local deployment: a
+    live localhost origin regex + allow_credentials would let any localhost page
+    make credentialed cross-origin reads against the API."""
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    settings = Settings()
+    assert settings.cors_origin_regex == r"^https?://localhost:\d+$"
+    assert settings.effective_cors_origin_regex == ""
+
+
+def test_cors_origin_regex_kept_on_local_db(monkeypatch):
+    """Locally the regex stands so one backend serves many frontend ports."""
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost:5432/db")
+    settings = Settings()
+    assert settings.effective_cors_origin_regex == r"^https?://localhost:\d+$"
+
+
+def test_cors_origin_regex_non_localhost_pattern_kept_on_remote_db(monkeypatch):
+    """A deliberately-set non-localhost regex (e.g. staging) is always honoured."""
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
+    monkeypatch.setenv("CORS_ORIGIN_REGEX", r"^https://.*\.staging\.vidit\.app$")
+    settings = Settings()
+    assert settings.effective_cors_origin_regex == r"^https://.*\.staging\.vidit\.app$"
+
+
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)

@@ -179,6 +179,13 @@ describe("renderProof", () => {
     expect(container.querySelectorAll("img")).toHaveLength(0);
   });
 
+  it("drops an image with a backslash protocol-relative (/\\host) src", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "/\\attacker.example/pixel.gif" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+  });
+
   it("renders lists, code blocks, rules, and hard breaks", () => {
     const container = renderDoc(
       doc(

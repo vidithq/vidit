@@ -76,12 +76,14 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
         # A bare prefix names no file; intake could never match it, so drop
         # the node here rather than 400 the whole submission later.
         return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
-    # Reject protocol-relative URLs (``//evil.com/x``) BEFORE the
-    # relative-path early-return below: the browser resolves them against
-    # the page scheme, so a persisted ``//attacker.example/pixel.gif`` would
-    # exfiltrate every viewer's IP / UA / Referer, defeating the
-    # anti-tracking-pixel guarantee.
-    if value.startswith("//"):
+    # Reject protocol-relative URLs BEFORE the relative-path early-return
+    # below: the browser resolves ``//attacker.example/pixel.gif`` against the
+    # page scheme, so a persisted one would exfiltrate every viewer's
+    # IP / UA / Referer, defeating the anti-tracking-pixel guarantee. Browsers
+    # also treat a backslash as a slash in URLs (WHATWG), so ``/\evil.com``
+    # resolves to ``//evil.com``; normalise the first two chars so the bare
+    # ``startswith("//")`` spelling can't be slipped by the backslash form.
+    if value[:2].replace("\\", "/") == "//":
         return None
     if value.startswith("/"):
         return value

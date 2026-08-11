@@ -36,10 +36,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
     # Extra origin regex OR'd with `cors_origins` by Starlette's CORSMiddleware.
     # Default whitelists every `localhost:<port>` so one backend can serve
-    # several concurrent frontends (worktrees, a/b sessions). Safe in prod:
-    # auth cookies are domain-scoped to `.vidit.app`, so a localhost:N page in
-    # someone's browser can't include them in a request to api.vidit.app even
-    # if CORS lets the request through.
+    # several concurrent frontends (worktrees, a/b sessions). This localhost
+    # default is dropped automatically on a non-local deployment (see
+    # `effective_cors_origin_regex`): with `allow_credentials=True` a live
+    # localhost origin regex would let any localhost page in a victim's browser
+    # read authenticated API responses. Prod leans on the explicit `cors_origins`
+    # allowlist; a non-localhost pattern (e.g. staging) is always honoured.
     cors_origin_regex: str = r"^https?://localhost:\d+$"
     # Cookie auth: set SameSite=none + Secure when frontend and backend live on
     # different registrable domains (e.g. vercel.app → up.railway.app). Locally
@@ -120,6 +122,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def effective_cors_origin_regex(self) -> str:
+        """`cors_origin_regex`, with the localhost dev-convenience default
+        dropped on a non-local deployment. A regex matching `localhost:<port>`
+        combined with `allow_credentials=True` would let any localhost page in a
+        victim's browser make credentialed cross-origin reads against the
+        deployed API (writes stay blocked by the double-submit CSRF token a
+        cross-origin script can't read). Prod uses the explicit `cors_origins`
+        allowlist instead; a non-localhost regex (e.g. a staging pattern) is
+        always honoured."""
+        if "localhost" not in self.cors_origin_regex.lower():
+            return self.cors_origin_regex
+        host = urlparse(self.database_url).hostname
+        if host is not None and host.lower() in LOCAL_DB_HOSTS:
+            return self.cors_origin_regex
+        return ""
 
     @field_validator("database_url", mode="after")
     @classmethod

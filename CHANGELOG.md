@@ -11,6 +11,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **Archive import no longer imports retweets** ([#222](https://github.com/vidithq/vidit/pull/222), [`backend/app/services/tweet_ingest/archive.py`](backend/app/services/tweet_ingest/archive.py), [`docs/ingestion.md`](docs/ingestion.md#archive-formats)). An X export lists the account's retweets among its tweets, so a geo-tagged retweet became a `detected` draft attributed to the analyst running the import, crediting them with someone else's geolocation. `read_tweets` drops them at parse time, the earliest point that can tell them apart: an export flags none of them, so the discriminator is the `RT @<handle>:` prefix X stores in a retweet's text, anchored so a post that mentions RT further in is kept. No job count moves, all four being counted from detections.
 
+### Security
+- **Proof-image srcs reject the backslash form of a protocol-relative URL** ([`backend/app/services/sanitize.py`](backend/app/services/sanitize.py), [`frontend/src/lib/proof.tsx`](frontend/src/lib/proof.tsx)). The image-src allowlist rejected `//host` but returned any `/`-prefixed value verbatim, so `/\host/pixel.gif` slipped past both the persisted-doc sanitizer and the renderer; a browser normalises the backslash to a slash (WHATWG), resolves it to `//host`, and beacons every viewer's IP / UA to a third-party host. Both layers now normalise the first two characters before the check.
+- **Localhost CORS regex dropped automatically on a non-local deployment** ([`backend/app/config.py`](backend/app/config.py), [`backend/app/main.py`](backend/app/main.py)). The `^https?://localhost:\d+$` default shipped in every environment with `allow_credentials=True`; paired with the prod `COOKIE_SAMESITE=none` it let any `localhost:<port>` page in a viewer's browser read authenticated API responses. `effective_cors_origin_regex` drops the localhost pattern when `DATABASE_URL` is non-local, so prod relies on the explicit `CORS_ORIGINS` allowlist with no operator step; a non-localhost regex (staging) is untouched.
+
 ## v0.4.10, 2026-08-11
 
 ### Fixed
