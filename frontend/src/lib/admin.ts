@@ -205,6 +205,8 @@ export interface MaintenanceResponse {
   expired?: number;
   old_consumed?: number;
   pending_registrations_deleted?: number;
+  events_scanned?: number;
+  links_enqueued?: number;
 }
 
 export function reapAuthTokens(): Promise<MaintenanceResponse> {
@@ -216,6 +218,16 @@ export function reapAuthTokens(): Promise<MaintenanceResponse> {
 export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>(
     "/admin/maintenance/reap-pending-registrations",
+    { method: "POST" }
+  );
+}
+
+/** Queue Wayback archival for every live event link that has no row yet. The
+ *  call returns as soon as the rows are inserted; the worker paces the
+ *  captures. */
+export function enqueueSourceArchival(): Promise<MaintenanceResponse> {
+  return apiFetch<MaintenanceResponse>(
+    "/admin/maintenance/enqueue-source-archival",
     { method: "POST" }
   );
 }

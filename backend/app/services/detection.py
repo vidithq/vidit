@@ -28,6 +28,7 @@ from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.sanitize import tiptap_doc_from_text
+from app.services.source_archive import enqueue_event_best_effort as enqueue_source_archival
 from app.services.storage import (
     PreparedMedia,
     detected_media_key,
@@ -290,6 +291,12 @@ async def _persist_one(
     # No post-commit refresh: a refresh failure here would misclassify an
     # already-durable row as failed. The geo's attributes lazy-load from the
     # still-open session on access.
+    #
+    # Queue the draft's links for archival. A detected draft waits for its
+    # analyst to complete it, sometimes for weeks, and its source tweet can die
+    # in that interval, so the machine path archives on exactly the same terms
+    # as a human submit.
+    enqueue_source_archival(db, geo)
     return geo
 
 

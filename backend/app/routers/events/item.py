@@ -56,6 +56,9 @@ _DETAIL_LOADS = (
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
     selectinload(Event.investigators).joinedload(EventInvestigator.user),
+    # The archived-source fallback in ``build_event_read`` reads this set; a
+    # detail loader without it pays a lazy query per event.
+    selectinload(Event.archives),
 )
 
 

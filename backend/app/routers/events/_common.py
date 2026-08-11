@@ -18,6 +18,7 @@ from app.routers._errors import raise_typed_error
 from app.schemas.event import CoordsRead, EventRead
 from app.schemas.media import MediaRead
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.source_archive import archived_url_for
 from app.services.thumbnails import pick_thumbnail
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
@@ -85,6 +86,10 @@ def build_event_read(
         event_coords=coords_or_none(lat, lng),
         capture_source_coords=coords_or_none(capture_lat, capture_lng),
         source_url=geo.source_url,
+        # Reads the eager-loaded ``archives`` collection; callers that skip
+        # that load pay a lazy query per event, so every detail loader carries
+        # it (see ``_DETAIL_LOADS``).
+        archived_source_url=archived_url_for(geo, geo.source_url),
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,

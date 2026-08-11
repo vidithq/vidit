@@ -106,6 +106,10 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
+    # The archived copy of ``source_url``, rendered as the fallback once the
+    # original dies. NULL until the archival worker has a capture (and on a
+    # source-less draft). Required-nullable: the key is always serialised.
+    archived_source_url: str | None
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.

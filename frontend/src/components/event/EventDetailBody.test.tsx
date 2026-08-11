@@ -11,6 +11,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     title: "Strike on ammunition depot",
     event_coords: { lat: 48.015883, lng: 37.802411 },
     capture_source_coords: null,
+    archived_source_url: null,
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
@@ -388,5 +389,28 @@ describe("EventDetailBody", () => {
   it("omits the Event time row when no time is set", () => {
     render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
+  });
+
+  it("offers the archived copy beside the source once one exists", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          archived_source_url: "https://web.archive.org/web/2026/t.me/channel/12345",
+        })}
+        variant="page"
+      />
+    );
+    const archived = screen.getByRole("link", { name: "archived" });
+    expect(archived).toHaveAttribute(
+      "href",
+      "https://web.archive.org/web/2026/t.me/channel/12345"
+    );
+    // The original stays the primary link; the archive is the fallback.
+    expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
+  });
+
+  it("shows no archived link before the worker has a capture", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    expect(screen.queryByRole("link", { name: "archived" })).not.toBeInTheDocument();
   });
 });

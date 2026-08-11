@@ -248,15 +248,19 @@ class AdminWipeDemoRequestsResponse(BaseModel):
 
 
 class AdminMaintenanceResponse(BaseModel):
-    """Single shape for both reaper endpoints.
+    """Single shape for every Maintenance-panel action.
 
-    Every key is optional so one schema serves both reapers; the UI renders
+    Every key is optional so one schema serves all of them; the UI renders
     only the keys present in the response.
     """
 
     expired: int | None = None
     old_consumed: int | None = None
     pending_registrations_deleted: int | None = None
+    # Source-archival backfill: live events walked, and links newly queued for
+    # capture across them.
+    events_scanned: int | None = None
+    links_enqueued: int | None = None
 
 
 class AdminDetectionStatsRead(BaseModel):

@@ -10,6 +10,7 @@ from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.pending_registration import PendingRegistration
+from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
 
@@ -28,6 +29,7 @@ __all__ = [
     "InviteCode",
     "Media",
     "PendingRegistration",
+    "SourceArchive",
     "Tag",
     "User",
     "event_conflicts",

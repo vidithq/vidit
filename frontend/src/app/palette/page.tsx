@@ -118,6 +118,7 @@ const MOCK_DETAIL: EventDetail = {
   title: "Strike on a depot, Donetsk",
   event_coords: { lat: 48.0159, lng: 37.8024 },
   capture_source_coords: null,
+  archived_source_url: null,
   event_date: "2026-05-09",
   is_demo: true,
   status: "geolocated",

@@ -407,3 +407,27 @@ def maintenance_reap_pending_registrations(
     )
     db.commit()
     return AdminMaintenanceResponse(**result)
+
+
+@router.post("/maintenance/enqueue-source-archival", response_model=AdminMaintenanceResponse)
+@limiter.limit("30/hour")
+def maintenance_enqueue_source_archival(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminMaintenanceResponse:
+    """Queue Wayback archival for every live event link that lacks a row.
+
+    The catalog backfill behind create-time archival: events written before a
+    link was tracked get their ``source_url`` and proof-body hrefs queued.
+    Enqueue only, so the click returns immediately; the worker drains the
+    queue at its paced rate."""
+    result = maintenance_service.enqueue_source_archival(db)
+    admin_service.log_admin_event(
+        db,
+        actor_id=current_user.id,
+        action="maintenance_enqueue_source_archival",
+        target=result,
+    )
+    db.commit()
+    return AdminMaintenanceResponse(**result)

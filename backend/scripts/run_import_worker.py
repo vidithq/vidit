@@ -5,8 +5,10 @@ X webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``,
 so a second worker is safe), runs the backfill off the API process, and
 emails the owner the outcome (see ``services/archive_jobs``); each pass also
 drains the ``bot_webhook_events`` queue through the shared mention pipeline
-(see ``services/bot``); the webhook endpoint only inserts, this always-on
-process is what answers the tag. Each drain pass opens a fresh session
+(see ``services/bot``), the webhook endpoint only inserts and this always-on
+process is what answers the tag, and the ``source_archives`` queue, which
+pushes every event's links to the Wayback Machine (see
+``services/source_archive``). Each drain pass opens a fresh session
 (shared across that pass's jobs; per-job failure isolation is the rollback
 inside ``process``), and a pass that dies outside job processing is captured
 and retried with a backoff instead of killing the service.
@@ -31,20 +33,25 @@ from app.config import settings
 from app.database import SessionLocal
 from app.services.archive_jobs import run_once
 from app.services.bot import drain_webhook_events
+from app.services.source_archive import run_once as archive_sources_once
 
 _IDLE_SLEEP_SECONDS = 5.0
 _ERROR_BACKOFF_SECONDS = 15.0
 
 
-async def _drain_both(db) -> int:
+async def _drain_all(db) -> int:
     handled = await run_once(db)
-    return handled + (await drain_webhook_events(db)).mentions_seen
+    handled += (await drain_webhook_events(db)).mentions_seen
+    # The source-archival queue is paced inside its own pass (the archiving
+    # services rate-limit), and capped per pass so a large backfill can't
+    # starve the two queues above.
+    return handled + archive_sources_once(db)
 
 
 def _drain() -> int:
     db = SessionLocal()
     try:
-        return asyncio.run(_drain_both(db))
+        return asyncio.run(_drain_all(db))
     finally:
         db.close()
 

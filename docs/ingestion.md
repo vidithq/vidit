@@ -107,9 +107,29 @@ An X "Download your data" export additionally exposes the analyst's own reply ed
 
 **Email.** The job finishes after the analyst has typically navigated away, so the worker emails the outcome: the counts and a link to the Detections queue on success, a retry-safe failure notice otherwise. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
 
-**Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever (5 s idle sleep), one fresh session per pass; each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [Bot format](#bot-format)). `IMPORT_WORKER_ONCE=1` makes a single drain-and-exit pass (by hand, or a cron fallback).
+**Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever (5 s idle sleep), one fresh session per pass; each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [Bot format](#bot-format)) and the [`source_archives`](data-model.md#source_archives) queue (see [Source archival](#source-archival)). `IMPORT_WORKER_ONCE=1` makes a single drain-and-exit pass (by hand, or a cron fallback).
 
 **Scheduler config.** An **always-on** Railway service (not a cron): built from the backend image (Root Directory `backend`), Config-as-code path [`backend/railway.scheduler.json`](../backend/railway.scheduler.json) (mandatory here: the worker listens on no port, so the API `railway.json`'s inherited `/health` healthcheck fails the deploy, where a cron service merely replays the pre-deploy), start command `uv run python scripts/run_import_worker.py`, no exposed port, env `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}` (the boot check refuses the placeholder secret against a non-local database) plus the same storage (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) variables as the backend, and `SENTRY_DSN` so a failed job pages instead of sitting in logs.
+
+## Source archival
+
+Source tweets get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. Every event pushes its links to the Wayback Machine so a dead original still has a readable copy.
+
+**Scope.** The event's `source_url` plus every `http(s)` href carried by a link mark in the proof body's Tiptap document ([`sanitize.extract_link_hrefs`](../backend/app/services/sanitize.py) is the one home for that walk, next to the image-src walk). Every event whatever its status, `detected` drafts included: a draft can wait weeks for its analyst to complete it and its source can die in the interval. Analyst profile external links are out of scope, they are identity rather than evidence. Demo rows and any non-`http(s)` value are filtered before enqueue.
+
+**Enqueue is a write-path insert.** The create paths, the `geolocate` promotion (which can add the source a draft was born without, and rewrites the proof body), and the machine detection path all call [`source_archive.enqueue_event`](../backend/app/services/source_archive.py), which inserts one [`source_archives`](data-model.md#source_archives) row per untracked link. `UNIQUE (event_id, original_url)` makes every path idempotent, so a repeated call inserts only what is missing and a losing race is a no-op rather than an error. No HTTP happens in the request.
+
+**Postgres is the queue.** The worker claims the oldest runnable row with `FOR UPDATE SKIP LOCKED` (safe under concurrent workers), submits the capture, and stamps `archived_url` + `provider` on the same row. Runnable means `queued` with `next_attempt_at` in the past, or `running` past the 30 min stale window (a worker died mid-capture).
+
+**Providers.** Save Page Now is the primary: a submit that answers with a job id, then a status poll until the job reports the capture timestamp, which composes the `https://web.archive.org/web/<timestamp>/<url>` replay URL. `if_not_archived_within=30d` makes a recently captured URL come back from the existing snapshot instead of costing a fresh crawl. archive.today is an opt-in second leg (`ARCHIVE_TODAY_ENABLED`), tried only when the Wayback attempt fails: it has no API contract and blocks datacentre egress freely, so it absorbs a Wayback outage rather than being part of every capture.
+
+**Rate limits shape the drain.** The archiving services cap captures per minute and answer a burst with 429, so one pass takes at most 20 rows and spaces its submissions 6 s apart. A failed attempt returns the row to `queued` with an exponential `next_attempt_at` (15 min doubling per attempt, capped at 12 h); five attempts, then the row lands `failed` so a permanently uncapturable link (a login wall, a robots block) stops consuming pass budget. Setting `ARCHIVE_ORG_ACCESS_KEY` + `ARCHIVE_ORG_SECRET_KEY` (an archive.org account's key pair) authenticates the submits and lifts the anonymous ceiling; unset, captures still run anonymously.
+
+**Backfill.** The admin Maintenance panel's *Queue source archival for the catalog* button ([`POST /admin/maintenance/enqueue-source-archival`](api.md#post-adminmaintenanceenqueue-source-archival)) walks live events oldest first and enqueues their untracked links, capped per click. Enqueue only, so the request returns immediately whatever the catalog size, and the per-link idempotency makes it safe to click twice.
+
+**Read surface.** `EventRead.archived_source_url` carries the capture of the event's own `source_url` (see [`api.md`](api.md#get-eventsid)), and the event detail surface renders it as a small fallback link beside the source. Proof-body captures are stored but not rendered inline.
+
+**Runner.** The always-on worker described under [Archive import worker](#archive-import-worker) drains this queue on every pass.
 
 ## Conflict referential sync
 
@@ -137,4 +157,4 @@ The conflicts an event can be tagged with are not user-created: they live in the
 ## See also
 
 - [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts, and [`GET /conflicts`](api.md#get-conflicts) for the referential on the wire.
-- [`data-model.md`](data-model.md#conflicts) for the `conflicts` / `event_conflicts` columns, and [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
+- [`data-model.md`](data-model.md#conflicts) for the `conflicts` / `event_conflicts` columns, [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints, and [`data-model.md`](data-model.md#source_archives) for the `source_archives` queue columns.

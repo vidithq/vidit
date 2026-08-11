@@ -150,6 +150,43 @@ def extract_image_srcs(doc: Any) -> list[str]:
     return srcs
 
 
+def extract_link_hrefs(doc: Any) -> list[str]:
+    """Collect link-mark hrefs from a Tiptap document (sanitized or not).
+
+    Source archival uses it to enqueue every link a proof body carries, so a
+    cited post outlives its deletion the same way the event's own source does.
+    Only ``http(s)`` hrefs come back (the same allowlist
+    :func:`_safe_link_href` applies at write time, re-applied here because a
+    row persisted before a rule tightened is still readable). Returns hrefs in
+    tree order, deduped.
+    """
+    seen: set[str] = set()
+    hrefs: list[str] = []
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        marks = node.get("marks")
+        if isinstance(marks, list):
+            for mark in marks:
+                if not isinstance(mark, dict) or mark.get("type") != "link":
+                    continue
+                attrs = mark.get("attrs")
+                if not isinstance(attrs, dict):
+                    continue
+                href = _safe_link_href(attrs.get("href"))
+                if href is not None and href not in seen:
+                    seen.add(href)
+                    hrefs.append(href)
+        content = node.get("content")
+        if isinstance(content, list):
+            for child in content:
+                walk(child)
+
+    walk(doc)
+    return hrefs
+
+
 def sanitize_tiptap_doc(
     doc: Any, *, allow_images: bool = True, allow_placeholders: bool = False
 ) -> dict[str, Any]:

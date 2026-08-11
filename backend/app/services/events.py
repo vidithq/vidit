@@ -53,6 +53,7 @@ from app.services.sanitize import (
     extract_image_srcs,
     sanitize_tiptap_doc,
 )
+from app.services.source_archive import enqueue_event_best_effort as enqueue_source_archival
 from app.services.storage import sweep_keys
 
 
@@ -299,6 +300,9 @@ async def create_with_evidence(
     )
 
     db.refresh(geo)
+    # Queue the row's links for archival: the source tweet can be deleted at
+    # any time, and the capture runs off-request behind the worker.
+    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 
@@ -391,6 +395,7 @@ async def create_request(
     )
 
     db.refresh(geo)
+    enqueue_source_archival(db, geo)
     return geo
 
 
@@ -560,6 +565,9 @@ async def geolocate(
     # Committed; sweep the removed media's S3 objects (best-effort).
     sweep_keys(removed_keys, context=f"event {geo.id} geolocate media removal")
     db.refresh(geo)
+    # The promotion can set a source URL a detected draft was born without, and
+    # rewrites the proof body, so any link the edit added is enqueued here too.
+    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 

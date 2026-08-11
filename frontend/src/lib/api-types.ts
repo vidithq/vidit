@@ -84,6 +84,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/maintenance/enqueue-source-archival": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Maintenance Enqueue Source Archival
+         * @description Queue Wayback archival for every live event link that lacks a row.
+         *
+         *     The catalog backfill behind create-time archival: events written before a
+         *     link was tracked get their ``source_url`` and proof-body hrefs queued.
+         *     Enqueue only, so the click returns immediately; the worker drains the
+         *     queue at its paced rate.
+         */
+        post: operations["maintenance_enqueue_source_archival_api_v1_admin_maintenance_enqueue_source_archival_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/maintenance/reap-auth-tokens": {
         parameters: {
             query?: never;
@@ -1384,14 +1409,18 @@ export interface components {
         };
         /**
          * AdminMaintenanceResponse
-         * @description Single shape for both reaper endpoints.
+         * @description Single shape for every Maintenance-panel action.
          *
-         *     Every key is optional so one schema serves both reapers; the UI renders
+         *     Every key is optional so one schema serves all of them; the UI renders
          *     only the keys present in the response.
          */
         AdminMaintenanceResponse: {
+            /** Events Scanned */
+            events_scanned?: number | null;
             /** Expired */
             expired?: number | null;
+            /** Links Enqueued */
+            links_enqueued?: number | null;
             /** Old Consumed */
             old_consumed?: number | null;
             /** Pending Registrations Deleted */
@@ -1896,6 +1925,8 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
+            /** Archived Source Url */
+            archived_source_url: string | null;
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected") | null;
             capture_source_coords: components["schemas"]["CoordsRead"] | null;
@@ -2712,6 +2743,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminInviteCodeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    maintenance_enqueue_source_archival_api_v1_admin_maintenance_enqueue_source_archival_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMaintenanceResponse"];
                 };
             };
             /** @description Validation Error */
