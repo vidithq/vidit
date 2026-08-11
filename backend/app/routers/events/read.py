@@ -38,6 +38,8 @@ from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     VIEWS,
     apply_filters,
+    bbox_predicate,
+    parse_bbox,
     validate_media_types,
     validate_status_filter,
 )
@@ -51,6 +53,7 @@ LIST_INVESTIGATOR_SAMPLE_SIZE = 3
 
 def _build_points_cache_key(
     *,
+    bbox: tuple[float, float, float, float],
     conflict: list[str] | None,
     capture_source: list[str] | None,
     tag: list[str] | None,
@@ -73,9 +76,15 @@ def _build_points_cache_key(
     List-shaped filters (``conflict``, ``tag``) are sorted before
     serialisation so the same logical filter set hashes alike regardless
     of the order the chips were clicked.
+
+    ``bbox`` is the parsed float tuple, so two viewports that differ by a
+    metre key separately and a cached payload can never be served for a
+    box it wasn't computed for. Distinct viewports therefore key densely;
+    the ``points_cache`` LRU cap is what bounds the resulting entry count.
     """
     payload = orjson.dumps(
         [
+            list(bbox),
             sorted(conflict) if conflict else None,
             sorted(capture_source) if capture_source else None,
             sorted(tag) if tag else None,
@@ -127,6 +136,10 @@ def investigator_aggregates(
 @limiter.limit("60/minute")
 def list_points(
     request: Request,
+    # Required: the map serves one viewport, never the whole catalog. A
+    # missing or malformed value is a 422, so no single call can walk away
+    # with every point on the platform.
+    bbox: str = Query(...),
     # ``conflict``, ``capture_source`` and ``tag`` accept multiple values
     # (``?tag=a&tag=b``); a single ``?tag=a`` parses to ``["a"]``, so older
     # single-select clients keep working.
@@ -144,9 +157,12 @@ def list_points(
     hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Return the map's events as a compact array:
+    """Return the map's events inside ``bbox`` as a compact array:
     ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
-    No joins, no limit, designed for map display with client-side clustering.
+    No joins, designed for map display with client-side clustering.
+    ``bbox`` (``south,west,north,east``) is required and bounds the payload
+    by viewport rather than by catalog size; a missing or malformed value
+    returns 422 (see :func:`parse_bbox` for the accepted shape).
     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
     ``requested`` guess is not a confident pin, and a closed row was judged
     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
@@ -161,7 +177,11 @@ def list_points(
     filter combination.
     """
     validate_media_types(media)
+    # Parse before any cache work: a malformed box must 422 rather than key
+    # (and cache) off a string the query would never run with.
+    bounds = parse_bbox(bbox)
     cache_key = _build_points_cache_key(
+        bbox=bounds,
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
@@ -205,11 +225,12 @@ def list_points(
         hide_demo=hide_demo,
     )
     # Map-only narrowing on top of the located view: a closed detection stays
-    # on the list (audit trail) but comes off the map, and a coordinate is
-    # required for a pin at all.
+    # on the list (audit trail) but comes off the map, a coordinate is
+    # required for a pin at all, and the viewport bounds the rest.
     q = q.filter(
         Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
         Event.event_coords.isnot(None),
+        bbox_predicate(bounds),
     )
 
     rows = q.all()

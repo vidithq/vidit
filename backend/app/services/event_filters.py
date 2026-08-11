@@ -171,6 +171,20 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     return south, west, north, east
 
 
+def bbox_predicate(bounds: tuple[float, float, float, float]):
+    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`.
+
+    Split from :func:`apply_filters` so a caller that parses the bbox itself
+    (``/events/points`` parses once, for its cache key) applies the same
+    envelope instead of re-deriving it.
+    """
+    south, west, north, east = bounds
+    return ST_Within(
+        Event.event_coords,
+        ST_MakeEnvelope(west, south, east, north, 4326),
+    )
+
+
 def apply_filters(
     query: SAQuery,
     *,
@@ -259,13 +273,7 @@ def apply_filters(
         query = query.filter(Event.is_demo.is_(False))
 
     if bbox:
-        south, west, north, east = parse_bbox(bbox)
-        query = query.filter(
-            ST_Within(
-                Event.event_coords,
-                ST_MakeEnvelope(west, south, east, north, 4326),
-            )
-        )
+        query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     return query
 

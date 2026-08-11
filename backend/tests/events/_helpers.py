@@ -33,6 +33,11 @@ from tests._fixtures import TINY_JPEG
 
 client = TestClient(app)
 
+# ``/events/points`` requires a ``bbox``: the map serves a viewport, not the
+# catalog. Tests that are about something else pass the whole globe so their
+# assertions read the way they did when the parameter was optional.
+WORLD_BBOX = "-90,-180,90,180"
+
 
 def _make_geo(
     db,

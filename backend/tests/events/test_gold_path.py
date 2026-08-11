@@ -29,7 +29,12 @@ from app.routers import auth as auth_router
 from app.services import archive_jobs, email
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER
 from tests._fixtures import TINY_JPEG
-from tests.events._helpers import client, proof_file_part, proof_form_field
+from tests.events._helpers import (
+    WORLD_BBOX,
+    client,
+    proof_file_part,
+    proof_form_field,
+)
 from tests.events.conftest import _delete_user_and_events
 
 # One geo tweet shaped like a real export entry: a parseable coordinate in the
@@ -189,7 +194,7 @@ def test_gold_path_register_import_geolocate_publish(
         assert detail.json()["status"] == STATUS_DETECTED
         assert detail.json()["detected_from_url"] == row.detected_from_url
 
-        points = {p[0]: p for p in client.get("/api/v1/events/points").json()}
+        points = {p[0]: p for p in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
         assert points[event_id][5] == 1  # the ``detected`` marker flag
 
         queue = client.get("/api/v1/events/detections", headers=auth_headers)
@@ -238,7 +243,7 @@ def test_gold_path_register_import_geolocate_publish(
 
         # ── 5. Unmarked and publicly visible, signed out ────────────────
         client.cookies.clear()
-        points = {p[0]: p for p in client.get("/api/v1/events/points").json()}
+        points = {p[0]: p for p in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
         assert points[event_id][5] == 0  # marker gone
         public = client.get(f"/api/v1/events/{event_id}")
         assert public.status_code == 200
