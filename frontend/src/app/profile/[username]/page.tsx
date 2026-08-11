@@ -89,6 +89,12 @@ export default function ProfilePage() {
   // the events themselves. Owner-only account affordances (linked accounts,
   // the detections queue, sign out) sink under all of it, so a visitor lands on
   // a portfolio and the owner still finds their controls in one place.
+  //
+  // Editing collapses that order to the form alone: every editable field sits
+  // between the header and Save, with the read-only portfolio sections dropped
+  // for the duration. Interleaved, the linked-accounts inputs landed a full
+  // page below the bio and the Save button was off screen by the time you
+  // reached them.
   return (
     <PageShell
       back
@@ -100,34 +106,40 @@ export default function ProfilePage() {
 
       <BioCard profile={profile} edit={edit} />
 
-      <ProfileStats profile={profile} />
+      {edit.editing ? (
+        <LinkedAccountsCard profile={profile} edit={edit} />
+      ) : (
+        <>
+          <ProfileStats profile={profile} />
 
-      <ProfileInsights username={profile.username} />
+          <ProfileInsights username={profile.username} />
 
-      <ProfileMap username={profile.username} />
+          <ProfileMap username={profile.username} />
 
-      <RecentSubmissions
-        profile={profile}
-        submissions={submissions}
-        isOwn={isOwn}
-      />
+          <RecentSubmissions
+            profile={profile}
+            submissions={submissions}
+            isOwn={isOwn}
+          />
 
-      <LinkedAccountsCard profile={profile} edit={edit} />
+          <LinkedAccountsCard profile={profile} edit={edit} />
 
-      {isOwn && detectionCount > 0 && (
-        <DetectionsEntry username={profile.username} count={detectionCount} />
-      )}
+          {isOwn && detectionCount > 0 && (
+            <DetectionsEntry username={profile.username} count={detectionCount} />
+          )}
 
-      {isOwn && (
-        <div className="pt-4 border-t border-neutral-800 flex justify-center">
-          <Button
-            variant={signOut.armed ? "danger" : "secondary"}
-            onClick={signOut.trigger}
-          >
-            <LogOut size={14} strokeWidth={1.8} />
-            {signOut.armed ? "Confirm sign out" : "Sign out"}
-          </Button>
-        </div>
+          {isOwn && (
+            <div className="pt-4 border-t border-neutral-800 flex justify-center">
+              <Button
+                variant={signOut.armed ? "danger" : "secondary"}
+                onClick={signOut.trigger}
+              >
+                <LogOut size={14} strokeWidth={1.8} />
+                {signOut.armed ? "Confirm sign out" : "Sign out"}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </PageShell>
   );
