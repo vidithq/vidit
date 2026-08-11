@@ -34,6 +34,16 @@ import type { TweetImportMedia, TweetImportResponse } from "@/types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+// An X / Twitter status URL, the only shape ``/events/import-from-tweet``
+// accepts. Host recognition only: the backend still validates and resolves it,
+// so this gates whether the UI offers to fetch a post's media at all.
+const X_STATUS_URL =
+  /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[A-Za-z0-9_]{1,15}\/status\/\d+/i;
+
+export function isXStatusUrl(url: string): boolean {
+  return X_STATUS_URL.test(url.trim());
+}
+
 export async function fetchProxyBlob(
   remoteUrl: string,
   signal: AbortSignal
@@ -67,6 +77,29 @@ export function makeFile(
     (media.kind === "video" ? "mp4" : "jpg");
   const filename = `tweet-${tweetId}-${index}.${guessedExt}`;
   return new File([fetched.blob], filename, { type: fetched.contentType });
+}
+
+/** The trailing status id of a tweet URL, which names the files downloaded
+ *  from it. Falls back to a constant when the URL has no id to give. */
+export function tweetIdFrom(tweetUrl: string): string {
+  return tweetUrl.split("/").pop() ?? "tweet";
+}
+
+/**
+ * Download the first media item the proxy serves, as a `File`. An event holds
+ * one source media, so both callers stage exactly one; an item the proxy
+ * refuses is skipped rather than failing the lot, since the next one may serve.
+ */
+export async function fetchFirstMediaFile(
+  media: TweetImportMedia[],
+  tweetId: string,
+  signal: AbortSignal
+): Promise<File | null> {
+  for (let i = 0; i < media.length; i++) {
+    const fetched = await fetchProxyBlob(media[i].remote_url, signal);
+    if (fetched !== null) return makeFile(fetched, media[i], tweetId, i);
+  }
+  return null;
 }
 
 /**

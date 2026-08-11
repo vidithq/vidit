@@ -6,10 +6,10 @@ import type { TweetImportCoord, TweetImportResponse } from "@/types";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import {
   buildSeedProof,
+  fetchFirstMediaFile,
   fetchProofFiles,
-  fetchProxyBlob,
-  makeFile,
   splitMedia,
+  tweetIdFrom,
 } from "@/lib/tweetImport";
 
 /**
@@ -121,17 +121,13 @@ export function useTweetImport(form: TweetImportFormBindings) {
     // only the first successfully-fetched primary is staged (the source-media
     // control is single-file too).
     const { primary, proof: proofMedia } = splitMedia(parsed.media);
-    const tweetId =
-      parsed.original_tweet_url.split("/").pop() ?? "tweet";
+    const tweetId = tweetIdFrom(parsed.original_tweet_url);
 
-    let primaryFile: File | null = null;
-    for (let i = 0; i < primary.length && primaryFile === null; i++) {
-      if (!isCurrent()) return;
-      const m = primary[i];
-      const fetched = await fetchProxyBlob(m.remote_url, controller.signal);
-      if (fetched === null) continue;
-      primaryFile = makeFile(fetched, m, tweetId, i);
-    }
+    const primaryFile = await fetchFirstMediaFile(
+      primary,
+      tweetId,
+      controller.signal
+    );
     if (!isCurrent()) return;
     if (primaryFile !== null) form.setFiles([primaryFile]);
 

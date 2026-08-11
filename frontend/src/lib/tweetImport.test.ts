@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildSeedProof, fetchProofFiles, makeFile, splitMedia } from "./tweetImport";
+import {
+  buildSeedProof,
+  fetchFirstMediaFile,
+  fetchProofFiles,
+  isXStatusUrl,
+  makeFile,
+  splitMedia,
+  tweetIdFrom,
+} from "./tweetImport";
 import { PROOF_PLACEHOLDER_PREFIX } from "./proofImages";
 import type { TweetImportMedia, TweetImportResponse } from "@/types";
 
@@ -95,6 +103,79 @@ describe("makeFile", () => {
         1
       ).name
     ).toBe("tweet-9-1.jpg");
+  });
+});
+
+describe("isXStatusUrl", () => {
+  it("recognises both hosts, the www / mobile prefixes, and a trailing path", () => {
+    expect(isXStatusUrl("https://x.com/kalush/status/1234567890")).toBe(true);
+    expect(isXStatusUrl("  http://twitter.com/kalush/status/1234  ")).toBe(true);
+    expect(isXStatusUrl("https://www.x.com/kalush/status/1234")).toBe(true);
+    expect(isXStatusUrl("https://mobile.twitter.com/kalush/status/1234")).toBe(true);
+    expect(isXStatusUrl("https://x.com/kalush/status/1234/photo/1")).toBe(true);
+  });
+
+  it("rejects another host, a profile URL, and an empty field", () => {
+    expect(isXStatusUrl("https://t.me/c/1/2")).toBe(false);
+    expect(isXStatusUrl("https://x.com/kalush")).toBe(false);
+    expect(isXStatusUrl("https://evil.com/x.com/kalush/status/1")).toBe(false);
+    expect(isXStatusUrl("")).toBe(false);
+  });
+});
+
+describe("tweetIdFrom", () => {
+  it("takes the trailing status id", () => {
+    expect(tweetIdFrom("https://x.com/kalush/status/1234")).toBe("1234");
+  });
+});
+
+describe("fetchFirstMediaFile", () => {
+  function fakeResponse(body: string, contentType: string) {
+    return {
+      ok: true,
+      headers: { get: () => contentType },
+      blob: () => Promise.resolve(new Blob([body], { type: contentType })),
+    };
+  }
+
+  it("returns the first item the proxy serves, skipping the ones it refuses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce(fakeResponse("v", "video/mp4"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = await fetchFirstMediaFile(
+      [
+        media({ kind: "video", remote_url: "https://video.twimg.com/a.mp4" }),
+        media({ kind: "video", remote_url: "https://video.twimg.com/b.mp4" }),
+      ],
+      "42",
+      new AbortController().signal
+    );
+
+    expect(file?.name).toBe("tweet-42-1.mp4");
+    expect(file?.type).toBe("video/mp4");
+    // Stops at the first success rather than downloading the whole set.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("returns null on an empty list and when every download fails", async () => {
+    expect(
+      await fetchFirstMediaFile([], "42", new AbortController().signal)
+    ).toBeNull();
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    expect(
+      await fetchFirstMediaFile(
+        [media()],
+        "42",
+        new AbortController().signal
+      )
+    ).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
 

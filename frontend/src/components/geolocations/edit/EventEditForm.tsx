@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { DownloadSourceMedia } from "@/components/geolocations/DownloadSourceMedia";
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
@@ -246,7 +247,16 @@ export function EventEditForm({
             setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
           }
           invalid={invalidKeys.has("source_media")}
-        />
+        >
+          {/* Offered only while the slot is empty: one source media per event,
+              so with one kept or staged there is nothing to download into. */}
+          {keptMediaCount === 0 && (
+            <DownloadSourceMedia
+              sourceUrl={sourceUrl}
+              onFile={(file) => setNewFiles([file])}
+            />
+          )}
+        </SourceMediaField>
 
         <LocationPicker
           lat={lat}
