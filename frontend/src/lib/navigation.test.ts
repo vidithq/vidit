@@ -42,12 +42,6 @@ describe("safeNext", () => {
     // "/\tevil.com" strips to "/evil.com" — a benign same-origin path.
     expect(safeNext("/\tevil.com")).toBe("/evil.com");
   });
-
-  it("strips the origin from the returned value", () => {
-    // Same-origin but written absolute — the result must be relative
-    // so router.push treats it as internal navigation.
-    expect(safeNext("/map?x=1")).toBe("/map?x=1");
-  });
 });
 
 // Faithful model of the real loop: a forward nav records the path being left

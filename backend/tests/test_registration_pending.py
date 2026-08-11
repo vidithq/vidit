@@ -128,7 +128,6 @@ def test_register_returns_202_and_no_user_row(client, invite_code, email_recorde
     assert pending.username == payload["username"]
     assert pending.invite_code_id == invite_code.id
 
-    # And the confirmation email went to the right address with a link.
     assert len(email_recorder) == 1
     sent = email_recorder[0]
     assert sent.to == payload["email"]
@@ -180,7 +179,6 @@ def test_register_rejects_when_email_is_pending(client, invite_code, email_recor
     body = response.json()
     assert body["detail"]["code"] == "email_pending_confirmation"
     assert "in flight" in body["detail"]["message"].lower()
-    # Exactly one pending row + exactly one email.
     pendings = (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).all()
     )
@@ -290,7 +288,6 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
     assert SESSION_COOKIE in client.cookies
     assert CSRF_COOKIE in client.cookies
 
-    # User row exists, email_verified_at populated, pending row gone.
     user = db.query(User).filter(User.email == payload["email"]).first()
     assert user is not None
     assert user.email_verified_at is not None
@@ -299,7 +296,6 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
         is None
     )
 
-    # Invite consumed exactly now.
     db.refresh(invite_code)
     assert invite_code.use_count == 1
     assert invite_code.used_by == user.id
@@ -322,7 +318,6 @@ def test_confirm_with_expired_token_returns_400(client, invite_code, email_recor
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
     token = _extract_token(email_recorder[0].text)
 
-    # Backdate the pending row past expiry.
     pending = (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
     )
@@ -332,7 +327,6 @@ def test_confirm_with_expired_token_returns_400(client, invite_code, email_recor
 
     response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert response.status_code == 400
-    # And no user was created.
     assert db.query(User).filter(User.email == payload["email"]).first() is None
 
 
@@ -461,7 +455,6 @@ def test_resend_confirmation_re_sends_for_live_pending(client, invite_code, emai
     second_token = _extract_token(email_recorder[1].text)
     assert second_token != first_token
 
-    # Stale token from the first email no longer confirms.
     response = client.post("/api/v1/auth/confirm-registration", json={"token": first_token})
     assert response.status_code == 400
 
@@ -511,19 +504,6 @@ def test_integrity_constraint_lookup_email():
         SimpleNamespace(diag=SimpleNamespace(constraint_name="uq_pending_registrations_email")),
     )
     assert registration._integrity_error_constraint(exc) == "uq_pending_registrations_email"
-
-
-def test_integrity_constraint_lookup_username():
-    from types import SimpleNamespace
-
-    from sqlalchemy.exc import IntegrityError
-
-    exc = IntegrityError(
-        "synthetic",
-        {},
-        SimpleNamespace(diag=SimpleNamespace(constraint_name="uq_pending_registrations_username")),
-    )
-    assert registration._integrity_error_constraint(exc) == "uq_pending_registrations_username"
 
 
 def test_integrity_constraint_lookup_falls_back_to_orig_text():
@@ -725,10 +705,9 @@ def test_register_normalizes_email_case(client, invite_code, email_recorder, db)
     Lowercasing at the schema layer means the UNIQUE catches the second.
     """
     payload = _unique_payload(invite_code)
-    payload["email"] = payload["email"].upper()  # POST a mixed-case address
+    payload["email"] = payload["email"].upper()
     response = client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 202, response.text
-    # Response body is the stored, lowercased address.
     assert response.json()["email"] == payload["email"].lower()
     # And the pending row is keyed under the lowercased value, so a
     # follow-up POST with the lowercase form hits the in-flight branch

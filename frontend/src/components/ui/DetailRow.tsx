@@ -4,12 +4,10 @@ import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
 // Label/value definition rows shared by the geolocation detail body (page +
-// dense map-panel `compact` variant) and the request detail page, which had
-// hand-rolled the same `row`/`label`/`value` class strings separately.
+// dense map-panel `compact` variant) and the request detail page.
 //
 // Pass a text-ish value via `value` (wrapped in the value span) or a raw node
-// (a `StatusBadge`, a `SourceLabel`) via `children`, which is rendered as-is so
-// the markup matches what those rows produced before.
+// (a `StatusBadge`, a `SourceLabel`) via `children`, which is rendered as-is.
 
 export function DetailCard({
   children,

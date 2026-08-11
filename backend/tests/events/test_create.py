@@ -523,6 +523,4 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
         if base.exists():
             leaked.extend(base.rglob("*.jpg"))
     assert leaked == [], f"S3 orphans after rolled-back create: {leaked}"
-
-    # And no Event / Media rows committed.
     assert db.query(Event).filter(Event.owner_id == author.id).count() == 0

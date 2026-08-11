@@ -9,7 +9,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // `PUBLIC_PREFIXES` in `proxy.ts`). Linked from the proof section of the
 // submit and edit forms, where the analyst needs it, and from the about
 // page. Server component for SEO, composed from the same PageShell + Card
-// primitives as the about page, whose Methodology section moved here.
+// primitives as the about page.
 
 const TITLE = "Building a proof";
 const DESCRIPTION =

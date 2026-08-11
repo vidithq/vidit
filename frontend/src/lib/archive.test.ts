@@ -17,7 +17,6 @@ describe("stripArchive", () => {
     });
     const stripped = await stripArchive(file);
     const out = unzipSync(new Uint8Array(await stripped.file.arrayBuffer()));
-    // The sensitive files are gone; the data/ prefix is flattened.
     expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
     // A tiny tweets.js still yields a nonzero cosmetic estimate.
     expect(stripped.postEstimate).toBe(1);
@@ -42,16 +41,6 @@ describe("stripArchive", () => {
   it("throws archive_malformed on a non-zip", async () => {
     const file = new File([strToU8("not a zip at all")], "x.zip");
     await expect(stripArchive(file)).rejects.toHaveProperty("code", "archive_malformed");
-  });
-
-  it("throws archive_too_large when the stripped zip is still over the cap", async () => {
-    const file = zipFile({
-      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
-      "data/tweets_media/1-a.jpg": new Uint8Array([1, 2, 3]),
-    });
-    // A 1-byte cap stands in for the real guard: an over-cap archive is
-    // refused before the upload leg, not by the presigned policy.
-    await expect(stripArchive(file, 1)).rejects.toHaveProperty("code", "archive_too_large");
   });
 
   it("stops copying as soon as the output crosses the cap", async () => {

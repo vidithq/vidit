@@ -21,9 +21,7 @@ const MONTSERRAT_700 = readFileSync(
 // icons (192/512 for Android home-screen).
 //
 // Renders a literal "V" in Montserrat-700 so the favicon and sidebar V
-// share one source of truth. Earlier SVG-path versions never matched the
-// sidebar geometry — no path approximation lands on the exact
-// Montserrat-Bold glyph; bundling the font fixes that.
+// share one source of truth.
 
 export const dynamic = "force-static";
 export const runtime = "nodejs";

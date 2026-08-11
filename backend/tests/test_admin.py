@@ -269,7 +269,6 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     assert body["status"] == "revoked"
     assert body["revoked_at"] is not None
 
-    # The revoked code is rejected by the public /invites/{code}/check
     code = create_response.json()["code"]
     check_response = client.get(f"/api/v1/auth/invites/{code}/check")
     assert check_response.status_code == 404
@@ -655,7 +654,6 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
         headers=login_as(client, admin_user),
     )
     assert second.status_code == 200
-    # Re-soft-delete preserves the original timestamp
     assert second.json()["deleted_at"] == first_ts
 
     # Only one audit row from the actual mutation
@@ -676,7 +674,6 @@ def test_soft_deleted_row_hidden_from_public_reads(admin_user, geolocation):
         f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
-    # Detail
     detail = client.get(f"/api/v1/events/{geolocation.id}")
     assert detail.status_code == 404
 
@@ -771,14 +768,12 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
 
 
 def test_soft_delete_user_blocks_login(admin_user, regular_user):
-    # Set a known password so we can attempt login afterwards
     fresh = TestClient(app)
-    # Soft-delete via admin
     fresh.delete(
         f"/api/v1/admin/users/{regular_user.id}",
         headers=login_as(fresh, admin_user),
     )
-    # Attempt login — same opaque 401 as wrong credentials
+    # Same opaque 401 as wrong credentials.
     fresh.cookies.clear()
     response = fresh.post(
         "/api/v1/auth/login",
@@ -827,7 +822,6 @@ def test_soft_delete_user_is_idempotent(admin_user, regular_user, db):
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["deleted_at"] == second.json()["deleted_at"]
-    # Second call should report 0 fresh cascades
     assert second.json()["cascaded_geolocations"] == 0
 
 
@@ -964,7 +958,6 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     cascading the rows away — the codes are part of the platform audit
     trail (who-joined-when), not personal data of the deleted user.
     """
-    # Build a user, mint an invite code as them, then hard-delete the user
     user = User(
         username=f"audit-{uuid.uuid4().hex[:8]}",
         email=f"audit-{uuid.uuid4().hex}@example.com",
@@ -974,7 +967,6 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     db.commit()
     user_id = user.id
 
-    # Mint a code attributed to this user (created_by FK)
     invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", created_by=user_id)
     db.add(invite)
     db.commit()
@@ -990,7 +982,6 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     assert db.query(User).filter(User.id == user_id).first() is None
     surviving = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     assert surviving is not None
-    # FK was nulled, not cascade-deleted
     assert surviving.created_by is None
 
     db.delete(surviving)
@@ -1072,7 +1063,6 @@ def test_login_runs_bcrypt_for_unknown_email(monkeypatch):
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid email or password"
     assert len(calls) == 1
-    # The hash passed in is the dummy, not a real user's hash.
     assert calls[0][1] == auth_router.DUMMY_PASSWORD_HASH
 
 
@@ -1171,7 +1161,6 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     db.expire_all()
     cascaded = db.query(Event).filter(Event.id == request_id).one()
     assert cascaded.deleted_at is not None
-    # Public list excludes the soft-deleted request.
     listing = client.get("/api/v1/events?view=requested").json()
     assert all(row["id"] != str(request_id) for row in listing)
 
@@ -1212,7 +1201,6 @@ def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
     # The requested event is counted in the single geolocation cascade.
     assert body["cascaded_geolocations"] >= 1
     assert "cascaded_requests" not in body
-    # media_count includes the seeded request's media.
     assert body["media_count"] >= 1
 
     db.expire_all()
@@ -1327,10 +1315,8 @@ def test_reject_rate_counts_closed_detections_not_geolocated(
 
     after = _detection_stats(admin_user)
 
-    # Three machine rows added; exactly one (the closed-from-detected) rejected.
     assert after["machine_total"] == before["machine_total"] + 3
     assert after["machine_rejected"] == before["machine_rejected"] + 1
-    # reject_rate is exactly machine_rejected / machine_total.
     assert after["machine_total"] > 0
     assert abs(after["reject_rate"] - after["machine_rejected"] / after["machine_total"]) < 1e-9
 
@@ -1404,9 +1390,7 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
 
     after = _detection_stats(admin_user)
 
-    # Two pending drafts added.
     assert after["pending"] == before["pending"] + 2
-    # Only the bare one is missing each piece.
     assert after["pending_missing_source_media"] == before["pending_missing_source_media"] + 1
     assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1
     assert after["pending_missing_source_url"] == before["pending_missing_source_url"] + 1
@@ -1548,8 +1532,6 @@ def test_pending_proof_video_counts_as_missing_proof_image(
 
     after = _detection_stats(admin_user)
     assert after["pending"] == before["pending"] + 1
-    # Source media present, source URL present, but the only proof media is a
-    # video: the image predicate must still flag it as missing a proof image.
     assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
     assert after["pending_missing_source_url"] == before["pending_missing_source_url"]
     assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1

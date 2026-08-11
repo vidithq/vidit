@@ -72,7 +72,6 @@ def test_delete_invalidates_points_cache(db, author):
     the deleted row's marker for up to the cache TTL.
     """
     geo = _make_geo(db, author=author)
-    # Warm the cache
     first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert first.headers.get("x-cache") == "MISS"
     warm = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
@@ -80,7 +79,6 @@ def test_delete_invalidates_points_cache(db, author):
 
     client.delete(f"/api/v1/events/{geo.id}", headers=login_as(client, author))
 
-    # After delete the cache must be cold again
     after = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert after.headers.get("x-cache") == "MISS", "delete must invalidate the points cache"
 

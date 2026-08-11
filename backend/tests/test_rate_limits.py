@@ -10,9 +10,8 @@ store, so buckets don't bleed between tests.
 
 The wiring tests pin the mechanism; the parametrized suite at the bottom pins
 the documented limit of every read endpoint on the anonymous surface (N pass /
-N+1 -> 429), the v0.4 read-endpoint anti-scraping floor. Extending the N/N+1
-coverage to every documented write limit is the open-beta anti-scraping row in
-planning/next.md.
+N+1 -> 429), the read-endpoint anti-scraping floor. Extending the N/N+1
+coverage to every documented write limit is tracked in planning/next.md.
 """
 
 from __future__ import annotations

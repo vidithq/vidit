@@ -41,8 +41,6 @@ describe("splitHighlights", () => {
   });
 
   it("never treats user-typed bracket text as a sentinel", () => {
-    // The pre-sentinel design used [[HL]] markers, which user content
-    // could forge. Literal bracket text must stay inert.
     expect(splitHighlights("[[HL]]not a highlight[[/HL]]")).toEqual([
       { text: "[[HL]]not a highlight[[/HL]]", highlighted: false },
     ]);

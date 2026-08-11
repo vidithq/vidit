@@ -371,7 +371,6 @@ def test_points_returns_compact_shape(db, author):
     response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert response.status_code == 200
     body = response.json()
-    # Find our row in the array
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
@@ -479,7 +478,6 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     filtered = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={free_tag.name}")
     assert unfiltered.headers.get("x-cache") == "MISS"
     assert filtered.headers.get("x-cache") == "MISS", "different filter must MISS"
-    # Filtered set is strictly smaller than unfiltered.
     assert len(filtered.json()) < len(unfiltered.json())
 
 
@@ -747,11 +745,10 @@ def test_points_and_across_conflict_and_tag(db, author):
 
 
 def test_points_single_tag_value_back_compat(db, author, free_tag):
-    """``?tag=X`` (single value, no second occurrence) still works.
+    """``?tag=X`` (single value, no second occurrence) works.
 
-    The deployed frontend on v0.1.0 sends a single tag. FastAPI parses
-    that into ``["X"]`` and the new list-shaped filter handles it the
-    same way the single-value branch used to.
+    Clients may send a single tag. FastAPI parses that into ``["X"]``
+    and the list-shaped filter must accept it.
     """
     geo = _make_geo(db, author=author, tags=[free_tag])
     _make_geo(db, author=author)
@@ -763,45 +760,34 @@ def test_points_single_tag_value_back_compat(db, author, free_tag):
 
 
 # ── bbox validation (422 on malformed) ────────────────────────────────────
+# An empty string is treated as "filter omitted" by the `if bbox:` guard, so it
+# is not one of the malformed shapes below. The well-formed case is covered by
+# `test_list_filters_by_bbox`.
 
 
-def test_bbox_well_formed_does_not_422():
-    response = client.get("/api/v1/events?bbox=44.0,30.0,46.0,32.0")
-    assert response.status_code == 200
-
-
-def test_bbox_wrong_count_returns_422():
-    # Empty string is treated as "filter omitted" by the `if bbox:` guard.
-    for bad in ["1,2,3", "1,2,3,4,5", "1"]:
-        response = client.get(f"/api/v1/events?bbox={bad}")
-        assert response.status_code == 422, f"expected 422 for bbox={bad!r}"
-
-
-def test_bbox_non_numeric_returns_422():
-    response = client.get("/api/v1/events?bbox=foo,bar,baz,qux")
-    assert response.status_code == 422
-
-
-def test_bbox_latitude_out_of_range_returns_422():
-    response = client.get("/api/v1/events?bbox=95.0,0.0,96.0,1.0")
-    assert response.status_code == 422
-
-
-def test_bbox_longitude_out_of_range_returns_422():
-    response = client.get("/api/v1/events?bbox=0.0,200.0,1.0,201.0")
-    assert response.status_code == 422
-
-
-def test_bbox_inverted_north_south_returns_422():
-    response = client.get("/api/v1/events?bbox=46.0,30.0,44.0,32.0")
-    assert response.status_code == 422
-
-
-def test_bbox_inverted_east_west_returns_422():
-    response = client.get("/api/v1/events?bbox=44.0,32.0,46.0,30.0")
-    assert response.status_code == 422
-
-
-def test_no_bbox_returns_200():
-    response = client.get("/api/v1/events")
-    assert response.status_code == 200
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "1,2,3",
+        "1,2,3,4,5",
+        "1",
+        "foo,bar,baz,qux",
+        "95.0,0.0,96.0,1.0",
+        "0.0,200.0,1.0,201.0",
+        "46.0,30.0,44.0,32.0",
+        "44.0,32.0,46.0,30.0",
+    ],
+    ids=[
+        "too-few-values",
+        "too-many-values",
+        "single-value",
+        "non-numeric",
+        "latitude-out-of-range",
+        "longitude-out-of-range",
+        "inverted-north-south",
+        "inverted-east-west",
+    ],
+)
+def test_bbox_malformed_returns_422(bad):
+    response = client.get(f"/api/v1/events?bbox={bad}")
+    assert response.status_code == 422, f"expected 422 for bbox={bad!r}"

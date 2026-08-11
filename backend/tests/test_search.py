@@ -863,7 +863,6 @@ def test_event_date_filter_scopes_search_and_browses(db, caller):
     db.query(Event).filter(Event.id == outside).update({"event_date": date(2020, 1, 1)})
     db.commit()
     try:
-        # With a query.
         response = client.get(f"/api/v1/search?q={token}&event_date_from=2026-01-01")
         ids = [h["id"] for h in response.json()["geolocations"]]
         assert str(inside) in ids and str(outside) not in ids
