@@ -1,9 +1,8 @@
 import { User } from "lucide-react";
 
 // User avatar circle: the avatar image, or a fallback (a neutral user icon, or
-// the username initial). Shared by the profile header and the search user
-// results, which hand-rolled the same circle. The clickable initial-avatar on
-// the geolocation feed card is a different (link + hover) treatment, left as-is.
+// the username initial). The clickable initial-avatar on the geolocation feed
+// card is a different (link + hover) treatment.
 //
 // A `<div>` by default. Pass `as="span"` inside phrasing content (the
 // `AuthorByline`, itself a `<span>` that sits in paragraphs and headings),

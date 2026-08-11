@@ -227,12 +227,19 @@ class MarkerFields:
     Each marker value is the first matching line's non-empty payload,
     stripped; ``None`` when no line carries one. ``proof_text`` is every
     non-marker line, order kept, raw (the caller cleans it).
+
+    ``title_marked`` separates the two ways ``title`` comes back ``None``:
+    no ``T:`` line at all (the caller may derive the title positionally)
+    from one or more ``T:`` lines that each carry an empty payload (a
+    half-marked field, which the caller rejects). ``False`` whenever no
+    ``T:`` line was seen.
     """
 
     title: str | None
     coords: str | None
     source: str | None
     proof_text: str
+    title_marked: bool = False
 
 
 def has_marker_lines(text: str) -> bool:
@@ -240,10 +247,10 @@ def has_marker_lines(text: str) -> bool:
     all, including one with an empty payload.
 
     The bot's spelling discriminator: any marker line pins the marker form,
-    so a half-marked or empty-marked post fails loudly instead of leaking
-    into the bare shape (where a literal ``T:`` line would become the
-    title). :func:`split_marker_lines` can't answer this, since it records
-    only non-empty payloads.
+    so a post the marker rules reject fails loudly instead of leaking into
+    the bare shape (where a literal ``T:`` line would become the title).
+    :func:`split_marker_lines` can't answer this, since it records only
+    non-empty payloads.
     """
     return any(_MARKER_LINE_RE.match(line) for line in text.splitlines())
 
@@ -258,6 +265,7 @@ def split_marker_lines(text: str) -> MarkerFields:
     vocabulary) is the caller's job: this is the pure line split.
     """
     values: dict[str, str] = {}
+    seen: set[str] = set()
     proof_lines: list[str] = []
     for line in text.splitlines():
         match = _MARKER_LINE_RE.match(line)
@@ -265,6 +273,7 @@ def split_marker_lines(text: str) -> MarkerFields:
             proof_lines.append(line)
             continue
         key = match.group(1).upper()
+        seen.add(key)
         payload = match.group(2).strip()
         if key not in values and payload:
             values[key] = payload
@@ -273,6 +282,7 @@ def split_marker_lines(text: str) -> MarkerFields:
         coords=values.get("C"),
         source=values.get("S"),
         proof_text="\n".join(proof_lines),
+        title_marked="T" in seen,
     )
 
 

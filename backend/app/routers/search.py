@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.search import AuthorSuggestions, SearchResponse, SearchTotals, SearchType
 from app.services import search as search_service
 from app.services.event_filters import (
@@ -30,6 +30,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=SearchResponse)
+@authenticated_read_quota
 @limiter.limit("60/minute")
 def search(
     request: Request,
@@ -115,6 +116,7 @@ def search(
 
 
 @router.get("/authors", response_model=AuthorSuggestions)
+@authenticated_read_quota
 @limiter.limit("60/minute")
 def suggest_authors(
     request: Request,

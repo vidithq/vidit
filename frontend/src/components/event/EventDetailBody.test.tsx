@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { EventDetailBody } from "./EventDetailBody";
@@ -37,6 +37,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       },
     ],
     source_url: "https://t.me/channel/12345",
+    secondary_source_urls: [],
     proof: {
       type: "doc",
       content: [
@@ -96,7 +97,6 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Source media")).toBeInTheDocument();
     expect(screen.getByText("Location")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
-    // Shared fields + proof render
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("48.015883, 37.802411")).toBeInTheDocument();
     // An ongoing conflict carries its years too.
@@ -172,7 +172,6 @@ describe("EventDetailBody", () => {
 
   it("geolocated geo shows the Geolocated status, not detected markers", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    // Status is always shown now; a geolocated (non-detected) row reads "Geolocated".
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Geolocated")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
@@ -198,7 +197,6 @@ describe("EventDetailBody", () => {
       "href",
       "https://x.com/ana/status/123"
     );
-    // ? help on the Status + Detected-from fields.
     expect(
       screen.getByRole("button", { name: "What does the status mean?" })
     ).toBeInTheDocument();
@@ -297,8 +295,6 @@ describe("EventDetailBody", () => {
     expect(
       screen.getByText("Duplicate of an existing request.")
     ).toBeInTheDocument();
-    // Closed badge tooltip distinguishes a withdrawn request from a rejected
-    // detection via before_closed_status.
     expect(screen.getByText("Closed").closest("[title]")).toHaveAttribute(
       "title",
       "The author withdrew this request"
@@ -354,7 +350,6 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("To confirm")).toBeInTheDocument();
-    // Muted, not a link: no anchor renders for the sourceless row.
     expect(screen.queryByRole("link", { name: "To confirm" })).not.toBeInTheDocument();
   });
 
@@ -365,7 +360,6 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // The time is a separate row, not folded into the date value.
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
     expect(screen.getByText("1 Jun 2026")).toBeInTheDocument();
@@ -388,5 +382,49 @@ describe("EventDetailBody", () => {
   it("omits the Event time row when no time is set", () => {
     render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
+  });
+
+  it("omits the Secondary sources row when the event declares no mirror", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    expect(screen.queryByText("Secondary sources")).not.toBeInTheDocument();
+  });
+
+  it("collapses the secondary sources behind a count, expanding to the links", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          secondary_source_urls: [
+            "https://x.com/user/status/9",
+            "https://www.youtube.com/watch?v=abc",
+          ],
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Secondary sources")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /2 more sources/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Collapsed: no link is reachable yet.
+    expect(screen.queryByRole("link", { name: "x.com" })).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const link = screen.getByRole("link", { name: "x.com" });
+    expect(link).toHaveAttribute("href", "https://x.com/user/status/9");
+    // Same new-tab affordance as the primary Source row.
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("singularises the toggle on a lone secondary source", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({ secondary_source_urls: ["https://t.me/mirror/1"] })}
+        variant="panel"
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /1 more source$/ })
+    ).toBeInTheDocument();
   });
 });

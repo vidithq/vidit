@@ -14,8 +14,6 @@ import { ACCENT_SURFACE } from "./styles";
 //   neutral    default / tag / closed / inactive
 //   danger     a revoked / error state
 //   strong     a completed end-state (white, not green: completion isn't a win)
-// Replaces the STATUS_PILL_* / FILTER_CHIP_* / TAG_CHIP / BETA_PILL tone
-// constants and the inline status chips.
 export type PillTone = "accent" | "secondary" | "neutral" | "danger" | "strong";
 
 const BASE =

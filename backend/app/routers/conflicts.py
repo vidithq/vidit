@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.conflict import ConflictRead
 
 router = APIRouter()
 
 
 @router.get("", response_model=list[ConflictRead])
+@authenticated_read_quota
 @limiter.limit("60/minute")
 def list_conflicts(
     request: Request,

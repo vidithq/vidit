@@ -116,7 +116,6 @@ async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path)
     assert hero_key in result.derivative_keys
     assert thumb_key in result.derivative_keys
 
-    # Both derivatives land on disk, both decode as JPEGs.
     hero_bytes = (tmp_path / hero_key).read_bytes()
     thumb_bytes = (tmp_path / thumb_key).read_bytes()
     assert PILImage.open(_BytesIO(hero_bytes)).format == "JPEG"
@@ -243,7 +242,6 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     result = await upload_proof_image(file, user_id)
 
-    # The original lands on disk, derivatives don't.
     assert result.derivative_keys == ()
     relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     assert (tmp_path / relative).exists()

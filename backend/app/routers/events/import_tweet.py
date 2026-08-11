@@ -85,6 +85,7 @@ def import_from_tweet(
     )
     return TweetImportResponse(
         source_url=parsed.source_url,
+        secondary_source_urls=parsed.secondary_source_urls,
         original_tweet_url=parsed.original_tweet_url,
         posted_at=parsed.posted_at,
         # The resolved source's own timestamp (the quote's or the chased
@@ -112,6 +113,7 @@ def import_from_tweet(
                 proof_text=d.proof_text,
                 detected_from_url=d.detected_from_url,
                 event_date=d.event_date,
+                secondary_source_urls=d.secondary_source_urls,
                 media=[
                     TweetImportMedia(
                         kind=m.kind,

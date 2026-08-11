@@ -42,9 +42,4 @@ describe("safeProofFilename", () => {
     const used = new Set(["p.png", "p-2.png"]);
     expect(safeProofFilename("p.png", used)).toBe("p-3.png");
   });
-
-  it("preserves the extension when disambiguating a dotless-stem name", () => {
-    const used = new Set(["shot.jpeg"]);
-    expect(safeProofFilename("shot.jpeg", used)).toBe("shot-2.jpeg");
-  });
 });

@@ -76,12 +76,16 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
         # A bare prefix names no file; intake could never match it, so drop
         # the node here rather than 400 the whole submission later.
         return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
-    # Reject protocol-relative URLs (``//evil.com/x``) BEFORE the
-    # relative-path early-return below: the browser resolves them against
-    # the page scheme, so a persisted ``//attacker.example/pixel.gif`` would
-    # exfiltrate every viewer's IP / UA / Referer, defeating the
-    # anti-tracking-pixel guarantee.
-    if value.startswith("//"):
+    # Reject protocol-relative URLs BEFORE the relative-path early-return
+    # below: the browser resolves ``//attacker.example/pixel.gif`` against the
+    # page scheme, so a persisted one would exfiltrate every viewer's
+    # IP / UA / Referer, defeating the anti-tracking-pixel guarantee. Normalise
+    # the value the way a browser will first (WHATWG): strip ASCII tab/CR/LF
+    # from anywhere in the URL and treat a backslash as a slash, so ``/\evil``,
+    # ``/<TAB>/evil`` and ``//evil`` all reduce to the network path ``//evil``
+    # and no alternate spelling can slip past the check.
+    normalized = value.replace("\t", "").replace("\r", "").replace("\n", "").replace("\\", "/")
+    if normalized[:2] == "//":
         return None
     if value.startswith("/"):
         return value

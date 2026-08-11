@@ -40,7 +40,6 @@ export function useConfirmAction(
     void action();
   };
 
-  // Drop any pending auto-disarm timer on unmount.
   useEffect(() => clearTimer, []);
 
   return { armed, trigger, cancel };

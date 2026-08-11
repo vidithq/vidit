@@ -63,8 +63,7 @@ export function SeedWipePanel<S, W>({
 
   const seeding = seedMutation.loading;
   const wiping = wipeMutation.loading;
-  // One shared error slot, cleared whenever the other action fires (mirrors
-  // the old single `setError(null)` at the top of each handler).
+  // One shared error slot, cleared whenever the other action fires.
   const error = seedMutation.error ?? wipeMutation.error;
 
   const onSeed = () => {

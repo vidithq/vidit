@@ -157,6 +157,9 @@ function SubmitForm() {
   const [captureLat, setCaptureLat] = useState("");
   const [captureLng, setCaptureLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  // Optional mirrors of the same media (other networks, other same-POV posts),
+  // ordered. Never part of either publish floor.
+  const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>([]);
   const [eventDate, setEventDate] = useState("");
   // Optional event time-of-day (HH:MM, UTC).
   const [eventTime, setEventTime] = useState("");
@@ -219,6 +222,7 @@ function SubmitForm() {
     setLat,
     setLng,
     setSourceUrl,
+    setSecondarySourceUrls,
     setEventDate,
     setSourcePostedAt,
     setFiles,
@@ -251,6 +255,9 @@ function SubmitForm() {
         // ties it to status); the `?? ""` only satisfies the nullable wire
         // type, it never actually falls back here.
         setSourceUrl(b.source_url ?? "");
+        // The request's mirrors carry over too: the fulfilment replaces the
+        // whole list server-side, so anything not re-posted here is dropped.
+        setSecondarySourceUrls(b.secondary_source_urls);
         // Carry the request's optional metadata into the form: the dates the
         // poster knew, and the in-progress proof so the analyst continues from
         // it instead of a blank editor. The form mounts only after the request
@@ -278,6 +285,7 @@ function SubmitForm() {
       createEventRequest({
         title: title.trim(),
         source_url: sourceUrl.trim(),
+        secondary_source_urls: secondarySourceUrls,
         proof,
         // Optional approximate guess, both-or-neither, same strict parse as the
         // camera point below (no silent truncation of a half-typed coordinate).
@@ -316,6 +324,7 @@ function SubmitForm() {
           lng: lngNum,
           ...capture,
           source_url: sourceUrl,
+          secondary_source_urls: secondarySourceUrls,
           event_date: eventDate || undefined,
           event_time: eventTime || undefined,
           source_posted_at: sourcePostedAt,
@@ -333,6 +342,7 @@ function SubmitForm() {
         lng: lngNum,
         ...capture,
         source_url: sourceUrl,
+        secondary_source_urls: secondarySourceUrls,
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
@@ -609,6 +619,8 @@ function SubmitForm() {
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
+          secondarySourceUrls={secondarySourceUrls}
+          setSecondarySourceUrls={setSecondarySourceUrls}
           eventDate={eventDate}
           setEventDate={setEventDate}
           eventTime={eventTime}

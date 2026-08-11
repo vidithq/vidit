@@ -187,7 +187,7 @@ export function OnboardingPanel() {
 
   // The mint action owns the one error slot; the loader and revoke (which has
   // no loading of its own — the row owns that) write to it via `setError`, so
-  // the panel keeps a single shared error like before.
+  // the panel keeps a single shared error.
   const createMutation = useMutation(
     () =>
       createInviteCode({

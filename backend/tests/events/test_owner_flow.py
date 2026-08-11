@@ -17,6 +17,7 @@ import uuid
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from tests.conftest import login_as
 from tests.events._helpers import (
+    WORLD_BBOX,
     _make_geo,
     client,
     proof_file_part,
@@ -71,16 +72,14 @@ def test_delete_invalidates_points_cache(db, author):
     the deleted row's marker for up to the cache TTL.
     """
     geo = _make_geo(db, author=author)
-    # Warm the cache
-    first = client.get("/api/v1/events/points")
+    first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert first.headers.get("x-cache") == "MISS"
-    warm = client.get("/api/v1/events/points")
+    warm = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert warm.headers.get("x-cache") == "HIT"
 
     client.delete(f"/api/v1/events/{geo.id}", headers=login_as(client, author))
 
-    # After delete the cache must be cold again
-    after = client.get("/api/v1/events/points")
+    after = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert after.headers.get("x-cache") == "MISS", "delete must invalidate the points cache"
 
 
@@ -381,15 +380,15 @@ def test_geolocate_freezes_against_resubmit(db, author, conflict, capture_source
 
 def test_geolocate_invalidates_points_cache(db, author, conflict, capture_source_tag):
     geo = _detected(db, author, with_media=True)
-    assert client.get("/api/v1/events/points").headers.get("x-cache") == "MISS"
-    assert client.get("/api/v1/events/points").headers.get("x-cache") == "HIT"
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "HIT"
     client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         data=_floor_form(conflict, capture_source_tag),
         files=_floor_files(),
         headers=login_as(client, author),
     )
-    assert client.get("/api/v1/events/points").headers.get("x-cache") == "MISS"
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
 
 
 # ── POST /events/{id}/close (reject a detection) ───────────────────────────
@@ -461,19 +460,19 @@ def test_closed_detection_leaves_the_map(db, author):
     """A rejected detection comes off ``/points``, the map shows live
     confidence, the list keeps the audit trail."""
     geo = _detected(db, author)
-    points = {row[0] for row in client.get("/api/v1/events/points").json()}
+    points = {row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
     assert str(geo.id) in points
 
     assert _close(geo.id, author).status_code == 200
 
-    after = {row[0] for row in client.get("/api/v1/events/points").json()}
+    after = {row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
     assert str(geo.id) not in after
 
 
 def test_close_invalidates_points_cache(db, author):
     geo = _detected(db, author)
-    assert client.get("/api/v1/events/points").headers.get("x-cache") == "MISS"
-    assert client.get("/api/v1/events/points").headers.get("x-cache") == "HIT"
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "HIT"
     _close(geo.id, author)
-    after = client.get("/api/v1/events/points")
+    after = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert after.headers.get("x-cache") == "MISS"

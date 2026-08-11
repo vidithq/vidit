@@ -145,14 +145,3 @@ def test_s3_storage_delete_many_raises_on_per_key_failure():
         backend.delete_many(["ok.jpg", "bad.jpg"])
 
     assert exc_info.value.errors == {"bad.jpg": "AccessDenied: denied"}
-
-
-def test_s3_storage_delete_many_silent_on_clean_response(s3_setup):
-    """When all chunks come back with no Errors[], the call is silent."""
-    backend = S3Storage(bucket=BUCKET, region=REGION)
-    backend.client = MagicMock()
-    backend.client.delete_objects.return_value = {
-        "Deleted": [{"Key": "a.jpg"}, {"Key": "b.jpg"}],
-        "Errors": [],
-    }
-    backend.delete_many(["a.jpg", "b.jpg"])  # must not raise

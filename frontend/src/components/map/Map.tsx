@@ -33,6 +33,7 @@ import type {
   MapMouseEvent,
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
+import type { MapBounds } from "@/lib/viewport";
 import {
   CLUSTER_MAX_ZOOM,
   SPIDER_MAX_DOTS,
@@ -650,6 +651,49 @@ interface MapProps {
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
+  // Reports the visible rectangle as soon as the map instance exists and on
+  // every move-end, so the parent can fetch the points for the region actually
+  // on screen (`/events/points` requires a bbox). Separate from onViewChange:
+  // that one persists the camera and deliberately skips the layout move-end,
+  // while the first bounds are exactly what the initial fetch needs.
+  onBoundsChange?: (bounds: MapBounds) => void;
+}
+
+/** Reports the visible rectangle to the parent, which fetches the points for
+ *  it (`/events/points` requires a bbox): once as soon as the map instance
+ *  exists, then on every move-end.
+ *
+ *  Deliberately not hung off the style's `load` event. The camera is fully
+ *  determined by `initialViewState` from the first frame, and MapLibre answers
+ *  `getBounds()` right away, so waiting for `load` would tie the catalog fetch
+ *  to the basemap CDN: a blocked or slow tile host would leave the map with no
+ *  pins at all, where it used to leave it with pins on an empty canvas. */
+function BoundsReporter({
+  onBoundsChange,
+}: {
+  onBoundsChange?: (bounds: MapBounds) => void;
+}) {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (!map || !onBoundsChange) return;
+    // MapLibre hands the rectangle out as LngLat objects, unwrapped past the
+    // antimeridian; flatten it and let `lib/viewport` normalise.
+    const report = () => {
+      const b = map.getBounds();
+      onBoundsChange({
+        south: b.getSouth(),
+        west: b.getWest(),
+        north: b.getNorth(),
+        east: b.getEast(),
+      });
+    };
+    report();
+    map.on("moveend", report);
+    return () => {
+      map.off("moveend", report);
+    };
+  }, [map, onBoundsChange]);
+  return null;
 }
 
 /** Frames the camera on a bounds box. A child of `<MapGL>` because the map
@@ -698,6 +742,7 @@ export default function Map({
   zoom,
   fitBounds,
   onViewChange,
+  onBoundsChange,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
   // MapLibre needs WebGL, which Tor Browser disables or gates; without
@@ -1028,6 +1073,7 @@ export default function Map({
         spider={spider}
       />
       {fitBounds && <FitBoundsCamera bounds={fitBounds} />}
+      <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
@@ -1040,7 +1086,6 @@ export default function Map({
         clusterMaxZoom={CLUSTER_MAX_ZOOM}
         clusterRadius={50}
       >
-        {/* Radius scales with point count */}
         <Layer
           id="clusters"
           type="circle"

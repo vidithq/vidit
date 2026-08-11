@@ -15,7 +15,12 @@ from app.models.event import Event
 from app.models.media import Media
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
-from tests.events._helpers import client, proof_file_part, proof_form_field
+from tests.events._helpers import (
+    WORLD_BBOX,
+    client,
+    proof_file_part,
+    proof_form_field,
+)
 
 # ── POST /events, auth + validation paths ────────────────────────────────
 
@@ -115,7 +120,7 @@ def test_list_rejects_malformed_date_filter(author):
     surfaced as a 500. ``/points`` will be anonymous-reachable once read
     endpoints open, so this is a Sentry-noise + abuse-amplifier vector."""
     response = client.get(
-        "/api/v1/events/points?submitted_to=not-a-date",
+        f"/api/v1/events/points?bbox={WORLD_BBOX}&submitted_to=not-a-date",
         headers=login_as(client, author),
     )
     assert response.status_code == 422
@@ -518,6 +523,4 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
         if base.exists():
             leaked.extend(base.rglob("*.jpg"))
     assert leaked == [], f"S3 orphans after rolled-back create: {leaked}"
-
-    # And no Event / Media rows committed.
     assert db.query(Event).filter(Event.owner_id == author.id).count() == 0

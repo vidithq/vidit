@@ -11,14 +11,22 @@ none imports another:
   every serializer leans on.
 """
 
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
-from app.models.event import Event
+from pydantic import StringConstraints
+
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
 from app.schemas.event import CoordsRead, EventRead
 from app.schemas.media import MediaRead
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.thumbnails import pick_thumbnail
+
+# Item type of the repeated ``secondary_source_urls`` multipart field, shared by
+# the create / request / geolocate forms. The ceiling rides on the ITEM: a
+# ``max_length`` on the ``list[str]`` parameter would cap how many entries the
+# form accepts, not how long each URL may be.
+SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,
@@ -27,6 +35,7 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "proof_image_required": 400,
     "source_url_required": 400,
     "tag_requirements_not_met": 400,
+    "too_many_source_links": 400,
     "invalid_state": 409,
 }
 
@@ -85,6 +94,9 @@ def build_event_read(
         event_coords=coords_or_none(lat, lng),
         capture_source_coords=coords_or_none(capture_lat, capture_lng),
         source_url=geo.source_url,
+        # Ordered by the relationship's ``position``, so the read order is the
+        # order the submitter gave.
+        secondary_source_urls=[link.url for link in geo.source_links],
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,
