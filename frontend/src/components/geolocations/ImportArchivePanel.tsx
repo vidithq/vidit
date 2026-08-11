@@ -25,7 +25,7 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
-import { stripArchive } from "@/lib/archive";
+import { MAX_UPLOAD_LABEL, stripArchive } from "@/lib/archive";
 import {
   ImportPollLost,
   awaitImportJob,
@@ -85,7 +85,7 @@ function importErrorMessage(err: unknown): string | undefined {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "archive_too_large":
-        return "That archive is over the 4 GB safety limit, even after stripping. Get in touch and we'll find a way to import it.";
+        return `That archive is over the ${MAX_UPLOAD_LABEL} safety limit, even after stripping. Get in touch and we'll find a way to import it.`;
       case "archive_no_tweets":
         return "That zip isn't an X data export (no tweets.js inside).";
       case "archive_malformed":

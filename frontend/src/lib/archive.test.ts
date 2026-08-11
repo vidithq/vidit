@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, unzipSync, zipSync } from "fflate";
 
-import { MAX_UPLOAD_BYTES, stripArchive } from "./archive";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, stripArchive } from "./archive";
 
 function zipFile(entries: Record<string, Uint8Array>): File {
   return new File([zipSync(entries)], "archive.zip", { type: "application/zip" });
@@ -54,10 +54,51 @@ describe("stripArchive", () => {
     await expect(stripArchive(file, 1)).rejects.toHaveProperty("code", "archive_too_large");
   });
 
+  it("stops copying as soon as the output crosses the cap", async () => {
+    const entries: Record<string, Uint8Array> = {
+      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+    };
+    for (let i = 0; i < 8; i++) {
+      entries[`data/tweets_media/${i}-a.jpg`] = new Uint8Array(1024).fill(i);
+    }
+    const file = zipFile(entries);
+    // Every byte the strip reads goes through slice(), so counting the calls
+    // shows whether the copy walked all nine kept entries before failing.
+    const rawSlice = file.slice.bind(file);
+    let reads = 0;
+    file.slice = (start?: number, end?: number, contentType?: string) => {
+      reads += 1;
+      return rawSlice(start, end, contentType);
+    };
+
+    await expect(stripArchive(file, 1)).rejects.toHaveProperty("code", "archive_too_large");
+    // Signature, EOCD tail, central directory, then the first entry's local
+    // header and its data: the other eight entries are never touched (copying
+    // them all would take upwards of twenty reads).
+    expect(reads).toBeLessThan(8);
+  });
+
+  it("passes on exactly the cap and fails one byte under it", async () => {
+    const file = zipFile({
+      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+      "data/tweets_media/1-a.jpg": new Uint8Array([1, 2, 3]),
+    });
+    const { file: stripped } = await stripArchive(file);
+    // The boundary the presigned policy enforces: at the cap is fine, over it
+    // is not, and the running check must not shift that by a byte.
+    await expect(stripArchive(file, stripped.size)).resolves.toBeTruthy();
+    await expect(stripArchive(file, stripped.size - 1)).rejects.toHaveProperty(
+      "code",
+      "archive_too_large"
+    );
+  });
+
   it("mirrors the backend staged-zip guard", () => {
     // Must equal MAX_UPLOAD_BYTES in services/tweet_ingest/archive_zip.py:
     // a smaller value here refuses uploads S3 would accept, a larger one
     // hands the analyst an unretryable storage reject.
     expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 ** 3);
+    // And the copy the analyst reads quotes that same constant.
+    expect(MAX_UPLOAD_LABEL).toBe("4 GB");
   });
 });

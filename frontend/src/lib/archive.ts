@@ -14,12 +14,19 @@ const MEDIA_DIR = "tweets_media/";
  *  named failure before a multi-GB upload starts. Change both sides together. */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
 
+/** `MAX_UPLOAD_BYTES` as the figure user-facing copy quotes, derived from the
+ *  constant so raising the guard can't leave a stale number in a message. */
+export const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1024 ** 3} GB`;
+
 /** The stripped archive is still over the upload cap. Carries the backend's
  *  `archive_too_large` code so the page maps it to one message, and so the
- *  storage-side rejection of the same condition reads identically. */
+ *  storage-side rejection of the same condition reads identically. The import
+ *  panel maps that code to its own copy, so this text is what non-panel
+ *  callers (and a bare `errorMessage` fallback) surface, not what the import
+ *  UI displays; the two are worded alike on purpose. */
 export const archiveTooLarge = () =>
   new ApiError(
-    "That archive is still over 4 GB after stripping, so it can't be imported.",
+    `That archive is over the ${MAX_UPLOAD_LABEL} safety limit, even after stripping. Get in touch and we'll find a way to import it.`,
     0,
     "archive_too_large"
   );
@@ -165,9 +172,10 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
  * backend would (`archive_malformed` / `archive_no_tweets` /
  * `archive_too_large`) so the page maps it to one message.
  *
- * `maxBytes` is the upload cap the result is checked against; it defaults to
- * the mirrored backend guard and exists so tests can drive the over-cap path
- * without a multi-GB fixture.
+ * `maxBytes` is the upload cap the output is checked against as it is written,
+ * so an over-cap export aborts mid-copy rather than after a full re-zip; it
+ * defaults to the mirrored backend guard and exists so tests can drive the
+ * over-cap path without a multi-GB fixture.
  */
 export async function stripArchive(
   file: File,
@@ -208,6 +216,10 @@ export async function stripArchive(
   }
 
   const outChunks: Uint8Array[] = [];
+  // Running total of everything the re-zip has emitted. The copy loop checks it
+  // after each pushed chunk, so a far-over export fails within one chunk of the
+  // cap instead of materializing multi-GB of stripped zip in the tab first.
+  let outBytes = 0;
   let zipDone: (() => void) | null = null;
   let zipFail: ((e: unknown) => void) | null = null;
   const zipEnded = new Promise<void>((resolve, reject) => {
@@ -219,11 +231,21 @@ export async function stripArchive(
       zipFail?.(err);
       return;
     }
-    if (chunk) outChunks.push(chunk);
+    if (chunk) {
+      outChunks.push(chunk);
+      outBytes += chunk.length;
+    }
     if (final) zipDone?.();
   });
 
   const CHUNK = 4 * 1024 * 1024;
+  // Stop the copy the moment the output crosses the cap: the upload leg would
+  // refuse the result anyway, and re-zipping the rest costs the analyst a long
+  // wait and the tab the memory to hold it. Strictly over, so a result landing
+  // exactly on the cap still passes.
+  const failIfOverCap = () => {
+    if (outBytes > maxBytes) throw archiveTooLarge();
+  };
   try {
     for (const { entry, outName } of kept) {
       // The local header repeats name/extra with its own lengths; read them
@@ -246,6 +268,7 @@ export async function stripArchive(
       out.add(raw);
       if (entry.csize === 0) {
         raw.ondata?.(null, new Uint8Array(0), true);
+        failIfOverCap();
         continue;
       }
       for (let off = 0; off < entry.csize; off += CHUNK) {
@@ -253,6 +276,7 @@ export async function stripArchive(
         const part = await sliceBytes(file, dataStart + off, dataStart + end);
         if (part.length !== end - off) throw malformed();
         raw.ondata?.(null, part, end === entry.csize);
+        failIfOverCap();
       }
     }
     out.end();
@@ -264,9 +288,10 @@ export async function stripArchive(
 
   // Fail here rather than at the storage POST: the presigned policy answers
   // an over-cap body with a 400 that no retry can clear, so the analyst gets
-  // the reason instead of an upload that cannot succeed.
-  const outBytes = outChunks.reduce((total, chunk) => total + chunk.length, 0);
-  if (outBytes > maxBytes) throw archiveTooLarge();
+  // the reason instead of an upload that cannot succeed. The copy loop has
+  // already caught the body; this covers the central directory `out.end()`
+  // appends, which can be what tips a result sitting on the cap over it.
+  failIfOverCap();
 
   return {
     file: new File(outChunks as BlobPart[], "vidit-archive.zip", {

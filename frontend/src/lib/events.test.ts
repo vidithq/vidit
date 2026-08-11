@@ -226,11 +226,34 @@ describe("uploadArchive", () => {
   });
 
   it("maps the dev upload endpoint's 413 to the same code", async () => {
+    // The route's own streaming guard (main.py::dev_staging_upload).
     stubUpload(413, '{"detail":"Upload exceeds the size guard"}');
     await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
       "code",
       "archive_too_large"
     );
+  });
+
+  it("maps the dev body-size middleware's 413 to the same code", async () => {
+    // The other 413 the dev endpoint can answer with: the body-size middleware
+    // ahead of the route, whose detail carries the cap in bytes.
+    stubUpload(413, '{"detail":"Request body too large (max 4305453056 bytes)"}');
+    await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
+      "code",
+      "archive_too_large"
+    );
+  });
+
+  it("keeps ArchiveUploadError for a 413 from an intermediary", async () => {
+    // A corporate proxy capping request bodies can 413 an upload that is under
+    // our cap, which the strip just proved. Calling that archive too large
+    // would steer the analyst away from a retry that works.
+    stubUpload(
+      413,
+      "<html><head><title>413 Request Entity Too Large</title></head>" +
+        "<body><center><h1>413 Request Entity Too Large</h1></center></body></html>"
+    );
+    await expect(uploadArchive(target, zip)).rejects.toBeInstanceOf(ArchiveUploadError);
   });
 
   it("keeps ArchiveUploadError for a transit failure", async () => {
