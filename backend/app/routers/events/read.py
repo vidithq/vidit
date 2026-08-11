@@ -40,6 +40,7 @@ from app.services.event_filters import (
     apply_filters,
     bbox_predicate,
     parse_bbox,
+    snap_bbox,
     validate_media_types,
     validate_status_filter,
 )
@@ -77,10 +78,13 @@ def _build_points_cache_key(
     serialisation so the same logical filter set hashes alike regardless
     of the order the chips were clicked.
 
-    ``bbox`` is the parsed float tuple, so two viewports that differ by a
-    metre key separately and a cached payload can never be served for a
-    box it wasn't computed for. Distinct viewports therefore key densely;
-    the ``points_cache`` LRU cap is what bounds the resulting entry count.
+    ``bbox`` is the float tuple already snapped onto the server-side grid
+    (:func:`snap_bbox`), never the raw client box: raw boxes arrive at the
+    client's own precision, so they key near-uniquely and a caller cycling
+    a low decimal would evict every other entry from the LRU. Snapped, two
+    viewports in the same cell share an entry, and because the same tuple
+    also builds the query predicate, a cached payload can never be served
+    for a box it wasn't computed for.
     """
     payload = orjson.dumps(
         [
@@ -136,10 +140,12 @@ def investigator_aggregates(
 @limiter.limit("60/minute")
 def list_points(
     request: Request,
-    # Required: the map serves one viewport, never the whole catalog. A
-    # missing or malformed value is a 422, so no single call can walk away
-    # with every point on the platform.
-    bbox: str = Query(...),
+    # Required, so the payload tracks the area the caller asked for. The map's
+    # own path is viewport-sized, and a missing or malformed value is a 422:
+    # sweeping the catalog now costs a deliberate world-sized parameter rather
+    # than a bare GET. Nothing caps the area, because the map legitimately asks
+    # for the world box at low zoom.
+    bbox: str = Query(..., description="south,west,north,east, four floats"),
     # ``conflict``, ``capture_source`` and ``tag`` accept multiple values
     # (``?tag=a&tag=b``); a single ``?tag=a`` parses to ``["a"]``, so older
     # single-select clients keep working.
@@ -161,8 +167,8 @@ def list_points(
     ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
     No joins, designed for map display with client-side clustering.
     ``bbox`` (``south,west,north,east``) is required and bounds the payload
-    by viewport rather than by catalog size; a missing or malformed value
-    returns 422 (see :func:`parse_bbox` for the accepted shape).
+    by the area asked for rather than by catalog size; a missing or malformed
+    value returns 422 (see :func:`parse_bbox` for the accepted shape).
     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
     ``requested`` guess is not a confident pin, and a closed row was judged
     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
@@ -174,12 +180,15 @@ def list_points(
     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
     panel offers its hide-demo toggle only when one is present). Flags, not
     strings, to keep the payload small. Cached in-memory for 60s per unique
-    filter combination.
+    bbox + filter combination, the bbox first snapped outward onto a fixed
+    server-side grid (see :func:`snap_bbox`).
     """
     validate_media_types(media)
     # Parse before any cache work: a malformed box must 422 rather than key
-    # (and cache) off a string the query would never run with.
-    bounds = parse_bbox(bbox)
+    # (and cache) off a string the query would never run with. Snap once, then
+    # use the snapped box for both the key and the predicate, so the cached
+    # payload always covers exactly the box its key names.
+    bounds = snap_bbox(parse_bbox(bbox))
     cache_key = _build_points_cache_key(
         bbox=bounds,
         conflict=conflict,
@@ -236,7 +245,7 @@ def list_points(
     rows = q.all()
     # Compact 7-tuple: [id, lat, lng, event_date, added_date, detected, demo].
     # ``detected`` / ``demo`` are 1/0 flags (not strings) so the no-LIMIT
-    # catalog payload stays small; the map colours the marker off ``detected``
+    # payload stays small; the map colours the marker off ``detected``
     # and the filter panel shows its hide-demo toggle off ``demo``.
     result = [
         [

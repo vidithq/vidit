@@ -36,6 +36,32 @@ describe("normalizeBounds", () => {
     });
   });
 
+  it("widens a wrapped longitude pair, which the globe projection can report", () => {
+    expect(normalizeBounds({ south: 0, west: 170, north: 10, east: -170 })).toEqual({
+      south: 0,
+      west: -180,
+      north: 10,
+      east: 180,
+    });
+  });
+
+  it("falls back to the full range when a value is not finite", () => {
+    // `getBounds()` before the map has a size answers NaN, which would
+    // serialise as "NaN,..." and 422 the fetch.
+    expect(normalizeBounds({ south: NaN, west: 30, north: NaN, east: 40 })).toEqual({
+      south: -90,
+      west: 30,
+      north: 90,
+      east: 40,
+    });
+    expect(normalizeBounds({ south: 45, west: NaN, north: 50, east: NaN })).toEqual({
+      south: 45,
+      west: -180,
+      north: 50,
+      east: 180,
+    });
+  });
+
   it("clamps a zoomed-out viewport to the valid ranges", () => {
     expect(normalizeBounds({ south: -120, west: -400, north: 120, east: 400 })).toEqual({
       south: -90,
@@ -83,6 +109,11 @@ describe("boundsContain", () => {
 describe("toBboxParam", () => {
   it("serialises in the south,west,north,east order the endpoint parses", () => {
     expect(toBboxParam(UKRAINE)).toBe("45,30,50,40");
+  });
+
+  it("never emits a non-finite value, which the endpoint would 422", () => {
+    const param = toBboxParam({ south: NaN, west: NaN, north: NaN, east: NaN });
+    expect(param).toBe("-90,-180,90,180");
   });
 
   it("rounds outward, so the string never describes a smaller box", () => {

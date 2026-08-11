@@ -28,6 +28,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
+from tests.events._helpers import WORLD_BBOX
 
 client = TestClient(app)
 
@@ -153,7 +154,7 @@ _READ_LIMITS = [
     (f"/api/v1/events/{uuid.UUID(int=0)}", 120),
     # ``bbox`` is required here: FastAPI's parameter validation runs before
     # the limiter, so a bare call would 422 without ever touching the bucket.
-    ("/api/v1/events/points?bbox=-90,-180,90,180", 60),
+    (f"/api/v1/events/points?bbox={WORLD_BBOX}", 60),
     ("/api/v1/search?q=vidit", 60),
     ("/api/v1/search/authors?q=vidit", 60),
     ("/api/v1/tags", 60),

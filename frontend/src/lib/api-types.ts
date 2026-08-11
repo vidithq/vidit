@@ -742,8 +742,8 @@ export interface paths {
          *     ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
          *     No joins, designed for map display with client-side clustering.
          *     ``bbox`` (``south,west,north,east``) is required and bounds the payload
-         *     by viewport rather than by catalog size; a missing or malformed value
-         *     returns 422 (see :func:`parse_bbox` for the accepted shape).
+         *     by the area asked for rather than by catalog size; a missing or malformed
+         *     value returns 422 (see :func:`parse_bbox` for the accepted shape).
          *     Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
          *     ``requested`` guess is not a confident pin, and a closed row was judged
          *     out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
@@ -755,7 +755,8 @@ export interface paths {
          *     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
          *     panel offers its hide-demo toggle only when one is present). Flags, not
          *     strings, to keep the payload small. Cached in-memory for 60s per unique
-         *     filter combination.
+         *     bbox + filter combination, the bbox first snapped outward onto a fixed
+         *     server-side grid (see :func:`snap_bbox`).
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
@@ -3708,6 +3709,7 @@ export interface operations {
     list_points_api_v1_events_points_get: {
         parameters: {
             query: {
+                /** @description south,west,north,east, four floats */
                 bbox: string;
                 conflict?: string[] | null;
                 capture_source?: string[] | null;

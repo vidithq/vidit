@@ -94,7 +94,14 @@ export default function HomePage() {
       signal: controller.signal,
     })
       .then(setPoints)
-      .catch(() => {})
+      .catch(() => {
+        // Coverage is claimed at request time, so a real failure (429, 5xx,
+        // offline) would otherwise leave the region marked as loaded and the
+        // map showing the previous region's pins forever. Dropping the claim
+        // makes the next move-end retry. Same abort guard as the spinner: a
+        // superseded request must not wipe the coverage its replacement set.
+        if (abortRef.current === controller) coveredRef.current = null;
+      })
       .finally(() => {
         // A superseded request must not clear the spinner the one that
         // replaced it just raised: panning aborts often enough for that to

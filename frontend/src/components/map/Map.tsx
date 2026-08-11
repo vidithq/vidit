@@ -635,11 +635,11 @@ interface MapProps {
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
-  // Reports the visible rectangle once the style is up and on every move-end,
-  // so the parent can fetch the points for the region actually on screen
-  // (`/events/points` requires a bbox). Separate from onViewChange: that one
-  // persists the camera and deliberately skips the layout move-end, while the
-  // first bounds are exactly what the initial fetch needs.
+  // Reports the visible rectangle as soon as the map instance exists and on
+  // every move-end, so the parent can fetch the points for the region actually
+  // on screen (`/events/points` requires a bbox). Separate from onViewChange:
+  // that one persists the camera and deliberately skips the layout move-end,
+  // while the first bounds are exactly what the initial fetch needs.
   onBoundsChange?: (bounds: MapBounds) => void;
 }
 

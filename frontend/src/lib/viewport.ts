@@ -3,11 +3,13 @@
  *
  * `/events/points` requires a bbox, so the map asks for the region it is
  * showing instead of the catalog. These helpers turn a MapLibre viewport
- * into a request box the backend accepts (`services/event_filters.parse_bbox`:
- * `south,west,north,east`, latitudes in [-90, 90], longitudes in
- * [-180, 180], south <= north, west <= east), pad it so a small pan is
- * already covered, and answer whether a new viewport still fits inside the
- * box that was fetched last.
+ * into a request box the backend accepts, pad it so a small pan is already
+ * covered, and answer whether a new viewport still fits inside the box that
+ * was fetched last.
+ *
+ * Hand-kept mirror of `services/event_filters.parse_bbox`: field order
+ * `south,west,north,east`, latitudes in [-90, 90], longitudes in [-180, 180],
+ * south <= north, west <= east. Change the two together (see AGENTS.md).
  */
 
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
@@ -50,11 +52,21 @@ function clamp(value: number, min: number, max: number): number {
  * yields values like `[-200, -190]`, which the backend rejects. Shifting the
  * pair by whole turns puts most of those back in range. A box that still
  * straddles an edge after the shift genuinely crosses the antimeridian,
- * which the endpoint does not model, so it widens to the full range: over
- * fetching a strip of empty ocean beats dropping half the viewport.
+ * which the endpoint does not model (`west <= east`), so it widens to the
+ * full longitude range: over fetching the rest of the latitude band beats
+ * dropping half the viewport.
+ *
+ * `west > east` on the way in gets the same answer. The globe projection can
+ * report a wrapped pair, and there is no narrower box that covers both sides
+ * of the seam.
  */
 function normalizeLongitudes(west: number, east: number): [number, number] {
-  if (!Number.isFinite(west) || !Number.isFinite(east) || east - west >= 360) {
+  if (
+    !Number.isFinite(west) ||
+    !Number.isFinite(east) ||
+    west > east ||
+    east - west >= 360
+  ) {
     return [LNG_MIN, LNG_MAX];
   }
   const turns = Math.round((west + east) / 2 / 360);
@@ -63,24 +75,36 @@ function normalizeLongitudes(west: number, east: number): [number, number] {
   return shifted;
 }
 
+/**
+ * Bring a latitude pair into [-90, 90], smallest first.
+ *
+ * The finiteness guard is the one the longitude path already has, for the
+ * same reason: `getBounds()` called before the map has a size answers with
+ * NaN, which would serialise as `"NaN,..."` and 422 the fetch. The full
+ * range is the safe answer, since it is a superset of any real viewport.
+ */
+function normalizeLatitudes(south: number, north: number): [number, number] {
+  if (!Number.isFinite(south) || !Number.isFinite(north)) return [LAT_MIN, LAT_MAX];
+  return [
+    clamp(Math.min(south, north), LAT_MIN, LAT_MAX),
+    clamp(Math.max(south, north), LAT_MIN, LAT_MAX),
+  ];
+}
+
 /** A raw MapLibre viewport, made safe for `parse_bbox`. */
 export function normalizeBounds(bounds: MapBounds): MapBounds {
   const [west, east] = normalizeLongitudes(bounds.west, bounds.east);
-  const south = clamp(Math.min(bounds.south, bounds.north), LAT_MIN, LAT_MAX);
-  const north = clamp(Math.max(bounds.south, bounds.north), LAT_MIN, LAT_MAX);
+  const [south, north] = normalizeLatitudes(bounds.south, bounds.north);
   return { south, west, north, east };
 }
 
-/** Grow a viewport by `factor` of its own span on every side, clamped to the
- *  valid ranges. The result is what gets fetched; the viewport itself is what
- *  gets tested against it. */
-export function padBounds(
-  bounds: MapBounds,
-  factor: number = VIEWPORT_PADDING
-): MapBounds {
+/** Grow a viewport by `VIEWPORT_PADDING` of its own span on every side,
+ *  clamped to the valid ranges. The result is what gets fetched; the viewport
+ *  itself is what gets tested against it. */
+export function padBounds(bounds: MapBounds): MapBounds {
   const base = normalizeBounds(bounds);
-  const latMargin = (base.north - base.south) * factor;
-  const lngMargin = (base.east - base.west) * factor;
+  const latMargin = (base.north - base.south) * VIEWPORT_PADDING;
+  const lngMargin = (base.east - base.west) * VIEWPORT_PADDING;
   return {
     south: clamp(base.south - latMargin, LAT_MIN, LAT_MAX),
     north: clamp(base.north + latMargin, LAT_MIN, LAT_MAX),

@@ -153,7 +153,10 @@ def test_list_rejects_author_with_like_meta(author):
 
 
 def test_points_rejects_author_with_like_meta(author):
-    response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}", params={"author": "a%"})
+    # One ``params=`` dict, never a query string plus ``params=``: httpx
+    # *replaces* the URL's query with the mapping, which would drop ``bbox``
+    # and pass the test on the missing-parameter 422 instead of the guard.
+    response = client.get("/api/v1/events/points", params={"bbox": WORLD_BBOX, "author": "a%"})
     assert response.status_code == 422
 
 
@@ -326,6 +329,23 @@ def test_points_cache_keys_on_bbox(db, author):
     assert client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0").headers["x-cache"] == "HIT"
 
 
+def test_points_cache_hits_across_one_grid_cell(db, author):
+    """Two viewports inside one grid cell share a cache entry.
+
+    Client boxes carry ~11 m precision, so keying on them raw would miss on
+    nearly every request and let one caller cycle a low decimal to evict the
+    whole LRU. ``snap_bbox`` grows each box outward onto the server grid
+    before it is keyed, so a jitter smaller than a cell warms the same entry.
+    """
+    _make_geo(db, author=author, lat=48.5, lng=34.5)
+
+    first = client.get("/api/v1/events/points?bbox=45.01,30.01,49.99,39.99")
+    second = client.get("/api/v1/events/points?bbox=45.02,30.02,49.98,39.98")
+    assert first.headers.get("x-cache") == "MISS"
+    assert second.headers.get("x-cache") == "HIT", "same grid cell must share an entry"
+    assert first.content == second.content
+
+
 def test_points_cache_key_covers_bbox():
     """The builder itself separates two boxes under an identical filter set."""
     from app.routers.events.read import _build_points_cache_key
@@ -344,7 +364,6 @@ def test_points_cache_key_covers_bbox():
         )
 
     assert key((45.0, 30.0, 50.0, 40.0)) != key((5.0, 5.0, 15.0, 15.0))
-    assert key(WORLD_BOUNDS) == key(WORLD_BOUNDS)
 
 
 def test_points_returns_compact_shape(db, author):
