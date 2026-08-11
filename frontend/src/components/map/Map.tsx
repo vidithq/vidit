@@ -41,6 +41,7 @@ import {
   ringOffsets,
   ringRadius,
 } from "./stack";
+import type { Bounds } from "./bounds";
 
 // CARTO basemap pair, matched light / dark tiles. maplibre paint can't read CSS
 // variables, so the base tiles swap here off the theme rather than in the CSS
@@ -624,6 +625,15 @@ function SpiderRing({
 // on a laptop viewport).
 const MIN_ZOOM = 1.8;
 
+// Ceiling for a `fitBounds` camera. A box that encloses a single point (or a
+// handful of neighbours) has no scale of its own, so the fit would run to
+// street level; this keeps it at a regional read, where the surrounding
+// geography still says where the work is.
+const FIT_MAX_ZOOM = 9;
+// Breathing room (px) between the fitted box and the canvas edge, so an
+// extreme point doesn't sit under the map's own controls.
+const FIT_PADDING = 32;
+
 interface MapProps {
   points: MapPoint[];
   selectedId?: string | null;
@@ -631,9 +641,36 @@ interface MapProps {
   className?: string;
   center?: { lat: number; lng: number };
   zoom?: number;
+  /** Frame the camera on this box (`[west, south, east, north]`) instead of
+   *  reading `center` / `zoom`. For a view derived from its own content (the
+   *  per-analyst profile map) rather than from a remembered camera: MapLibre
+   *  solves the zoom against the real container, so no caller re-derives the
+   *  mercator maths. Applied on mount and whenever the box changes. */
+  fitBounds?: Bounds;
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
+}
+
+/** Frames the camera on a bounds box. A child of `<MapGL>` because the map
+ *  instance only exists inside it; the effect keys on the four numbers, not
+ *  the array, so a re-render with an equal box doesn't re-fit. */
+function FitBoundsCamera({ bounds }: { bounds: Bounds }) {
+  const { current: map } = useMap();
+  const [west, south, east, north] = bounds;
+
+  useEffect(() => {
+    if (!map) return;
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM, duration: 0 }
+    );
+  }, [map, west, south, east, north]);
+
+  return null;
 }
 
 // Dev-only camera handle for the promo-recording pipeline (video/): exposes
@@ -659,6 +696,7 @@ export default function Map({
   className,
   center,
   zoom,
+  fitBounds,
   onViewChange,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
@@ -989,6 +1027,7 @@ export default function Map({
         onPinHover={hoverPin}
         spider={spider}
       />
+      {fitBounds && <FitBoundsCamera bounds={fitBounds} />}
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />

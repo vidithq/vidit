@@ -41,8 +41,12 @@ export function PageShell({
             <ArrowLeft size={18} />
           </Button>
         )}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
+        {/* The action cluster drops under the title once the two can't share a
+            row (a phone-width viewport with a long title): the floor below is
+            what the title keeps before that happens, so a heading is never
+            squeezed into a one-word column. */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-[14rem] flex-1 space-y-2">
             <h1 className="text-xl font-medium text-neutral-100">{title}</h1>
             {subtitle && (
               <div className="text-sm text-neutral-400">{subtitle}</div>

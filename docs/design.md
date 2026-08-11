@@ -103,6 +103,7 @@ Constants (the pill tones live on `<Pill>` as `PILL_TONE`; these colour-only pai
 
 - **Style:** CARTO Dark Matter (with labels), `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`; the light theme swaps its matched counterpart Positron, `.../gl/positron-gl-style/style.json` (see [Theme](#theme)), with a faint `sepia` on the canvas (`globals.css`) warming Positron's cool grey to match the warm light surfaces
 - **Renderer:** MapLibre GL JS (vector tiles) with globe projection; zoom floor 1.8 (`MIN_ZOOM` in [`Map.tsx`](../frontend/src/components/map/Map.tsx)), the lowest level that keeps the globe fully visible once without shrinking it into void
+- **One map stack.** Every map on the site is the same [`<Map>`](../frontend/src/components/map/Map.tsx): the full-screen canvas, the single pin on an event page, and the profile coverage map. A page whose view comes from its own content passes `fitBounds` (`[west, south, east, north]`, from `pointsBounds` in [`bounds.ts`](../frontend/src/components/map/bounds.ts)) instead of `center` / `zoom`, and MapLibre solves the camera against the real container, capped at zoom 9 so a lone point lands on a regional read rather than a street
 - Map labels (cities, regions) are discreet light-gray
 - Point geometry: default radius 6px, selected 7px + 2px white border; opacity 1.0 (points), 0.85 (clusters); pointer cursor on hover
 - **Pin hover preview.** Hovering any single unclustered pin (or a ring dot, below) shows one shared preview card after a 150 ms hover-intent delay (`PinPreviewCard` in [`Map.tsx`](../frontend/src/components/map/Map.tsx)): title, `StatusBadge`, the fixed `MediaThumb` slot (the picked card thumbnail, or its "no media" box), date and `AuthorByline`, composed on `Card`. The event detail is fetched only once the hover intent elapses (`GET /events/{id}`, bounded in-memory cache that also holds in-flight requests, stale responses ignored, a failed fetch shows a terse fallback) and the card clamps against the map edges after measuring, flipping left of the pin when the right side lacks room, so it always renders fully visible. Ordinary clusters get no preview. Touch has no hover; tap keeps opening the panel.
@@ -128,7 +129,7 @@ The vocabulary:
 
 ### Page chrome
 
-Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` slots:
+Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` / `actions` slots:
 
 | Element | Style | Notes |
 |---|---|---|
@@ -136,8 +137,21 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
 | Back arrow (`back`) | `absolute right-full top-1.5 mr-3 …` | Lives in the gutter so the title's x-coordinate is the same whether back is present or not. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. |
+| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title floor | The page-level action cluster (the event share row, the profile share + follow / edit pair). The floor is what stops a phone-width viewport from squeezing a heading into a one-word column: past it the cluster takes its own line. |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`. The public guides sit on the same shell, signed out included: `/guide` ("How Vidit works", the whole loop from reading the map to publishing), `/methodology` ("Building a proof"), and `/bot` (the mention format), each a server component of `PageShell` + `Card` for SEO, hubbed from the About page's Guides section. The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card); the two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
+
+### Public profile
+
+[`/profile/{username}`](../frontend/src/app/profile/[username]/page.tsx) is an analyst's portfolio, the page they can pin as their link, so it is ordered as evidence rather than as an account:
+
+1. **Header.** The handle is the H1, with the avatar beside it (`ProfileTitle`, [`ProfileHeader.tsx`](../frontend/src/components/profile/ProfileHeader.tsx)) and the action cluster in PageShell's `actions`: the copy-link control on every profile, then Follow (someone else's) or the edit / save pair (your own). The owner's email is the subtitle. Same grammar as the event detail page, which also titles itself with the thing it is about and puts sharing in `actions`.
+2. **Bio**, the analyst's own framing.
+3. **Insights**: the counts strip (`<StatGrid>`), then the shape-of-work card from `GET /users/{username}/stats` (status split, media, top conflicts, capture sources, 12-month activity). Hidden entirely for a profile with no events.
+4. **Coverage**: their geolocations on a map (`ProfileMap`), the shared `<Map>` fed by `/events/points?author=…` with an explicit world `bbox`, camera fitted to the returned points. Hidden when the analyst has no located events.
+5. **Recent submissions**, then the owner-only blocks (linked accounts, the detections queue entry, sign out).
+
+The copy-link control is `<Button icon variant="ghost">` with the copy / check icon pair, the same control as the event share row; the clipboard write and its "copied" flash are one hook, [`useCopyToClipboard`](../frontend/src/hooks/useCopyToClipboard.ts), shared with that row and the admin invite codes.
 
 ### Buttons
 

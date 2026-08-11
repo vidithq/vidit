@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import type { EventStatus } from "@/types";
 import { Button } from "@/components/ui/Button";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 interface ShareButtonsProps {
   id: string;
@@ -44,19 +45,17 @@ export default function ShareButtons({
   lng,
   status,
 }: ShareButtonsProps) {
-  const [copied, setCopied] = useState(false);
+  // Clipboard write + the "copied" flash: shared with the profile share
+  // control (`useCopyToClipboard`), so the two can't drift.
+  const { copied, copy } = useCopyToClipboard();
   // A `detected` link points at an editable draft, so sharing it asks for a
   // confirming re-click first (mirrors the review queue's two-click delete).
   // `armed` is which action is awaiting that re-click; it auto-disarms.
   const [armed, setArmed] = useState<null | "copy" | "share">(null);
-  // Tracked so a second click within the 1.5s window doesn't queue a duplicate
-  // timer (flipping "Link copied" back early), and unmount clears it.
-  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
       if (armResetTimer.current) clearTimeout(armResetTimer.current);
     };
   }, []);
@@ -95,15 +94,7 @@ export default function ShareButtons({
       return;
     }
     disarm();
-    try {
-      await navigator.clipboard.writeText(url());
-      setCopied(true);
-      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API fails on insecure contexts (http://, embedded webviews).
-      // Silent no-op — the URL is still in the address bar.
-    }
+    await copy(url());
   };
 
   const onShareX = () => {
