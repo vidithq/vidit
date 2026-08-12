@@ -1,6 +1,6 @@
 # Engineering
 
-Tech stack, repo layout, local environment, deployment, particularities.
+This page describes the tech stack, repository layout, local environment, deployment process, and particularities of the Vidit codebase.
 
 ---
 
@@ -8,9 +8,9 @@ Tech stack, repo layout, local environment, deployment, particularities.
 
 ### Selection principles
 
-- **Open source first**: every component must be self-hostable or replaceable
-- **Python backend**: matches the team's profile (data engineering)
-- **Near-zero cost during the beta**: 10 users, no reason to pay
+- **Open source first.** Every component must be self-hostable or replaceable.
+- **Python backend.** The team's background is in data engineering.
+- **Near-zero cost during the beta.** The beta has 10 users, so paid infrastructure isn't necessary.
 
 ### Backend
 
@@ -42,7 +42,7 @@ PostGIS handles coordinates, bounding boxes, and geographic queries (radius, int
 | CDN | **AWS CloudFront** (with Origin Access Control) |
 | Python SDK | `boto3` |
 
-S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservation primitives (Object Lock, versioning, replication), no future migration tax. The backend talks to storage through a small `Storage` protocol (`S3Storage` for prod, `LocalStorage` for dev/CI). Shipped in v0.0.2; see [`CHANGELOG.md`](CHANGELOG.md).
+The backend uses S3 and CloudFront from day one instead of Supabase, for AWS familiarity, evidence-preservation primitives (Object Lock, versioning, replication), and no migration cost later. The backend talks to storage through a small `Storage` protocol (`S3Storage` for production, `LocalStorage` for development and CI). See [`CHANGELOG.md`](CHANGELOG.md) for the history of this decision.
 
 ### Frontend
 
@@ -59,11 +59,11 @@ S3 + CloudFront from day one (not Supabase). AWS familiarity, evidence-preservat
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. |
 | API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
-MapLibre GL JS is open-source (BSD-3-Clause), uses vector tiles, and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and visually align with the dark theme.
+MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and match the dark theme.
 
-Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)): GET on mount and on every `path` change, abort of the in-flight request on unmount / path change, skip while `path` is `null` (auth unresolved, route params not ready), `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render; 401 handling stays in the proxy. Lists the page mutates after seeding (e.g. `TagPicker` appending a newly created tag) stay `useState` + `apiFetch`. Writes (create / update / delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper, with `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulling the message; the anonymous→`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`.
+Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)). It issues a GET on mount and on every `path` change, aborts the in-flight request on unmount or path change, and skips the request while `path` is `null` (auth unresolved, route params not ready). Call `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render; 401 handling stays in the proxy. Lists the page mutates after seeding (for example, `TagPicker` appending a newly created tag) stay on `useState` plus `apiFetch`. Writes (create, update, delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper. `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulls the message. The anonymous-to-`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`.
 
-The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set: anonymous read is open on the content routes (map, events, requests, profiles, search) plus the auth pages, while write and account surfaces (`/submit`, `/import`, `/settings`, `/admin`, `/timeline`) require a session; write sub-routes nested under a public prefix (`/events/[id]/edit`, `/profile/[username]/detections`) are bounced client-side by `useRequireAuth`.
+The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set. Anonymous read is open on the content routes (map, events, requests, profiles, search) plus the auth pages. Write and account surfaces (`/submit`, `/import`, `/settings`, `/admin`, `/timeline`) require a session. Write sub-routes nested under a public prefix (`/events/[id]/edit`, `/profile/[username]/detections`) are bounced client-side by `useRequireAuth`.
 
 ### Hosting
 
@@ -81,11 +81,11 @@ The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an 
 
 ### Out of technical scope for the MVP
 
-- Redis / external cache: not needed (an in-process TTL+LRU cache is used for the points endpoint, see `backend/app/cache.py`)
-- Task queue (Celery, etc.): no async processing in the MVP
-- Multi-region S3 / cross-region replication: single-region for closed beta
-- Monitoring / observability: UptimeRobot liveness checks on the API health endpoint + a Sentry SDK on both tiers (backend + frontend), opt-in via a DSN env var (shipped v0.1.0, see [Observability](#observability-whats-wired-and-how-to-turn-it-on)). No full APM / tracing pipeline yet.
-- Handle-ownership verification: the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse), so imports land as `detected` drafts and ownership proof + a claim/dispute path are deferred (tracked in [`planning/next.md`](../planning/next.md)).
+- **Redis or an external cache**: not needed. An in-process TTL+LRU cache serves the points endpoint (see `backend/app/cache.py`).
+- **A task queue (Celery or similar)**: the MVP does no async processing.
+- **Multi-region S3 or cross-region replication**: the deployment is single-region.
+- **Monitoring and observability**: UptimeRobot runs liveness checks on the API health endpoint, and a Sentry SDK runs on both tiers (backend and frontend), opt-in through a DSN environment variable (see [Observability](#observability-whats-wired-and-how-to-turn-it-on)). There's no full APM or tracing pipeline yet.
+- **Handle-ownership verification**: the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience, and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse). Imports land as `detected` drafts, and ownership proof plus a claim/dispute path are deferred (tracked in [`planning/next.md`](../planning/next.md)).
 
 ---
 
@@ -232,7 +232,7 @@ vidit/
         └── pr-title.yml
 ```
 
-DCO sign-off is enforced by the [Probot DCO App](https://github.com/apps/dco), not an in-tree workflow file.
+The [Probot DCO App](https://github.com/apps/dco) enforces DCO sign-off. It isn't an in-repo workflow file.
 
 ---
 
@@ -293,7 +293,7 @@ Default to none. A comment earns its place only when it states something the cod
 
 ### Docker Compose
 
-`docker-compose.yml` spins up a custom PostgreSQL image (`docker/Dockerfile`) bundling PostGIS, Apache AGE, and pg_cron. The two preloaded extensions need `shared_preload_libraries = 'age, pg_cron'` baked into `postgresql.conf` at image-build time, appended to `postgresql.conf.sample` in [`docker/Dockerfile`](../docker/Dockerfile) since the stock `postgres` image doesn't honour `POSTGRES_SHARED_PRELOAD_LIBRARIES`. Container `vidit-db`; data volume mounted at `/var/lib/postgresql` (not `/data`) so AGE catalog state persists across restarts.
+`docker-compose.yml` spins up a custom PostgreSQL image (`docker/Dockerfile`) that bundles PostGIS, Apache AGE, and pg_cron. The two preloaded extensions need `shared_preload_libraries = 'age, pg_cron'` baked into `postgresql.conf` at image-build time. This setting is appended to `postgresql.conf.sample` in [`docker/Dockerfile`](../docker/Dockerfile), because the stock `postgres` image doesn't honour `POSTGRES_SHARED_PRELOAD_LIBRARIES`. The container is named `vidit-db`. Its data volume is mounted at `/var/lib/postgresql` (not `/data`) so AGE catalog state persists across restarts.
 
 The backend (FastAPI via uvicorn) and the frontend (Next.js dev server) run on the host for hot reload.
 
@@ -312,14 +312,14 @@ Each service has its own `.env` (not committed):
 
 ### Running multiple frontends against one backend
 
-The local CORS allowlist accepts every `localhost:<port>` (http or https) by default; see [`backend/app/config.py`](../backend/app/config.py) (`cors_origin_regex`). One backend on `:8000` serves any number of concurrent frontends (main checkout, worktrees, alternate ports) without restart. For a frontend on a non-default port:
+The local CORS allowlist accepts every `localhost:<port>` (http or https) by default. See [`backend/app/config.py`](../backend/app/config.py) (`cors_origin_regex`). One backend on `:8000` serves any number of concurrent frontends (main checkout, worktrees, alternate ports) without a restart. For a frontend on a non-default port, run:
 
 ```
 cd frontend
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 npx next dev -p 3030
 ```
 
-The override is *only* the localhost regex; explicit `CORS_ORIGINS` (production hosts) still apply. The shipped localhost default is a dev convenience and is dropped automatically when `DATABASE_URL` points at a non-local host ([`config.py`](../backend/app/config.py) `effective_cors_origin_regex`): with `allow_credentials=True`, a live `localhost:<port>` origin regex would otherwise let any localhost page in a viewer's browser make credentialed cross-origin reads against the deployed API. Prod therefore relies on the `CORS_ORIGINS` allowlist alone, independent of the cookie `SameSite` attribute, and no manual `CORS_ORIGIN_REGEX=` step is required.
+The override applies only to the localhost regex. Explicit `CORS_ORIGINS` (production hosts) still apply. The shipped localhost default is a development convenience, and it's dropped automatically when `DATABASE_URL` points at a non-local host ([`config.py`](../backend/app/config.py) `effective_cors_origin_regex`). This matters because, with `allow_credentials=True`, a live `localhost:<port>` origin regex would otherwise let any localhost page in a viewer's browser make credentialed cross-origin reads against the deployed API. Production therefore relies on the `CORS_ORIGINS` allowlist alone, independent of the cookie `SameSite` attribute, and no manual `CORS_ORIGIN_REGEX=` step is required.
 
 ---
 
@@ -334,15 +334,15 @@ The override is *only* the localhost regex; explicit `CORS_ORIGINS` (production 
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
 
-Dependabot ([`.github/dependabot.yml`](../.github/dependabot.yml)): weekly Monday version-update PRs across `pip`, `npm`, and `github-actions`, grouped (`@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, `next + @next/* + eslint-config-next`, a `minor-and-patch` catch-all) so a busy ecosystem doesn't open ten PRs at once; major bumps stay individual. Security PRs ship one-per-advisory regardless.
+Dependabot ([`.github/dependabot.yml`](../.github/dependabot.yml)) opens weekly Monday version-update PRs across `pip`, `npm`, and `github-actions`. It groups related updates (`@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, `next + @next/* + eslint-config-next`, and a `minor-and-patch` catch-all) so a busy ecosystem doesn't open ten PRs at once. Major bumps stay individual. Security PRs ship one per advisory regardless.
 
-DCO sign-off is enforced by the [Probot **DCO App**](https://github.com/apps/dco) (installed on the org, not an in-repo workflow): it posts a `DCO` status check on every PR, failing the first commit missing a `Signed-off-by:` trailer. Implements [DCO 1.1](https://developercertificate.org): not a CLA, no relicensing, inbound = outbound = AGPL-3.0.
+The [Probot **DCO App**](https://github.com/apps/dco) enforces DCO sign-off. It's installed on the GitHub organization, not as an in-repo workflow file. It posts a `DCO` status check on every PR and fails the check when the first commit is missing a `Signed-off-by:` trailer. This implements [DCO 1.1](https://developercertificate.org): not a CLA, no relicensing, inbound = outbound = AGPL-3.0.
 
-Hardening (forks make every workflow run attacker-reachable):
+The workflows are hardened because forks make every workflow run reachable to attackers:
 
 - **Every third-party action is SHA-pinned**, with the human-readable version in a trailing comment (the `# vX.Y.Z` form is the one Dependabot's `github-actions` ecosystem reads to know which pin to rewrite on a version-update PR).
 - **Every workflow declares a top-level `permissions:` block** scoped to the minimum it needs (`contents: read` for the five CI workflows, `pull-requests: read` on `pr-title.yml`).
-- **No workflow uses `pull_request_target`**: fork-PR escalation vector. Stick to `pull_request`.
+- **No workflow uses `pull_request_target`**, because it's a fork-PR escalation vector. Use `pull_request` instead.
 
 ### Deployment
 
@@ -358,7 +358,7 @@ Hardening (forks make every workflow run attacker-reachable):
 | Media | AWS | bucket `<media-bucket>` (region `eu-west-3`), CloudFront `d10w3bld05vsky.cloudfront.net` (OAC, not OAI). Versioning ON; Object Lock ON with default rule GOVERNANCE / 365 days (bucket-wide; see CHANGELOG `v0.3.0`); CORS: `GET`/`HEAD` from `https://vidit.app`, plus the `POST` rule below for the presigned archive-import upload. Lifecycle: the `archive-imports/` rule below, plus a bucket-wide rule aborting incomplete multipart uploads after 7 days. Every image upload lands **three** sibling objects: the original (post EXIF-strip), `<key>_hero.jpg` (max-dim 1280, JPEG q80), `<key>_thumb.jpg` (max-dim 400, JPEG q80). Frontend renderers derive the hero / thumbnail URL from `Media.storage_url` via [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts); keep that helper and the backend `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py) in sync. Cross-region replication mirrors six content prefixes to `<replica-bucket>` (region `eu-west-1`); prefix list, bucket policy, and threat model: [`backups.md`](backups.md#media-replication). | Backend uploads via `boto3` as IAM user `<runtime-iam-user>` (object-level perms only, scoped to the `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `archive-imports/`, and `detected/` key prefixes: a feature that introduces a new prefix must extend the user's policy or every write to it fails `AccessDenied`); bucket-level admin uses a separate `<s3-admin>` IAM principal. Replication runs through IAM role `<replication-role>`, scoped to reading source object versions and replicating objects/tags to `<replica-bucket>`. CloudFront serves the bucket. |
 | Backups | Railway + AWS | Cron service `backend-backup` (image [`docker/backup/`](../docker/backup/), config-as-code [`docker/backup/railway.json`](../docker/backup/railway.json), `0 0 * * *`, daily 00:00 UTC) → bucket `<backup-bucket>` (region `eu-west-3`). Versioning ON, SSE-S3, all public access blocked. Lifecycle: current objects expire 365d, noncurrent versions 30d, aborted multipart uploads 7d. | Writes through IAM user `<backup-iam-user>` with **write-only** S3 permissions (`PutObject`/`AbortMultipartUpload`/`ListMultipartUploadParts`) on the backup bucket: no `Get`, no `Delete`. Restore reads use the `<s3-admin>` profile, never the runtime user. Full runbook + restore drill: [`backups.md`](backups.md). |
 
-**Operator step: media-bucket CORS for presigned archive uploads.** The archive import POSTs the zip from the browser straight to the bucket (S3 POST policy, see [`ingestion.md`](ingestion.md#archive-import-worker)), so the bucket CORS must allow cross-origin `POST` from the app origins. Apply this configuration on `<media-bucket>` (S3 console → Permissions → CORS, or `aws s3api put-bucket-cors`), keeping the existing `GET`/`HEAD` rule:
+**Operator step: media-bucket CORS for presigned archive uploads.** The archive import POSTs the zip from the browser straight to the bucket (S3 POST policy; see [`ingestion.md`](ingestion.md#archive-import-worker)), so the bucket CORS must allow cross-origin `POST` from the app origins. Apply this configuration on `<media-bucket>` (S3 console → Permissions → CORS, or `aws s3api put-bucket-cors`) and keep the existing `GET`/`HEAD` rule:
 
 ```json
 [
@@ -378,11 +378,11 @@ Hardening (forks make every workflow run attacker-reachable):
 ]
 ```
 
-(No localhost origin: local dev uses `LocalStorage` plus the dev upload endpoint and never reaches the bucket.)
+(There's no localhost origin: local development uses `LocalStorage` plus the development upload endpoint, and it never reaches the bucket.)
 
-A staged object normally lives minutes (the worker deletes it at terminal states); an uploaded-but-never-enqueued object has no job row to trigger that delete, so an S3 lifecycle rule on the `archive-imports/` prefix expires current objects after 7 days **and noncurrent versions after 7 days** (`NoncurrentVersionExpiration`). The noncurrent half matters: the bucket has Versioning ON, so the worker's delete only writes a delete marker, and without it every raw personal X export would persist as a noncurrent version. The bucket-wide Object Lock default (GOVERNANCE, 365 days) still floors how early a version can truly disappear; accepted for now, revisit if staging volume or the privacy calculus changes. This is also why `archive-imports/` sits outside the cross-region replication above; see [`backups.md`](backups.md#media-replication).
+A staged object normally lives for minutes, because the worker deletes it at terminal states. An uploaded-but-never-enqueued object has no job row to trigger that delete. Add an S3 lifecycle rule on the `archive-imports/` prefix that expires current objects after 7 days **and noncurrent versions after 7 days** (`NoncurrentVersionExpiration`). The noncurrent half matters: the bucket has Versioning ON, so the worker's delete only writes a delete marker. Without the rule, every raw personal X export would persist as a noncurrent version. The bucket-wide Object Lock default (GOVERNANCE, 365 days) still floors how early a version can disappear, independent of the lifecycle rule. This is also why `archive-imports/` sits outside the cross-region replication described in [`backups.md`](backups.md#media-replication).
 
-Naming: `<product>-<env>-<region>` for the bucket so a future `vidit-staging-eu-west-3` slots in. Service is just `backend` because Railway already nests it under `vidit/production`. Vercel project is `vidit-frontend` because the team scope is `vidithq`.
+Naming follows `<product>-<env>-<region>` for the bucket, so a future `vidit-staging-eu-west-3` fits the pattern. The service is named `backend` because Railway already nests it under `vidit/production`. The Vercel project is `vidit-frontend` because the team scope is `vidithq`.
 
 ### Operating the platform: CLIs
 
@@ -411,7 +411,7 @@ printf 'value' | vercel env add NAME production   # pipe avoids leaking via ps/h
 vercel --prod --yes                               # promote to production
 ```
 
-Vercel **Keychain quirk**: CLI ≥ 32 stores tokens in macOS Keychain; the `auth.json` file only contains `{}`. A sandboxed shell without Keychain access can't see credentials saved by `vercel login` and triggers a fresh device-auth flow on every invocation. Workaround for headless use: generate at https://vercel.com/account/tokens, then `export VERCEL_TOKEN=…` and pass `--token="$VERCEL_TOKEN" --scope vidithq` on every command.
+**Vercel Keychain quirk.** CLI versions 32 and above store tokens in macOS Keychain, so the `auth.json` file only contains `{}`. A sandboxed shell without Keychain access can't see credentials saved by `vercel login`, and it triggers a fresh device-auth flow on every invocation. For headless use, generate a token at https://vercel.com/account/tokens, export it with `export VERCEL_TOKEN=…`, and pass `--token="$VERCEL_TOKEN" --scope vidithq` on every command.
 
 `--scope` is required in non-interactive shells (no default team).
 
@@ -431,12 +431,12 @@ Vercel **Keychain quirk**: CLI ≥ 32 stores tokens in macOS Keychain; the `auth
 
 ### Frontend Sentry verification
 
-Drilled 2026-05-18. In an incognito window (extensions disabled):
+Last verified 2026-05-18, in an incognito window with extensions disabled:
 
-- (a) **Browse a few pages** and check **sentry.io → your project → Sessions** for ticks within ~1 min. Session tracking emits an envelope per page load; no console action needed.
-- (b) For an explicit issue, run `setTimeout(() => { throw new Error("manual test") }, 0)` in DevTools. The `setTimeout` matters: a synchronous `throw` from the console is swallowed by the DevTools wrapper and never reaches `window.onerror`. The SDK doesn't expose `Sentry` on `window` in 10.x, so `Sentry.captureMessage(...)` from the console errors with `Sentry is not defined`.
+- (a) Browse a few pages, then check **sentry.io → your project → Sessions** for ticks within about 1 minute. Session tracking emits an envelope per page load, so no console action is needed.
+- (b) To verify an explicit issue, run `setTimeout(() => { throw new Error("manual test") }, 0)` in DevTools. The `setTimeout` matters: a synchronous `throw` from the console is swallowed by the DevTools wrapper and never reaches `window.onerror`. The SDK doesn't expose `Sentry` on `window` in version 10.x, so running `Sentry.captureMessage(...)` from the console fails with `Sentry is not defined`.
 
-**Ad-blocker tunnel.** uBlock, Brave shields, AdGuard, and most browser tracking-protection lists block direct POSTs to `*.ingest.sentry.io` with `ERR_BLOCKED_BY_CLIENT`. `withSentryConfig` in [`next.config.mjs`](../frontend/next.config.mjs) sets `tunnelRoute: "/monitoring"`, so the browser SDK posts envelopes to the same-origin `/monitoring` route and the Next server forwards them to Sentry. Verification step (b) above therefore works with extensions enabled too; a blocked `/monitoring` request in the network tab means the route was renamed or the wrapper was dropped. The tunnel path also lives in the proxy's public allowlist ([`proxy.ts`](../frontend/src/proxy.ts) `PUBLIC_PREFIXES`): the anonymous-read auth wall would otherwise redirect error envelopes to `/login` where the POST dies as a 405.
+**Ad-blocker tunnel.** uBlock, Brave shields, AdGuard, and most browser tracking-protection lists block direct POSTs to `*.ingest.sentry.io` with `ERR_BLOCKED_BY_CLIENT`. `withSentryConfig` in [`next.config.mjs`](../frontend/next.config.mjs) sets `tunnelRoute: "/monitoring"`, so the browser SDK posts envelopes to the same-origin `/monitoring` route, and the Next.js server forwards them to Sentry. Verification step (b) above therefore works with extensions enabled too. A blocked `/monitoring` request in the network tab means the route was renamed or the wrapper was dropped. The tunnel path also lives in the proxy's public allowlist ([`proxy.ts`](../frontend/src/proxy.ts) `PUBLIC_PREFIXES`), because the anonymous-read auth wall would otherwise redirect error envelopes to `/login`, where the POST fails with a 405.
 
 ### Maintenance runbooks
 
@@ -468,9 +468,9 @@ finally:
 EOF
 ```
 
-**Generate curated demo geolocations from the admin panel**: `make seed` covers the auto-generated 50-point dataset for onboarding. For curated demos (promo recordings, screenshots, manually-themed content), populate `s3://<bucket>/demo-pool/geo-XX/{media,proof}/` (or `.local-storage/demo-pool/geo-XX/{media,proof}/` when `STORAGE_BACKEND=local`) with photos per template, then go to `/admin` → *Demo data* panel → enter a count → Generate. Seeded geos carry a `demo` tag for filtering; the same panel wipes them.
+**Generate curated demo geolocations from the admin panel**: `make seed` covers the auto-generated 50-point dataset for onboarding. For curated demos (promo recordings, screenshots, manually themed content), populate `s3://<bucket>/demo-pool/geo-XX/{media,proof}/` (or `.local-storage/demo-pool/geo-XX/{media,proof}/` when `STORAGE_BACKEND=local`) with photos per template. Then go to `/admin` → *Demo data* panel, enter a count, and select Generate. Seeded geolocations carry a `demo` tag for filtering. The same panel wipes them.
 
-**Backfill source archival over the existing catalog**: `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. Inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns; the import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events it already covered, so clicking it again walks further down the catalog and picks up what has been written since.
+**Backfill source archival over the existing catalog**: go to `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. This inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns immediately. The import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events it already covered, so clicking it again walks further down the catalog and picks up what has been written since.
 
 **Clean up an orphan Railway domain** (e.g. an auto-generated `*.up.railway.app` host, which leaks the project name to scanners):
 
@@ -481,16 +481,16 @@ Railway dashboard → project `vidit` → service `postgres-db` → Settings →
 
 Public networking on `postgres-db` is off. Delete any public domain with no `DATABASE_PUBLIC_URL` consumer.
 
-### Particularities (non-obvious things that bit us)
+### Particularities (non-obvious behavior found during development)
 
-- **`postgres://` → `postgresql://`**: Railway injects the legacy scheme; SQLAlchemy 2 only loads under `postgresql://`. We string-prefix swap in [`backend/app/config.py`](../backend/app/config.py) `_normalize_postgres_scheme`. Fix landed in [PR #21](https://github.com/vidithq/vidit/pull/21).
-- **`$PORT` not expanded in `railway.json`'s `startCommand`**: Railway passes the literal string `$PORT`. Fix: drop `startCommand` and let the Dockerfile `CMD ["sh", "-c", "… --port ${PORT:-8000}"]` expand it. See [PR #22](https://github.com/vidithq/vidit/pull/22).
-- **`CORS_ORIGINS` is a comma-separated string**, not pydantic's default JSON list. Property `cors_origins_list` parses it. The deployed Vercel alias must be in the list or browser calls fail at preflight. See [PR #23](https://github.com/vidithq/vidit/pull/23).
-- **`COOKIE_DOMAIN` must be `.vidit.app` in prod**: the `vidit_csrf` cookie is set by `api.vidit.app` but read by JavaScript at `vidit.app`. Without the parent-domain scope (`COOKIE_DOMAIN=.vidit.app` on the Railway `backend` service) the double-submit CSRF check can't see the token and **every mutating request fails** with `CSRF token missing or invalid`.
-- **Two `gh` accounts on the same machine drift**: symptom is `Repository not found` on `git fetch` for a repo you can normally access. Fix: `gh auth status` then `gh auth switch --user <correct-account>`. `gh` configures git's credential helper.
-- **The Vercel bundle stays up during a backend outage**: static JS loads from Vercel CDN regardless of Railway state. When investigating "the site is broken", check `/health` on Railway first.
+- **`postgres://` → `postgresql://`**: Railway injects the legacy scheme, but SQLAlchemy 2 only loads under `postgresql://`. [`backend/app/config.py`](../backend/app/config.py)'s `_normalize_postgres_scheme` swaps the prefix. The fix landed in [PR #21](https://github.com/vidithq/vidit/pull/21).
+- **`$PORT` not expanded in `railway.json`'s `startCommand`**: Railway passes the literal string `$PORT`. The fix: drop `startCommand`, and let the Dockerfile `CMD ["sh", "-c", "… --port ${PORT:-8000}"]` expand it. See [PR #22](https://github.com/vidithq/vidit/pull/22).
+- **`CORS_ORIGINS` is a comma-separated string**, not pydantic's default JSON list. The `cors_origins_list` property parses it. The deployed Vercel alias must be in the list, or browser calls fail at preflight. See [PR #23](https://github.com/vidithq/vidit/pull/23).
+- **`COOKIE_DOMAIN` must be `.vidit.app` in production**: the `vidit_csrf` cookie is set by `api.vidit.app` but read by JavaScript at `vidit.app`. Without the parent-domain scope (`COOKIE_DOMAIN=.vidit.app` on the Railway `backend` service), the double-submit CSRF check can't see the token, and **every mutating request fails** with `CSRF token missing or invalid`.
+- **Two `gh` accounts on the same machine drift**: the symptom is `Repository not found` on `git fetch` for a repo you can normally access. To fix it, run `gh auth status`, then `gh auth switch --user <correct-account>`. `gh` configures git's credential helper.
+- **The Vercel bundle stays up during a backend outage**: static JS loads from the Vercel CDN regardless of Railway state. When you investigate a report that "the site is broken", check `/health` on Railway first.
 - **uvicorn needs `--proxy-headers` behind Railway, AND nothing may read `request.client.host` for security purposes**: without `--proxy-headers --forwarded-allow-ips='*'` (set in the Dockerfile's `CMD`), `request.url.scheme` defaults to `http` and absolute URLs in emails go out broken. With those flags, however, uvicorn populates `request.client.host` from the **left-most** entry of `X-Forwarded-For` (uvicorn's `always_trust=True` branch returns `x_forwarded_for_hosts[0]`). Railway *appends* to `X-Forwarded-For` rather than overwriting it, so the left-most entry is whatever the client sent: fully attacker-controlled. The two callers that need a trustworthy client IP, the slowapi rate limiter and the auth-events audit log, both route through [`services/audit.py::extract_client_ip`](../backend/app/services/audit.py), which parses XFF itself and picks the **right-most** entry (the one the trusted proxy actually wrote). The slowapi side specifically uses the `rate_limit_key` wrapper (same module) as its `key_func`. Without that, an attacker could rotate `X-Forwarded-For: <random>` to mint a fresh per-IP rate-limit bucket per request, or send `X-Forwarded-For: <victim_ip>` to pin a victim's bucket and lock them out, defeating every per-endpoint rate limit. **Never read `request.client.host` directly for rate-limit, auth, or audit purposes**; reach for `extract_client_ip` / `rate_limit_key`. If a second trusted proxy ever sits in front of Railway (Cloudflare, etc.), bump `TRUSTED_PROXY_HOPS` to match; `extract_client_ip` peels one extra hop per increment.
-- **CodeQL false positive on `services/audit.py::log_auth_event`**: the `security-extended` suite raises `py/clear-text-logging-sensitive-data` (high) on the `logger.warning` inside `log_auth_event`, which logs only an event-name constant and a UUID. CodeQL taints the whole login `request` (its body carries the password) and follows it through `log_auth_event_from_request` into the shared call. Any PR adding a new `log_auth_event_from_request` call site makes CodeQL re-attribute the baseline alert as new, turning the (non-required) code-scanning check red; the PR stays mergeable. Editing the log line does not release the alert, since the taint is on reachability, not the arguments. Resolve by dismissing: `gh api --method PATCH repos/vidithq/vidit/code-scanning/alerts/<n> -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."` (the reason takes the space form `"false positive"`, the comment caps at 280 chars).
+- **CodeQL false positive on `services/audit.py::log_auth_event`**: the `security-extended` suite raises `py/clear-text-logging-sensitive-data` (high) on the `logger.warning` inside `log_auth_event`, which logs only an event-name constant and a UUID. CodeQL taints the whole login `request` (its body carries the password) and follows it through `log_auth_event_from_request` into the shared call. Any PR adding a new `log_auth_event_from_request` call site makes CodeQL re-attribute the baseline alert as new, turning the (non-required) code-scanning check red. The PR stays mergeable. Editing the log line does not release the alert, because the taint is on reachability, not the arguments. To resolve it, dismiss the alert: `gh api --method PATCH repos/vidithq/vidit/code-scanning/alerts/<n> -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."` (the reason takes the space form `"false positive"`; the comment caps at 280 characters).
 - **User-influenced strings entering a log line go through [`services/storage.py::scrub_log`](../backend/app/services/storage.py)**: it strips CR/LF so a crafted URL or title cannot forge extra log entries (CodeQL `py/log-injection`). Current callers: the tweet-import router (URL logging on failure) and `storage.sweep_keys` (the caller-supplied `context` phrase, which can embed a detection source URL). Route any new log interpolation of user input through it instead of adding a local scrubber.
 - **Security response headers live in two places, one per origin**: the frontend (`vidit.app`) sets `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Content-Security-Policy: frame-ancestors 'none'` via the `headers()` block in [`frontend/next.config.mjs`](../frontend/next.config.mjs); a full resource CSP (script/style/img directives) is deliberately deferred because Next's inline bootstrap, maplibre workers, and Tiptap would need nonce plumbing first. The API (`api.vidit.app`) stamps HSTS and a global `X-Content-Type-Options: nosniff` in the `add_hsts_header` middleware ([`backend/app/main.py`](../backend/app/main.py)); the tweet-media proxy additionally pins `nosniff` on its own response and clamps the echoed `Content-Type` to the upload MIME allowlist (`ALLOWED_TYPES`), so a lying upstream cannot serve HTML/SVG from the API origin.
 - **A proof-image `src` is host-pinned to the media origin** ([`services/sanitize.py::_safe_image_src`](../backend/app/services/sanitize.py)): with CloudFront set, only that host passes; on S3 without CloudFront, only the bucket endpoint (`{bucket}.s3.{region}.amazonaws.com`) passes; on the local backend, the loopback storage prefix and (dev convenience) any https pass. A bare-S3 deployment must not fall through to "any https", or a persisted `<image src="https://attacker/pixel.gif">` would exfiltrate every viewer's IP and User-Agent, defeating the anti-tracking-pixel guarantee. The `no CloudFront` self-hoster should still set one; the pin is the backstop, not a substitute.
@@ -506,16 +506,16 @@ Public networking on `postgres-db` is off. Delete any public domain with no `DAT
 | Backend | **uv** | `pyproject.toml` + `uv.lock` |
 | Frontend | **npm** | `package.json` + `package-lock.json` |
 
-Dead-code gate: **vulture** on the backend (unused functions / classes / methods / fields that ruff's `F401` misses, the analogue of the frontend's **knip**). Config + framework-magic whitelist in [`backend/pyproject.toml`](../backend/pyproject.toml) `[tool.vulture]` + [`backend/vulture_whitelist.py`](../backend/vulture_whitelist.py); runs in the `backend-lint` job and via `make hygiene`.
+**vulture** is the dead-code gate on the backend: unused functions, classes, methods, and fields that ruff's `F401` misses, the analogue of the frontend's **knip**. Its configuration and framework-magic allowlist live in [`backend/pyproject.toml`](../backend/pyproject.toml) `[tool.vulture]` and [`backend/vulture_whitelist.py`](../backend/vulture_whitelist.py). It runs in the `backend-lint` job and through `make hygiene`.
 
 ### Dependency security updates
 
-Dependabot watches both ecosystems (`pip` on [`backend/uv.lock`](../backend/uv.lock), `npm` on [`frontend/package-lock.json`](../frontend/package-lock.json)) and opens a security alert per advisory at [github.com/vidithq/vidit/security/dependabot](https://github.com/vidithq/vidit/security/dependabot). The alert carries the GHSA ID, the vulnerable range, and the first patched version, which are the inputs needed to decide whether the fix lands as a lockfile-only refresh, a direct-dep bump, or a targeted `overrides` entry.
+Dependabot watches both ecosystems (`pip` on [`backend/uv.lock`](../backend/uv.lock), `npm` on [`frontend/package-lock.json`](../frontend/package-lock.json)) and opens a security alert per advisory at [github.com/vidithq/vidit/security/dependabot](https://github.com/vidithq/vidit/security/dependabot). The alert carries the GHSA ID, the vulnerable range, and the first patched version. These are the inputs needed to decide whether the fix lands as a lockfile-only refresh, a direct-dependency bump, or a targeted `overrides` entry.
 
-Three flows in practice:
+Three flows apply in practice:
 
-- **Transitive: lockfile-only.** When the vulnerable package is reached through another dep and the resolver can pull the patched version without lifting a top-level constraint, the fix is a `uv lock --upgrade` (backend) or `npm update <pkg>` / `npm audit fix` (frontend) and nothing else. `pyproject.toml` and `package.json` don't move. Bundles the rest of the resolver-drift bumps along with it; gated by the `ci.yml` jobs green on the lock-only diff.
-- **Direct: manifest + lock.** When the patched version is outside the current top-level constraint (a SemVer-major bump on a direct dep is the common case), the fix lands the manifest bump in the same PR as the lock refresh. A breaking-change pass is part of the diff; tests and types are the floor, browser smoke for the frontend.
-- **Override-pinned: `npm` `overrides`.** When a transitive `npm` dep ships a CVE and the direct parent can't be lifted in the same PR (e.g. `eslint-config-next` pinned to `^14.2` until the Next migration; `maplibre-gl` on its own release cadence), [`frontend/package.json`](../frontend/package.json) `overrides` force-resolve the patched version with targeted-range syntax (`pkg@<x.y.z` to scope to the vulnerable range only, `parent>pkg` for a single nested path). Universal overrides would force-downgrade safe higher-major lines elsewhere in the tree (e.g. `@sentry/bundler-plugin-core`'s `glob@13`) and trip `npm ls` peer-warning noise that breaks `npm ci` in CI; the targeted forms avoid both. Override values are written as ranges (`^x.y.z`), not exact pins; npm 10 (used by `npm ci` in CI via `actions/setup-node@v4.4.0`) rewrites the consumer's peer-dep range to match the override exactly, so a fixed `"8.5.10"` collapses an `autoprefixer@10` `peer postcss: "^8.1.0"` into `peer postcss: "8.5.10"` and clashes the moment top-level postcss resolves to a higher patch.
+- **Transitive: lockfile-only.** When the vulnerable package is reached through another dependency and the resolver can pull the patched version without lifting a top-level constraint, the fix is a `uv lock --upgrade` (backend) or `npm update <pkg>` / `npm audit fix` (frontend) and nothing else. `pyproject.toml` and `package.json` don't move. This bundles the rest of the resolver-drift bumps along with it, gated by the `ci.yml` jobs passing on the lock-only diff.
+- **Direct: manifest + lock.** When the patched version is outside the current top-level constraint (a SemVer-major bump on a direct dependency is the common case), the fix lands the manifest bump in the same PR as the lock refresh. A breaking-change pass is part of the diff. Tests and types are the floor; the frontend also needs a browser smoke test.
+- **Override-pinned: `npm` `overrides`.** When a transitive `npm` dependency ships a CVE and the direct parent can't be lifted in the same PR (for example, `eslint-config-next` pinned to `^14.2` until the Next migration, or `maplibre-gl` on its own release cadence), [`frontend/package.json`](../frontend/package.json) `overrides` force-resolve the patched version with targeted-range syntax (`pkg@<x.y.z` to scope to the vulnerable range only, `parent>pkg` for a single nested path). Universal overrides would force-downgrade safe higher-major lines elsewhere in the tree (for example, `@sentry/bundler-plugin-core`'s `glob@13`) and trip `npm ls` peer-warning noise that breaks `npm ci` in CI. The targeted forms avoid both problems. Override values are written as ranges (`^x.y.z`), not exact pins. npm 10 (used by `npm ci` in CI through `actions/setup-node@v4.4.0`) rewrites the consumer's peer-dependency range to match the override exactly, so a fixed `"8.5.10"` collapses an `autoprefixer@10` `peer postcss: "^8.1.0"` into `peer postcss: "8.5.10"` and clashes the moment top-level postcss resolves to a higher patch.
 
-Dependabot itself opens version-bump PRs when it can; those land via the same PR flow as any contribution (Conventional title, sign-off, docs/+planning/ touch). Batched lockfile refreshes (closing N advisories at once with one `uv lock --upgrade`) cite each GHSA in the CHANGELOG entry so the audit trail stays per-advisory even though the diff is one lockfile.
+Dependabot itself opens version-bump PRs when it can. Those land via the same PR flow as any contribution (Conventional title, sign-off, a docs/ and planning/ touch). Batched lockfile refreshes (closing N advisories at once with one `uv lock --upgrade`) cite each GHSA in the CHANGELOG entry, so the audit trail stays per-advisory even though the diff is one lockfile.

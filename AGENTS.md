@@ -24,6 +24,7 @@ CI enforces a floor: every PR to `main` must touch *both* `docs/` and `planning/
 4. **No "for context" / "for clarity" intros.** State the thing.
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.
 6. **If a sentence can be deleted with no information loss, delete it.**
+7. **Google developer documentation style in `docs/*.md`.** Second person, present tense, active voice, imperative mood for instructions, sentence-case headings, one idea per sentence. No aphorisms, idioms, metaphors, marketing adjectives, rhetorical questions, or exclamation marks.
 
 ## Conventions
 
