@@ -49,3 +49,11 @@ log "uploading to s3://${BACKUP_S3_BUCKET}/${KEY}"
 aws s3 cp "${TMP}" "s3://${BACKUP_S3_BUCKET}/${KEY}" --no-progress
 
 log "done (size=${SIZE} bytes)"
+
+# Dead-man's-switch ping: signals a completed run to an external monitor, which
+# alerts on the ABSENCE of the ping. This covers a cron that never starts, not
+# just a script that exits non-zero. `|| log` keeps a failed ping from failing
+# an otherwise successful backup.
+if [ -n "${HEALTHCHECK_PING_URL:-}" ]; then
+    curl -fsS -m 10 --retry 3 "${HEALTHCHECK_PING_URL}" > /dev/null || log "healthcheck ping failed"
+fi

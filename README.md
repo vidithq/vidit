@@ -73,7 +73,7 @@ vidit/
 ├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
 ├── docs/             api, backups, data-model, design, engineering (technical reference)
 ├── planning/         roadmap + next (project planning, not user docs)
-├── docker/           custom PG image (PostGIS + AGE + pg_cron) + weekly backup cron
+├── docker/           custom PG image (PostGIS + AGE + pg_cron) + daily backup cron
 ├── AGENTS.md            project context for AI tools (CLAUDE.md is a one-line `@AGENTS.md` pointer for Claude Code)
 ├── CHANGELOG.md         release history
 ├── CODE_OF_CONDUCT.md   Contributor Covenant 2.1

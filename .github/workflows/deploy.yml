@@ -43,14 +43,17 @@ jobs:
     if: inputs.target == 'backend' || inputs.target == 'both'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # One matrix job per Railway service, all from the same ref: the four
+    # One matrix job per Railway service, all from the same ref: the five
     # uploads are independent, so the backend deploy costs the slowest
     # service instead of the sum. The scheduler services still have no
     # GitHub source connected — this workflow stays their only deploy path.
+    # backend-backup deploys from the same snapshot (Root Directory
+    # ``docker/backup``); redeploying a cron service also runs it once, so
+    # every backend deploy takes a fresh DB dump as a side effect.
     strategy:
       fail-fast: false
       matrix:
-        service: [backend, backend-import-worker, backend-conflicts, backend-x-bot]
+        service: [backend, backend-import-worker, backend-conflicts, backend-x-bot, backend-backup]
     concurrency:
       group: prod-deploy-${{ matrix.service }}
       cancel-in-progress: false
