@@ -1783,6 +1783,26 @@ export interface components {
             upload_key: string;
         };
         /**
+         * ArchivedCopiesRead
+         * @description One link's archived copies, one field per provider, plus the dead end.
+         *
+         *     Both providers are attempted for every link, so a link can end up with two
+         *     copies, one, or none. An object rather than a URL per field on ``EventRead``
+         *     keeps the primary source and each mirror reading the same shape, and leaves
+         *     room for the state a bare URL cannot express: ``unavailable`` is ``true``
+         *     only once neither provider captured the link and no attempt is left, which
+         *     is what lets the detail surface show "not archived" instead of showing
+         *     nothing.
+         */
+        ArchivedCopiesRead: {
+            /** Archive Today */
+            archive_today: string | null;
+            /** Unavailable */
+            unavailable: boolean;
+            /** Wayback */
+            wayback: string | null;
+        };
+        /**
          * AuthorRef
          * @description Compact author handle used wherever one payload references another.
          *
@@ -2123,10 +2143,9 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
-            /** Archived Secondary Source Urls */
-            archived_secondary_source_urls: (string | null)[];
-            /** Archived Source Url */
-            archived_source_url: string | null;
+            /** Archived Secondary Sources */
+            archived_secondary_sources: (components["schemas"]["ArchivedCopiesRead"] | null)[];
+            archived_source: components["schemas"]["ArchivedCopiesRead"] | null;
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected") | null;
             capture_source_coords: components["schemas"]["CoordsRead"] | null;

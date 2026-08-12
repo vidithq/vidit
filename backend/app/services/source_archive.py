@@ -2,11 +2,11 @@
 
 A source tweet gets deleted and an account gets suspended, which destroys
 exactly the evidence the catalog promises to preserve. Publishing an event
-pushes its links to the Wayback Machine so a dead original still has a
-readable copy.
+pushes its links to the Wayback Machine and to archive.today so a dead original
+still has a readable copy.
 
-Publication is the trigger, not creation: Save Page Now is a public,
-timestamped service, so submitting a link announces it. An event that is
+Publication is the trigger, not creation: both archiving services are public
+and timestamped, so submitting a link announces it. An event that is
 public already (a directly created geolocation, a request, a draft the
 analyst promotes with ``geolocate``) loses nothing by that; a machine
 ``detected`` draft is unpublished working state, so its links are not
@@ -23,18 +23,27 @@ repeatedly.
 Off-request by construction: the write paths only insert rows, and the
 always-on worker (``scripts/run_import_worker.py``, the same process that
 drains archive imports and bot mentions) claims them with ``FOR UPDATE SKIP
-LOCKED``, calls the archiving service, and stamps ``archived_url`` in place.
-The row is both the job and the result, so nothing is copied between a queue
-table and a read table.
+LOCKED``, calls both archiving services, and stamps their capture columns in
+place. The row is both the job and the result, so nothing is copied between a
+queue table and a read table.
 
-Rate limits shape the drain rather than the other way round: Save Page Now
-caps captures per minute and answers a burst with 429, so one pass takes at
-most :data:`PASS_BUDGET` rows, stops claiming past :data:`PASS_MAX_SECONDS`,
-and spaces its calls by :data:`REQUEST_SPACING`. A failed attempt goes back to
-``queued`` with an exponential ``next_attempt_at`` (:data:`BASE_BACKOFF`
-doubling per attempt, capped at :data:`MAX_BACKOFF`); :data:`MAX_ATTEMPTS`
-bounds the retries so a permanently uncapturable link (a login wall, a robots
-block) lands ``failed`` instead of consuming budget forever.
+Two peer providers, one job: a pass submits the link to whichever of
+``wayback_url`` / ``archive_today_url`` is still empty, and the first capture
+to land ends the job. A row with one capture is ``done`` and the other provider
+is never retried, since the point is that a readable copy survives, not that
+both mirrors hold one. While both are empty the row stays on the retry ladder,
+and it lands ``failed`` when the ladder runs out, a terminal state the read
+surface displays rather than a silence.
+
+Rate limits shape the drain rather than the other way round: the services cap
+captures per minute and answer a burst with 429, so one pass takes at most
+:data:`PASS_BUDGET` rows, stops claiming past :data:`PASS_MAX_SECONDS`, and
+spaces every submission by :data:`REQUEST_SPACING`, between one row's two
+providers as much as between two rows. A failed attempt goes back to ``queued``
+with an exponential ``next_attempt_at`` (:data:`BASE_BACKOFF` doubling per
+attempt, capped at :data:`MAX_BACKOFF`); :data:`MAX_ATTEMPTS` bounds the retries
+so a permanently uncapturable link (a login wall, a robots block) lands
+``failed`` instead of consuming budget forever.
 """
 
 from __future__ import annotations
@@ -42,6 +51,8 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -60,6 +71,7 @@ from app.models.event import (
     EventSourceLink,
 )
 from app.models.source_archive import (
+    PROVIDER_COLUMNS,
     SourceArchive,
     SourceArchiveOrigin,
     SourceArchiveProvider,
@@ -76,7 +88,8 @@ PASS_BUDGET = 10
 # budget: a row whose capture sits through the full poll window costs ~35 s,
 # so the budget alone is not a wall-clock bound.
 PASS_MAX_SECONDS = 300.0
-# Minimum gap between two capture submissions. Save Page Now's documented
+# Minimum gap between two capture submissions, whether they go to the same
+# provider or to the two providers of one link. Each service's documented
 # ceiling is well above this; the gap is what keeps a backfill from reading as
 # a burst.
 REQUEST_SPACING = timedelta(seconds=6)
@@ -270,7 +283,7 @@ _BACKFILL_CHUNK = 200
 # The published set, which is the set the write paths enqueue: a direct
 # ``geolocated`` create, a public ``requested`` row, a draft promoted with
 # ``geolocate``, and a ``closed`` row that was a request before it was
-# withdrawn. Save Page Now is public and timestamped, so a machine ``detected``
+# withdrawn. The archiving services are public and timestamped, so a machine ``detected``
 # draft (and a rejected one, ``closed`` off ``detected``) stays out until it is
 # published; the promotion enqueues its links then. Written as the set to
 # include rather than as "not detected", so a status added later has to be
@@ -532,8 +545,9 @@ def _archive_today(url: str, *, client: httpx.Client) -> str:
 
     No API: the submit form answers either with a ``Refresh`` header pointing
     at the fresh snapshot or with a redirect to an existing one, so the
-    snapshot URL is read off the response rather than a documented field.
-    Opt-in (``archive_today_enabled``) and only ever the second leg.
+    snapshot URL is read off the response rather than a documented field. A
+    peer of the Wayback leg, attempted for every link;
+    ``archive_today_enabled`` is the operator kill switch that takes it out.
     """
     response = client.get(
         _ARCHIVE_TODAY_SUBMIT,
@@ -563,33 +577,97 @@ def _validated_snapshot(url: str) -> str:
     return url
 
 
-def capture(url: str, *, client: httpx.Client | None = None) -> tuple[SourceArchiveProvider, str]:
-    """Archive one URL; return ``(provider, archived_url)``.
+# Every provider, in submission order, and the leg that talks to each. The
+# order is the order a reader meets them on the event page; nothing depends on
+# it beyond that, since neither provider gates the other.
+PROVIDERS: tuple[SourceArchiveProvider, ...] = tuple(PROVIDER_COLUMNS)
+_PROVIDER_LEGS: dict[SourceArchiveProvider, Callable[..., str]] = {
+    "wayback": _archive_wayback,
+    "archive_today": _archive_today,
+}
+# How a provider is spelled in the operator-facing ``error`` note.
+_PROVIDER_LABELS: dict[SourceArchiveProvider, str] = {
+    "wayback": "wayback",
+    "archive_today": "archive.today",
+}
 
-    Wayback first, archive.today second when it is enabled: the fallback only
-    runs on a Wayback failure, so the normal path stays one provider and the
-    optional one absorbs a Wayback outage. Raises
-    :class:`ArchiveUnavailableError` when neither produced a capture.
 
-    A transport failure hands over to the fallback the same way a refusal
-    does: a Wayback outage is exactly the case where the second provider earns
-    its place, and it reaches this code as ``httpx.ConnectError`` or a timeout
-    rather than as a refusal from the service.
+@dataclass
+class CaptureOutcome:
+    """What one pass over a link's missing providers produced.
+
+    Both halves are per provider and both can be non-empty at once: the peers
+    are independent, so one capture and one refusal is an ordinary result. The
+    caller stores the captures, folds the refusals into ``error``, and decides
+    the row's state from whether any capture exists at all.
     """
 
-    def run(c: httpx.Client) -> tuple[SourceArchiveProvider, str]:
-        try:
-            return "wayback", _archive_wayback(url, client=c)
-        except (ArchiveUnavailableError, httpx.HTTPError) as exc:
-            if not settings.archive_today_enabled:
-                raise
-            logger.info("wayback capture failed (%s), trying archive.today", type(exc).__name__)
-        return "archive_today", _archive_today(url, client=c)
+    captures: dict[SourceArchiveProvider, str] = field(default_factory=dict)
+    errors: dict[SourceArchiveProvider, str] = field(default_factory=dict)
 
+
+def capture(
+    url: str,
+    *,
+    providers: Sequence[SourceArchiveProvider] = PROVIDERS,
+    client: httpx.Client | None = None,
+) -> CaptureOutcome:
+    """Submit one URL to each named provider; return what each one answered.
+
+    Peers, not a primary and a fallback: every provider in ``providers`` is
+    attempted whatever the others did, so a link that both services can reach
+    ends up with two independent copies. ``providers`` is how a caller narrows
+    the pass to the captures a row is still missing.
+
+    Never raises for a capture failure. A refusal and a transport failure are
+    the same class of outcome (an outage reaches this code as
+    ``httpx.ConnectError`` or a timeout rather than as a service error), and
+    both land in :attr:`CaptureOutcome.errors` under their provider, so one
+    provider being down cannot cost the other its attempt.
+
+    ``archive_today_enabled`` is an operator kill switch rather than a feature
+    flag: it is on by default, and turning it off drops that leg from every
+    pass, leaving the Wayback capture the only one a row can get.
+    """
+    wanted = [p for p in providers if p != "archive_today" or settings.archive_today_enabled]
+
+    def run(c: httpx.Client) -> CaptureOutcome:
+        outcome = CaptureOutcome()
+        for index, provider in enumerate(wanted):
+            # Paid between the two legs of one row exactly as ``run_once`` pays
+            # it between two rows: the ceiling counts submissions, not links.
+            if index:
+                time.sleep(REQUEST_SPACING.total_seconds())
+            try:
+                outcome.captures[provider] = _PROVIDER_LEGS[provider](url, client=c)
+            except ArchiveUnavailableError as exc:
+                outcome.errors[provider] = str(exc)
+            except httpx.HTTPError as exc:
+                outcome.errors[provider] = f"transport: {type(exc).__name__}"
+        return outcome
+
+    if not wanted:
+        return CaptureOutcome()
     if client is not None:
         return run(client)
     with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own:
         return run(own)
+
+
+def missing_providers(row: SourceArchive) -> list[SourceArchiveProvider]:
+    """The providers this row holds no capture from yet.
+
+    What a pass attempts. On a ``done`` row this is whatever refused, and it is
+    never read again: the row is out of the claim query for good.
+    """
+    return [p for p in PROVIDERS if getattr(row, PROVIDER_COLUMNS[p]) is None]
+
+
+def _error_note(errors: dict[SourceArchiveProvider, str]) -> str | None:
+    """The per-provider refusals as one operator-facing line."""
+    if not errors:
+        return None
+    return "; ".join(f"{_PROVIDER_LABELS[p]}: {errors[p]}" for p in PROVIDERS if p in errors)[:500]
 
 
 def _backoff(attempts: int) -> timedelta:
@@ -609,40 +687,50 @@ def _backoff(attempts: int) -> timedelta:
 def process(db: Session, row: SourceArchive, *, client: httpx.Client | None = None) -> bool:
     """Run one claimed row to a terminal or retry state; ``True`` on capture.
 
-    Success stamps ``archived_url`` + ``provider`` and lands ``done``. A
-    failure goes back to ``queued`` behind :func:`_backoff`, or lands ``failed``
-    once the attempt budget is spent (the poison-pill guard: a link behind a
-    login wall must not consume the pass budget forever). Never raises for a
-    capture failure; the row carries the outcome.
+    One pass over whichever providers the row is still missing. Any capture at
+    all lands the row ``done``: the other provider is not retried, because a
+    readable copy already survives the original and a second pass would spend
+    budget on redundancy. When every provider refused, the row goes back to
+    ``queued`` behind :func:`_backoff`, or lands ``failed`` once the attempt
+    budget is spent (the poison-pill guard: a link behind a login wall must not
+    consume the pass budget forever).
+
+    Never raises for a capture failure; the row carries the outcome, including
+    the per-provider reasons in ``error``.
     """
     try:
-        provider, archived_url = capture(row.original_url, client=client)
-    except ArchiveUnavailableError as exc:
-        return _reschedule(db, row, str(exc)[:500])
-    except httpx.HTTPError as exc:
-        # A transport failure is the same class of retryable as a 5xx; keeping
-        # it out of ArchiveUnavailableError means the provider legs don't have
-        # to wrap every call site.
-        return _reschedule(db, row, f"transport: {type(exc).__name__}")
+        outcome = capture(row.original_url, providers=missing_providers(row), client=client)
     except Exception as exc:  # noqa: BLE001
-        # Anything the two branches above did not name (a provider answering a
-        # shape the parse trips on) would otherwise escape and leave the row
-        # ``running`` until the stale window expires. The queue heals itself
-        # instead: same ladder, same attempt budget.
+        # :func:`capture` folds every refusal and transport failure into its
+        # outcome, so reaching here means something neither leg named (a
+        # provider answering a shape the parse trips on). Letting it escape
+        # would leave the row ``running`` until the stale window expires; the
+        # queue heals itself instead, on the same ladder and budget.
         logger.warning("unexpected failure archiving %s", row.original_url, exc_info=True)
         return _reschedule(db, row, f"unexpected: {type(exc).__name__}")
 
-    row.status = "done"
-    row.provider = provider
-    row.archived_url = archived_url
-    row.error = None
-    row.finished_at = datetime.now(UTC)
-    db.commit()
-    return True
+    for provider, archived_url in outcome.captures.items():
+        setattr(row, PROVIDER_COLUMNS[provider], archived_url)
+    # "The row holds at least one capture" is both the done condition and what
+    # ``ck_source_archives_done_capture`` pins, so it is read off the row
+    # rather than off this pass's results.
+    if len(missing_providers(row)) < len(PROVIDERS):
+        row.status = "done"
+        # Kept, not cleared: on a row where one provider refused it is the only
+        # record of why that capture column is empty.
+        row.error = _error_note(outcome.errors)
+        row.finished_at = datetime.now(UTC)
+        db.commit()
+        return True
+    return _reschedule(db, row, _error_note(outcome.errors) or "no provider attempted")
 
 
 def _reschedule(db: Session, row: SourceArchive, reason: str) -> bool:
-    """Send a failed attempt back to ``queued``, or bury it once out of budget.
+    """Send an attempt that captured nothing back to ``queued``, or bury it.
+
+    Buried means ``failed``, once the attempt budget is spent. That is a
+    displayed state, not a swept-up one: the event page shows the link as not
+    archived, so a reader can tell "no copy exists" from "no copy yet".
 
     Always returns ``False`` so a caller can ``return`` it directly as the
     "no capture" outcome.
@@ -672,9 +760,11 @@ def run_once(db: Session, *, budget: int = PASS_BUDGET, client: httpx.Client | N
     run an enqueued capture synchronously.
 
     A pass ends at ``budget`` rows or :data:`PASS_MAX_SECONDS`, whichever comes
-    first. The :data:`REQUEST_SPACING` gap is paid before each capture except
-    the first, so a pass never sleeps after its last row, and one HTTP client
-    is reused across the pass so connection setup isn't repaid per capture.
+    first. The :data:`REQUEST_SPACING` gap is paid before each row except the
+    first, and :func:`capture` pays it again between one row's two providers,
+    so every submission is spaced and a pass never sleeps after its last one.
+    One HTTP client is reused across the pass so connection setup isn't repaid
+    per capture.
     """
     deadline = time.monotonic() + PASS_MAX_SECONDS
 
@@ -695,8 +785,13 @@ def run_once(db: Session, *, budget: int = PASS_BUDGET, client: httpx.Client | N
         return drain(own)
 
 
-def archived_url_for(event: Event, url: str | None) -> str | None:
-    """The archived copy of one of the event's links, or ``None``.
+def archive_row_for(event: Event, url: str | None) -> SourceArchive | None:
+    """This event's queue row for one of its links, or ``None``.
+
+    The row itself rather than a capture: the read surface renders both capture
+    columns *and* the terminal state, so a helper returning one URL would leave
+    the caller reading the row anyway. ``None`` means the link has no row at
+    all, which is what an unpublished draft's links look like.
 
     Reads the already-loaded ``archives`` collection rather than querying, so
     the read surfaces pay one eager load for the whole payload instead of a
@@ -705,20 +800,23 @@ def archived_url_for(event: Event, url: str | None) -> str | None:
     if not url:
         return None
     for row in event.archives:
-        if row.original_url == url and row.archived_url:
-            return row.archived_url
+        if row.original_url == url:
+            return row
     return None
 
 
 __all__ = [
+    "PROVIDERS",
     "ArchiveUnavailableError",
-    "archived_url_for",
+    "CaptureOutcome",
+    "archive_row_for",
     "capture",
     "claim_next",
     "collect_links",
     "enqueue_catalog",
     "enqueue_event",
     "enqueue_event_best_effort",
+    "missing_providers",
     "process",
     "run_once",
 ]

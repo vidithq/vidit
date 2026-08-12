@@ -121,10 +121,14 @@ class Settings(BaseSettings):
     # deployment that archives at catalog volume.
     archive_org_access_key: str = ""
     archive_org_secret_key: str = ""
-    # Optional second provider, tried only when the Wayback attempt fails.
-    # archive.today has no API contract and blocks datacentre egress freely,
-    # so it stays opt-in rather than a default leg of every capture.
-    archive_today_enabled: bool = False
+    # Operator kill switch for the archive.today leg, on by default: every link
+    # is submitted to both providers, so a link survives one of them refusing
+    # it. Set false to stop submitting there at all, which leaves the Wayback
+    # capture the only one a link can get. archive.today has no API contract
+    # and blocks datacentre egress freely, so a deployment whose egress it
+    # refuses outright can turn the leg off instead of paying an attempt for it
+    # on every link.
+    archive_today_enabled: bool = True
 
     model_config = {"env_file": ".env"}
 

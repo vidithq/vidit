@@ -157,7 +157,7 @@ vidit/
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
 │   │       ├── seed.py             # Admin demo-data seeder
 │   │       ├── social.py           # Follow edges, timeline assembly
-│   │       ├── source_archive.py   # Wayback capture queue for published events' links
+│   │       ├── source_archive.py   # Dual-provider capture queue for published events' links
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)

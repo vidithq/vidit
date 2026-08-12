@@ -157,9 +157,9 @@ def test_geolocate_enqueues_at_publication(db, author, conflict, capture_source_
     }
 
 
-def test_event_detail_serialises_the_archived_source(db, author):
-    """``archived_source_url`` is the capture of the event's own source: NULL
-    while the worker has none, the replay URL once the row is done."""
+def test_event_detail_serialises_both_provider_copies(db, author):
+    """``archived_source`` carries the event's own source captures: one field
+    per provider, and ``unavailable`` false while a copy exists."""
     geo = _make_geo(db, author=author, source_url=SOURCE)
     db.add(
         SourceArchive(
@@ -167,8 +167,8 @@ def test_event_detail_serialises_the_archived_source(db, author):
             original_url=SOURCE,
             origin="source_url",
             status="done",
-            provider="wayback",
-            archived_url=f"https://web.archive.org/web/20260811120000/{SOURCE}",
+            wayback_url=f"https://web.archive.org/web/20260811120000/{SOURCE}",
+            archive_today_url=f"https://archive.ph/abcde/{SOURCE}",
         )
     )
     # A proof-body capture is stored but never rendered as the source fallback.
@@ -178,32 +178,95 @@ def test_event_detail_serialises_the_archived_source(db, author):
             original_url=PROOF_LINK,
             origin="proof_link",
             status="done",
-            provider="wayback",
-            archived_url="https://web.archive.org/web/20260811120001/other",
+            wayback_url="https://web.archive.org/web/20260811120001/other",
         )
     )
     db.commit()
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
     assert body["source_url"] == SOURCE
-    assert body["archived_source_url"] == f"https://web.archive.org/web/20260811120000/{SOURCE}"
+    assert body["archived_source"] == {
+        "wayback": f"https://web.archive.org/web/20260811120000/{SOURCE}",
+        "archive_today": f"https://archive.ph/abcde/{SOURCE}",
+        "unavailable": False,
+    }
 
 
-def test_event_detail_archived_source_is_null_without_a_capture(db, author):
+def test_event_detail_serialises_one_captured_provider(db, author):
+    """One capture is a finished job, not a half-finished one: the missing
+    provider is null and the link is not flagged unavailable."""
+    geo = _make_geo(db, author=author, source_url=SOURCE)
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=SOURCE,
+            origin="source_url",
+            status="done",
+            archive_today_url=f"https://archive.ph/abcde/{SOURCE}",
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["archived_source"] == {
+        "wayback": None,
+        "archive_today": f"https://archive.ph/abcde/{SOURCE}",
+        "unavailable": False,
+    }
+
+
+def test_event_detail_flags_a_terminally_failed_link(db, author):
+    """The state the detail surface displays as "not archived": both providers
+    refused and the attempt budget is spent, so no copy is ever coming."""
+    geo = _make_geo(db, author=author, source_url=SOURCE)
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=SOURCE,
+            origin="source_url",
+            status="failed",
+            error="wayback: robots blocked; archive.today: no snapshot",
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["archived_source"] == {
+        "wayback": None,
+        "archive_today": None,
+        "unavailable": True,
+    }
+
+
+def test_event_detail_archived_source_is_pending_without_a_capture(db, author):
+    """A queued link is tracked but uncaptured: an object with both providers
+    null and ``unavailable`` false, which the surface reads as in progress."""
     geo = _make_geo(db, author=author, source_url=SOURCE)
     db.add(SourceArchive(event_id=geo.id, original_url=SOURCE, origin="source_url"))
     db.commit()
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
-    assert body["archived_source_url"] is None
+    assert body["archived_source"] == {
+        "wayback": None,
+        "archive_today": None,
+        "unavailable": False,
+    }
+
+
+def test_event_detail_archived_source_is_null_when_the_link_is_untracked(db, author):
+    """No queue row at all is a different fact from an uncaptured one: the
+    surface renders nothing rather than an archival state it cannot claim."""
+    geo = _make_geo(db, author=author, source_url=SOURCE)
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["archived_source"] is None
 
 
 def test_event_detail_aligns_mirror_captures_with_their_urls(db, author):
-    """``archived_secondary_source_urls`` is index-aligned with
-    ``secondary_source_urls``: the entry carries that mirror's capture, or NULL
-    while the worker has none. The alignment is the contract the detail surface
-    reads, so a capture must not slide onto the neighbouring mirror when only
-    some of the list is done."""
+    """``archived_secondary_sources`` is index-aligned with
+    ``secondary_source_urls``: entry ``i`` covers mirror ``i``. The alignment is
+    the contract the detail surface reads, so a capture must not slide onto the
+    neighbouring mirror when only some of the list is done."""
     second = "https://rumble.com/v-mirror"
     geo = _make_geo(
         db,
@@ -220,8 +283,7 @@ def test_event_detail_aligns_mirror_captures_with_their_urls(db, author):
             original_url=second,
             origin="secondary_source",
             status="done",
-            provider="wayback",
-            archived_url=f"https://web.archive.org/web/20260811120002/{second}",
+            wayback_url=f"https://web.archive.org/web/20260811120002/{second}",
         )
     )
     db.add(
@@ -236,9 +298,13 @@ def test_event_detail_aligns_mirror_captures_with_their_urls(db, author):
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
     assert body["secondary_source_urls"] == [MIRROR, second]
-    assert body["archived_secondary_source_urls"] == [
-        None,
-        f"https://web.archive.org/web/20260811120002/{second}",
+    assert body["archived_secondary_sources"] == [
+        {"wayback": None, "archive_today": None, "unavailable": False},
+        {
+            "wayback": f"https://web.archive.org/web/20260811120002/{second}",
+            "archive_today": None,
+            "unavailable": False,
+        },
     ]
 
 
@@ -249,4 +315,4 @@ def test_event_detail_mirror_captures_are_empty_without_mirrors(db, author):
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
     assert body["secondary_source_urls"] == []
-    assert body["archived_secondary_source_urls"] == []
+    assert body["archived_secondary_sources"] == []
