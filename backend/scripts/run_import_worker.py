@@ -12,7 +12,8 @@ inside ``process``), and a pass that dies outside job processing is captured
 and retried with a backoff instead of killing the service.
 
 The ``source_archives`` queue (published events' links, pushed to the Wayback
-Machine, see ``services/source_archive``) drains on a **separate thread** with
+Machine and to archive.today, see ``services/source_archive``) drains on a
+**separate thread** with
 its own session. Its cadence belongs to the archiving services rather than to
 this loop: a pass paces its submissions with blocking sleeps and can run for
 minutes, which inline would be minutes the import and mention queues spend
