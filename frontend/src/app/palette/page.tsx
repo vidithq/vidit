@@ -18,7 +18,7 @@ import {
   Users,
 } from "lucide-react";
 
-import type { Conflict, EventDetail, EventStatus, Tag } from "@/types";
+import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -42,6 +42,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Dot } from "@/components/ui/Dot";
 import { MediaGallery } from "@/components/ui/MediaGallery";
+import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
+import { MediaLightbox } from "@/components/ui/MediaLightbox";
+import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -51,6 +54,7 @@ import {
   TEXT_LINK,
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
+  HOVER_REVEAL,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
@@ -594,9 +598,39 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); videos poster their first frame (#t=0.1 + preload=metadata); one marked empty box (shown here). The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
+            </div>
+          </Item>
+
+          <Item name="<VideoPlayer>" usage="The one video player: media-chrome's web components around a native <video>, mounted by MediaGallery's video tiles and by MediaLightboxBody, so playback chrome is identical on every surface and in every browser (the controls are custom elements, so they owe nothing to the React version). The bar holds exactly play, scrub, time, mute, volume, download and one big-view control, and nothing else (no casting, PiP, speed or captions); it fades out after two undisturbed seconds of playback and returns on pointer move, hover or focus. Big view is per context: a tile gets an expand control opening the shared lightbox, the lightbox itself gets real fullscreen. The download is MediaDownloadButton, since a plain <a download> is ignored cross-origin. Fills its container and letterboxes, so a portrait clip keeps its shape, and posters its first frame through the #t=0.1 media fragment. The skin is CSS variables set on the controller (neutral-100 glyphs, transparent controls on a translucent dark bar), so nothing reaches inside a shadow root and nothing fights Tailwind. A source the browser refuses swaps to TileNotice, keeping a download beside it so an undecodable original stays saveable, and that notice is what this demo shows unless NEXT_PUBLIC_DEMO_VIDEO_URL points at a real .mp4 (no sample ships with the repo).">
+            <div className="h-48 w-full max-w-sm overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900">
+              <VideoPlayer
+                src={PALETTE_VIDEO_SRC}
+                source={{ src: PALETTE_VIDEO_SRC, filename: "demo.mp4" }}
+                title="Palette demo clip"
+              />
+            </div>
+          </Item>
+
+          <Item name="<MediaLightbox>" usage="The one media viewer, mounted by MediaGallery, MediaManager (through FileManager's shared MediaOverlay shell) and a proof body's images, so the viewer can't drift into per-surface copies. Backdrop click or Escape closes; the content click is stopped so the player's controls stay usable. Takes either a persisted Media (images view at hero) or a plain {src, kind} for a staged object URL or a proof image. The corner MediaDownloadButton is for images: a clip plays in <VideoPlayer>, whose control bar already carries one. MediaLightboxBody alone renders the sized media for a caller that already owns a shell.">
+            <PaletteMediaLightbox />
+          </Item>
+
+          <Item name="<MediaDownloadButton>" usage="The one blob-download control: on a MediaGallery image tile, in the lightbox corner, beside a proof image, and inside VideoPlayer's control bar. Fetches the object cross-origin and saves it under original_filename, or a plain URL under its basename (the media origin ignores a plain <a download>, which is also why the player's built-in download is replaced by this one). Composes <Button icon variant=ghost> over FLOATING_CONTROL, the translucent plate that keeps a glyph readable on top of arbitrary pixels, in the same neutral register as the player's own controls so floating controls and the player read as one family (shared with the lightbox's close). Inside the player's bar it drops the plate and takes the 44px flat box of a media-chrome control instead.">
+            <span className="relative inline-flex size-16 items-center justify-center rounded-md bg-neutral-800 border border-neutral-700">
+              <MediaDownloadButton source={PALETTE_MEDIA} />
+            </span>
+          </Item>
+
+          <Item name="HOVER_REVEAL" usage="Opacity-only paint for a floating media control cluster: invisible at rest, revealed by a pointer over the frame (the frame carries `group`) or by keyboard focus inside it, and pinned visible on a coarse pointer, since a touch device can never trigger a hover. Used by MediaGallery's image tiles and by ProofImage; a video needs none, its player reveals its own bar. Hover the frame below.">
+            <div className="group relative h-24 w-40 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800">
+              <div
+                className={`absolute right-2 top-2 flex items-center gap-1 ${HOVER_REVEAL}`}
+              >
+                <MediaDownloadButton source={PALETTE_MEDIA} />
+              </div>
             </div>
           </Item>
 
@@ -925,6 +959,46 @@ export default function PalettePage() {
 }
 
 // ── Filter-family demos (stateful, so they live as tiny components) ─────────
+
+// One mock persisted row, shared by the download and lightbox demos so the two
+// show the same media. The URL is the app's own OG image: extensionless, so
+// `displayUrlsFor` finds no sibling to derive and every size resolves to it (a
+// real backend row has `_hero` / `_thumb` siblings, which this demo has not).
+const PALETTE_MEDIA: Media = {
+  id: "palette-demo",
+  role: "source",
+  storage_url: "/opengraph-image",
+  media_type: "image",
+  sha256: null,
+  original_filename: "demo.png",
+};
+
+// No sample clip ships with the repo, so the player demo plays whatever the
+// landing's demo video is pointed at when that is configured, and otherwise
+// falls to a source the browser cannot fetch, which is what puts the graceful
+// failure notice on screen. Point the variable at an `.mp4`: the demo names its
+// download `demo.mp4`, so another container would save under a wrong extension
+// here (only here, since a real Media row is named by `original_filename`).
+const PALETTE_VIDEO_SRC =
+  process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
+
+function PaletteMediaLightbox() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        Open the viewer
+      </Button>
+      {open && (
+        <MediaLightbox
+          source={PALETTE_MEDIA}
+          alt="Palette demo media"
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
 
 function PaletteActiveFilterPills() {
   const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by @ana-demo"]);
