@@ -1,7 +1,15 @@
 import { ogCount, ogTruncate } from "@/lib/og";
 import type { PublicProfile, UserStats } from "@/lib/users";
 
-import { OG_COLOR, OG_CONTENT_TYPE, OG_SIZE, OgBadge, OgCard, ogImageResponse } from "../../_og/card";
+import {
+  OG_COLOR,
+  OG_CONTENT_TYPE,
+  OG_SIZE,
+  OgBadge,
+  OgCard,
+  ogFailedReadResponse,
+  ogImageResponse,
+} from "../../_og/card";
 import { ogAvatarDataUri, ogFetch } from "../../_og/data";
 
 // `og:image` for `/profile/{username}`: the analyst's portfolio as a share
@@ -92,14 +100,22 @@ export default async function ProfileOpenGraphImage({
   const { username } = await params;
   const path = encodeURIComponent(username);
 
-  const [profile, stats] = await Promise.all([
+  const [profileRead, statsRead] = await Promise.all([
     ogFetch<PublicProfile>(`/users/${path}`),
     ogFetch<UserStats>(`/users/${path}/stats`),
   ]);
 
-  if (!profile) {
+  if (profileRead.status === "missing") {
     return ogImageResponse(<NotFoundCard username={username} />);
   }
+  // A read that failed rather than answered says nothing about the handle, so
+  // the card says nothing about it either.
+  if (profileRead.status === "failed") {
+    return ogFailedReadResponse();
+  }
+
+  const profile = profileRead.data;
+  const stats = statsRead.status === "ok" ? statsRead.data : null;
 
   // The avatar is the one leg that cannot be parallelised: its URL arrives with
   // the profile. It is budgeted tighter than the payload reads for that reason,

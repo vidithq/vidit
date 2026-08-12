@@ -36,8 +36,13 @@ export function projectEquirectangular(lat: number, lng: number): ProjectedPoint
  */
 export function ogTruncate(text: string, max: number): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
-  if (cleaned.length <= max) return cleaned;
-  const cut = cleaned.slice(0, max - 1);
+  // Cut over code points, not UTF-16 units: an emoji or any astral character is
+  // a surrogate pair, and slicing through one leaves a lone surrogate that
+  // renders as a replacement box on the card.
+  const points = Array.from(cleaned);
+  if (points.length <= max) return cleaned;
+  const cut = points.slice(0, max - 1).join("");
+  // A space is its own code point, so an index of one is always a safe cut.
   const lastSpace = cut.lastIndexOf(" ");
   const body = lastSpace > max * 0.75 ? cut.slice(0, lastSpace) : cut.trimEnd();
   return `${body}…`;
@@ -73,12 +78,105 @@ export function isFetchableAvatarUrl(value: string | null | undefined): boolean 
   }
   if (url.protocol !== "https:") return false;
 
-  const host = url.hostname.toLowerCase();
-  // IPv6 literals arrive bracketed; IPv4 and its decimal / hex spellings have
-  // no dotted-name shape, so the dot check below catches them too.
+  // A fully-qualified name may carry a trailing dot (`localhost.` resolves
+  // exactly like `localhost`), and every check below is a suffix or shape
+  // comparison, so the root label goes before any of them run.
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  // IPv6 literals arrive bracketed. WHATWG URL parsing normalises every IPv4
+  // spelling (decimal `2130706433`, hex `0x7f000001`, short forms) to a dotted
+  // quad at construction, so the one regex below covers all of them.
   if (host.startsWith("[")) return false;
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return false;
   if (!host.includes(".")) return false;
   if (PRIVATE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return false;
   return true;
+}
+
+/**
+ * True when `address` is not a public unicast address the card renderer may
+ * connect to. Both families, and an unparsable value counts as unsafe.
+ *
+ * `isFetchableAvatarUrl` reads the name; this reads what the name resolved to,
+ * which is the half a name check cannot cover: `169.254.169.254.nip.io` is a
+ * public dotted hostname whose A record is the cloud metadata address, and any
+ * host an owner controls can point at one. `_og/data.ts` wires it into the
+ * avatar connection so the block lands before the socket opens.
+ *
+ * Rejected, v4: `0.0.0.0/8` (unspecified), `10/8`, `100.64/10` (CGNAT),
+ * `127/8` (loopback), `169.254/16` (link-local, the metadata services),
+ * `172.16/12`, `192.168/16`, and `224/4` upward (multicast, reserved,
+ * broadcast). v6: `::` (unspecified), `::1` (loopback), `fc00::/7` (unique
+ * local), `fe80::/10` (link-local), `ff00::/8` (multicast), plus any
+ * IPv4-mapped form (`::ffff:127.0.0.1` and its hex spelling), which is checked
+ * against the v4 list above.
+ */
+export function isPrivateAddress(address: string): boolean {
+  const value = address.trim().toLowerCase();
+  if (!value) return true;
+  // A zone index (`fe80::1%eth0`) is routing detail, not part of the address.
+  const bare = value.split("%")[0];
+  return bare.includes(":") ? isPrivateIpv6(bare) : isPrivateIpv4(bare);
+}
+
+/** Dotted-quad octets, or `null` when `address` is not one. */
+function ipv4Octets(address: string): number[] | null {
+  const parts = address.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) => (/^\d{1,3}$/.test(part) ? Number(part) : Number.NaN));
+  if (octets.some((octet) => Number.isNaN(octet) || octet > 255)) return null;
+  return octets;
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const octets = ipv4Octets(address);
+  if (!octets) return true;
+  const [a, b] = octets;
+  if (a === 0 || a === 127) return true;
+  if (a === 10) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+/** The eight 16-bit groups of an IPv6 address, or `null` when it is not one. */
+function ipv6Groups(address: string): number[] | null {
+  const halves = address.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string) =>
+    part === ""
+      ? []
+      : part.split(":").map((g) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : Number.NaN));
+  const head = parse(halves[0]);
+  const tail = halves.length === 2 ? parse(halves[1]) : [];
+  if ([...head, ...tail].some(Number.isNaN)) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const fill = 8 - head.length - tail.length;
+  if (fill < 1) return null;
+  return [...head, ...new Array<number>(fill).fill(0), ...tail];
+}
+
+function isPrivateIpv6(address: string): boolean {
+  // `::ffff:127.0.0.1`: the dotted tail is a v4 address wearing a v6 spelling.
+  const dotted = address.lastIndexOf(":");
+  const tail = address.slice(dotted + 1);
+  if (tail.includes(".")) {
+    const head = ipv6Groups(`${address.slice(0, dotted + 1)}0`);
+    return head === null || isPrivateIpv4(tail);
+  }
+  const groups = ipv6Groups(address);
+  if (!groups) return true;
+  // The hex spelling of the same mapped form: `::ffff:7f00:1`.
+  if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
+    const [, , , , , , g6, g7] = groups;
+    return isPrivateIpv4([g6 >> 8, g6 & 0xff, g7 >> 8, g7 & 0xff].join("."));
+  }
+  if (groups.every((g) => g === 0)) return true;
+  if (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) return true;
+  if ((groups[0] & 0xfe00) === 0xfc00) return true;
+  if ((groups[0] & 0xffc0) === 0xfe80) return true;
+  if ((groups[0] & 0xff00) === 0xff00) return true;
+  return false;
 }

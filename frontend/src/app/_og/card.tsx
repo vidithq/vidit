@@ -125,7 +125,7 @@ export function OgCard({
           alignItems: "center",
           justifyContent: "space-between",
           // The body stretches to fill, so the footer needs its own clearance;
-          // without it a bottom-anchored stat row sits flush on the wordmark.
+          // without it a bottom-anchored stat row sits flush on the footer.
           paddingTop: "28px",
           fontSize: "22px",
           color: OG_COLOR.faint,
@@ -138,8 +138,80 @@ export function OgCard({
   );
 }
 
-/** Render a card element at the shared size, with the bundled font attached. */
-export function ogImageResponse(element: React.ReactElement): ImageResponse {
+/**
+ * The site-wide card body: headline and subhead, no per-route data. It is what
+ * `/opengraph-image` renders, and what a data card falls back to when its
+ * upstream read fails rather than answers, so a transient failure unfurls as
+ * the platform instead of as a claim about the link.
+ */
+export function OgDefaultBody() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      {/* Two-line layout via stacked divs because satori's flex line-break
+          support is unreliable. */}
+      <div
+        style={{
+          fontSize: "84px",
+          letterSpacing: "-0.025em",
+          lineHeight: 1.05,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div>The home for</div>
+        <div>conflict geolocations.</div>
+      </div>
+      {/* Subhead: smaller + neutral colour so it reads as subordinate to the
+          headline despite the shared 700 weight. */}
+      <div
+        style={{
+          marginTop: "32px",
+          fontSize: "28px",
+          color: OG_COLOR.muted,
+          lineHeight: 1.4,
+          maxWidth: "900px",
+          display: "flex",
+        }}
+      >
+        An open platform for OSINT/GEOINT analysts to archive, reference, and
+        visualise armed-conflict events.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What a data card answers with when its upstream read failed rather than
+ * answered: the site-wide composition, and no claim about the link.
+ *
+ * The route also emits no title or description of its own on this path, so the
+ * unfurl falls back to the site-wide metadata and the whole preview stays
+ * neutral rather than mixing a "not found" headline with a generic image.
+ */
+export function ogFailedReadResponse(): ImageResponse {
+  return ogImageResponse(
+    <OgCard>
+      <OgDefaultBody />
+    </OgCard>,
+    { noStore: true },
+  );
+}
+
+/**
+ * Render a card element at the shared size, with the bundled font attached.
+ *
+ * `noStore` marks the response as one a cache must not keep, which is what a
+ * card built on a failed read needs: the failure is a second-long condition and
+ * the image outlives it everywhere it is stored. It reaches the response
+ * headers `next/og` emits, so it binds the CDN and any crawler that honours it;
+ * a crawler that caches by its own policy regardless is not addressable from
+ * here, which is the other half of why the failure card carries no not-found
+ * copy: whatever it keeps, it keeps a neutral image.
+ */
+export function ogImageResponse(
+  element: React.ReactElement,
+  { noStore = false }: { noStore?: boolean } = {},
+): ImageResponse {
   return new ImageResponse(element, {
     ...OG_SIZE,
     fonts: [
@@ -150,5 +222,6 @@ export function ogImageResponse(element: React.ReactElement): ImageResponse {
         style: "normal",
       },
     ],
+    ...(noStore ? { headers: { "cache-control": "no-store, max-age=0" } } : {}),
   });
 }

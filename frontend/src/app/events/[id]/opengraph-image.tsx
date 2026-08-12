@@ -1,9 +1,18 @@
+import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import { formatCoordinates } from "@/lib/coordinates";
 import { formatDate } from "@/lib/format";
 import { ogTruncate } from "@/lib/og";
 import type { EventDetail } from "@/types";
 
-import { OG_COLOR, OG_CONTENT_TYPE, OG_SIZE, OgBadge, OgCard, ogImageResponse } from "../../_og/card";
+import {
+  OG_COLOR,
+  OG_CONTENT_TYPE,
+  OG_SIZE,
+  OgBadge,
+  OgCard,
+  ogFailedReadResponse,
+  ogImageResponse,
+} from "../../_og/card";
 import { OgMiniMap } from "../../_og/MiniMap";
 import { ogFetch } from "../../_og/data";
 
@@ -27,24 +36,18 @@ const TITLE_MAX = 76;
 const MAP_WIDTH = 480;
 const MAP_HEIGHT = 232;
 
-/** Reader-facing name for each lifecycle state, matching the page's badges. */
-const STATUS_LABEL: Record<string, string> = {
-  geolocated: "Geolocated",
-  detected: "Detected draft",
-  requested: "Request",
-  closed: "Closed",
-};
-
 function EventBadges({ event }: { event: EventDetail }) {
+  // Word and emphasis come from `EVENT_STATUS_META`, the same map the page's
+  // `<StatusBadge>` renders from, so the card cannot call a row by a name the
+  // page never uses. The map is total over `EventStatus`, so there is nothing
+  // to fall back to.
+  const { label, tone } = EVENT_STATUS_META[event.status];
   return (
     <div style={{ display: "flex", gap: "12px" }}>
       {/* Synthetic rows are labelled first: a demo link that leaves the site
           must not read as catalog evidence. */}
       {event.is_demo ? <OgBadge label="Demo" /> : null}
-      <OgBadge
-        label={STATUS_LABEL[event.status] ?? event.status}
-        tone={event.status === "geolocated" ? "accent" : "neutral"}
-      />
+      <OgBadge label={label} tone={tone} />
     </div>
   );
 }
@@ -70,12 +73,18 @@ export default async function EventOpenGraphImage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const event = await ogFetch<EventDetail>(`/events/${encodeURIComponent(id)}`);
+  const read = await ogFetch<EventDetail>(`/events/${encodeURIComponent(id)}`);
 
-  if (!event) {
+  if (read.status === "missing") {
     return ogImageResponse(<NotFoundCard />);
   }
+  // A read that failed rather than answered says nothing about the link, so the
+  // card says nothing about it either.
+  if (read.status === "failed") {
+    return ogFailedReadResponse();
+  }
 
+  const event = read.data;
   const coords = event.event_coords;
   const byline = [
     `@${ogTruncate(event.owner.username, 24)}`,

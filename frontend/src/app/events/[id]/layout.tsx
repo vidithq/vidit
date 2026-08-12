@@ -28,17 +28,28 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const event = await ogFetch<EventDetail>(`/events/${encodeURIComponent(id)}`);
+  const read = await ogFetch<EventDetail>(`/events/${encodeURIComponent(id)}`);
 
-  if (!event) {
+  // An upstream that failed rather than answered gets no tags at all: the page
+  // inherits the site-wide title, description and card, which is the only
+  // honest thing to say when we could not read the row. Naming it "not found"
+  // here would freeze that answer into every crawler that saw it.
+  if (read.status === "failed") return {};
+
+  if (read.status === "missing") {
     const title = "Event not found on Vidit";
+    const description = "This link points at nothing in the catalog.";
+    // Same tag shape as the found path, so an unfurl of a dead link is a
+    // complete preview rather than a title with nothing under it.
     return {
       title,
-      description: "This link points at nothing in the catalog.",
-      twitter: { card: "summary_large_image", title },
+      description,
+      openGraph: { type: "article", title, description, siteName: "Vidit" },
+      twitter: { card: "summary_large_image", title, description },
     };
   }
 
+  const event = read.data;
   const title = ogTruncate(event.title, TITLE_MAX);
   const description = ogTruncate(
     [

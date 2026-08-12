@@ -24,12 +24,23 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
   const { username } = await params;
-  const profile = await ogFetch<PublicProfile>(`/users/${encodeURIComponent(username)}`);
+  const read = await ogFetch<PublicProfile>(`/users/${encodeURIComponent(username)}`);
+
+  // An upstream that failed rather than answered gets no tags at all: the page
+  // inherits the site-wide title, description and card, which is the only
+  // honest thing to say when we could not read the handle. Naming it "not
+  // found" here would freeze that answer into every crawler that saw it.
+  if (read.status === "failed") return {};
+
+  const profile = read.status === "ok" ? read.data : null;
   const handle = ogTruncate(profile?.username ?? username, 40);
   const title = `@${handle} on Vidit`;
 
+  // `geolocations_count` is every live event the analyst owns, machine drafts
+  // included, which is what the card labels SUBMITTED; the word here matches
+  // that rather than borrowing the narrower "geolocations".
   const counts = profile
-    ? `${ogCount(profile.geolocations_count)} geolocations, ${ogCount(profile.followers_count)} followers.`
+    ? `${ogCount(profile.geolocations_count)} submissions, ${ogCount(profile.followers_count)} followers.`
     : "This handle has no profile on Vidit.";
   const description = ogTruncate(
     profile?.bio ? `${counts} ${profile.bio}` : counts,
