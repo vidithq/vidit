@@ -14,7 +14,7 @@ Three GIN indexes back the slice-1 ``GET /search`` endpoint:
 is heavy on analyst handles, place names, conflict tags, and OSINT
 identifiers that don't stem cleanly under any natural-language config.
 ``'simple'`` also keeps the matching behaviour predictable for the
-closed beta — "Donetsk" matches "Donetsk" and not "donetsks", which is
+beta corpus: "Donetsk" matches "Donetsk" and not "donetsks", which is
 what an analyst typing a query expects. Migrating to ``'english'``
 later is one DDL away if usage proves the stemmer would help.
 

@@ -104,7 +104,7 @@ const CURSOR_INIT = () => {
       const style = document.createElement("style");
       style.id = "__demo_hide_beta__";
       style.textContent =
-        '[aria-label="Closed beta"] { display: none !important; }' +
+        '[aria-label="Beta"] { display: none !important; }' +
         // The Next.js dev-tools indicator ("N" badge / "Rendering…" toast)
         // mounts in a <nextjs-portal> custom element; keep it off camera.
         "nextjs-portal { display: none !important; }";

@@ -12,7 +12,7 @@
  * `derivative_key` (backend) and `mediaUrls` here — rename one, rename both.
  *
  * Deriving in the frontend rather than carrying explicit URLs is a
- * closed-beta shortcut: every Media row has derivatives by construction
+ * beta-stage shortcut: every Media row has derivatives by construction
  * (demo data is wiped + re-seeded on deploy, no real analyst uploads yet).
  * Once that no longer holds, a follow-up adds `hero_url` / `thumbnail_url`
  * columns and the frontend reads them — same helper signature.

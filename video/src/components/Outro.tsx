@@ -93,7 +93,7 @@ export const Outro: React.FC<{ durationInFrames: number }> = ({
             boxShadow: "0 0 14px rgba(249, 115, 22, 0.9)",
           }}
         />
-        Closed beta · invite-only
+        Beta · invite-only
       </div>
 
       <div

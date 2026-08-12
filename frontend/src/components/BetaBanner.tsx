@@ -17,7 +17,7 @@ const displayVersion = /^\d/.test(BUILD_VERSION)
 
 const REPORT_URL = "https://discord.gg/9wPtsrrKyJ";
 
-export default function ClosedBetaBanner() {
+export default function BetaBanner() {
   const pathname = usePathname() ?? "";
   if (isAuthRoute(pathname)) return null;
   // The landing dropped its beta framing, so the corner pill follows it there;
@@ -29,11 +29,11 @@ export default function ClosedBetaBanner() {
     // <Pill> owns the look.
     <div
       role="status"
-      aria-label="Closed beta"
+      aria-label="Beta"
       className="fixed bottom-3 right-3 z-1200 pointer-events-none select-none"
     >
       <Pill tone="accent" className="gap-2 tracking-tight backdrop-blur-xs">
-        <span>Closed beta · {displayVersion}</span>
+        <span>Beta · {displayVersion}</span>
         <a
           href={REPORT_URL}
           target="_blank"

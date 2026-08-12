@@ -1,6 +1,6 @@
 # Promo video pipeline
 
-A reproducible "promo as code" pipeline for the Vidit closed-beta promo.
+A reproducible "promo as code" pipeline for the Vidit promo.
 Produces a 1920×1080 / 60fps MP4 with a brand intro, a real recording of
 the platform doing the full submit + request flow, captions overlaid on
 the recording, and a closing CTA.

@@ -14,7 +14,7 @@ if (dsn) {
       process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? 0,
     ),
     // Match backend `send_default_pii=False` — never auto-attach IP / cookies
-    // / headers to events. Closed-beta threat model: identity-known analysts,
+    // / headers to events. Beta threat model: identity-known analysts,
     // and we don't want their session cookies leaking into a third-party
     // error tracker.
     sendDefaultPii: false,
