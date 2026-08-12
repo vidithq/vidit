@@ -28,7 +28,7 @@ import {
 const TITLE = "Import by tagging @ViditBot";
 const SECTION = "text-sm font-medium text-neutral-200";
 const DESCRIPTION =
-  "Tag @ViditBot on a geolocation post on X and it lands on Vidit as a structured draft: coordinates, source, media, and proof note, ready for your review.";
+  "Tag @ViditBot on a geolocation post on X. Vidit reads the post and creates a draft with its coordinates, source, media, and proof note.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -60,12 +60,12 @@ const LINES: { step: string; label: string; body: string }[] = [
   {
     step: "2",
     label: "Coordinates",
-    body: "One decimal pair alone on its line: 48.123456, 37.654321. Signs and degree symbols are fine; DMS is not.",
+    body: "One decimal pair alone on its line, for example 48.123456, 37.654321. Signs and degree symbols are accepted. DMS is not.",
   },
   {
     step: "3",
     label: "Source",
-    body: "The footage link alone on its line, or quote the source post. Never your own post.",
+    body: "The footage link alone on its line, or a quote of the source post. A link to your own post is not accepted.",
   },
 ];
 
@@ -74,19 +74,19 @@ const LINES: { step: string; label: string; body: string }[] = [
 const MISTAKES: { label: string; body: string }[] = [
   {
     label: "Tagging the first post when relaying",
-    body: "The tag goes on the reply that carries the footage. Tag the first post instead and it imports without the footage, and a later tag on the reply is ignored as already imported.",
+    body: "The tag goes on the reply that carries the footage. Tag the first post instead and it imports without the footage. A later tag on the reply is ignored, because the geolocation is already imported.",
   },
   {
     label: "Two coordinate lines",
-    body: "One post, one pair. Two coordinate-only lines are ambiguous: nothing imports.",
+    body: "A post must carry exactly one coordinate pair. Two coordinate-only lines are ambiguous and nothing imports.",
   },
   {
     label: "Two source links",
-    body: "Two links each alone on a line, or several links with none alone on its line: nothing imports. Exactly one source, alone on its line.",
+    body: "Nothing imports when two links each sit alone on a line, or when several links appear and none sits alone on a line. Put exactly one source link alone on its line.",
   },
   {
     label: "Sourcing your own post",
-    body: "A link back to your own post is a cross-reference, never a source. Link the original footage post.",
+    body: "A link to your own post is a cross-reference, not a source. Link the original footage post instead.",
   },
   {
     label: "Coordinates inside a sentence",
@@ -94,7 +94,7 @@ const MISTAKES: { label: string; body: string }[] = [
   },
   {
     label: "Tagging under someone else’s post",
-    body: "A relay reply must answer your own post. Tags under anyone else’s import nothing.",
+    body: "A relay reply must answer your own post. A tag under another account’s post imports nothing.",
   },
 ];
 
@@ -144,12 +144,13 @@ export default function BotGuidePage() {
     >
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
-          Tag @ViditBot on a geolocation post on X and it lands on{" "}
+          Tag @ViditBot on a geolocation post on X.{" "}
           <Link href="/" className={TEXT_LINK}>
             Vidit
           </Link>{" "}
-          as a structured draft: coordinates, source, media, and proof note,
-          ready for your review. No re-entry, no leaving your feed.
+          reads the post and creates a draft with its coordinates, source,
+          media, and proof note. You do not leave your feed and you retype
+          nothing.
         </p>
       </Card>
 
@@ -174,13 +175,13 @@ export default function BotGuidePage() {
           ))}
         </div>
         <p className="text-[13px] leading-relaxed text-neutral-400">
-          Anything else you write in the post is kept as the draft&apos;s proof
-          note. Prefer explicit prefixes? Marking the lines{" "}
+          Every other line becomes the draft&apos;s proof note. You can also
+          mark the lines explicitly with{" "}
           <span className="font-mono text-neutral-300">C: coordinates</span> and{" "}
-          <span className="font-mono text-neutral-300">S: source</span> works
-          too. <span className="font-mono text-neutral-300">T: title</span> is
-          optional: leave it out and the first other line that is not just a
-          link becomes the title, but an empty{" "}
+          <span className="font-mono text-neutral-300">S: source</span>.{" "}
+          <span className="font-mono text-neutral-300">T: title</span> is
+          optional. Without it, the first line that is not a bare link becomes
+          the title. An empty{" "}
           <span className="font-mono text-neutral-300">T:</span> line is
           refused.
         </p>
@@ -191,8 +192,8 @@ export default function BotGuidePage() {
         <div className="space-y-3">
           <TagCase
             icon={AtSign}
-            title="Inline: one post carries everything"
-            body="One post carries the tag and the three lines. An X or public Telegram source is fetched for you, footage and post date; quoting it does the same. Any other platform is kept as a link, so a video you attach becomes the footage and photos stay proof."
+            title="Inline mention"
+            body="One post carries the tag and the three lines. Vidit fetches the footage and post date from an X post, a public Telegram post, or a quote of the source post. It stores a source on any other platform as a link, so a video you attach becomes the footage and photos become proof."
           >
             <MockPost
               {...MOCK_ANALYST}
@@ -210,8 +211,8 @@ export default function BotGuidePage() {
 
           <TagCase
             icon={Reply}
-            title="Relay: the footage rides a second post"
-            body="Your own re-upload becomes the footage, even where Vidit could fetch the source. Post the title and coordinates, then tag the bot in a direct reply carrying the footage alone. The source link can sit on either post."
+            title="Footage relay"
+            body="A re-upload you attach to the reply becomes the footage, including where Vidit could fetch the source. Post the title and coordinates, then tag the bot in a direct reply that carries the footage alone. The source link can sit on either post."
           >
             <MockPost {...MOCK_ANALYST}>
               {
@@ -236,8 +237,8 @@ export default function BotGuidePage() {
 
           <TagCase
             icon={History}
-            title="Retro: a post you already published"
-            body="Reply to your own post, whatever its age, and tag the bot: the reply needs nothing else. The post itself carries the format, since the bot reads the post you replied to. Direct replies only, and re-tagging cannot duplicate: the draft anchors on the post."
+            title="Retroactive import"
+            body="Reply to any of your own posts and tag the bot. The reply needs nothing else. The post you reply to must carry the format, because Vidit reads that post. Only direct replies work, and re-tagging creates no duplicate."
           >
             <MockPost
               {...MOCK_ANALYST}
@@ -289,14 +290,14 @@ export default function BotGuidePage() {
             flags a possible duplicate when the media is already on Vidit.
           </li>
           <li>
-            The draft is on the map straight away, marked as a machine draft and
-            credited to you, and it waits in your detections queue. Review it,
-            fix the event date (the post date is only a proxy), then vouch for
-            it as a geolocation. Rejecting it takes it down.
+            The draft appears on the map immediately, labeled as a machine draft
+            and attributed to your account, and it waits in your detections
+            queue. Review it, correct the event date, then publish it as a
+            geolocation. Rejecting it removes it.
           </li>
           <li>
-            If the shape is incomplete, the bot replies with the one thing that
-            broke; the full format lives in this guide.
+            If the post does not conform, the bot replies with the reason. This
+            guide covers the full format.
           </li>
         </ul>
         <div className="sm:max-w-md">
@@ -312,16 +313,16 @@ export default function BotGuidePage() {
         <h2 className={SECTION}>Ground rules</h2>
         <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
           <li>
-            The bot only imports for X handles linked to a Vidit account. Not
-            linked yet? It stays silent: nothing is created in your name.
+            The bot imports only for X handles linked to a Vidit account. It
+            stays silent for any other handle and creates nothing.
           </li>
           <li>
-            One draft per post: tagging the same geolocation again collapses
-            onto the first import.
+            Each post produces one draft. Tagging the same geolocation again
+            reuses the first import.
           </li>
           <li>
-            The bot reads public posts only: tags from a protected account
-            cannot import.
+            The bot reads public posts only. A tag from a protected account
+            imports nothing.
           </li>
         </ul>
       </Card>

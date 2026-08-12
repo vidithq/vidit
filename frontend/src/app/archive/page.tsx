@@ -66,8 +66,8 @@ const STEPS: NumberedStep[] = [
         <Link href="/submit?import=1" className={TEXT_LINK}>
           Submit
         </Link>{" "}
-        and drop the zip on the archive panel. Your browser strips it first, so
-        the upload is a fraction of the export.
+        and drop the zip on the archive panel. Your browser strips the zip
+        before uploading it, which reduces the upload size.
       </>
     ),
   },
@@ -81,11 +81,12 @@ export default function ArchiveGuidePage() {
     <PageShell title={TITLE}>
       <Card as="section">
         <p className={BODY}>
-          An X export carries what the public API does not: your reply edges and
-          the media files themselves. Upload it once and every geolocation in it
-          comes back as a draft: on the map straight away, marked as a machine
-          draft, credited to you. Reviewing one is yours alone: vouch for it and
-          it becomes a geolocation, reject it and it comes down.
+          Vidit reads your X archive and creates a draft event for each
+          geolocation it finds. The archive contains your reply threads and
+          media files, which the public API does not expose. Drafts appear on
+          the map immediately, labeled as machine drafts and attributed to your
+          account. Review each draft to publish it as a geolocation or to reject
+          it.
         </p>
       </Card>
 
@@ -93,9 +94,8 @@ export default function ArchiveGuidePage() {
         <h2 className={SECTION}>Getting the export</h2>
         <NumberedSteps steps={STEPS} />
         <p className="text-xs text-neutral-400 leading-relaxed">
-          The stripped zip has to stay under {MAX_UPLOAD_LABEL}. If yours is
-          bigger even after stripping, get in touch and we will find a way to
-          import it.{" "}
+          The stripped zip must stay under {MAX_UPLOAD_LABEL}. Contact us if
+          yours is larger after stripping.{" "}
           <a
             href={X_ARCHIVE_HELP}
             target="_blank"
@@ -111,14 +111,14 @@ export default function ArchiveGuidePage() {
       <Card as="section">
         <h2 className={SECTION}>What a thread becomes</h2>
         <p className={BODY}>
-          A post becomes a draft when its text carries a coordinate. Self
-          threads are stitched back together first, so footage in one post and
-          the coordinate in another land as one geolocation, anchored on the
-          earliest post.
+          A post becomes a draft when its text contains a coordinate. Vidit
+          rejoins your self threads before reading them, so a thread produces
+          one draft. The earliest post supplies the title, the date, and the
+          link back to X.
         </p>
         <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
           <div className="space-y-3">
-            <SectionEyebrow title="As you posted it" as="h3" margin="none" />
+            <SectionEyebrow title="The thread on X" as="h3" margin="none" />
             <MockPost
               {...MOCK_ANALYST}
               media={{ kind: "image", label: "a photo you attached" }}
@@ -137,7 +137,11 @@ export default function ArchiveGuidePage() {
             </div>
           </div>
           <div className="space-y-3">
-            <SectionEyebrow title="The draft you get" as="h3" margin="none" />
+            <SectionEyebrow
+              title="The draft it creates"
+              as="h3"
+              margin="none"
+            />
             <DetailCard>
               <DetailRow label="Title" value="Bridge span dropped overnight" />
               <DetailRow label="Coordinates" value="49.842900, 24.031100" />
@@ -151,10 +155,10 @@ export default function ArchiveGuidePage() {
               <DetailRow label="Event date" value="the post date, to correct" />
             </DetailCard>
             <p className="text-[13px] leading-relaxed text-neutral-400">
-              A video you attached is the footage. Photos stay in the proof,
-              where annotated frames belong. A source Vidit can fetch (an X
-              post, a public Telegram post) also brings back its own media and
-              post date; anything else is kept as the link you wrote.
+              A video you attached becomes the source footage. Photos become
+              proof. Vidit fetches the media and post date from an X post or a
+              public Telegram post. It stores a source on any other platform as
+              a link only.
             </p>
           </div>
         </div>
@@ -164,44 +168,40 @@ export default function ArchiveGuidePage() {
         <h2 className={SECTION}>Before you upload</h2>
         <ul className="list-disc space-y-1.5 pl-4 text-sm text-neutral-300">
           <li>
-            <span className="text-neutral-100">
-              Two entries are read, and nothing else:
-            </span>{" "}
+            <span className="text-neutral-100">Vidit reads two entries:</span>{" "}
             <span className="font-mono text-neutral-200">tweets.js</span> and
             the <span className="font-mono text-neutral-200">tweets_media</span>{" "}
-            folder. Your browser rebuilds the zip down to those two before the
-            upload starts, so the direct messages, email address, phone number
-            and address book in the export never leave your device. The server
-            keeps the same allowlist on its own side.
+            folder. Your browser removes everything else before the upload
+            starts. Direct messages, your email address, your phone number, and
+            your address book stay on your device. The server applies the same
+            allowlist.
           </li>
           <li>
             <span className="text-neutral-100">
               Retweets are never imported.
             </span>{" "}
-            A retweet carries someone else&apos;s post, and importing one would
-            file their geolocation under your name.
-          </li>
-          <li>
-            <span className="text-neutral-100">Re-uploading is safe.</span>{" "}
-            Anything already imported is recognised and skipped, so an import
-            that failed halfway is resumed by uploading the same file again.
+            A retweet contains another account&apos;s post.
           </li>
           <li>
             <span className="text-neutral-100">
-              Drafts are partial by design.
+              Re-uploading creates no duplicates.
             </span>{" "}
-            They carry only what the post declared, and they read as machine
-            drafts everywhere until you review them. You complete one at submit
-            (the conflict, the capture source, the event date) and vouching for
-            it is what makes it a geolocation under your name.
+            Vidit skips anything it has already imported. To resume a failed
+            import, upload the same file again.
+          </li>
+          <li>
+            <span className="text-neutral-100">Drafts are partial.</span> A
+            draft contains only what the post stated. At review you add the
+            conflict, the capture source, and the event date, then publish the
+            draft as a geolocation.
           </li>
         </ul>
         <p className={BODY}>
-          New to the platform? The{" "}
+          The{" "}
           <Link href="/guide" className={TEXT_LINK}>
             getting-started guide
           </Link>{" "}
-          covers the whole loop, and the{" "}
+          covers the rest of the platform. The{" "}
           <Link href="/bot" className={TEXT_LINK}>
             bot guide
           </Link>{" "}
