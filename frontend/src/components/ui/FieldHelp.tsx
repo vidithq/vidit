@@ -49,7 +49,16 @@ export function FieldHelp({
         aria-label={label}
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={pinned}
-        className="inline-flex items-center text-neutral-500 hover:text-neutral-300 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400 rounded-xs transition-colors"
+        /* The glyph is 13px, so on a phone the padding / negative-margin pair
+           grows the hit area to 29 by 25px while the `?` itself and
+           the label beside it stay put. The vertical bleed is capped at 6px,
+           the label-to-input gap the form fields use, so a tap aimed just
+           below the `?` still lands on the input rather than on this anchor.
+           The anchor box being bigger, `usePinnedPopover` measures it and
+           places the tooltip a few pixels lower and further left on a phone.
+           Desktop keeps the bare glyph, where the pointer is precise and the
+           extra box would swallow hover on the label. */
+        className="inline-flex items-center px-2 py-1.5 -mx-2 -my-1.5 sm:px-0 sm:py-0 sm:mx-0 sm:my-0 text-neutral-500 hover:text-neutral-300 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400 rounded-xs transition-colors"
       >
         <HelpCircle size={size} strokeWidth={1.8} />
       </button>

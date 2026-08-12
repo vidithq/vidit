@@ -30,8 +30,14 @@ export function RecentSubmissions({
 }) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
+      {/* Same line-breaking rule as PageShell's header: the heading block asks
+          for a basis, so a row too tight for both drops the link to its own
+          line instead of squeezing "Show more" into two stacked words. The
+          14rem basis matching the one PageShell uses is cosmetic, not a
+          contract: either can be retuned on its own without breaking the
+          other. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
           <p className="text-xs text-neutral-500">
             {profile.geolocations_count > 0
@@ -42,7 +48,9 @@ export function RecentSubmissions({
         {submissions.length > 0 && (
           <Link
             href={`/search?type=event&author=${encodeURIComponent(profile.username)}`}
-            className={buttonClasses("secondary")}
+            className={buttonClasses("secondary", {
+              className: "shrink-0 whitespace-nowrap",
+            })}
           >
             Show more
           </Link>
