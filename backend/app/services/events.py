@@ -18,6 +18,7 @@ when adding a code.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
@@ -26,7 +27,7 @@ from typing import cast
 from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
@@ -60,6 +61,8 @@ from app.services.sanitize import (
 from app.services.source_archive import enqueue_event_best_effort as enqueue_source_archival
 from app.services.storage import sweep_keys
 
+logger = logging.getLogger(__name__)
+
 
 class EventError(EvidenceIntakeError):
     """Base for event-specific friendly errors.
@@ -74,7 +77,25 @@ class EventError(EvidenceIntakeError):
 
 
 class InvalidCoordinatesError(EventError):
+    """Coordinates were supplied but fall outside the valid lat / lng ranges.
+
+    About malformed input, not absent input: a transition that needs
+    coordinates the row does not carry raises
+    :class:`CoordinatesRequiredError` instead. Maps to 400.
+    """
+
     code = "invalid_coordinates"
+
+
+class CoordinatesRequiredError(EventError):
+    """The transition requires coordinates and the row carries none.
+
+    A machine ``detected`` draft may be born without a point (the import found
+    no location in the thread), so the requirement bites at the promotion, the
+    same shape as :class:`SourceUrlRequiredError`. Maps to 400.
+    """
+
+    code = "coordinates_required"
 
 
 class InvalidProofError(EventError):
@@ -116,7 +137,10 @@ class EventNotFoundError(EventError):
 
     Only the batch completion raises it: the single-row paths resolve the event
     in the router, which owns their 404. In a batch it is one row's outcome, not
-    the call's, so it travels as a typed per-row code. Maps to 404.
+    the call's, so it travels as a typed per-row code and never reaches the
+    envelope. The 404 it carries in ``_EVENT_ERROR_STATUS`` is defensive, there
+    so a future single-row caller of the same helper gets the right status
+    instead of a 500.
     """
 
     code = "event_not_found"
@@ -692,14 +716,22 @@ async def geolocate(
     return geo
 
 
+# The one per-row code that is not a floor verdict: a database failure on that
+# row, caught so it cannot take the rest of the batch down with it. Published as
+# part of the contract (``docs/api.md``) because a client has to be able to tell
+# "this draft is incomplete" from "retry this draft".
+ROW_INTERNAL_ERROR_CODE = "internal_error"
+
+
 @dataclass(frozen=True)
 class DraftCompletion:
     """One row's outcome in a batch completion.
 
     ``code`` is ``None`` on a published row and the failing
-    :class:`EventError`'s stable code otherwise, with ``message`` the human
-    sentence the queue renders next to that row. A failed row is untouched: it
-    stays a ``detected`` draft its owner can finish by hand.
+    :class:`EventError`'s stable code otherwise (or
+    :data:`ROW_INTERNAL_ERROR_CODE` on a database failure), with ``message`` the
+    human sentence the queue renders next to that row. A failed row is
+    untouched: it stays a ``detected`` draft its owner can finish by hand.
     """
 
     event_id: uuid.UUID
@@ -750,7 +782,8 @@ def _publish_draft(
     enqueues the row's links for archival (publication is the archival trigger).
 
     Raises the typed floor errors, :class:`EventStateError` off ``detected``,
-    and :class:`EventNotFoundError` when the row is gone. The caller rolls back
+    :class:`EventNotFoundError` when the row is gone, and the 403 of
+    :func:`ensure_owner` on a row the caller does not own. The caller rolls back
     and records the code against the row.
     """
     geo = (
@@ -762,6 +795,9 @@ def _publish_draft(
     )
     if geo is None:
         raise EventNotFoundError("This draft no longer exists")
+    # Re-checked here, not only in ``complete_drafts``: the helper owns the
+    # whole promotion, so it must be safe to call from a future entry point.
+    ensure_owner(geo, current_user)
     if geo.status != STATUS_DETECTED:
         raise EventStateError("Only a detected draft can be completed in a batch")
 
@@ -770,7 +806,7 @@ def _publish_draft(
     if geo.source_url is None or not geo.source_url.strip():
         raise SourceUrlRequiredError("A source URL is required to geolocate an event")
     if geo.event_coords is None:
-        raise InvalidCoordinatesError("This draft carries no coordinates")
+        raise CoordinatesRequiredError("This draft carries no coordinates")
     _require_submission_media(any(m.role == "source" for m in geo.media))
     # The proof-image leg: satisfied already when the import carried annotation
     # media, and the reason a row drops out of the batch when it did not.
@@ -822,7 +858,9 @@ def complete_drafts(
     Two conditions fail the whole call instead, both before anything commits: an
     empty / unresolvable ``conflict_ids`` (:class:`TagRequirementsError`, since
     no row could clear the floor), and a row owned by someone else (403 from
-    ``ensure_owner``).
+    ``ensure_owner``). Nothing after the first commit can fail the call: a
+    database error on one row is caught and reported as
+    :data:`ROW_INTERNAL_ERROR_CODE` against that row.
     """
     conflicts = _resolve_conflicts(db, conflict_ids)
     if not conflicts:
@@ -853,6 +891,21 @@ def complete_drafts(
         except EvidenceIntakeError as exc:
             db.rollback()
             outcomes.append(DraftCompletion(event_id=event_id, code=exc.code, message=str(exc)))
+            continue
+        # Per-row isolation has to cover the unexpected too. A database failure
+        # escaping here would 500 the whole call and throw away the verdicts of
+        # every row already published, which is the one outcome the batch shape
+        # exists to prevent. Logged with the row, reported as its own verdict.
+        except SQLAlchemyError:
+            db.rollback()
+            logger.exception("batch completion failed on event %s", event_id)
+            outcomes.append(
+                DraftCompletion(
+                    event_id=event_id,
+                    code=ROW_INTERNAL_ERROR_CODE,
+                    message="This draft could not be published; try it again.",
+                )
+            )
             continue
         published += 1
         outcomes.append(DraftCompletion(event_id=event_id))

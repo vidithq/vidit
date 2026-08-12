@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type SetStateAction } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
@@ -26,6 +26,11 @@ import type { Conflict, EventDetail, Tag } from "@/types";
 
 /** The empty option's value: this row is not part of the publish. */
 const NOT_NOW = "";
+
+/** The apply-to-all's reset option. A value of its own, not `NOT_NOW`: the
+ *  control is pinned to the placeholder, so a clear branch keyed on the
+ *  placeholder's value could never fire (re-selecting it is not a change). */
+const CLEAR_ALL = "__clear__";
 
 type RowVerdict = BatchCompletionResult["rows"][number];
 
@@ -73,9 +78,12 @@ export function BatchCompletionPanel({
   // draft"; the queue opens with nothing selected, so publishing is always a
   // deliberate act.
   const [picks, setPicks] = useState<Record<string, string>>({});
-  // The last run's per-row verdicts, kept keyed by id: the published rows leave
-  // the refreshed queue, and the rejected ones stay with their reason attached.
+  // Per-row verdicts keyed by id, accumulated across runs: the published rows
+  // leave the refreshed queue, and every rejected one keeps its reason attached
+  // until a later run gives that same row a new one.
   const [verdicts, setVerdicts] = useState<Record<string, RowVerdict>>({});
+  // The headline counts of the last run, and only while they still describe
+  // what is on screen: any change to the selection drops the banner.
   const [summary, setSummary] = useState<BatchCompletionResult | null>(null);
 
   const captureSources = curatedTags.filter((t) => t.category === "capture_source");
@@ -99,7 +107,13 @@ export function BatchCompletionPanel({
       fallback: "Could not publish the selection.",
       onSuccess: (result) => {
         setSummary(result);
-        setVerdicts(Object.fromEntries(result.rows.map((row) => [row.event_id, row])));
+        // Merged, not replaced: a row rejected by run 1 and left out of run 2
+        // keeps the explanation it was given. Each run overwrites only the
+        // rows it actually carried.
+        setVerdicts((prev) => ({
+          ...prev,
+          ...Object.fromEntries(result.rows.map((row) => [row.event_id, row])),
+        }));
         // Drop the picks of everything that published so a second run can't
         // re-post them; a rejected row keeps its pick, ready for a retry.
         setPicks((prev) => {
@@ -112,12 +126,23 @@ export function BatchCompletionPanel({
     }
   );
 
-  const applyToAll = (tagId: string) => {
-    if (tagId === NOT_NOW) {
-      setPicks({});
+  // The summary counts one run of one selection, so it stops being true the
+  // moment the selection moves. Both mutators of the selection clear it.
+  const changePicks = (next: SetStateAction<Record<string, string>>) => {
+    setSummary(null);
+    setPicks(next);
+  };
+  const changeConflicts = (next: SetStateAction<string[]>) => {
+    setSummary(null);
+    setSelectedConflictIds(next);
+  };
+
+  const applyToAll = (value: string) => {
+    if (value === CLEAR_ALL) {
+      changePicks({});
       return;
     }
-    setPicks(Object.fromEntries(eligible.map((d) => [d.id, tagId])));
+    changePicks(Object.fromEntries(eligible.map((d) => [d.id, value])));
   };
 
   const ready = selectedConflictIds.length > 0 && selected.length > 0;
@@ -139,7 +164,7 @@ export function BatchCompletionPanel({
         <ConflictTypeahead
           conflicts={conflicts}
           selectedIds={selectedConflictIds}
-          setSelectedIds={setSelectedConflictIds}
+          setSelectedIds={changeConflicts}
         />
       </div>
 
@@ -159,6 +184,7 @@ export function BatchCompletionPanel({
               {tag.name}
             </option>
           ))}
+          <option value={CLEAR_ALL}>Clear every row</option>
         </Select>
       </div>
 
@@ -197,7 +223,7 @@ export function BatchCompletionPanel({
                 value={picks[draft.id] ?? NOT_NOW}
                 disabled={blockers.length > 0 || publish.loading}
                 onChange={(e) =>
-                  setPicks((prev) => ({ ...prev, [draft.id]: e.target.value }))
+                  changePicks((prev) => ({ ...prev, [draft.id]: e.target.value }))
                 }
               >
                 <option value={NOT_NOW}>Not now</option>

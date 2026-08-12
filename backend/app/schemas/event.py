@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import BeforeClosedStatus, EventStatus
@@ -90,11 +90,14 @@ class EventCloseRequest(BaseModel):
     close_reason: str = Field(min_length=1, max_length=2000)
 
 
-# How many drafts one batch completion may carry. Matches the detections
-# queue's own ``per_page`` ceiling, so a full page of drafts is always
-# publishable in one call and no client can ask for an unbounded loop of
-# row-level transactions.
-MAX_COMPLETION_ROWS = 100
+# Largest page ``GET /events/detections`` will serve, whatever ``per_page``
+# asks for (``routers/events/read.py`` clamps to it).
+DETECTIONS_MAX_PER_PAGE = 100
+
+# How many drafts one batch completion may carry: a full page of the queue, so
+# whatever the analyst can see they can publish in one call, and no client can
+# ask for an unbounded loop of row-level transactions.
+MAX_COMPLETION_ROWS = DETECTIONS_MAX_PER_PAGE
 
 # How many conflicts one batch may set. The selection shares them, and an
 # import dominated by more than a handful of conflicts is not a batch.
@@ -118,6 +121,26 @@ class BatchCompletionCreate(BaseModel):
 
     conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
     rows: list[BatchCompletionRowCreate] = Field(min_length=1, max_length=MAX_COMPLETION_ROWS)
+
+    @field_validator("rows")
+    @classmethod
+    def _reject_duplicate_events(
+        cls, rows: list[BatchCompletionRowCreate]
+    ) -> list[BatchCompletionRowCreate]:
+        """One row per draft: a repeated ``event_id`` is a 422, not a retry.
+
+        The second occurrence can only fail (the first published the draft, so
+        the row is no longer ``detected``), which would inflate ``failed`` and
+        report a state error against a draft that did publish. A client sending
+        the same id twice is asking two different things of one row anyway,
+        since each occurrence carries its own capture source.
+        """
+        seen: set[uuid.UUID] = set()
+        for row in rows:
+            if row.event_id in seen:
+                raise ValueError(f"Duplicate event_id in rows: {row.event_id}")
+            seen.add(row.event_id)
+        return rows
 
 
 class BatchCompletionRowRead(BaseModel):

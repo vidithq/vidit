@@ -917,7 +917,7 @@ Owner-only: every targeted draft must belong to the caller. There is no fulfil-s
 | Field | Type | Description |
 |-------|------|-------------|
 | `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the drafts held |
-| `rows` | object[] | 1-100 drafts. `event_id` is a `detected` row the caller owns; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
+| `rows` | object[] | 1-100 drafts, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row the caller owns; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
 
 **Response 200:** verdicts in the order the rows were submitted.
 ```json
@@ -932,14 +932,27 @@ Owner-only: every targeted draft must belong to the caller. There is no fulfil-s
 }
 ```
 
-A row's `code` is the same stable code the single-row geolocate would have answered with: `proof_image_required`, `media_required`, `source_url_required`, `invalid_coordinates`, `tag_requirements_not_met` (the tag id is unknown or is not a `capture_source` tag), `invalid_state` (the row is no longer `detected`), or `event_not_found` (hard-deleted, or soft-deleted by an admin). A `200` therefore does **not** mean everything published; read `published` / `failed`.
+A `200` does **not** mean everything published; read `published` / `failed`. A failed row's `code`:
+
+| `code` | Case |
+|--------|------|
+| `source_url_required` | The draft carries no source URL |
+| `coordinates_required` | The import found no location in the thread, so the draft carries no point |
+| `media_required` | The draft carries no `source` media row |
+| `proof_image_required` | The stored proof body holds no image (the imported thread carried no annotation media) |
+| `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or is not a `capture_source` tag |
+| `invalid_state` | The row is no longer `detected` |
+| `event_not_found` | Hard-deleted, or soft-deleted by an admin |
+| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the draft is untouched, so the row is retriable as-is |
+
+The first six are the same stable codes the single-row geolocate answers with, and they are checked in the order above.
 
 **Errors** (whole-call, evaluated before any row publishes):
 | Code | Case |
 |------|------|
 | 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
 | 403 | A targeted draft belongs to another analyst; nothing is published |
-| 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, or a malformed UUID |
+| 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
 
 ---
 
@@ -1664,9 +1677,9 @@ Queue Wayback archival for every live event that has no [`source_archives`](data
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The periodic half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
 
-**Response 200:**
+**Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
 ```json
 { "analysts_notified": 4, "drafts_pending": 137, "digest_send_failures": 0 }
 ```

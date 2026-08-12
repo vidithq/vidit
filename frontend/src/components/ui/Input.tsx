@@ -78,6 +78,10 @@ export function Input({
  *
  * Pill chips stay the choice when the options are a taxonomy to browse (see
  * `<TagPicker>`); this is for a dense row where one column IS the choice.
+ *
+ * `className` sizes the field, same as on `<Input>`; it lands on the wrapper
+ * the caret is positioned against, so a narrowing class keeps the arrow on the
+ * control instead of stranding it at the far edge of the parent.
  */
 export function Select({
   variant = "default",
@@ -87,12 +91,15 @@ export function Select({
   ...props
 }: FieldProps & SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
+    // The caller's `className` sizes the WRAPPER, not the inner select: the
+    // caret is positioned against this box, so a width landing on the select
+    // alone would leave the arrow floating at the far end of a full-width
+    // parent. The select then fills whatever width the wrapper was given.
+    <div className={cn("relative", className)}>
       <select
         className={cn(
           fieldClass(variant, invalid, ""),
-          "appearance-none pr-8 cursor-pointer",
-          className,
+          "w-full appearance-none pr-8 cursor-pointer",
         )}
         {...props}
       >

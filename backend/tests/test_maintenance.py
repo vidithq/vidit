@@ -238,7 +238,7 @@ def _draft(db, owner, **kwargs) -> Event:
 
 def _counts(db, owner) -> int | None:
     """The digest's count for ``owner``, or None when they aren't selected."""
-    for user, count in maintenance_service.drafts_awaiting_completion(db):
+    for user, _address, count in maintenance_service.drafts_awaiting_completion(db):
         if user.id == owner.id:
             return count
     return None
@@ -295,7 +295,8 @@ def test_digest_sends_one_email_per_analyst(db, draft_owner, monkeypatch):
 
 def test_digest_survives_a_provider_failure(db, draft_owner, monkeypatch):
     """A rejected address is counted, never raised: a digest is re-sendable on
-    the next run, and the other analysts still get theirs."""
+    the next run, and the other analysts still get theirs. A failed send covers
+    no drafts, so ``drafts_pending`` counts delivered messages only."""
     _draft(db, draft_owner)
 
     def _boom(email):
@@ -306,6 +307,15 @@ def test_digest_survives_a_provider_failure(db, draft_owner, monkeypatch):
     result = maintenance_service.send_completion_digests(db)
     assert result["analysts_notified"] == 0
     assert result["digest_send_failures"] >= 1
+    assert result["drafts_pending"] == 0
+
+
+def test_digest_caps_the_addresses_one_click_writes_to(db, draft_owner):
+    """The action is one provider round-trip per analyst with no resume marker,
+    so a click is bounded; the biggest backlogs survive the cut."""
+    _draft(db, draft_owner)
+    selected = maintenance_service.drafts_awaiting_completion(db, limit=1)
+    assert len(selected) == 1
 
 
 def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch):

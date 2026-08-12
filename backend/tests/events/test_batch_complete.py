@@ -229,6 +229,48 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(
     assert codes[str(gone)] == "event_not_found"
 
 
+def test_batch_complete_reports_a_pointless_draft_as_coordinates_required(
+    db, author, conflict, capture_source_tag
+):
+    """A draft the import could not place fails on absent coordinates, not
+    malformed ones: the code is the ``*_required`` shape every other floor leg
+    uses, so a client reads "this draft is missing a piece" rather than "the
+    client sent a bad number"."""
+    pointless = _draft(db, author)
+    pointless.event_coords = None
+    db.commit()
+
+    response = client.post(
+        _URL,
+        headers=login_as(client, author),
+        json=_body(conflict, [(pointless, capture_source_tag.id)]),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["published"], body["failed"]) == (0, 1)
+    assert body["rows"][0]["code"] == "coordinates_required"
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == pointless.id).one().status == STATUS_DETECTED
+
+
+def test_batch_complete_rejects_a_draft_listed_twice(db, author, conflict, capture_source_tag):
+    """One row per draft. The second occurrence could only ever fail (the first
+    published the row), which would report a state error against a draft that
+    did publish and inflate ``failed``; the shape is rejected instead."""
+    draft = _draft(db, author)
+
+    response = client.post(
+        _URL,
+        headers=login_as(client, author),
+        json=_body(conflict, [(draft, capture_source_tag.id), (draft, capture_source_tag.id)]),
+    )
+    assert response.status_code == 422
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == draft.id).one().status == STATUS_DETECTED
+
+
 def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, capture_source_tag):
     """No conflict means no row could ever clear the floor, so the call fails
     whole rather than reporting the same miss N times."""

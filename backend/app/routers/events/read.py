@@ -30,6 +30,7 @@ from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
 from app.schemas.event import (
+    DETECTIONS_MAX_PER_PAGE,
     EventList,
     PaginatedEventDetails,
 )
@@ -404,7 +405,7 @@ def list_detections(
     # would compute a negative OFFSET and per_page < 1 a non-positive LIMIT, both
     # of which Postgres rejects (a 500).
     page = max(1, page)
-    per_page = max(1, min(per_page, 100))
+    per_page = max(1, min(per_page, DETECTIONS_MAX_PER_PAGE))
 
     detected = (
         Event.owner_id == current_user.id,

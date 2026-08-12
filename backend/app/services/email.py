@@ -234,7 +234,7 @@ def archive_import_failed_email(*, to: str) -> Email:
 
 
 def completion_digest_email(*, to: str, count: int, link: str) -> Email:
-    """The periodic nudge on drafts still awaiting completion.
+    """The nudge on drafts still awaiting completion.
 
     One message per analyst, a count and the way back to their queue. It stays
     this thin on purpose: which drafts are worth publishing is a judgment made
@@ -250,8 +250,8 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
             "yet. Each one is waiting on the two calls only you can make: which\n"
             "conflict it belongs to, and what the footage was shot with.\n"
             "\n"
-            "The queue publishes them in one pass: pick the conflict once for a\n"
-            "selection, set the capture source per row, publish the lot.\n"
+            "The queue publishes a page at a time: pick the conflict once for\n"
+            "the selection, set the capture source per row, publish.\n"
             "\n"
             f"  {link}\n"
             "\n"

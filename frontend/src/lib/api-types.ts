@@ -167,10 +167,11 @@ export interface paths {
          * @description Email every analyst holding unpublished ``detected`` drafts.
          *
          *     One message per analyst: how many drafts wait, and the link back to their
-         *     own Detections queue, where the batch completion publishes them. The
-         *     periodic nudge behind the import: the completion mail scrolls away, the
-         *     backlog does not. Runs on a click like the reapers above; a provider
-         *     failure on one address is counted, not raised.
+         *     own Detections queue, where the batch completion publishes them. The nudge
+         *     behind the import: the completion mail scrolls away, the backlog does not.
+         *     Runs on a click like the reapers above, one provider round-trip per
+         *     analyst, capped at ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a
+         *     provider failure on one of them is counted, not raised.
          */
         post: operations["maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post"];
         delete?: never;

@@ -32,6 +32,7 @@ SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,
     "event_not_found": 404,
+    "coordinates_required": 400,
     "invalid_coordinates": 400,
     "invalid_proof": 400,
     "proof_image_required": 400,

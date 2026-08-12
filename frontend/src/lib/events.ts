@@ -8,6 +8,7 @@ import type {
   ArchiveImportPresign,
   EventDetail,
   EventStatus,
+  Media,
   TagCategory,
 } from "@/types";
 
@@ -542,12 +543,18 @@ export function batchCompletionBlockers(geo: {
   event_coords: unknown | null;
   source_url: string | null;
   proof: Record<string, unknown> | null;
-  media: readonly unknown[];
+  media: readonly Pick<Media, "role">[];
 }): string[] {
+  // Listed in the server's own check order, so the labels read in the order the
+  // API would have reported them had the row been posted.
   const missing: string[] = [];
-  if (!geo.event_coords) missing.push(FIELD_LABELS.coordinates);
   if (!geo.source_url?.trim()) missing.push(FIELD_LABELS.source_url);
-  if (geo.media.length === 0) missing.push(FIELD_LABELS.source_media);
+  if (!geo.event_coords) missing.push(FIELD_LABELS.coordinates);
+  // The floor is a `source` media row, not any media row. `EventRead` only
+  // serializes `source` rows today, so the predicate is stricter than the
+  // payload needs; it is written against the rule rather than the projection,
+  // and `Pick<Media, "role">` makes `tsc` hold it there.
+  if (!geo.media.some((m) => m.role === "source")) missing.push(FIELD_LABELS.source_media);
   // The proof-image leg: already satisfied when the import carried annotation
   // media, and the one the queue most often has to flag.
   if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);

@@ -157,7 +157,7 @@ describe("batchCompletionBlockers", () => {
       type: "doc",
       content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
     },
-    media: [{}],
+    media: [{ role: "source" as const }],
   };
 
   it("clears a draft the import filled", () => {
@@ -173,6 +173,18 @@ describe("batchCompletionBlockers", () => {
     ).toEqual(["Proof image"]);
   });
 
+  it("counts only source media, never a proof image, as the footage", () => {
+    // The floor wants the footage the geolocation is OF. An import whose
+    // annotation images landed but whose source video did not carries media
+    // rows and still misses it.
+    expect(
+      batchCompletionBlockers({
+        ...importedDraft,
+        media: [{ role: "proof" as const }],
+      })
+    ).toEqual(["Source media"]);
+  });
+
   it("lists every miss at once, in floor order", () => {
     expect(
       batchCompletionBlockers({
@@ -181,7 +193,7 @@ describe("batchCompletionBlockers", () => {
         proof: null,
         media: [],
       })
-    ).toEqual(["Coordinates", "Source URL", "Source media", "Proof image"]);
+    ).toEqual(["Source URL", "Coordinates", "Source media", "Proof image"]);
   });
 
   it("ignores what a batch never writes (title, source post time)", () => {
