@@ -11,6 +11,7 @@ import {
   Play,
   ImageIcon,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
@@ -98,6 +99,21 @@ const MISTAKES: { label: string; body: string }[] = [
   },
 ];
 
+// The one fake analyst every mock post is attributed to, so the three tagging
+// cases read as one person's posts rather than three unrelated accounts.
+const ANALYST = {
+  name: "GEOIMINT",
+  handle: "@GEOIMINT",
+  avatar: "bg-gradient-to-br from-orange-500 to-red-600",
+} as const;
+
+// The annotation attachment that lands as proof. On the first post of every
+// case, so the three rows carry the same visual weight.
+const PROOF_SHOT = {
+  kind: "image",
+  label: "your annotated screenshots (proof)",
+} as const;
+
 // A mock X post, the same composition the promo video's BotBeat renders:
 // X-dark card, avatar, name row, body with link-blue accents, optional
 // media placeholder. Page-local content markup, not a product primitive.
@@ -130,7 +146,10 @@ function MockPost({
           <p className="truncate text-[15px] font-bold text-neutral-100">
             {name}
           </p>
-          <p className="truncate text-[13px] text-neutral-500">
+          {/* Wraps rather than truncates: "@handle · replying to @handle" is
+              longer than a narrow mock is wide, and an ellipsis there reads as
+              a broken byline. The name above it still truncates. */}
+          <p className="text-[13px] text-neutral-500">
             {handle}
             {replyingTo && (
               <>
@@ -165,6 +184,39 @@ function MockPost({
 // Link-blue span for the mock bodies (X's anchor color, display only).
 function BodyLink({ children }: { children: ReactNode }) {
   return <span className="text-sky-500">{children}</span>;
+}
+
+// One tagging case as a full-width row: the explanation beside its mock posts
+// from `sm` up, stacked on a phone. A row rather than a column in a three-up
+// grid, because a mock post squeezed into a third of the page column wraps its
+// links and its byline into noise. Page-local content markup, like MockPost.
+function TagCase({
+  icon: Icon,
+  title,
+  body,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
+        <div>
+          <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
+            <Icon size={17} />
+          </span>
+          <h3 className="mt-4 text-sm font-medium text-neutral-100">{title}</h3>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
+            {body}
+          </p>
+        </div>
+        <div className="space-y-3">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function BotGuidePage() {
@@ -233,125 +285,62 @@ export default function BotGuidePage() {
               Three ways to tag
             </h2>
           </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <AtSign size={17} />
-              </span>
-              <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Inline: one post carries everything
-              </h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                One post carrying the tag and the three lines. When the source
-                is an X post or a public Telegram post, Vidit fetches the
-                footage and its post date for you. Quoting the source post works
-                too. Any other platform is kept as a source link, and a video
-                you attach becomes the draft&apos;s footage. Attach your
-                annotated screenshots as well: photos always land as proof.
-              </p>
-              <div className="mt-4">
+          <div className="mt-6 space-y-4">
+            <TagCase
+              icon={AtSign}
+              title="Inline: one post carries everything"
+              body="One post carries the tag and the three lines. An X or public Telegram source is fetched for you, footage and post date; quoting it does the same. Any other platform is kept as a link, so a video you attach becomes the footage and photos stay proof."
+            >
+              <MockPost {...ANALYST} media={PROOF_SHOT}>
+                {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
+                <BodyLink>x.com/warfootage/status/1783</BodyLink>
+                {"\nSmoke plume matches the skyline.\n"}
+                <BodyLink>@viditbot</BodyLink>
+              </MockPost>
+            </TagCase>
+
+            <TagCase
+              icon={Reply}
+              title="Relay: the footage rides a second post"
+              body="Your own re-upload becomes the footage, even where Vidit could fetch the source. Post the title and coordinates, then tag the bot in a direct reply carrying the footage alone. The source link can sit on either post."
+            >
+              <MockPost {...ANALYST}>
+                {
+                  "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
+                }
+              </MockPost>
+              <div className="pl-6">
                 <MockPost
-                  name="GEOIMINT"
-                  handle="@GEOIMINT"
-                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                  {...ANALYST}
+                  replyingTo="@GEOIMINT"
                   media={{
-                    kind: "image",
-                    label: "your annotated screenshots (proof)",
+                    kind: "video",
+                    label: "the re-uploaded footage (source)",
                   }}
                 >
-                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
-                  <BodyLink>x.com/warfootage/status/17…</BodyLink>
-                  {"\nSmoke plume matches the skyline.\n"}
+                  <BodyLink>tiktok.com/@warfootage/video/7</BodyLink>
+                  {"\n"}
                   <BodyLink>@viditbot</BodyLink>
                 </MockPost>
               </div>
-            </div>
+            </TagCase>
 
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <Reply size={17} />
-              </span>
-              <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Relay: the footage rides a second post
-              </h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                You already posted the geolocation, or you want your own
-                re-upload to be the footage even where Vidit could fetch the
-                source. Post the title and coordinates, then tag the bot in a
-                direct reply to your own post, carrying the re-uploaded footage
-                attached alone (one attachment lands as the source; annotations
-                belong on the first post). The source link can sit on either
-                post.
-              </p>
-              <div className="mt-4 space-y-3">
-                <MockPost
-                  name="GEOIMINT"
-                  handle="@GEOIMINT"
-                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                  media={{
-                    kind: "image",
-                    label: "your annotated screenshots (proof)",
-                  }}
-                >
-                  {
-                    "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
-                  }
+            <TagCase
+              icon={History}
+              title="Retro: a post you already published"
+              body="Reply to your own post, whatever its age, and tag the bot: the reply needs nothing else. The post itself carries the format, since the bot reads the post you replied to. Direct replies only, and re-tagging cannot duplicate: the draft anchors on the post."
+            >
+              <MockPost {...ANALYST} media={PROOF_SHOT}>
+                {"Bridge span dropped overnight\n49.842900, 24.031100\n"}
+                <BodyLink>x.com/warfootage/status/1206</BodyLink>
+                {"\nGeolocated it back in March."}
+              </MockPost>
+              <div className="pl-6">
+                <MockPost {...ANALYST} replyingTo="@GEOIMINT">
+                  <BodyLink>@viditbot</BodyLink>
                 </MockPost>
-                <div className="pl-6">
-                  <MockPost
-                    name="GEOIMINT"
-                    handle="@GEOIMINT"
-                    avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                    replyingTo="@GEOIMINT"
-                    media={{
-                      kind: "video",
-                      label: "the re-uploaded footage (source)",
-                    }}
-                  >
-                    <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
-                    {"\n"}
-                    <BodyLink>@viditbot</BodyLink>
-                  </MockPost>
-                </div>
               </div>
-            </div>
-
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <History size={17} />
-              </span>
-              <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Retro: a post you already published
-              </h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                Reply to your own post, whatever its age, and tag the bot: the
-                reply needs nothing else. The bot reads the post you replied to,
-                so that post carries the format itself and the reply only points
-                at it. Your own post only, and a direct reply, one hop deep.
-                Re-tagging changes nothing: the draft anchors on the post.
-              </p>
-              <div className="mt-4 space-y-3">
-                <MockPost
-                  name="GEOIMINT"
-                  handle="@GEOIMINT"
-                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                >
-                  {"Bridge span dropped overnight\n49.842900, 24.031100\n"}
-                  <BodyLink>x.com/warfootage/status/44…</BodyLink>
-                  {"\nPosted back in March."}
-                </MockPost>
-                <div className="pl-6">
-                  <MockPost
-                    name="GEOIMINT"
-                    handle="@GEOIMINT"
-                    avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                    replyingTo="@GEOIMINT"
-                  >
-                    <BodyLink>@viditbot</BodyLink>
-                  </MockPost>
-                </div>
-              </div>
-            </div>
+            </TagCase>
           </div>
         </section>
 
