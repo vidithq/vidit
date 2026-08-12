@@ -17,11 +17,18 @@ const VIDEO: Media = { ...IMAGE, id: "m2", storage_url: "/media/clip.mp4", media
 
 describe("MediaLightbox", () => {
   it("is a labelled modal dialog carrying the media and a download", () => {
-    render(<MediaLightbox source={IMAGE} alt="A street corner" onClose={vi.fn()} />);
+    const { container } = render(
+      <MediaLightbox source={IMAGE} alt="A street corner" onClose={vi.fn()} />,
+    );
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("aria-label", "A street corner");
+    // Portalled out of the caller's markup, so a viewer opened from a scrolling
+    // or transformed surface (the map's detail panel, a proof body) still
+    // covers the viewport instead of being clipped inside it.
+    expect(container).toBeEmptyDOMElement();
+    expect(dialog.parentElement).toBe(document.body);
     // An image views at the hero derivative, not the original.
     expect(screen.getByAltText("A street corner")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
@@ -30,9 +37,7 @@ describe("MediaLightbox", () => {
 
   it("closes on the close button, on Escape, and on a backdrop click, but not on a content click", () => {
     const onClose = vi.fn();
-    const { container } = render(
-      <MediaLightbox source={IMAGE} alt="A street corner" onClose={onClose} />,
-    );
+    render(<MediaLightbox source={IMAGE} alt="A street corner" onClose={onClose} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -45,16 +50,17 @@ describe("MediaLightbox", () => {
 
     // The content click is stopped, so a click on the media (or a video's own
     // controls) never dismisses the viewer.
-    const content = container.querySelector("[role=dialog] > div");
+    const content = screen.getByRole("dialog").querySelector(":scope > div");
     fireEvent.click(content!);
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 
   it("plays a video in the shared player, which owns its own download", () => {
-    const { container } = render(<MediaLightbox source={VIDEO} onClose={vi.fn()} />);
+    render(<MediaLightbox source={VIDEO} onClose={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
 
-    expect(container.querySelector("media-controller")).not.toBeNull();
-    expect(container.querySelector("video[controls]")).toBeNull();
+    expect(dialog.querySelector("media-controller")).not.toBeNull();
+    expect(dialog.querySelector("video[controls]")).toBeNull();
     // The player's control bar carries the download, so the corner would show a
     // second one. Close stays, since only the overlay can dismiss itself.
     expect(
@@ -62,7 +68,7 @@ describe("MediaLightbox", () => {
     ).not.toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     // This is the context that owns the real full screen, so no expand.
-    expect(container.querySelector("media-fullscreen-button")).not.toBeNull();
+    expect(dialog.querySelector("media-fullscreen-button")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Expand video" })).toBeNull();
   });
 
