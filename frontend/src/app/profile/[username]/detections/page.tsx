@@ -4,19 +4,30 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import DetectionCard from "@/components/event/DetectionCard";
-import { BatchCompletionPanel } from "@/components/geolocations/BatchCompletionPanel";
+import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
+  batchCompletionBlockers,
   detectionsPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
-import type { Conflict, Tag } from "@/types";
+
+/** The queue's one filter: everything, the drafts that only need the two human
+ *  choices, or the ones still missing evidence. Client-side, over the page on
+ *  screen: readiness is computed from the payload, not asked of the server. */
+type QueueFilter = "all" | "ready" | "incomplete";
+
+const FILTERS: { value: QueueFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "ready", label: "Ready" },
+  { value: "incomplete", label: "Incomplete" },
+];
 
 export default function DetectionsPage() {
   const params = useParams();
@@ -25,6 +36,7 @@ export default function DetectionsPage() {
   const username = typeof params.username === "string" ? params.username : "";
   const isOwn = !!user && user.username === username;
   const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState<QueueFilter>("all");
 
   // The list is the caller's own: the endpoint scopes to ``current_user`` and
   // ignores the URL username, so viewing it under another analyst's handle
@@ -34,22 +46,15 @@ export default function DetectionsPage() {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  const { data, error, refetch } = useApiResource<PaginatedEventDetails>(
+  const { data, error } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsPath(page) : null
-  );
-  // The two referentials the batch completion picks from, loaded once for the
-  // page. Same sources as the submit form: the full curated taxonomy (so a
-  // zero-usage capture source is still offered) and the whole conflicts list.
-  const { data: curatedTags } = useApiResource<Tag[]>(
-    isOwn ? "/tags?curated=true" : null
-  );
-  const { data: conflicts } = useApiResource<Conflict[]>(
-    isOwn ? "/conflicts" : null
   );
 
   if (authLoading || !user || !isOwn) {
     return <PageLoading />;
   }
+
+  const reviewHref = `/profile/${username}/detections/review`;
 
   let listBody;
   if (error) {
@@ -78,17 +83,37 @@ export default function DetectionsPage() {
     );
   } else {
     const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
+    const rows = data.items.filter((draft) => {
+      if (filter === "all") return true;
+      const ready = batchCompletionBlockers(draft).length === 0;
+      return filter === "ready" ? ready : !ready;
+    });
     listBody = (
       <div className="space-y-3">
-        <BatchCompletionPanel
-          drafts={data.items}
-          curatedTags={curatedTags ?? []}
-          conflicts={conflicts ?? []}
-          onPublished={refetch}
-        />
-        {data.items.map((geo) => (
-          <DetectionCard key={geo.id} geo={geo} />
-        ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SegmentedControl
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            aria-label="Filter the queue"
+          />
+          <span className="text-xs text-neutral-500">
+            {rows.length} of {data.items.length} on this page
+          </span>
+        </div>
+
+        {rows.length === 0 ? (
+          <EmptyState variant="boxed">
+            No {filter} drafts on this page.
+          </EmptyState>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((draft) => (
+              <DetectionQueueRow key={draft.id} draft={draft} />
+            ))}
+          </div>
+        )}
+
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">
             <Button
@@ -118,6 +143,14 @@ export default function DetectionsPage() {
     <PageShell
       back
       title="Detections"
+      subtitle="Machine drafts awaiting a pass. Review them one at a time, or open a row to fix it on the full form."
+      actions={
+        data && data.items.length > 0 ? (
+          <Link href={reviewHref} className={buttonClasses("primary")}>
+            Start reviewing
+          </Link>
+        ) : undefined
+      }
     >
       {listBody}
     </PageShell>

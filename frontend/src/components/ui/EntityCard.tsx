@@ -28,7 +28,8 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // box. No generated stand-ins: a card without media says so. The video is
 // `object-contain` on the slot's backdrop, so a portrait clip letterboxes in
 // the 16:9 slot rather than showing a cropped band of itself. Consumers: this
-// card and the map's pin preview (the detail surfaces use MediaGallery).
+// card, the map's pin preview, and the detections queue row (the detail
+// surfaces use MediaGallery).
 export function MediaThumb({ media, className }: { media?: Media; className?: string }) {
   return (
     <div

@@ -2,7 +2,6 @@ import { apiFetch } from "./api";
 import { archiveTooLarge } from "./archive";
 import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage } from "./proof";
-import type { components } from "@/lib/api-types";
 import type {
   ArchiveImportJob,
   ArchiveImportPresign,
@@ -65,9 +64,16 @@ export function sourceIsSynthetic(g: {
 }
 
 /** Page size for the owner Detections queue. Kept below the backend default
- *  (`per_page=20`, capped at 100) so the source-media previews on each card
+ *  (`per_page=20`, capped at 100) so the source-media previews on each row
  *  load faster. */
 const DETECTIONS_PER_PAGE = 10;
+
+/** How many drafts one review session loads at once. The backend caps a list
+ *  response at 100 rows whatever `per_page` asks for, so this is the whole
+ *  queue for any realistic import; a longer queue is reviewed one batch at a
+ *  time. Loaded once per session and stepped through locally, so a published
+ *  row leaving the queue can't shift the position under the analyst. */
+const DETECTIONS_REVIEW_QUEUE = 100;
 
 /** Shape of `GET /events/detections`: full-detail items (media + tags) so
  *  the queue renders the evidence and computes submit-readiness without a
@@ -81,6 +87,11 @@ export interface PaginatedEventDetails {
 
 export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string {
   return `/events/detections?page=${page}&per_page=${perPage}`;
+}
+
+/** The queue a review session steps through: one batch, newest first. */
+export function detectionsReviewPath(): string {
+  return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }
 
 /** The two read views over the one `events` table: `located` (the catalogue,
@@ -533,16 +544,21 @@ export async function awaitImportJob(
 }
 
 /**
- * What stops one `detected` draft from publishing in a batch, as human labels.
- * Empty means the row only needs its capture source (which the batch supplies)
- * to clear the floor.
+ * What stops one `detected` draft from publishing, as human labels. Empty means
+ * the row carries the whole evidence floor and only needs the two human choices
+ * (conflict, capture source) to publish: the "ready" state the queue badges.
  *
  * Mirrors the server floor in `services/events._publish_draft`, and only that:
- * a batch writes no fields, so the form-level requirements a submit adds (a
- * title, the source post time) are not part of it. Computed on the queue
- * payload the detections list already carries, so the table can grey out the
- * rows that need a manual pass before anything is posted; the server stays the
- * authority and answers the same misses per row.
+ * it judges evidence the machine either found or didn't, so the form-level
+ * requirements a submit adds (a title, the source post time) are not part of
+ * it. Computed on the queue payload the detections list already carries, so the
+ * list can name what a row is missing before anything is posted; the server
+ * stays the authority.
+ *
+ * The review flow judges its live, edited state against the fuller
+ * `missingEventFields` (the geolocate floor it publishes through). The two
+ * agree on which drafts are publishable: a source-less draft carries neither
+ * `source_url` nor `source_posted_at`, and the title a review always carries.
  */
 export function batchCompletionBlockers(geo: {
   event_coords: unknown | null;
@@ -564,35 +580,6 @@ export function batchCompletionBlockers(geo: {
   // media, and the one the queue most often has to flag.
   if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);
   return missing;
-}
-
-/** Body of `POST /events/batch-complete`: the conflict set chosen once for the
- *  whole selection, and one `capture_source` tag per draft. Aliased from the
- *  generated spec types rather than restated, so a backend field rename fails
- *  `tsc` instead of drifting. */
-export type BatchCompletionInput =
-  components["schemas"]["BatchCompletionCreate"];
-
-/** Per-row verdicts of a batch completion: `published` rows moved to
- *  `geolocated`, the rest stayed drafts and carry the floor error that stopped
- *  them (`code` / `message`), in the order the rows were submitted. */
-export type BatchCompletionResult =
-  components["schemas"]["BatchCompletionRead"];
-
-/**
- * Publish a selection of `detected` drafts in one call:
- * `POST /events/batch-complete` (JSON, no upload). The drafts keep the evidence
- * the import gave them; this supplies only the two judgment calls the floor
- * needs, the conflict (once) and the capture source (per row). Each row commits
- * on its own, so the response is a mixed verdict list, never all-or-nothing.
- */
-export function batchCompleteDrafts(
-  input: BatchCompletionInput
-): Promise<BatchCompletionResult> {
-  return apiFetch<BatchCompletionResult>("/events/batch-complete", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 /** Close an event: withdraw a request or reject a detection (owner-only).

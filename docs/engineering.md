@@ -187,8 +187,9 @@ vidit/
 │   │   ├── components/
 │   │   │   ├── admin/              # Admin console panels (SeedWipePanel, etc.)
 │   │   │   ├── auth/               # LoginForm, RegisterForm, etc.
+│   │   │   ├── detections/         # Detections queue row + the review flow
 │   │   │   ├── editor/             # Tiptap components
-│   │   │   ├── event/              # EventDetailBody, StatusBadge, DetectionCard, etc. (cross-page)
+│   │   │   ├── event/              # EventDetailBody, StatusBadge, CloseEventForm, etc. (cross-page)
 │   │   │   ├── geolocations/       # Submit/edit form sections (LocationPicker, MediaManager, etc.)
 │   │   │   ├── landing/            # Public landing-page sections
 │   │   │   ├── map/                # MapLibre GL components + map overlays (FilterPanel, etc.)
