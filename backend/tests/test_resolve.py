@@ -6,8 +6,19 @@ coordinate, which source URL + date, and which media is footage vs annotation.
 """
 
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink, TweetRecord
-from app.services.tweet_ingest.resolve import resolve_coords, resolve_source, split_media
+from app.services.tweet_ingest.resolve import (
+    resolve_coords,
+    resolve_source,
+    resolve_thread,
+    split_media,
+)
 from app.services.tweet_ingest.syndication import ParsedMedia
+
+_INSTAGRAM = SourceLink(
+    url="https://www.instagram.com/reel/FAKEREEL01/",
+    host="other",
+    shortlink="https://t.co/fakeIG",
+)
 
 
 def _media(kind: str, origin: str) -> ParsedMedia:
@@ -178,6 +189,156 @@ def test_source_ignores_non_footage_link():
     url, posted = resolve_source([record])
     assert url is None
     assert posted is None
+
+
+def test_source_line_designates_an_off_vocabulary_link():
+    # "Source: <url>" names the footage explicitly, so the link fills the slot
+    # whatever its host. Instagram is outside the chase vocabulary, so it is
+    # stored link-only: no date, and no media follows it.
+    record = _rec(
+        text="Strike on the depot\nSource: https://t.co/fakeIG",
+        external_sources=[_INSTAGRAM],
+    )
+    url, posted = resolve_source([record])
+    assert url == _INSTAGRAM.url
+    assert posted is None
+    assert split_media([record]) == ([], [])
+
+
+def test_source_line_designation_binds_on_the_expanded_url_too():
+    # An archive-era entity may carry no t.co wrapper; the token then binds to
+    # the expanded URL, the same rule the bot's S: line runs.
+    record = _rec(
+        text="Source: https://www.tiktok.com/@war/video/7",
+        external_sources=[SourceLink(url="https://www.tiktok.com/@war/video/7", host="other")],
+    )
+    assert resolve_source([record])[0] == "https://www.tiktok.com/@war/video/7"
+
+
+def test_source_line_ignores_a_token_bound_to_nothing():
+    # The wrapper X appends for attached media sits on no entity, so it
+    # designates nothing and the thread declares no source.
+    record = _rec(text="Source: https://t.co/mediaWrapper")
+    assert resolve_source([record]) == (None, None)
+
+
+def test_source_line_inside_prose_is_not_a_designation():
+    # Whole-line only: a reference written mid-sentence is a proof link, and the
+    # sole-candidate rule (host "other" here) still declines it.
+    record = _rec(
+        text="Filmed by the crew, Source: https://t.co/fakeIG and mirrored elsewhere",
+        external_sources=[_INSTAGRAM],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_source_line_rejects_an_x_link_that_names_no_status():
+    # On X, footage lives at a status. A profile link on a Source: line credits
+    # an author, so it never fills the slot however explicit the line is.
+    record = _rec(
+        text="Source: https://x.com/Osinttechnical",
+        external_sources=[SourceLink(url="https://x.com/Osinttechnical", host="other")],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_source_line_rejects_the_authors_own_status():
+    # A link back to the analyst's own post is a cross-reference, never footage,
+    # designated or not.
+    record = _rec(
+        handle="analyst",
+        text="Source: https://x.com/Analyst/status/111",
+        external_sources=[SourceLink(url="https://x.com/Analyst/status/111", host="x")],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_two_source_lines_naming_different_links_designate_nothing():
+    # Ambiguous designation: the sole-candidate rule decides instead, and with
+    # two distinct footage candidates it declines too.
+    record = _rec(
+        text="Source: https://x.com/a/status/9\nSource: https://t.me/chan/7",
+        external_sources=[
+            SourceLink(url="https://x.com/a/status/9", host="x"),
+            SourceLink(url="https://t.me/chan/7", host="telegram"),
+        ],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_the_same_link_designated_twice_is_one_designation():
+    link = SourceLink(url="https://x.com/a/status/9", host="x")
+    record = _rec(
+        text="Source: https://x.com/a/status/9\nSource: https://x.com/a/status/9?s=20",
+        external_sources=[link, SourceLink(url="https://x.com/a/status/9?s=20", host="x")],
+    )
+    assert resolve_source([record])[0] == "https://x.com/a/status/9"
+
+
+def test_source_line_outranks_the_sole_footage_link():
+    # The designation is explicit, the host rule is inference: the article wins
+    # the slot and the footage-host link it displaces lands as a mirror.
+    record = _rec(
+        text="Report: https://x.com/a/status/9\nSource: https://t.co/fakeIG",
+        external_sources=[_INSTAGRAM, SourceLink(url="https://x.com/a/status/9", host="x")],
+    )
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == _INSTAGRAM.url
+    assert resolved.secondary_source_urls == ["https://x.com/a/status/9"]
+
+
+def test_quote_outranks_the_source_line_designation():
+    quoted = QuotedTweet(tweet_id="222", handle="src", text="", created_at="2024-12-31T09:00:00Z")
+    record = _rec(text="Source: https://t.co/fakeIG", external_sources=[_INSTAGRAM], quoted=quoted)
+    url, posted = resolve_source([record])
+    assert url == "https://x.com/src/status/222"
+    assert posted == "2024-12-31T09:00:00Z"
+
+
+def test_proof_keeps_a_designated_reference_link_readable():
+    # Raw tweet text carries only opaque t.co wrappers and clean_proof_text
+    # strips them, which would leave a dangling "Source:" label in the proof.
+    record = _rec(
+        text="Strike at 48.012345, 37.802411\nSource: https://t.co/fakeIG",
+        external_sources=[_INSTAGRAM],
+    )
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
+
+
+def test_proof_still_strips_a_shortlink_bound_to_no_entity():
+    record = _rec(text="Footage below 48.012345, 37.802411 https://t.co/mediaWrapper")
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert "t.co" not in resolved.proof_text
+
+
+def test_split_media_promotes_the_first_own_video_to_source():
+    # Nothing else can fill the source slot and the proof document embeds images
+    # only, so leaving the video in proof would drop it at persistence.
+    record = _rec(media=[_media("image", "op"), _media("video", "op"), _media("video", "op")])
+    source, proof = split_media([record])
+    assert [m.kind for m in source] == ["video"]
+    assert [m.kind for m in proof] == ["image", "video"]
+
+
+def test_split_media_promotes_the_first_video_in_thread_order():
+    head = _rec(tweet_id="1", media=[_media("video", "op")])
+    reply = _rec(tweet_id="2", permalink="https://x.com/op/status/2", media=[_media("video", "op")])
+    source, proof = split_media([head, reply])
+    assert source == [head.media[0]]
+    assert proof == [reply.media[0]]
+
+
+def test_split_media_quote_keeps_precedence_over_an_own_video():
+    # A quote is the source even when it carried no media at all, so the
+    # analyst's own video stays annotation.
+    quoted = QuotedTweet(tweet_id="2", handle="src", text="", created_at="")
+    source, proof = split_media([_rec(media=[_media("video", "op")], quoted=quoted)])
+    assert source == []
+    assert [m.kind for m in proof] == ["video"]
 
 
 def test_split_media_external_source_makes_op_media_proof():

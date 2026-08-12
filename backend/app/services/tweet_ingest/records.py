@@ -8,6 +8,7 @@ edges and media survive into the pipeline — syndication cannot expose either.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from .syndication import ParsedMedia
@@ -63,6 +64,35 @@ class SourceLink:
     url: str
     host: str
     shortlink: str | None = None
+
+
+# Sentence punctuation an analyst may glue after a URL token; stripped before
+# binding the token to its entity.
+TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
+
+
+def bound_link(token: str, links: Iterable[SourceLink]) -> SourceLink | None:
+    """The entity a URL token found in raw tweet text belongs to, or ``None``.
+
+    The one home for the binding rule every source designation runs: a token
+    matches either the ``t.co`` wrapper X wrote into the text or the expanded
+    URL. A token that binds to nothing is the wrapper X appends for attached
+    media, never a designation.
+    """
+    return next((link for link in links if token in (link.shortlink, link.url)), None)
+
+
+def expand_shortlinks(text: str, links: Iterable[SourceLink]) -> str:
+    """Replace each entity's opaque ``t.co`` token in ``text`` with its expanded
+    URL, so an analyst's reference link survives readable in the stored proof.
+
+    Tokens with no entity (the wrapper X appends for attached media) stay for
+    ``clean_proof_text`` to strip.
+    """
+    for link in links:
+        if link.shortlink:
+            text = text.replace(link.shortlink, link.url)
+    return text
 
 
 @dataclass(frozen=True)

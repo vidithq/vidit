@@ -22,7 +22,7 @@ from app.services.storage import image_content_type_for_extension
 
 from .acquire import quoted_from_syndication
 from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
-from .resolve import FootageCandidate, footage_candidates
+from .resolve import FootageCandidate, designated_source, footage_candidates
 from .syndication import (
     _X_STATUS_URL_RE,
     MEDIA_FETCH_MAX_BYTES,
@@ -190,28 +190,38 @@ def _linked_status_id(url: str) -> str | None:
     return match.group(1) if match is not None else None
 
 
-def _sole_footage_candidate(
+def _chase_candidate(
     tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, owner_handle: str
 ) -> FootageCandidate | None:
-    """The single footage candidate the OP links, or ``None`` when there is none
-    or several.
+    """The footage candidate behind the OP's links, or ``None`` when the tweet
+    designates none.
 
-    Decided by ``resolve.footage_candidates`` (the shared rule, so the chase and
-    the resolution can't disagree on which link is the source), fed the
+    The same two rules the shared resolution runs, in the same order, so the
+    chase and the resolution can't disagree on which link is the source: an
+    explicit ``Source: <url>`` line (``resolve.designated_source``) first, then
+    the sole footage candidate (``resolve.footage_candidates``). Both are fed the
     host-classified ``entities.urls``. ``by_id`` is the archive's own tweets: a
     linked id already in the export is the owner's own post (a cross-reference),
     never third-party footage, so it is dropped first, even in the handle-less
-    ``i/web/status`` form the shared own-handle skip can't catch. A chase runs
-    only when this sole candidate is an X status or a Telegram post; a mixed pair
-    (an X status plus a Telegram / YouTube link) is ambiguous, so nothing chases
-    and the source stays empty for review.
+    ``i/web/status`` form the shared own-handle skip can't catch.
+
+    A chase runs only when the candidate is an X status or a Telegram post,
+    designated or not: the vocabulary decides what gets fetched, so a designated
+    Instagram / TikTok / article link stays link-only. Without a designation, a
+    mixed pair (an X status plus a Telegram / YouTube link) is ambiguous, so
+    nothing chases and the source stays empty for review.
     """
     links = [
-        (url, host)
-        for url, host, _shortlink in extract_source_links(tweet)
+        SourceLink(url=url, host=host, shortlink=shortlink)
+        for url, host, shortlink in extract_source_links(tweet)
         if _linked_status_id(url) not in by_id
     ]
-    candidates = footage_candidates(links, owner_handle=owner_handle)
+    designated = designated_source(_tweet_text(tweet), links, owner_handle=owner_handle)
+    if designated is not None:
+        return designated
+    candidates = footage_candidates(
+        [(link.url, link.host) for link in links], owner_handle=owner_handle
+    )
     return candidates[0] if len(candidates) == 1 else None
 
 
@@ -221,9 +231,9 @@ def _archive_quoted(
     """Resolve a tweet's footage source tweet.
 
     A literal quote first (in-archive join, or a syndication chase of a
-    third-party quote); else, when ``chase`` is on and the sole footage candidate
-    is a third-party X status (``Source: https://x.com/.../status/...``), that
-    status chased via syndication. ``None`` when nothing resolves. Held in the
+    third-party quote); else, when ``chase`` is on and the tweet's footage
+    candidate (:func:`_chase_candidate`) is a third-party X status, that status
+    chased via syndication. ``None`` when nothing resolves. Held in the
     record's ``quoted`` field, but it is "the source tweet" whether it came from a
     quote or a link.
     """
@@ -241,7 +251,7 @@ def _archive_quoted(
             )
         return quoted_from_syndication(quoted_id) if chase else None
     if chase:
-        candidate = _sole_footage_candidate(tweet, by_id, owner_handle=handle)
+        candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
         if candidate is not None and candidate.host == "x" and candidate.status_id is not None:
             quoted = quoted_from_syndication(candidate.status_id)
             if quoted is not None and quoted.handle.lower() == handle.lower():
@@ -259,16 +269,17 @@ def _archive_telegram(
     """Chase the tweet's sole Telegram footage link via its public embed.
 
     OSINT posts write ``Source: https://t.me/<channel>/<id>`` for off-platform
-    footage. When ``chase`` is on and the sole footage candidate is a Telegram
-    post (``_sole_footage_candidate``, the shared ambiguity rule), fetch its embed
-    for the post date and (when the embed serves it) the footage media. A tweet
-    that also links another footage source is ambiguous, so nothing is chased.
+    footage. When ``chase`` is on and the tweet's footage candidate is a Telegram
+    post (:func:`_chase_candidate`, the shared designation + ambiguity rules),
+    fetch its embed for the post date and (when the embed serves it) the footage
+    media. An undesignated tweet that also links another footage source is
+    ambiguous, so nothing is chased.
     Fail-soft: ``fetch_telegram_embed`` returns ``None`` on any error, and the
     record then keeps the link with no date, exactly as before the chase existed.
     """
     if not chase:
         return None
-    candidate = _sole_footage_candidate(tweet, by_id, owner_handle=handle)
+    candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
     if candidate is None or candidate.host != "telegram":
         return None
     embed = fetch_telegram_embed(candidate.url)

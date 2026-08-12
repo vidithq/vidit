@@ -27,7 +27,13 @@ from .extract import (
     has_marker_lines,
     split_marker_lines,
 )
-from .records import SourceLink, TelegramFootage, TweetRecord
+from .records import (
+    TOKEN_TRAILING_PUNCT,
+    TelegramFootage,
+    TweetRecord,
+    bound_link,
+    expand_shortlinks,
+)
 from .resolve import footage_candidates, resolve_thread
 from .syndication import ParsedMedia
 from .telegram import fetch_telegram_embed
@@ -112,10 +118,6 @@ _S_VALUE_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 # inside prose is a proof reference, never a designation.
 _URL_ONLY_LINE_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.IGNORECASE)
 
-# Sentence punctuation an analyst may glue after the URL token; stripped
-# before binding the token to its entity.
-_TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
-
 # Failure-reason codes ``detect_structured_diagnosed`` surfaces so the bot's
 # failure reply can open with what actually went wrong. Plain strings, one
 # home; the reply copy lives in ``bot._FAILURE_DIAGNOSES``.
@@ -136,11 +138,11 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     failure, the reason naming which rule broke).
 
     Exactly one URL token may sit on the line (two or more is a failure). The
-    token must bind to one of the record's link entities, by its ``t.co``
-    shortlink or its expanded URL. Any bound link is a valid designation,
-    whatever its host: the chase vocabulary (X status / Telegram / YouTube)
-    decides what gets fetched, never what gets stored. The one exception is a
-    link back to the author's own status (a cross-reference, not a source).
+    token must bind to one of the record's link entities (:func:`bound_link`).
+    Any bound link is a valid designation, whatever its host: the chase
+    vocabulary (X status / Telegram / YouTube) decides what gets fetched, never
+    what gets stored. The one exception is a link back to the author's own
+    status (a cross-reference, not a source).
     Links elsewhere in the tweet neither help nor hurt: the pruned record
     keeps only the designated entity, and keeps the inline quote only when it
     IS the designated status.
@@ -150,18 +152,14 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     payloads then strip the trailing ``t.co`` from the text, so the quote is
     the link that was on ``S:``. With no quote either, nothing is designated.
     """
-    tokens = [t.rstrip(_TOKEN_TRAILING_PUNCT) for t in _S_VALUE_URL_RE.findall(s_value)]
+    tokens = [t.rstrip(TOKEN_TRAILING_PUNCT) for t in _S_VALUE_URL_RE.findall(s_value)]
     if len(tokens) > 1:
         return None, SOURCE_AMBIGUOUS
     if not tokens:
         if record.quoted is not None:
             return dataclasses.replace(record, external_sources=[]), None
         return None, SOURCE_MISSING
-    token = tokens[0]
-    link = next(
-        (entry for entry in record.external_sources if token in (entry.shortlink, entry.url)),
-        None,
-    )
+    link = bound_link(tokens[0], record.external_sources)
     if link is None:
         return None, SOURCE_UNBOUND
     candidates = footage_candidates([(link.url, link.host)], owner_handle=record.handle)
@@ -276,9 +274,9 @@ def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, s
         match = _URL_ONLY_LINE_RE.match(line)
         if match is None:
             continue
-        token = match.group(1).rstrip(_TOKEN_TRAILING_PUNCT)
+        token = match.group(1).rstrip(TOKEN_TRAILING_PUNCT)
         url_only[i] = token
-        if any(token in (entry.shortlink, entry.url) for entry in record.external_sources):
+        if bound_link(token, record.external_sources) is not None:
             bound.append(i)
     if len(bound) > 1:
         return None, SOURCE_AMBIGUOUS
@@ -309,17 +307,6 @@ def _bare_fields(record: TweetRecord, text: str) -> tuple[MarkerFields | None, s
         proof_text="\n".join(line for i, line in enumerate(lines) if i not in consumed),
     )
     return fields, None
-
-
-def _expand_shortlinks(text: str, links: list[SourceLink]) -> str:
-    """Replace each entity's opaque ``t.co`` token in ``text`` with its
-    expanded URL, so an analyst's reference link survives readable in the
-    stored proof. Tokens with no entity (the wrapper X appends for attached
-    media) stay for ``clean_proof_text`` to strip."""
-    for link in links:
-        if link.shortlink:
-            text = text.replace(link.shortlink, link.url)
-    return text
 
 
 def _chase_source(record: TweetRecord, *, client: httpx.Client | None) -> TweetRecord:
@@ -453,7 +440,7 @@ def detect_structured_diagnosed(
             coordinate=coordinate,
             title=title,
             proof_text=clean_proof_text(
-                _expand_shortlinks(fields.proof_text, record.external_sources)
+                expand_shortlinks(fields.proof_text, record.external_sources)
             ),
             source_url=source_url,
             detected_from_url=resolved.detected_from_url,
@@ -567,7 +554,7 @@ def detect_relay_diagnosed(
         return [], reason
     tag_stripped = re.sub(rf"@{re.escape(bot_handle)}\b", "", tagged.text, flags=re.IGNORECASE)
     caption = clean_proof_text(
-        _expand_shortlinks(split_marker_lines(tag_stripped).proof_text, tagged.external_sources)
+        expand_shortlinks(split_marker_lines(tag_stripped).proof_text, tagged.external_sources)
     )
     return [
         dataclasses.replace(

@@ -19,6 +19,7 @@ from app.services.tweet_ingest import (
     read_tweets,
     stitch,
 )
+from app.services.tweet_ingest.resolve import resolve_thread
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
@@ -413,6 +414,98 @@ def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert record.quoted is None
     assert record.telegram is None
+
+
+def test_designated_x_status_is_chased_past_the_ambiguity(tmp_path, monkeypatch):
+    """A ``Source:`` line naming an X status designates it explicitly, so the
+    chase runs even though a second footage link would otherwise leave the source
+    ambiguous. The designated status, not the other candidate, is fetched."""
+    import app.services.tweet_ingest.acquire as acquire_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": (
+                    "Geolocated the depot\nMirror: https://t.co/tg\nSource: https://t.co/x"
+                ),
+                "entities": {
+                    "urls": [
+                        {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
+                        {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    seen_ids: list[str] = []
+
+    def fake_fetch(tweet_id, *, client=None):
+        seen_ids.append(tweet_id)
+        return {
+            "user": {"screen_name": "src"},
+            "text": "footage",
+            "created_at": "2025-11-12T09:00:00.000Z",
+        }
+
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert seen_ids == ["999"]
+    assert record.quoted is not None
+    assert record.quoted.handle == "src"
+
+
+def test_designated_off_vocabulary_link_is_never_fetched(tmp_path, monkeypatch):
+    """The designation is host-blind for storage and host-bound for fetching: an
+    Instagram link designated on a ``Source:`` line chases nothing, so the source
+    stays link-only."""
+    import app.services.tweet_ingest.acquire as acquire_mod
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": "Geolocated the depot\nSource: https://t.co/ig",
+                "entities": {
+                    "urls": [
+                        {
+                            "url": "https://t.co/ig",
+                            "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
+                        }
+                    ]
+                },
+            }
+        }
+    ]
+    (archive / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+    def no_fetch(tweet_id, *, client=None):
+        raise AssertionError("an off-vocabulary designation must not be chased")
+
+    def no_embed(url, *, client=None):
+        raise AssertionError("an off-vocabulary designation must not be chased")
+
+    monkeypatch.setattr(acquire_mod, "fetch_syndication", no_fetch)
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert record.quoted is None and record.telegram is None
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
+    assert resolved.source_posted_at is None
 
 
 def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):

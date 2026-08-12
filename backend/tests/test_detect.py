@@ -73,10 +73,11 @@ def test_multiple_coordinates_emit_one_detection_each():
     assert len(out) == 2
 
 
-def test_coordinate_in_reply_keeps_head_media_as_proof():
+def test_coordinate_in_reply_keeps_the_head_as_provenance():
     # Head carries the video, the reply carries the coordinate: one detection
     # with the head's permalink as provenance. The thread declares no source, so
-    # the video is annotation (proof), not a deduced self-source.
+    # source_url stays empty; the video fills the otherwise empty source media
+    # slot, where the proof document (images only) would have dropped it.
     head = _rec(
         "1",
         "Footage from Bakhmut",
@@ -91,8 +92,8 @@ def test_coordinate_in_reply_keeps_head_media_as_proof():
     assert len(out) == 1
     assert out[0].detected_from_url == "https://x.com/analyst/status/1"
     assert out[0].source_url is None
-    assert out[0].source_media == []
-    assert [m.remote_url for m in out[0].proof_media] == ["https://video.twimg.com/x.mp4"]
+    assert [m.remote_url for m in out[0].source_media] == ["https://video.twimg.com/x.mp4"]
+    assert out[0].proof_media == []
 
 
 def test_proof_text_strips_coordinates_and_shortlinks():
