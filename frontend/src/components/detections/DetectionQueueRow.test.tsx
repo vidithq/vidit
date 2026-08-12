@@ -11,6 +11,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_coords: { lat: 48.5, lng: 37.8 },
     capture_source_coords: null,
     archived_source: null,
+    archived_detected_from: null,
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
@@ -59,9 +60,12 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 describe("DetectionQueueRow", () => {
-  it("badges a draft carrying the whole evidence floor as ready", () => {
+  it("badges a draft carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow draft={draftFixture()} />);
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    // "Ready to review", never a bare "Ready": the draft still needs the
+    // conflict and the capture source, which a review supplies.
+    expect(screen.getByText("Ready to review")).toBeInTheDocument();
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
@@ -72,7 +76,17 @@ describe("DetectionQueueRow", () => {
     );
   });
 
-  it("names the missing pieces instead of a ready badge", () => {
+  it("names the one piece a draft is missing", () => {
+    render(
+      <DetectionQueueRow
+        draft={draftFixture({ proof: { type: "doc", content: [{ type: "paragraph" }] } })}
+      />
+    );
+    expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
+    expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
+  });
+
+  it("collapses several missing pieces to a count, with the list on the badge", () => {
     render(
       <DetectionQueueRow
         draft={draftFixture({
@@ -81,8 +95,12 @@ describe("DetectionQueueRow", () => {
         })}
       />
     );
-    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
-    expect(screen.getByText("Missing: Source media, Proof image")).toBeInTheDocument();
+    // The row stays dense whatever the import missed; the names ride along
+    // rather than growing the badge to three lines.
+    expect(screen.getByText("Missing: 2 pieces")).toHaveAttribute(
+      "title",
+      "Source media, Proof image"
+    );
   });
 
   it("says so when the draft declares no source and no event date", () => {

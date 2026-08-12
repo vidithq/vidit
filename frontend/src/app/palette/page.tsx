@@ -195,9 +195,10 @@ const MOCK_DETAIL: EventDetail = {
   investigators: [],
 };
 
-// The two states a Detections queue row can be in: the draft that carries the
-// whole evidence floor and needs only the two human choices, and the one that
-// names what the import did not find.
+// The three badge states a Detections queue row can be in: the draft that
+// carries the whole evidence floor and is waiting on a review's judgment, the
+// one short of a single named piece, and the one short of several, which
+// collapse to a count.
 const MOCK_DRAFT_READY: EventDetail = {
   ...MOCK_DETAIL,
   id: "draft-ready",
@@ -215,12 +216,19 @@ const MOCK_DRAFT_READY: EventDetail = {
   ],
 };
 
-const MOCK_DRAFT_INCOMPLETE: EventDetail = {
+const MOCK_DRAFT_ONE_MISSING: EventDetail = {
   ...MOCK_DRAFT_READY,
-  id: "draft-incomplete",
+  id: "draft-one-missing",
   title: "Convoy on a rural road, unnamed",
   proof: null,
+};
+
+const MOCK_DRAFT_SEVERAL_MISSING: EventDetail = {
+  ...MOCK_DRAFT_ONE_MISSING,
+  id: "draft-several-missing",
+  title: "Smoke over a treeline, location unclear",
   media: [],
+  source_url: null,
 };
 
 // The same detail body with a real source captured at both providers, a
@@ -1124,10 +1132,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), one state badge, whole row clicks through to the edit form">
+          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several with the names on the badge's title.">
             <div className="w-full max-w-xl space-y-2">
               <DetectionQueueRow draft={MOCK_DRAFT_READY} />
-              <DetectionQueueRow draft={MOCK_DRAFT_INCOMPLETE} />
+              <DetectionQueueRow draft={MOCK_DRAFT_ONE_MISSING} />
+              <DetectionQueueRow draft={MOCK_DRAFT_SEVERAL_MISSING} />
             </div>
           </Item>
 

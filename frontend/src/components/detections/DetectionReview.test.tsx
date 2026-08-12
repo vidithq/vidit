@@ -27,6 +27,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_coords: { lat: 48.5, lng: 37.8 },
     capture_source_coords: null,
     archived_source: null,
+    archived_detected_from: null,
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",

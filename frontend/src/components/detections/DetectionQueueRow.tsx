@@ -9,6 +9,20 @@ import { formatDate } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
 /**
+ * The badge text for a draft still short of the evidence floor. One missing
+ * piece is named, since that is the common case and the name is what tells the
+ * analyst whether it is worth opening. Several collapse to a count: three names
+ * joined into one badge outgrew the row, and the full list rides along in the
+ * `title` for a pointer, with the review flow and the edit form both naming
+ * them in place.
+ */
+function missingLabel(blockers: string[]): string {
+  return blockers.length === 1
+    ? `Missing: ${blockers[0]}`
+    : `Missing: ${blockers.length} pieces`;
+}
+
+/**
  * One row of the Detections queue: a thumbnail, the title, the event date, the
  * source host, and one state badge. Deliberately denser and quieter than
  * `<EntityCard>` (no byline, no coordinates, no tags): the queue is a triage
@@ -17,9 +31,12 @@ import type { EventDetail } from "@/types";
  * full edit form, which is where a draft the review flow can't finish gets its
  * manual pass.
  *
- * The badge is the only state on the row: **ready** when the draft carries the
- * whole evidence floor and needs only the two human choices, otherwise the
- * pieces it is missing, named.
+ * The badge is the only state on the row, and it describes the *evidence*, not
+ * completeness: **Ready to review** means the machine found everything it could
+ * and the draft is waiting on the judgment a review supplies (the conflict and
+ * the capture source), never that the draft is finished. It carries the softer
+ * outline tone for that reason, so it cannot be read as a published or
+ * complete state.
  */
 export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
   const blockers = batchCompletionBlockers(draft);
@@ -37,7 +54,7 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
       />
       <MediaThumb media={draft.thumbnail ?? undefined} className="w-16" />
       {/* The badge shares the row from `sm` up and drops under the text on a
-          phone, where a named-pieces badge and a title can't both hold a
+          phone, where a named-piece badge and a title can't both hold a
           column. */}
       <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
         <div className="min-w-0 flex-1 space-y-0.5">
@@ -58,10 +75,11 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
           </div>
         </div>
         <Pill
-          tone={ready ? "accent" : "neutral"}
-          className="self-start whitespace-normal text-left sm:max-w-[13rem]"
+          tone={ready ? "secondary" : "neutral"}
+          title={ready ? undefined : blockers.join(", ")}
+          className="self-start"
         >
-          {ready ? "Ready" : `Missing: ${blockers.join(", ")}`}
+          {ready ? "Ready to review" : missingLabel(blockers)}
         </Pill>
       </div>
     </div>
