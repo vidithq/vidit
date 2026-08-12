@@ -18,9 +18,11 @@ from app.database import Base
 
 # Where the link was found on the event. ``source_url`` is the event's declared
 # footage source (the column of the same name); ``secondary_source`` is one of
-# the analyst-submitted mirrors in ``event_source_links``; ``proof_link`` is an
-# href carried by a link mark inside the proof body's Tiptap document.
-SourceArchiveOrigin = Literal["source_url", "secondary_source", "proof_link"]
+# the analyst-submitted mirrors in ``event_source_links``; ``detected_from`` is
+# the analyst's own post a machine draft was detected from (``events.
+# detected_from_url``), provenance rather than footage origin; ``proof_link`` is
+# an href carried by a link mark inside the proof body's Tiptap document.
+SourceArchiveOrigin = Literal["source_url", "secondary_source", "detected_from", "proof_link"]
 
 # Lifecycle of one link's archival, shared by both providers: the row is one
 # job, not two. ``queued`` — waiting for the worker, with ``next_attempt_at``
@@ -49,8 +51,8 @@ class SourceArchive(Base):
     """One link on one event, and where its archived copies live.
 
     A child table rather than a column on ``events`` because one event carries
-    several links: its ``source_url``, its secondary source links, and every
-    href in the proof body. The
+    several links: its ``source_url``, its secondary source links, the post a
+    machine draft was detected from, and every href in the proof body. The
     row is both the queue job and the result: ``services/source_archive``
     claims ``queued`` rows with ``FOR UPDATE SKIP LOCKED``, calls both archiving
     services, and stamps their capture columns in place. Postgres is the queue,
@@ -140,7 +142,7 @@ class SourceArchive(Base):
             name="ck_source_archives_status_valid",
         ),
         CheckConstraint(
-            "origin IN ('source_url', 'secondary_source', 'proof_link')",
+            "origin IN ('source_url', 'secondary_source', 'detected_from', 'proof_link')",
             name="ck_source_archives_origin_valid",
         ),
     )

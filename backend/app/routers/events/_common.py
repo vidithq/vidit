@@ -177,6 +177,9 @@ def build_event_read(
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,
+        # Same eager-loaded collection as the source and the mirrors, so the
+        # provenance row costs no extra query either.
+        archived_detected_from=_archived_copies(geo, geo.detected_from_url),
         detected_post_at=geo.detected_post_at,
         owner=geo.owner,
         # Null a soft-deleted requester so a banned account never surfaces in the

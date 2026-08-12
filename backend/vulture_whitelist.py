@@ -57,6 +57,7 @@ drafts_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
 archived_source  # schemas/event.py EventRead
 archived_secondary_sources  # schemas/event.py EventRead
+archived_detected_from  # schemas/event.py EventRead
 wayback  # schemas/event.py ArchivedCopiesRead
 archive_today  # schemas/event.py ArchivedCopiesRead
 unavailable  # schemas/event.py ArchivedCopiesRead

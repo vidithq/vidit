@@ -25,6 +25,7 @@ from tests.events._helpers import _make_geo, client, proof_file_part
 SOURCE = "https://x.com/analyst/status/424242"
 PROOF_LINK = "https://example.org/corroborating-report"
 MIRROR = "https://t.me/channel/424242"
+DETECTED_FROM = "https://x.com/analyst/status/909090"
 
 
 def _proof_with_link_and_image(filename: str = "proof-1.jpg") -> str:
@@ -155,6 +156,102 @@ def test_geolocate_enqueues_at_publication(db, author, conflict, capture_source_
         MIRROR: "secondary_source",
         PROOF_LINK: "proof_link",
     }
+
+
+def test_geolocate_enqueues_the_provenance_link(db, author, conflict, capture_source_tag):
+    """The analyst's own post is provenance the catalog keeps readable, so the
+    promotion queues ``detected_from_url`` alongside the footage source.
+
+    It is queued at publication like every other link: the draft carries no row
+    for it while nobody has vouched for the coordinates.
+    """
+    draft = _make_geo(
+        db,
+        author=author,
+        status=STATUS_DETECTED,
+        source_url=None,
+        detected_from_url=DETECTED_FROM,
+        with_media=True,
+    )
+    assert _archived(db, draft.id) == {}
+
+    response = client.post(
+        f"/api/v1/events/{draft.id}/geolocate",
+        headers=login_as(client, author),
+        data={
+            "title": "Depot strike, verified",
+            "lat": "48.5",
+            "lng": "34.5",
+            "source_url": SOURCE,
+            "event_date": "2026-05-01",
+            "source_posted_at": "2026-05-01T12:00",
+            "proof": _proof_with_link_and_image(),
+            "tag_ids": json.dumps([str(capture_source_tag.id)]),
+            "conflict_ids": json.dumps([str(conflict.id)]),
+        },
+        files=[proof_file_part()],
+    )
+    assert response.status_code == 200, response.text
+
+    assert _archived(db, draft.id) == {
+        SOURCE: "source_url",
+        DETECTED_FROM: "detected_from",
+        PROOF_LINK: "proof_link",
+    }
+
+
+def test_event_detail_serialises_the_provenance_link_copies(db, author):
+    """``archived_detected_from`` carries the provenance link's captures, in the
+    same shape as the source's, so the Detected from row renders the same
+    affordance the Source row does."""
+    geo = _make_geo(db, author=author, source_url=SOURCE, detected_from_url=DETECTED_FROM)
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=DETECTED_FROM,
+            origin="detected_from",
+            status="done",
+            wayback_url=f"https://web.archive.org/web/20260811120003/{DETECTED_FROM}",
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["detected_from_url"] == DETECTED_FROM
+    assert body["archived_detected_from"] == {
+        "wayback": f"https://web.archive.org/web/20260811120003/{DETECTED_FROM}",
+        "archive_today": None,
+        "unavailable": False,
+    }
+    # The source's own record stays its own: one row per link, matched by URL.
+    assert body["archived_source"] is None
+
+
+def test_event_detail_archived_detected_from_is_null_on_a_draft(db, author):
+    """A draft's provenance link is queued only at publication, so the field is
+    null and the surface says "archived when published" from the status
+    instead of inventing a record."""
+    geo = _make_geo(
+        db,
+        author=author,
+        status=STATUS_DETECTED,
+        source_url=None,
+        detected_from_url=DETECTED_FROM,
+    )
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["detected_from_url"] == DETECTED_FROM
+    assert body["archived_detected_from"] is None
+
+
+def test_event_detail_archived_detected_from_is_null_for_a_human_submit(db, author):
+    """A human submit has no provenance link at all, so there is nothing to
+    look up and the field is null on the same terms."""
+    geo = _make_geo(db, author=author, source_url=SOURCE)
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["detected_from_url"] is None
+    assert body["archived_detected_from"] is None
 
 
 def test_event_detail_serialises_both_provider_copies(db, author):

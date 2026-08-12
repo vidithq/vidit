@@ -62,6 +62,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
   ArchivedCopies,
+  DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
 } from "@/components/ui/ArchivedCopies";
@@ -176,6 +177,7 @@ const MOCK_DETAIL: EventDetail = {
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
+  archived_detected_from: null,
   detected_post_at: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
@@ -192,10 +194,10 @@ const MOCK_DETAIL: EventDetail = {
   investigators: [],
 };
 
-// The same detail body with a real source captured at both providers, plus one
-// mirror captured at one provider only and one whose archiving failed for
-// good: the archived pair is suppressed on a synthetic demo source, so the
-// mock above can never show it.
+// The same detail body with a real source captured at both providers, a
+// provenance link captured at one, plus one mirror captured at one provider
+// only and one whose archiving failed for good: the archived pair is
+// suppressed on a synthetic demo source, so the mock above can never show it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
   is_demo: false,
@@ -203,6 +205,12 @@ const MOCK_DETAIL_ARCHIVED: EventDetail = {
   archived_source: {
     wayback: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
     archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
+    unavailable: false,
+  },
+  detected_from_url: "https://x.com/analyst/status/1234567890",
+  archived_detected_from: {
+    wayback: "https://web.archive.org/web/20260601120200/https://x.com/analyst/status/1234567890",
+    archive_today: null,
     unavailable: false,
   },
   archived_secondary_sources: [
@@ -642,7 +650,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row, an unpublished draft), so a caller hands it the payload field with no guard of its own. Every glyph looks alike across the page, so the accessible name carries the target and the state: PRIMARY_SOURCE_DESCRIPTION for the source, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row), so a caller hands it the payload field with no guard of its own; pendingPublication is the exception, the draft variant a caller sets from the event's status, since a draft's links are queued only when it is published. Every glyph looks alike across the page, so both the hover title and the accessible name carry the state, and the name also carries the target: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="captured at both providers (primary source)">
               <span className="text-sm text-neutral-300">
@@ -686,6 +694,16 @@ export default function PalettePage() {
                 <ArchivedCopies
                   copies={{ wayback: null, archive_today: null, unavailable: true }}
                   describes={PRIMARY_SOURCE_DESCRIPTION}
+                />
+              </span>
+            </Variant>
+            <Variant label="archived when published (a detected draft, no queue row yet)">
+              <span className="text-sm text-neutral-300">
+                x.com
+                <ArchivedCopies
+                  copies={null}
+                  describes={DETECTED_FROM_DESCRIPTION}
+                  pendingPublication
                 />
               </span>
             </Variant>

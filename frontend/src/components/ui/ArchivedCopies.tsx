@@ -11,14 +11,29 @@ interface ArchivedCopiesProps {
   copies: ArchivedCopiesPayload | null;
   /** What the copies are of, folded into each accessible name ("the source",
    *  "mirror 2, t.me"). A page carries several of these pairs and every glyph
-   *  in them looks alike, so each one is named for what it points at; `title`
-   *  is not announced, so it cannot carry that. Build a mirror's value with
-   *  `mirrorDescription`, which keeps two mirrors on one host tellable apart. */
+   *  in them looks alike, so each one is named for what it points at. Build a
+   *  mirror's value with `mirrorDescription`, which keeps two mirrors on one
+   *  host tellable apart. */
   describes: string;
+  /** Render the pair as the promise a draft's links carry: greyed, inert, and
+   *  named "archived when published".
+   *
+   *  A draft has no queue rows at all by design, publication being the trigger,
+   *  so its `copies` are null and the pair would otherwise be nothing at all on
+   *  a surface where every published event shows one. The caller reads it off
+   *  the event's status; it is never inferred from payload the queue did not
+   *  write. */
+  pendingPublication?: boolean;
 }
 
-/** How one provider's copy stands, which is what decides its glyph. */
-type CopyState = "captured" | "missing" | "failed" | "pending";
+/**
+ * How one provider's copy stands, which is what decides its glyph.
+ *
+ * `unpublished` is the draft state: no capture has been attempted because none
+ * is due yet. It comes from the event's status rather than from the record, so
+ * it sits alongside the four the record itself can express.
+ */
+type CopyState = "captured" | "missing" | "failed" | "pending" | "unpublished";
 
 interface ProviderSpec {
   key: "wayback" | "archive_today";
@@ -48,19 +63,31 @@ const PROVIDERS: readonly ProviderSpec[] = [
  * primary link while it resolves, and a copy is one click away the day it
  * stops. Absence is shown rather than hidden, so a reader can tell a copy that
  * is still coming from one that is never coming: greyed glyphs with an "in
- * progress" name while the queue is still trying, and with an "archiving
- * failed" name once both services have given up for good.
+ * progress" name while the queue is still trying, with an "archiving failed"
+ * name once both services have given up for good, and with an "archived when
+ * published" name on a draft, whose links are queued at publication.
  *
- * One component for the primary source and every secondary mirror, so the same
- * fact cannot grow two affordances.
+ * Every glyph carries a `title` as well as its accessible name, so a sighted
+ * reader gets the same fact on hover that a screen reader is given: the icons
+ * are small marks with no label beside them.
+ *
+ * One component for the primary source, the provenance link and every
+ * secondary mirror, so the same fact cannot grow two affordances.
  */
-export function ArchivedCopies({ copies, describes }: ArchivedCopiesProps) {
-  if (!copies) return null;
+export function ArchivedCopies({
+  copies,
+  describes,
+  pendingPublication = false,
+}: ArchivedCopiesProps) {
+  if (!copies && !pendingPublication) return null;
   return (
     <span className="ml-2 inline-flex shrink-0 items-center gap-1 align-middle">
       {PROVIDERS.map(({ key, label, Glyph }) => {
-        const href = copies[key];
-        const state = copyState(copies, href);
+        const href = copies?.[key] ?? null;
+        // A record, wherever one exists, outranks the promise: the flag only
+        // decides what an *absent* record renders, so a link the queue has
+        // already answered for never reads as "archived when published".
+        const state: CopyState = copies ? copyState(copies, href) : "unpublished";
         const name = accessibleName(label, describes, state);
         if (href) {
           return (
@@ -69,7 +96,7 @@ export function ArchivedCopies({ copies, describes }: ArchivedCopiesProps) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              title={`${label} copy, readable if the source is taken down`}
+              title={`${label} copy`}
               aria-label={name}
               className={`${TEXT_LINK} inline-flex`}
             >
@@ -117,22 +144,35 @@ function accessibleName(label: string, describes: string, state: CopyState): str
       return `No ${label} copy of ${describes}`;
     case "pending":
       return `${label} copy of ${describes}: archiving in progress`;
+    case "unpublished":
+      return `${label} copy of ${describes}: archived when published`;
   }
 }
 
+/**
+ * The hover text, which says the same thing the accessible name does, minus
+ * the target: the pointer is already on the icon, so what it points at is not
+ * in question, and repeating it makes four near-identical tooltips on one row.
+ */
 function tooltip(label: string, state: CopyState): string {
   switch (state) {
     case "failed":
-      return "Not archived: archiving failed, no copy was captured";
+      return "Archiving failed, no copy available";
     case "missing":
       return `No ${label} copy was captured`;
+    case "unpublished":
+      return "Archived when published";
     default:
-      return `${label} copy: archiving in progress`;
+      return "Archiving in progress";
   }
 }
 
 /** The primary source's own name, kept distinct from every mirror's. */
 export const PRIMARY_SOURCE_DESCRIPTION = "the source";
+
+/** The provenance link's name: the post a machine draft was detected from,
+ *  which is not the footage source and must not announce as it. */
+export const DETECTED_FROM_DESCRIPTION = "the post it was detected from";
 
 /**
  * One mirror's `describes` value: its host, prefixed by its position whenever

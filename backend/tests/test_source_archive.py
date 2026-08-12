@@ -34,6 +34,7 @@ from app.services.sanitize import extract_link_hrefs
 SOURCE = "https://x.com/analyst/status/1234567890"
 PROOF_LINK = "https://example.org/report"
 MIRROR = "https://t.me/channel/42"
+DETECTED_FROM = "https://x.com/analyst/status/9876543210"
 CAPTURE_TS = "20260811120000"
 ARCHIVE_TODAY_SNAPSHOT = f"https://archive.ph/abcde/{SOURCE}"
 
@@ -270,6 +271,32 @@ def test_collect_links_includes_the_secondary_source_links(db, event):
     ]
 
 
+def test_collect_links_includes_the_provenance_link(db, event):
+    """The post a machine draft was detected from is evidence of who claimed
+    what and when, so it queues too, under its own origin and after the
+    analyst's mirrors."""
+    _with_mirrors(db, event, MIRROR)
+    event.detected_from_url = DETECTED_FROM
+    db.commit()
+    assert source_archive.collect_links(event) == [
+        (SOURCE, "source_url"),
+        (MIRROR, "secondary_source"),
+        (DETECTED_FROM, "detected_from"),
+        (PROOF_LINK, "proof_link"),
+    ]
+
+
+def test_collect_links_keeps_a_provenance_link_equal_to_the_source_once(db, event):
+    """An analyst who declares their own post as the footage source gives the
+    event one link under two names: it queues once, as the source."""
+    event.detected_from_url = SOURCE
+    db.commit()
+    assert source_archive.collect_links(event) == [
+        (SOURCE, "source_url"),
+        (PROOF_LINK, "proof_link"),
+    ]
+
+
 def test_collect_links_keeps_a_mirror_of_the_source_url_once(db, event):
     """A stored mirror equal to ``source_url`` is one link, attributed to the
     source: a second row would trip the unique constraint the enqueue paths
@@ -348,6 +375,22 @@ def test_the_origin_constraint_accepts_a_secondary_source_row(db, event):
     db.rollback()
 
 
+def test_the_origin_constraint_accepts_a_detected_from_row(db, event):
+    """The widened origin domain reaches the database: the model Literal, the
+    CHECK constraint and the migration that swaps it are a hand-kept set."""
+    db.add(
+        SourceArchive(
+            event_id=event.id,
+            original_url=DETECTED_FROM,
+            origin="detected_from",
+            status="queued",
+        )
+    )
+    db.commit()
+    stored = db.query(SourceArchive).filter(SourceArchive.original_url == DETECTED_FROM).one()
+    assert stored.origin == "detected_from"
+
+
 def test_enqueue_event_best_effort_swallows_a_database_failure(db, event, monkeypatch):
     """A durable event write must not 500 because the queue insert failed."""
 
@@ -416,6 +459,30 @@ def test_enqueue_catalog_reaches_a_mirror_on_an_already_queued_event(db, publish
     assert {(r.original_url, r.origin) for r in rows} == {
         (SOURCE, "source_url"),
         (MIRROR, "secondary_source"),
+        (PROOF_LINK, "proof_link"),
+    }
+    # And it converges again: nothing is left unqueued.
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
+
+
+def test_enqueue_catalog_reaches_a_provenance_link_on_an_already_queued_event(db, published_event):
+    """A promoted draft archived before provenance was in scope carries rows
+    for its other links, so only the per-link anti-join reaches this one.
+
+    ``detected_from_url`` is an ``events`` column the chunk's keyset walk has to
+    select for the collector to see it, which this also pins.
+    """
+    source_archive.enqueue_catalog(db)
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
+
+    published_event.detected_from_url = DETECTED_FROM
+    db.commit()
+    assert published_event.id in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 1
+    rows = db.query(SourceArchive).filter(SourceArchive.event_id == published_event.id).all()
+    assert {(r.original_url, r.origin) for r in rows} == {
+        (SOURCE, "source_url"),
+        (DETECTED_FROM, "detected_from"),
         (PROOF_LINK, "proof_link"),
     }
     # And it converges again: nothing is left unqueued.
@@ -955,26 +1022,29 @@ def test_the_done_check_constraint_rejects_an_empty_capture_pair(db, event):
 # ── migration data mapping ─────────────────────────────────────────────
 
 
-def _load_dual_provider_migration():
-    """The dual-provider migration module, loaded by path.
+def _load_migration(stem: str):
+    """One migration module, loaded by path.
 
-    ``alembic/versions`` is not a package, so the revision is imported through
+    ``alembic/versions`` is not a package, so a revision is imported through
     the file loader rather than a normal import. Only its SQL builders are
     read; the ``op``-driven schema half is what ``alembic upgrade`` exercises.
     """
     import importlib.util
     import pathlib
 
-    path = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "alembic"
-        / "versions"
-        / "u3w5y7a9c1e3_source_archive_dual_provider.py"
-    )
-    spec = importlib.util.spec_from_file_location("dual_provider_migration", path)
+    path = pathlib.Path(__file__).resolve().parents[1] / "alembic" / "versions" / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(stem, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_dual_provider_migration():
+    return _load_migration("u3w5y7a9c1e3_source_archive_dual_provider")
+
+
+def _load_detected_from_migration():
+    return _load_migration("v4x6z8b0d2f4_source_archive_detected_from_origin")
 
 
 @pytest.fixture
@@ -1090,3 +1160,91 @@ def test_the_migration_downgrade_folds_the_pair_back(db, legacy_table):
     assert rows["a"] == ("https://web.archive.org/web/1/x", "wayback")
     assert rows["b"] == ("https://archive.ph/fghij/y", "archive_today")
     assert rows["c"] == (None, None)
+
+
+@pytest.fixture
+def origin_table(db):
+    """A scratch table carrying the widened origin CHECK, dropped afterwards.
+
+    The domain swap is exercised here rather than against ``source_archives``:
+    running the revision down and up against the live table would delete the
+    queue rows the narrowed domain rejects, which is a data loss no test needs
+    to cause to prove the statements are right.
+    """
+    migration = _load_detected_from_migration()
+    name = f"source_archives_origins_{uuid.uuid4().hex[:8]}"
+    db.execute(
+        text(
+            f"""
+            CREATE TABLE {name} (
+                id TEXT PRIMARY KEY,
+                origin TEXT NOT NULL
+                    CONSTRAINT {name}_origin_valid
+                    CHECK ({migration.origin_check(migration.ORIGINS_AFTER)})
+            )
+            """
+        )
+    )
+    db.commit()
+    yield name, migration
+    db.execute(text(f"DROP TABLE {name}"))
+    db.commit()
+
+
+def _swap_origin_check(db, table: str, expression: str) -> None:
+    """Recreate the origin check, which is what the revision's DDL half does."""
+    db.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT {table}_origin_valid"))
+    db.execute(
+        text(f"ALTER TABLE {table} ADD CONSTRAINT {table}_origin_valid CHECK ({expression})")
+    )
+
+
+def test_the_upgraded_origin_domain_takes_the_provenance_value(db, origin_table):
+    """Upgrade widens the domain by one value and leaves the others standing;
+    anything outside it is still rejected."""
+    table, migration = origin_table
+    for index, origin in enumerate(migration.ORIGINS_AFTER):
+        db.execute(text(f"INSERT INTO {table} (id, origin) VALUES ('{index}', '{origin}')"))
+    db.commit()
+    assert db.execute(text(f"SELECT count(*) FROM {table}")).scalar() == len(
+        migration.ORIGINS_AFTER
+    )
+
+    with pytest.raises(IntegrityError):
+        db.execute(text(f"INSERT INTO {table} (id, origin) VALUES ('x', 'nowhere')"))
+        db.commit()
+    db.rollback()
+
+
+def test_the_downgrade_clears_the_provenance_rows_before_narrowing(db, origin_table):
+    """Downgrade drops exactly the rows the narrowed domain would reject, keeps
+    every other queue row, and puts the old domain back.
+
+    The link itself survives in ``events.detected_from_url``, so a re-upgrade
+    has the backfill re-enqueue it.
+    """
+    table, migration = origin_table
+    db.execute(
+        text(
+            f"""
+            INSERT INTO {table} (id, origin) VALUES
+                ('a', 'source_url'),
+                ('b', 'secondary_source'),
+                ('c', 'detected_from'),
+                ('d', 'proof_link')
+            """
+        )
+    )
+    db.commit()
+
+    db.execute(text(migration.drop_widened_rows_sql(table)))
+    _swap_origin_check(db, table, migration.origin_check(migration.ORIGINS_BEFORE))
+    db.commit()
+
+    assert {row[0] for row in db.execute(text(f"SELECT origin FROM {table}"))} == set(
+        migration.ORIGINS_BEFORE
+    )
+    with pytest.raises(IntegrityError):
+        db.execute(text(f"INSERT INTO {table} (id, origin) VALUES ('e', 'detected_from')"))
+        db.commit()
+    db.rollback()

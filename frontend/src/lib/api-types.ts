@@ -2143,6 +2143,7 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
+            archived_detected_from: components["schemas"]["ArchivedCopiesRead"] | null;
             /** Archived Secondary Sources */
             archived_secondary_sources: (components["schemas"]["ArchivedCopiesRead"] | null)[];
             archived_source: components["schemas"]["ArchivedCopiesRead"] | null;

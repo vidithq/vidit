@@ -20,6 +20,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     close_reason: null,
     before_closed_status: null,
     detected_from_url: null,
+    archived_detected_from: null,
     detected_post_at: null,
     owner: {
       id: "u1",
@@ -466,9 +467,7 @@ describe("EventDetailBody", () => {
       />
     );
     // Both providers gave up for good: the pair still renders, and says so.
-    const failed = screen.getAllByTitle(
-      "Not archived: archiving failed, no copy was captured"
-    );
+    const failed = screen.getAllByTitle("Archiving failed, no copy available");
     expect(failed).toHaveLength(2);
     expect(
       screen.getByRole("img", {
@@ -567,6 +566,120 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("renders the archived pair beside the Detected from link", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          detected_from_url: "https://x.com/ana/status/123",
+          archived_detected_from: {
+            wayback: "https://web.archive.org/web/2026/x.com/ana/status/123",
+            archive_today: null,
+            unavailable: false,
+          },
+        })}
+        variant="page"
+      />
+    );
+    // Named apart from the source: the provenance link is the analyst's own
+    // post, not the footage origin, and both rows carry the same glyphs.
+    expect(
+      screen.getByRole("link", {
+        name: "Wayback Machine copy of the post it was detected from",
+      })
+    ).toHaveAttribute("href", "https://web.archive.org/web/2026/x.com/ana/status/123");
+    expect(
+      screen.getByRole("img", {
+        name: "No archive.today copy of the post it was detected from",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("the map panel carries the pair on every link row it shows", () => {
+    // The panel renders the same rows as the page, so a regression that drops
+    // the affordance from one surface only would pass the page tests alone.
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          archived_source: {
+            wayback: "https://web.archive.org/web/2026/t.me/channel/12345",
+            archive_today: null,
+            unavailable: false,
+          },
+          detected_from_url: "https://x.com/ana/status/123",
+          archived_detected_from: {
+            wayback: "https://web.archive.org/web/2026/x.com/ana/status/123",
+            archive_today: null,
+            unavailable: false,
+          },
+          secondary_source_urls: ["https://t.me/mirror/1"],
+          archived_secondary_sources: [
+            {
+              wayback: "https://web.archive.org/web/2026/t.me/mirror/1",
+              archive_today: null,
+              unavailable: false,
+            },
+          ],
+        })}
+        variant="panel"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
+    expect(
+      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Wayback Machine copy of t.me" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "Wayback Machine copy of the post it was detected from",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("tells a draft's link rows their copies come at publication", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "detected",
+          detected_at: "2026-06-02T09:00:00Z",
+          geolocated_at: null,
+          detected_from_url: "https://x.com/ana/status/123",
+          secondary_source_urls: ["https://t.me/mirror/1"],
+          archived_secondary_sources: [null],
+        })}
+        variant="page"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
+    // A draft carries no queue row at all, so nothing in the payload could say
+    // this: the state is read off the status. Source, mirror and provenance
+    // rows each get the pair.
+    expect(screen.getAllByTitle("Archived when published")).toHaveLength(6);
+    expect(
+      screen.getByRole("img", {
+        name: "archive.today copy of the post it was detected from: archived when published",
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryAllByRole("link", { name: /copy of/ })).toHaveLength(0);
+  });
+
+  it("shows no archival pair on a draft that declares no source", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "detected",
+          detected_at: "2026-06-02T09:00:00Z",
+          geolocated_at: null,
+          source_url: null,
+        })}
+        variant="page"
+      />
+    );
+    // There is no link to archive, so the promise would be about nothing.
+    expect(screen.queryAllByTitle("Archived when published")).toHaveLength(0);
   });
 
   it("names two mirrors sharing a host apart, and the primary apart from both", () => {

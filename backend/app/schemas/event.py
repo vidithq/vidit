@@ -250,6 +250,10 @@ class EventRead(BaseModel):
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None
+    # The archived copies of ``detected_from_url``, same shape and same NULL
+    # conditions as ``archived_source``: the provenance link is queued at
+    # publication like the source, so a draft carries no record for it yet.
+    archived_detected_from: ArchivedCopiesRead | None
     # When the analyst posted this geolocation on X (the imported tweet's time);
     # NULL for human submits. The "who geolocated first" precedence signal.
     detected_post_at: datetime | None

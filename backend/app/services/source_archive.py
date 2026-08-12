@@ -13,7 +13,8 @@ analyst promotes with ``geolocate``) loses nothing by that; a machine
 submitted until it is published, and the promotion enqueues them then.
 
 Which links: the event's ``source_url``, its secondary source links (the
-analyst-submitted mirrors in ``event_source_links``), and every ``http(s)``
+analyst-submitted mirrors in ``event_source_links``), its ``detected_from_url``
+(the analyst's post a machine draft was detected from), and every ``http(s)``
 href carried by a link mark in the proof body's Tiptap document. One
 :class:`~app.models.source_archive.SourceArchive` row per link, unique on
 ``(event_id, original_url)``, so every enqueue path (create, the geolocate
@@ -148,20 +149,29 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
 
     The proof body's hrefs come from :func:`sanitize.extract_link_hrefs`, so
     the Tiptap walk has one home. Duplicates collapse to the first origin the
-    walk reaches: the declared source, then an analyst-submitted mirror, then a
-    proof citation. That is the strongest provenance the event carries for the
-    URL *at this call*; the stored row keeps whatever origin the first enqueue
-    wrote, since :func:`_insert_links` conflicts on ``(event_id,
-    original_url)`` and does nothing. A link cited in the proof before it was
-    declared as the source therefore stays ``proof_link``.
+    walk reaches: the declared source, then an analyst-submitted mirror, then
+    the post a machine draft was detected from, then a proof citation. That is
+    the strongest provenance the event carries for the URL *at this call*; the
+    stored row keeps whatever origin the first enqueue wrote, since
+    :func:`_insert_links` conflicts on ``(event_id, original_url)`` and does
+    nothing. A link cited in the proof before it was declared as the source
+    therefore stays ``proof_link``.
     """
-    return _collect_links(event.source_url, event.proof, [link.url for link in event.source_links])
+    return _collect_links(
+        event.source_url,
+        event.proof,
+        [link.url for link in event.source_links],
+        event.detected_from_url,
+    )
 
 
 def _collect_links(
-    source_url: str | None, proof: Any, secondary_urls: list[str]
+    source_url: str | None,
+    proof: Any,
+    secondary_urls: list[str],
+    detected_from_url: str | None,
 ) -> list[tuple[str, SourceArchiveOrigin]]:
-    """:func:`collect_links` over the three sources it reads.
+    """:func:`collect_links` over the four sources it reads.
 
     Split out so the backfill can walk lightweight column tuples instead of
     hydrating ORM rows it would only re-expire on the next commit.
@@ -179,6 +189,10 @@ def _collect_links(
         add(source_url, "source_url")
     for url in secondary_urls:
         add(url, "secondary_source")
+    # The analyst's own post, which carries the geolocation claim: evidence of
+    # who said what and when, with the same link rot as the footage source.
+    if detected_from_url:
+        add(detected_from_url, "detected_from")
     for href in extract_link_hrefs(proof):
         add(href, "proof_link")
     return links
@@ -302,6 +316,18 @@ _SOURCE_URL_UNQUEUED = and_(
     ),
 )
 
+# An event whose provenance link has no queue row of its own. Same shape as
+# ``_SOURCE_URL_UNQUEUED``: a promoted draft archived before provenance was in
+# scope carries rows for its other links, so only a per-link anti-join reaches
+# this one.
+_DETECTED_FROM_UNQUEUED = and_(
+    Event.detected_from_url.isnot(None),
+    ~exists().where(
+        SourceArchive.event_id == Event.id,
+        SourceArchive.original_url == Event.detected_from_url,
+    ),
+)
+
 # An event carrying at least one secondary source link with no queue row.
 _SECONDARY_LINK_UNQUEUED = exists().where(
     EventSourceLink.event_id == Event.id,
@@ -314,14 +340,15 @@ _SECONDARY_LINK_UNQUEUED = exists().where(
 
 def _backfill_chunk(
     db: Session, after: tuple[datetime, uuid.UUID] | None, size: int
-) -> list[tuple[uuid.UUID, str | None, Any, datetime]]:
+) -> list[tuple[uuid.UUID, str | None, Any, str | None, datetime]]:
     """One page of published events with a link the queue does not hold yet.
 
-    Three ways to qualify: no archival rows at all, a ``source_url`` with no
-    row of its own, or a secondary source link with no row of its own. The
-    first alone would miss an event that gained a mirror after its source was
-    already queued, since that event does carry rows; the per-link ``NOT
-    EXISTS`` clauses are what reach it.
+    Four ways to qualify: no archival rows at all, a ``source_url`` with no row
+    of its own, a secondary source link with no row of its own, or a
+    ``detected_from_url`` with no row of its own. The first alone would miss an
+    event that gained a mirror after its source was already queued, or one
+    published before provenance entered the scope, since those events do carry
+    rows; the per-link ``NOT EXISTS`` clauses are what reach them.
 
     Proof hrefs qualify an event only through the no-rows-at-all clause: the
     Tiptap walk lives in :func:`sanitize.extract_link_hrefs` and restating it
@@ -337,11 +364,18 @@ def _backfill_chunk(
     ``(created_at, id)`` so an event that yields no links still advances the
     walk.
     """
-    query = db.query(Event.id, Event.source_url, Event.proof, Event.created_at).filter(
+    query = db.query(
+        Event.id, Event.source_url, Event.proof, Event.detected_from_url, Event.created_at
+    ).filter(
         Event.deleted_at.is_(None),
         Event.is_demo.is_(False),
         _PUBLISHED,
-        or_(~Event.archives.any(), _SOURCE_URL_UNQUEUED, _SECONDARY_LINK_UNQUEUED),
+        or_(
+            ~Event.archives.any(),
+            _SOURCE_URL_UNQUEUED,
+            _SECONDARY_LINK_UNQUEUED,
+            _DETECTED_FROM_UNQUEUED,
+        ),
     )
     if after is not None:
         query = query.filter(tuple_(Event.created_at, Event.id) > after)
@@ -373,14 +407,19 @@ def enqueue_catalog(db: Session, *, limit: int | None = None) -> dict[str, int]:
             break
         secondary = _secondary_links_for(db, [row[0] for row in chunk])
         rows: list[dict] = []
-        for event_id, source_url, proof, created_at in chunk:
+        for event_id, source_url, proof, detected_from_url, created_at in chunk:
             events_scanned += 1
             after = (created_at, event_id)
             try:
                 rows.extend(
                     _queue_rows(
                         event_id,
-                        _collect_links(source_url, proof, secondary.get(event_id, [])),
+                        _collect_links(
+                            source_url,
+                            proof,
+                            secondary.get(event_id, []),
+                            detected_from_url,
+                        ),
                     )
                 )
             except Exception:  # noqa: BLE001

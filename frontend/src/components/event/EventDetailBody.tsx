@@ -13,6 +13,7 @@ import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
   ArchivedCopies,
+  DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
 } from "@/components/ui/ArchivedCopies";
@@ -109,6 +110,11 @@ function DetailRows({
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
+  // A draft's links carry no archival record by design: publication is what
+  // queues them. Read off the status rather than off the payload, so every
+  // link row on a draft says when its copies are coming instead of showing a
+  // blank where a published event shows the pair.
+  const pendingPublication = geo.status === "detected";
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
@@ -184,10 +190,11 @@ function DetailRows({
             maxWidthClass={sourceMaxWidth}
             className={sourceClass}
           />
-          {!sourceIsSynthetic(geo) && (
+          {!sourceIsSynthetic(geo) && geo.source_url && (
             <ArchivedCopies
               copies={geo.archived_source}
               describes={PRIMARY_SOURCE_DESCRIPTION}
+              pendingPublication={pendingPublication}
             />
           )}
         </span>
@@ -200,6 +207,7 @@ function DetailRows({
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
           isDemo={sourceIsSynthetic(geo)}
+          pendingPublication={pendingPublication}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -208,17 +216,28 @@ function DetailRows({
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
         <DetailRow label="Detected from" concept="detected_from" compact={compact}>
-          {/* Same display nature as Source: SourceLabel reduces the URL to its
-              host, so the two provenance rows read alike rather than one
-              host-reduced, one truncated-full. A detected row's provenance link
-              shows even in demo data (see sourceIsSynthetic). */}
-          <SourceLabel
-            isDemo={sourceIsSynthetic(geo)}
-            url={geo.detected_from_url}
-            variant="link"
-            maxWidthClass={sourceMaxWidth}
-            className={sourceClass}
-          />
+          <span className="flex min-w-0 items-baseline justify-end">
+            {/* Same display nature as Source: SourceLabel reduces the URL to its
+                host, so the two provenance rows read alike rather than one
+                host-reduced, one truncated-full. A detected row's provenance link
+                shows even in demo data (see sourceIsSynthetic). */}
+            <SourceLabel
+              isDemo={sourceIsSynthetic(geo)}
+              url={geo.detected_from_url}
+              variant="link"
+              maxWidthClass={sourceMaxWidth}
+              className={sourceClass}
+            />
+            {/* Archived on the same terms as the source: the analyst's post is
+                the provenance of the claim, and it rots the same way. */}
+            {!sourceIsSynthetic(geo) && (
+              <ArchivedCopies
+                copies={geo.archived_detected_from}
+                describes={DETECTED_FROM_DESCRIPTION}
+                pendingPublication={pendingPublication}
+              />
+            )}
+          </span>
         </DetailRow>
       )}
       {geo.conflicts.length > 0 && (
@@ -317,12 +336,14 @@ function SecondarySourcesRow({
   urls,
   archived,
   isDemo,
+  pendingPublication,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
   archived: (ArchivedCopiesPayload | null)[];
   isDemo: boolean;
+  pendingPublication: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -375,6 +396,7 @@ function SecondarySourcesRow({
                 <ArchivedCopies
                   copies={archived[index] ?? null}
                   describes={mirrorDescription(safeHostname(url), index, urls.length)}
+                  pendingPublication={pendingPublication}
                 />
               )}
             </span>

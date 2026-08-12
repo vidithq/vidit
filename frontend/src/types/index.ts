@@ -141,9 +141,10 @@ export type EventDetail = components["schemas"]["EventRead"];
 
 /** One link's archived copies: the Wayback Machine URL, the archive.today URL,
  *  and `unavailable`, true only once both providers failed for good. Carried by
- *  `archived_source` and by each entry of `archived_secondary_sources`, which
- *  stays index-aligned with `secondary_source_urls`. Null in either place means
- *  the link is not tracked at all (an unpublished draft, a source-less row). */
+ *  `archived_source`, by `archived_detected_from`, and by each entry of
+ *  `archived_secondary_sources`, which stays index-aligned with
+ *  `secondary_source_urls`. Null in any of them means the link is not tracked
+ *  at all (an unpublished draft, a source-less row). */
 export type ArchivedCopies = components["schemas"]["ArchivedCopiesRead"];
 
 /** Compact event card (`GET /events`). ``investigator_count`` /
