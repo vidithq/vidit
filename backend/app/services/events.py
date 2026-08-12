@@ -797,7 +797,11 @@ def _publish_draft(
     """
     geo = (
         db.query(Event)
-        .filter(Event.id == event_id, Event.deleted_at.is_(None))
+        # ``hidden_at`` like ``deleted_at``: a withheld draft is frozen for its
+        # owner (same as the single-row :func:`geolocate`, which resolves
+        # through ``_resolve_live_event``), and publishing one would also send
+        # its links to a public archive.
+        .filter(Event.id == event_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
         .populate_existing()
         .with_for_update()
         .first()

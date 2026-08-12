@@ -93,6 +93,7 @@ def get_timeline(
     where_clause = and_(
         Event.owner_id.in_(followed_ids),
         Event.deleted_at.is_(None),
+        Event.hidden_at.is_(None),
     )
     total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     window = (

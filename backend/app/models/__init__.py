@@ -5,6 +5,7 @@ from app.models.auth_token import AuthToken
 from app.models.bot_mention import BotMention
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.conflict import Conflict, event_conflicts
+from app.models.content_report import ContentReport
 from app.models.event import Event, EventGeolocator, EventInvestigator
 from app.models.follow import Follow
 from app.models.invite_code import InviteCode
@@ -22,6 +23,7 @@ __all__ = [
     "BotMention",
     "BotWebhookEvent",
     "Conflict",
+    "ContentReport",
     "Follow",
     "Event",
     "EventGeolocator",

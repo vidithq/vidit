@@ -436,6 +436,7 @@ def list_detections(
         Event.owner_id == current_user.id,
         Event.status == STATUS_DETECTED,
         Event.deleted_at.is_(None),
+        Event.hidden_at.is_(None),
     )
 
     total = db.query(Event).filter(*detected).count()

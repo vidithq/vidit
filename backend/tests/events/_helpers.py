@@ -60,6 +60,7 @@ def _make_geo(
     secondary_source_urls: list[str] | None = None,
     with_media: bool = False,
     is_graphic: bool = False,
+    hidden: bool = False,
 ) -> Event:
     now = datetime.now(UTC)
     geo = Event(
@@ -92,6 +93,8 @@ def _make_geo(
         geo.detected_from_url = detected_from_url
     if deleted:
         geo.deleted_at = datetime.now(UTC)
+    if hidden:
+        geo.hidden_at = datetime.now(UTC)
     if tags:
         geo.tags = tags
     if conflicts:

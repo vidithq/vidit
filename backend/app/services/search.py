@@ -433,7 +433,13 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
         return []
     like = q.replace("_", r"\_")
     has_live_event = (
-        db.query(Event.id).filter(Event.owner_id == User.id, Event.deleted_at.is_(None)).exists()
+        db.query(Event.id)
+        .filter(
+            Event.owner_id == User.id,
+            Event.deleted_at.is_(None),
+            Event.hidden_at.is_(None),
+        )
+        .exists()
     )
     rows = (
         db.query(User.username)

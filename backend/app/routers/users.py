@@ -78,7 +78,9 @@ def get_user_profile(
     user = _get_live_user_or_404(db, username)
 
     geolocations_count = (
-        db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
+        db.query(Event)
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+        .count()
     )
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
@@ -176,7 +178,11 @@ def get_user_geolocations(
     # from reaching Postgres as a negative OFFSET (a 500).
     per_page = page_size(per_page)
 
-    total = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
+    total = (
+        db.query(Event)
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+        .count()
+    )
 
     rows = (
         db.query(
@@ -192,7 +198,7 @@ def get_user_geolocations(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
-        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
         # ``event_date`` alone is neither unique nor non-null, so an OFFSET
         # walk over it lets Postgres return tied rows in any order it likes
         # and a page can repeat a row the previous one already served, or skip

@@ -48,7 +48,7 @@ def list_conflicts(
         query = (
             query.join(event_conflicts, event_conflicts.c.conflict_id == Conflict.id)
             .join(Event, Event.id == event_conflicts.c.event_id)
-            .filter(Event.deleted_at.is_(None))
+            .filter(Event.deleted_at.is_(None), Event.hidden_at.is_(None))
             .distinct()
         )
     rows = query.order_by(Conflict.ongoing.desc(), Conflict.name).limit(REFERENTIAL_MAX_ROWS).all()

@@ -90,7 +90,7 @@ def list_tags(
         db.query(Tag)
         .join(event_tags, event_tags.c.tag_id == Tag.id)
         .join(Event, Event.id == event_tags.c.event_id)
-        .filter(Event.deleted_at.is_(None))
+        .filter(Event.deleted_at.is_(None), Event.hidden_at.is_(None))
         .distinct()
     )
     if category:

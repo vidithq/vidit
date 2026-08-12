@@ -251,9 +251,9 @@ def apply_filters(
     """Apply the standard event filter set to a query.
 
     Shared by `/events`, `/events/points` and the `/search` event groups so
-    the surfaces can't drift. The soft-delete filter lives here so every
-    public read excludes `deleted_at IS NOT NULL` rows; the admin path
-    bypasses this helper.
+    the surfaces can't drift. The visibility filters live here so every public
+    read excludes both the soft-deleted rows (`deleted_at`) and the rows a
+    takedown withholds (`hidden_at`); the admin path bypasses this helper.
 
     ``view`` scopes to one of the two lifecycle views (see ``VIEWS``);
     ``status`` narrows within the view (any-match within the list, e.g.
@@ -272,7 +272,9 @@ def apply_filters(
     a name without knowing its bucket (back-compat with the pre-multi-select
     API).
     """
-    query = query.filter(Event.deleted_at.is_(None), view_predicate(view))
+    query = query.filter(
+        Event.deleted_at.is_(None), Event.hidden_at.is_(None), view_predicate(view)
+    )
 
     if status:
         query = query.filter(Event.status.in_(status))

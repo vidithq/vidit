@@ -17,7 +17,8 @@ from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_current_user, get_current_user_optional, get_db
+from app.models.content_report import ContentReport
 from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
     TITLE_MAX_LENGTH,
@@ -27,6 +28,7 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
+from app.routers._errors import raise_typed_error
 from app.routers._forms import (
     parse_iso_datetime,
     parse_json_id_list,
@@ -40,8 +42,10 @@ from app.routers.events._common import (
     build_event_read,
 )
 from app.schemas.event import EventCloseRequest, EventRead
+from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
 from app.services import permissions
+from app.services import reports as reports_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.storage import (
     sweep_keys,
@@ -71,11 +75,22 @@ def _resolve_live_event(db: Session, geolocation_id: uuid.UUID) -> Event:
     """Fetch a live event by id, or 404.
 
     A soft-deleted row reads as 404 (an admin-removed row isn't actionable —
-    same surface as a genuine 404, no enumeration oracle). Permission is the
+    same surface as a genuine 404, no enumeration oracle). A withheld row
+    (``hidden_at``) reads the same way: a takedown freezes the event for its
+    owner too, so it can be neither edited, closed nor investigated while it
+    stands, and only the admin moderation endpoint lifts it. Permission is the
     caller's concern: the geolocate transition owns per-status ownership (a
     ``requested`` event is answerable by anyone).
     """
-    geo = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
+    geo = (
+        db.query(Event)
+        .filter(
+            Event.id == geolocation_id,
+            Event.deleted_at.is_(None),
+            Event.hidden_at.is_(None),
+        )
+        .first()
+    )
     if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return geo
@@ -101,11 +116,60 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
+# Defined ahead of the ``/{geolocation_id}`` reads below: the extra path
+# segment means the catch-all cannot shadow it, and keeping the public write
+# next to them states the order the router matches in.
+@router.post(
+    "/{geolocation_id}/report",
+    response_model=ContentReportRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("10/hour")
+def report_event(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    body: ContentReportCreate,
+    current_user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+) -> ContentReport:
+    """Report an event for moderation.
+
+    Open to anonymous viewers: the people a piece of footage harms rarely hold
+    an account here, so requiring one would close the door on the reports that
+    matter most. A signed-in reporter is recorded on the row; an anonymous one
+    leaves ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+
+    An unknown, soft-deleted or already-withheld event answers 404: all three
+    are invisible to the caller, so all three read the same.
+    """
+    try:
+        return reports_service.create_report(
+            db,
+            event_id=geolocation_id,
+            reason=body.reason,
+            details=body.details,
+            reporter_user_id=current_user.id if current_user is not None else None,
+        )
+    except reports_service.ReportError as exc:
+        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+
+
 @router.get("/{geolocation_id}", response_model=EventRead)
 @authenticated_read_quota
 @limiter.limit("120/minute")
-def get_event(request: Request, geolocation_id: uuid.UUID, db: Session = Depends(get_db)):
-    row = (
+def get_event(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+):
+    """The detail read.
+
+    A withheld event (``hidden_at``) answers 404 for everyone but an admin, who
+    still needs to read what was taken down in order to judge the report that
+    took it down.
+    """
+    query = (
         db.query(
             Event,
             ST_Y(Event.event_coords).label("lat"),
@@ -115,8 +179,10 @@ def get_event(request: Request, geolocation_id: uuid.UUID, db: Session = Depends
         )
         .options(*_DETAIL_LOADS)
         .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
-        .first()
     )
+    if current_user is None or not current_user.is_admin:
+        query = query.filter(Event.hidden_at.is_(None))
+    row = query.first()
     if row is None:
         raise HTTPException(status_code=404, detail="Event not found")
 

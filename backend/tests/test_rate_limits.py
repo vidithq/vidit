@@ -594,6 +594,15 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("post", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
+    # Reporting is open to anonymous viewers, so the per-IP limit is the only
+    # abuse floor it has; 10/hour is the tightest write limit on the surface.
+    _Case(
+        "post",
+        f"/api/v1/events/{_MISSING_ID}/report",
+        10,
+        "anon",
+        {"json": {"reason": "other"}},
+    ),
     # Tags / users / social writes.
     _Case(
         "post",
@@ -618,6 +627,20 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
+    _Case(
+        "post",
+        f"/api/v1/admin/reports/{_MISSING_ID}/resolve",
+        60,
+        "admin",
+        {"json": {"resolution": "dismissed"}},
+    ),
+    _Case(
+        "patch",
+        f"/api/v1/admin/events/{_MISSING_ID}/moderation",
+        60,
+        "admin",
+        {"json": {"hidden": True}},
+    ),
     _Case("post", "/api/v1/admin/seed-demo", 10, "admin", {"json": {"count": 1}}),
     _Case("delete", "/api/v1/admin/seed-demo", 10, "admin"),
     _Case("post", "/api/v1/admin/seed-demo-requests", 10, "admin", {"json": {"count": 1}}),

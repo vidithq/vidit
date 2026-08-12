@@ -2,8 +2,9 @@
 
 Pure read-side queries over existing columns (no new model, no migration):
 status split, media count, top conflicts, capture-source breakdown, and a
-zero-filled 12-month activity row. Every query filters live rows only
-(``deleted_at IS NULL``), matching the rest of the public read surface.
+zero-filled 12-month activity row. Every query filters visible rows only
+(``deleted_at IS NULL AND hidden_at IS NULL``), matching the rest of the
+public read surface.
 """
 
 import uuid
@@ -44,7 +45,7 @@ def _last_months(today: date, n: int) -> list[str]:
 
 
 def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
-    live = (Event.owner_id == user_id, Event.deleted_at.is_(None))
+    live = (Event.owner_id == user_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
 
     status_rows = (
         db.query(Event.status, func.count(Event.id)).filter(*live).group_by(Event.status).all()
