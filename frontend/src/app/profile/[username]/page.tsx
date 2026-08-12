@@ -87,8 +87,12 @@ export default function ProfilePage() {
   // the page, the bio positions it, and everything below is evidence, shape of
   // work first (`ProfileInsights`), then where it happened (`ProfileMap`), then
   // the events themselves. Owner-only account affordances (linked accounts,
-  // the detections queue, sign out) sink under all of it, so a visitor lands on
-  // a portfolio and the owner still finds their controls in one place.
+  // sign out) sink under all of it, so a visitor lands on a portfolio and the
+  // owner still finds their controls in one place.
+  //
+  // The detections entry is the exception: it is pending work, not an account
+  // control, so on the owner's own profile it opens the page, above the bio.
+  // A queue of hundreds read as buried at the bottom of the portfolio.
   //
   // Editing collapses that order to the form alone: every editable field sits
   // between the header and Save, with the read-only portfolio sections dropped
@@ -103,6 +107,10 @@ export default function ProfilePage() {
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
       <ProfileHeaderEditFields edit={edit} />
+
+      {!edit.editing && isOwn && detectionCount > 0 && (
+        <DetectionsEntry username={profile.username} count={detectionCount} />
+      )}
 
       <BioCard profile={profile} edit={edit} />
 
@@ -123,10 +131,6 @@ export default function ProfilePage() {
           />
 
           <LinkedAccountsCard profile={profile} edit={edit} />
-
-          {isOwn && detectionCount > 0 && (
-            <DetectionsEntry username={profile.username} count={detectionCount} />
-          )}
 
           {isOwn && (
             <div className="pt-4 border-t border-neutral-800 flex justify-center">
