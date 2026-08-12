@@ -179,6 +179,14 @@ jobs:
           # belt-and-braces as NEXT_PUBLIC_API_URL: passed from a repo
           # variable so the value reliably reaches `next build`.
           NEXT_PUBLIC_DEMO_VIDEO_URL: ${{ vars.NEXT_PUBLIC_DEMO_VIDEO_URL }}
+          # Legal pages (/legal and /privacy). Same belt-and-braces story:
+          # passed from repo variables so the hosting provider identity and
+          # the notices contact email reliably reach `next build`. When
+          # unset, the pages render visible French TODO placeholders.
+          NEXT_PUBLIC_LEGAL_HOST_NAME: ${{ vars.NEXT_PUBLIC_LEGAL_HOST_NAME }}
+          NEXT_PUBLIC_LEGAL_HOST_ADDRESS: ${{ vars.NEXT_PUBLIC_LEGAL_HOST_ADDRESS }}
+          NEXT_PUBLIC_LEGAL_HOST_CONTACT: ${{ vars.NEXT_PUBLIC_LEGAL_HOST_CONTACT }}
+          NEXT_PUBLIC_LEGAL_CONTACT_EMAIL: ${{ vars.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL }}
           # Sentry — same `vercel pull` belt-and-braces story as
           # NEXT_PUBLIC_API_URL. All four are optional: when unset (bootstrap
           # phase before the Sentry project exists), `withSentryConfig` skips
