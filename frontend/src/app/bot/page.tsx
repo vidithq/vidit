@@ -1,21 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import {
-  AtSign,
-  Reply,
-  History,
-  Bot,
-  Play,
-  ImageIcon,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { AtSign, Reply, History, X, type LucideIcon } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { Dot } from "@/components/ui/Dot";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import {
+  MOCK_ANALYST,
+  MOCK_BOT,
+  MockPost,
+  MockPostLink,
+} from "@/components/ui/MockPost";
 
 // Public guide for the @ViditBot mention format, reachable without an
 // account (see `PUBLIC_PREFIXES` in `proxy.ts`) and from the about page's
@@ -23,16 +20,15 @@ import { Card } from "@/components/ui/Card";
 // and the destination behind the failure reply's "Guide in bio": the reply
 // itself is linkless by contract, so the full lesson lives here. Server
 // component for SEO, on the same PageShell + Card scaffolding as the other
-// guides (`/guide`, `/methodology`, `/archive`); the mock X posts mirror the
-// promo video's BotBeat composition (video/src/components/BotBeat.tsx).
+// guides (`/guide`, `/methodology`, `/archive`).
 
-// The browser-tab and share-card title, longer than the heading because it
-// travels alone: this page is linked from the bot's own X bio.
-const TITLE = "Tag @ViditBot: import a geolocation from one post";
-const PAGE_HEADING = "Tag the bot, keep the geolocation";
+// One title, used for the heading, the browser tab and the share card: this
+// page is linked from the bot's own X bio and from the about page's Guides
+// section, and what a reader clicks is what they should land on.
+const TITLE = "Import by tagging @ViditBot";
 const SECTION = "text-sm font-medium text-neutral-200";
 const DESCRIPTION =
-  "Tag @ViditBot on a geolocation post on X and it lands on Vidit as a structured draft: coordinates, source, media, and proof note, ready to review and publish.";
+  "Tag @ViditBot on a geolocation post on X and it lands on Vidit as a structured draft: coordinates, source, media, and proof note, ready for your review.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -102,97 +98,10 @@ const MISTAKES: { label: string; body: string }[] = [
   },
 ];
 
-// The one fake analyst every mock post is attributed to, so the three tagging
-// cases read as one person's posts rather than three unrelated accounts.
-const ANALYST = {
-  name: "GEOIMINT",
-  handle: "@GEOIMINT",
-  avatar: "bg-gradient-to-br from-orange-500 to-red-600",
-} as const;
-
-// The annotation attachment that lands as proof. On the first post of every
-// case, so the three rows carry the same visual weight.
-const PROOF_SHOT = {
-  kind: "image",
-  label: "your annotated screenshots (proof)",
-} as const;
-
-// A mock X post, the same composition the promo video's BotBeat renders:
-// X-dark card, avatar, name row, body with link-blue accents, optional
-// media placeholder. Page-local content markup, not a product primitive.
-function MockPost({
-  name,
-  handle,
-  avatar,
-  bot = false,
-  replyingTo,
-  media,
-  children,
-}: {
-  name: string;
-  handle: string;
-  avatar: string;
-  bot?: boolean;
-  replyingTo?: string;
-  media?: { kind: "video" | "image"; label: string };
-  children: ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-neutral-800 bg-black p-4 text-left">
-      <div className="flex items-center gap-2.5">
-        <span
-          className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${avatar}`}
-        >
-          {bot ? <Bot size={20} /> : name.slice(0, 1)}
-        </span>
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-[15px] font-bold text-neutral-100">
-            {name}
-          </p>
-          {/* Wraps rather than truncates: "@handle · replying to @handle" is
-              longer than a narrow mock is wide, and an ellipsis there reads as
-              a broken byline. The name above it still truncates. */}
-          <p className="text-[13px] text-neutral-500">
-            {handle}
-            {replyingTo && (
-              <>
-                {" "}
-                · replying to <span className="text-sky-500">{replyingTo}</span>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-      <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100">
-        {children}
-      </div>
-      {media && (
-        <div className="mt-3 flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
-          <span className="flex flex-col items-center gap-2 text-neutral-500">
-            <span className="flex size-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
-              {media.kind === "video" ? (
-                <Play size={16} />
-              ) : (
-                <ImageIcon size={16} />
-              )}
-            </span>
-            <span className="text-[11px]">{media.label}</span>
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Link-blue span for the mock bodies (X's anchor color, display only).
-function BodyLink({ children }: { children: ReactNode }) {
-  return <span className="text-sky-500">{children}</span>;
-}
-
 // One tagging case as a full-width row: the explanation beside its mock posts
 // from `sm` up, stacked on a phone. A row rather than a column in a three-up
 // grid, because a mock post squeezed into a third of the page column wraps its
-// links and its byline into noise. Page-local content markup, like MockPost.
+// links and its byline into noise.
 function TagCase({
   icon: Icon,
   title,
@@ -225,7 +134,7 @@ function TagCase({
 export default function BotGuidePage() {
   return (
     <PageShell
-      title={PAGE_HEADING}
+      title={TITLE}
       actions={
         <Pill tone="accent" className="gap-2 tracking-tight">
           <Dot />
@@ -240,7 +149,7 @@ export default function BotGuidePage() {
             Vidit
           </Link>{" "}
           as a structured draft: coordinates, source, media, and proof note,
-          ready to review and publish. No re-entry, no leaving your feed.
+          ready for your review. No re-entry, no leaving your feed.
         </p>
       </Card>
 
@@ -285,11 +194,17 @@ export default function BotGuidePage() {
             title="Inline: one post carries everything"
             body="One post carries the tag and the three lines. An X or public Telegram source is fetched for you, footage and post date; quoting it does the same. Any other platform is kept as a link, so a video you attach becomes the footage and photos stay proof."
           >
-            <MockPost {...ANALYST} media={PROOF_SHOT}>
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "image",
+                label: "your annotated screenshots (proof)",
+              }}
+            >
               {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
-              <BodyLink>x.com/warfootage/status/1783</BodyLink>
+              <MockPostLink>x.com/warfootage/status/1783</MockPostLink>
               {"\nSmoke plume matches the skyline.\n"}
-              <BodyLink>@viditbot</BodyLink>
+              <MockPostLink>@viditbot</MockPostLink>
             </MockPost>
           </TagCase>
 
@@ -298,23 +213,23 @@ export default function BotGuidePage() {
             title="Relay: the footage rides a second post"
             body="Your own re-upload becomes the footage, even where Vidit could fetch the source. Post the title and coordinates, then tag the bot in a direct reply carrying the footage alone. The source link can sit on either post."
           >
-            <MockPost {...ANALYST}>
+            <MockPost {...MOCK_ANALYST}>
               {
                 "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
               }
             </MockPost>
             <div className="pl-6">
               <MockPost
-                {...ANALYST}
-                replyingTo="@GEOIMINT"
+                {...MOCK_ANALYST}
+                replyingTo={MOCK_ANALYST.handle}
                 media={{
                   kind: "video",
                   label: "the re-uploaded footage (source)",
                 }}
               >
-                <BodyLink>tiktok.com/@warfootage/video/7</BodyLink>
+                <MockPostLink>tiktok.com/@warfootage/video/7</MockPostLink>
                 {"\n"}
-                <BodyLink>@viditbot</BodyLink>
+                <MockPostLink>@viditbot</MockPostLink>
               </MockPost>
             </div>
           </TagCase>
@@ -324,14 +239,20 @@ export default function BotGuidePage() {
             title="Retro: a post you already published"
             body="Reply to your own post, whatever its age, and tag the bot: the reply needs nothing else. The post itself carries the format, since the bot reads the post you replied to. Direct replies only, and re-tagging cannot duplicate: the draft anchors on the post."
           >
-            <MockPost {...ANALYST} media={PROOF_SHOT}>
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "image",
+                label: "your annotated screenshots (proof)",
+              }}
+            >
               {"Bridge span dropped overnight\n49.842900, 24.031100\n"}
-              <BodyLink>x.com/warfootage/status/1206</BodyLink>
+              <MockPostLink>x.com/warfootage/status/1206</MockPostLink>
               {"\nGeolocated it back in March."}
             </MockPost>
             <div className="pl-6">
-              <MockPost {...ANALYST} replyingTo="@GEOIMINT">
-                <BodyLink>@viditbot</BodyLink>
+              <MockPost {...MOCK_ANALYST} replyingTo={MOCK_ANALYST.handle}>
+                <MockPostLink>@viditbot</MockPostLink>
               </MockPost>
             </div>
           </TagCase>
@@ -368,8 +289,10 @@ export default function BotGuidePage() {
             flags a possible duplicate when the media is already on Vidit.
           </li>
           <li>
-            The draft waits in your profile&apos;s detections queue. Review it,
-            fix the event date (the post date is only a proxy), then publish.
+            The draft is on the map straight away, marked as a machine draft and
+            credited to you, and it waits in your detections queue. Review it,
+            fix the event date (the post date is only a proxy), then vouch for
+            it as a geolocation. Rejecting it takes it down.
           </li>
           <li>
             If the shape is incomplete, the bot replies with the one thing that
@@ -377,13 +300,7 @@ export default function BotGuidePage() {
           </li>
         </ul>
         <div className="sm:max-w-md">
-          <MockPost
-            name="Vidit"
-            handle="@viditbot"
-            avatar="bg-gradient-to-br from-orange-500 to-amber-500"
-            bot
-            replyingTo="@GEOIMINT"
-          >
+          <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
             {
               "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile"
             }

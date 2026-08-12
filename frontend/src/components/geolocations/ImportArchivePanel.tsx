@@ -225,7 +225,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
             Even if you skip the trim, your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
           </span>
           <Link href="/archive" className={TEXT_LINK}>
-            What gets imported
+            Archive guide
           </Link>
           <a
             href={X_ARCHIVE_HELP}

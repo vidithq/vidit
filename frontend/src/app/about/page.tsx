@@ -110,7 +110,7 @@ const GUIDES = [
   {
     icon: Bot,
     label: "Bot guide",
-    value: "Import by tagging @ViditBot on X",
+    value: "Import by tagging @ViditBot",
     href: "/bot",
   },
   {

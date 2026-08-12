@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
-import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
+import {
+  NumberedSteps,
+  type NumberedStep,
+} from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 // Public getting-started guide, reachable without an account (see
@@ -121,8 +124,8 @@ const STEPS: NumberedStep[] = [
           </li>
           <li>
             Your X archive: upload the official export and every geolocation you
-            already published is backfilled as drafts you review and publish, no
-            manual re-entry (the{" "}
+            already published is backfilled as drafts you review and vouch for,
+            no manual re-entry (the{" "}
             <Link href="/archive" className={TEXT_LINK}>
               archive guide
             </Link>{" "}
@@ -160,9 +163,7 @@ const STEPS: NumberedStep[] = [
 
 export default function GuidePage() {
   return (
-    <PageShell
-      title={TITLE}
-    >
+    <PageShell title={TITLE}>
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
           Vidit is one shared map of conflict geolocations, each carrying the
@@ -172,7 +173,6 @@ export default function GuidePage() {
         </p>
         <NumberedSteps steps={STEPS} />
       </Card>
-
     </PageShell>
   );
 }
