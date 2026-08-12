@@ -372,4 +372,11 @@ class Event(Base):
         # noted in planning/next.md for a later index-cleanup pass.
         Index("ix_events_owner_id", "owner_id"),
         Index("ix_events_owner_created", "owner_id", "created_at"),
+        # Backs the keyset the capped list endpoints walk: `/events`,
+        # `/events/detections` and `/timeline` all order by
+        # ``created_at DESC, id DESC`` and cut their pages with a row
+        # comparison over that exact pair
+        # (``services/pagination.keyset_before``), which Postgres reads off a
+        # composite index on the pair.
+        Index("ix_events_created_at_id", "created_at", "id"),
     )

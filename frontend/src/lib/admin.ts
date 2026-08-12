@@ -28,8 +28,14 @@ export interface CreateInviteCodeBody {
   x_handle?: string | null;
 }
 
-export function listInviteCodes(): Promise<InviteCode[]> {
-  return apiFetch<InviteCode[]>("/admin/invite-codes");
+/** `GET /admin/invite-codes` for one page of the table.
+ *
+ *  A path rather than a fetch: the response is capped like every other list,
+ *  so the console reads the append-only table through `useCursorList`, which
+ *  builds each request from the `Link: rel="next"` cursor of the page before.
+ */
+export function inviteCodesPath(cursor: string | null): string {
+  return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
 }
 
 export function createInviteCode(
@@ -198,14 +204,17 @@ export function getDetectionStats(): Promise<DetectionStats> {
 
 // ── Maintenance ───────────────────────────────────────────────────────
 
-/** One shape for both reapers; the UI renders only the keys present in the
- *  response. Mirrors the backend `AdminMaintenanceResponse`. */
+/** One shape for every maintenance action; the UI renders only the keys present
+ *  in the response. Mirrors the backend `AdminMaintenanceResponse`. */
 export interface MaintenanceResponse {
   expired?: number;
   old_consumed?: number;
   pending_registrations_deleted?: number;
   events_scanned?: number;
   links_enqueued?: number;
+  analysts_notified?: number;
+  drafts_pending?: number;
+  digest_send_failures?: number;
 }
 
 export function reapAuthTokens(): Promise<MaintenanceResponse> {
@@ -227,6 +236,15 @@ export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
 export function enqueueSourceArchival(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>(
     "/admin/maintenance/enqueue-source-archival",
+    { method: "POST" }
+  );
+}
+
+/** Email every analyst holding unpublished `detected` drafts: one message with
+ *  the count and a link to their own Detections queue. */
+export function sendCompletionDigests(): Promise<MaintenanceResponse> {
+  return apiFetch<MaintenanceResponse>(
+    "/admin/maintenance/send-completion-digests",
     { method: "POST" }
   );
 }

@@ -90,6 +90,10 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
+  section_batch_completion: {
+    text: "Publish several drafts at once. An import usually sits in one conflict, so you set that once for the selection and pick the capture source per row; everything else the drafts already carry. Each row publishes on its own, so a draft that is still missing a piece stays a draft and says which piece.",
+    label: "What does completing a batch do?",
+  },
   // Detection submit action, spelled out here.
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it), frozen and no longer editable. Give it a full read first.",

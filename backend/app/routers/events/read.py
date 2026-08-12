@@ -44,6 +44,14 @@ from app.services.event_filters import (
     validate_media_types,
     validate_status_filter,
 )
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    keyset_before,
+    next_link,
+    page_size,
+    take_page,
+)
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
@@ -276,6 +284,7 @@ def list_points(
 @limiter.limit("120/minute")
 def list_events(
     request: Request,
+    response: Response,
     view: str = Query("located"),
     # ``status`` accepts multiple values (``?status=a&status=b``, any-match);
     # a single ``?status=a`` parses to ``["a"]``, so older single-select
@@ -290,7 +299,8 @@ def list_events(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    limit: int = 200,
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
 ):
     """Newest-first cards for one lifecycle view.
@@ -299,18 +309,23 @@ def list_events(
     queue (ex ``/requests``), whose cards additionally carry the investigator
     aggregates (count + a small newest-first sample). Two-step "ids then full
     rows" shape so eager-loads can't inflate the LIMIT count.
+
+    Capped at 100 rows however large ``limit`` is; a caller reading past the
+    first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
+    is present exactly when a next page holds at least one row. Ordering is
+    ``created_at DESC, id DESC``, total by construction, so a walk cannot
+    duplicate or skip a row when rows land mid-walk.
     """
     if view not in VIEWS:
         raise HTTPException(
             status_code=422, detail=f"view must be one of: {', '.join(sorted(VIEWS))}"
         )
-    if limit < 1 or limit > 200:
-        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
     validate_status_filter(status)
+    size = page_size(limit)
 
     # Step 1: get IDs with limit (no joins that inflate rows)
     id_query = apply_filters(
-        db.query(Event.id),
+        db.query(Event.id, Event.created_at),
         view=view,
         status=status,
         conflict=conflict,
@@ -324,10 +339,21 @@ def list_events(
         bbox=bbox,
     )
 
-    ids = [row[0] for row in id_query.order_by(Event.created_at.desc()).limit(limit).all()]
+    if cursor is not None:
+        id_query = id_query.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
 
-    if not ids:
+    # One row past the page: presence of the extra row is what decides whether
+    # a ``Link: rel="next"`` goes out at all.
+    window = id_query.order_by(Event.created_at.desc(), Event.id.desc()).limit(size + 1).all()
+    keys, has_next = take_page(window, size)
+
+    if not keys:
         return []
+
+    ids = [key.id for key in keys]
+    if has_next:
+        last = keys[-1]
+        response.headers["Link"] = next_link(request, last.created_at, last.id)
 
     # Step 2: load full objects + coordinates in one query
     rows = (
@@ -348,7 +374,9 @@ def list_events(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.id.in_(ids))
-        .order_by(Event.created_at.desc())
+        # Same total ordering as the id window above, so the hydrated page
+        # comes back in the order the cursor was cut from.
+        .order_by(Event.created_at.desc(), Event.id.desc())
         .all()
     )
 
@@ -384,8 +412,10 @@ def list_events(
 @limiter.limit("120/minute")
 def list_detections(
     request: Request,
-    page: int = 1,
-    per_page: int = 20,
+    response: Response,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -396,15 +426,19 @@ def list_detections(
     ``detected`` row becomes ``geolocated`` over time. Returns full
     ``EventRead`` (media + tags) so the queue shows the evidence and the
     frontend computes submit-readiness (source media + a ``conflict`` + a
-    ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
-    desc: the latest import is the first thing to triage.
+    ``capture_source`` tag) with no per-row round-trip. Ordered by
+    ``created_at DESC, id DESC``: the latest import is the first thing to
+    triage.
+
+    Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
+    the supported one and is immune to rows landing mid-walk; ``page`` is the
+    offset path the queue's pager still uses, and a ``cursor`` supersedes it
+    when both arrive. Either way the page is capped at 100 rows.
     """
-    # Clamp rather than 422 — a too-large page/per_page is harmless and the
-    # per-user list clamps the same way. The lower-bound guard matters: page < 1
-    # would compute a negative OFFSET and per_page < 1 a non-positive LIMIT, both
-    # of which Postgres rejects (a 500).
-    page = max(1, page)
-    per_page = max(1, min(per_page, 100))
+    # A too-large page size is clamped (over-asking buys nothing, it isn't an
+    # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
+    # negative OFFSET / non-positive LIMIT, which Postgres answers with a 500.
+    per_page = page_size(per_page)
 
     detected = (
         Event.owner_id == current_user.id,
@@ -414,7 +448,7 @@ def list_detections(
 
     total = db.query(Event).filter(*detected).count()
 
-    rows = (
+    window = (
         db.query(
             Event,
             ST_Y(Event.event_coords).label("lat"),
@@ -438,11 +472,18 @@ def list_detections(
             selectinload(Event.source_links),
         )
         .filter(*detected)
-        .order_by(Event.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+        .order_by(Event.created_at.desc(), Event.id.desc())
     )
+    if cursor is not None:
+        window = window.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
+    else:
+        window = window.offset((page - 1) * per_page)
+
+    rows, has_next = take_page(window.limit(per_page + 1).all(), per_page)
+
+    if has_next:
+        last = rows[-1][0]
+        response.headers["Link"] = next_link(request, last.created_at, last.id)
 
     items = [
         build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)

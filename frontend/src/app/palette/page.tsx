@@ -70,7 +70,7 @@ import {
   FORM_ERROR_BANNER,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 
 /**
@@ -473,6 +473,31 @@ export default function PalettePage() {
                 <div className={`rounded-md border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-400 ${FORM_INVALID_FIELD}`}>
                   A section card flagged as missing.
                 </div>
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Used per row in the detections batch-completion table. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label="default">
+                <Select defaultValue="">
+                  <option value="">Not now</option>
+                  <option value="drone">Drone</option>
+                  <option value="ground">Ground</option>
+                  <option value="satellite">Satellite</option>
+                </Select>
+              </Variant>
+              <Variant label='variant="compact" (dense table row)'>
+                <Select variant="compact" defaultValue="drone">
+                  <option value="drone">Drone</option>
+                  <option value="ground">Ground</option>
+                </Select>
+              </Variant>
+              <Variant label="invalid">
+                <Select invalid defaultValue="">
+                  <option value="">Pick a capture source</option>
+                  <option value="drone">Drone</option>
+                </Select>
               </Variant>
             </div>
           </Item>
