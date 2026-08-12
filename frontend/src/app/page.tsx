@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   Globe,
   AtSign,
@@ -27,14 +26,14 @@ import DemoVideo from "@/components/landing/DemoVideo";
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
-    "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
+    "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
   openGraph: {
     type: "website",
     url: "https://vidit.app",
     siteName: "Vidit",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
+      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
     locale: "en_US",
   },
   twitter: {
@@ -43,7 +42,7 @@ export const metadata: Metadata = {
     creator: "@vidithq",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
+      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
   },
 };
 
@@ -152,7 +151,7 @@ export default function LandingPage() {
             >
               Open source
             </a>{" "}
-            and free for analysts.
+            and free.
           </p>
           <HeroCtas />
         </section>
@@ -172,19 +171,13 @@ export default function LandingPage() {
                 />
               )
             ) : (
+              /* Fallback rendered only when `DEMO_VIDEO_URL` is unset, so it
+                 shows in local dev or on a misconfigured deploy. */
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center">
                 <span className="size-12 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-400">
                   <Play size={18} />
                 </span>
                 <p className="text-sm text-neutral-400">Product demo</p>
-                {/* Fallback rendered when `DEMO_VIDEO_URL` is unset: the
-                    written guide covers the same ground. */}
-                <p className="text-xs text-neutral-600">
-                  Read{" "}
-                  <Link href="/guide" className={TEXT_LINK}>
-                    how Vidit works
-                  </Link>
-                </p>
               </div>
             )}
           </div>
