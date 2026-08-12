@@ -6,6 +6,8 @@ import {
   Crosshair,
   Archive,
   Code,
+  BookOpen,
+  IdCard,
   Play,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -55,42 +57,63 @@ const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL;
 const DEMO_VIDEO_IS_FILE =
   !!DEMO_VIDEO_URL && /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(DEMO_VIDEO_URL);
 
-// Icons reuse the product's vocabulary: `Globe` echoes the map,
-// `AtSign`/`Import` the two on-ramp channels, `Crosshair` the proof.
-const FEATURES: {
-  icon: typeof Globe;
-  title: string;
-  body: string;
+// Features are grouped by who they are for, and the page renders one titled
+// grid per group in this order. Icons reuse the product's vocabulary: `Globe`
+// echoes the map, `AtSign`/`Import` the two on-ramp channels, `Crosshair` the
+// proof.
+const FEATURE_GROUPS: {
+  audience: string;
+  features: { icon: typeof Globe; title: string; body: string }[];
 }[] = [
   {
-    icon: Globe,
-    title: "One interactive map",
-    body: "Every geolocation the community submits, on one map you can filter by conflict, capture source, date, or analyst.",
+    audience: "For everyone",
+    features: [
+      {
+        icon: Globe,
+        title: "One interactive map",
+        body: "Every geolocation the community submits, on one map you can filter by conflict, capture source, date, or analyst.",
+      },
+      {
+        icon: Crosshair,
+        title: "Proof, not just a pin",
+        body: "Each geolocation carries its argument: the source media next to the satellite view, annotated anchors, coordinates, event date, and capture source.",
+      },
+      {
+        icon: Code,
+        title: "Open source, end to end",
+        body: "The entire platform is AGPL-3.0 on GitHub: auditable, forkable, self-hostable. Infrastructure the community can trust because it can read it.",
+      },
+      {
+        icon: BookOpen,
+        title: "Open to read, no account",
+        body: "The map, every event page and every profile are public. No account and no paywall: the record is there to be read.",
+      },
+    ],
   },
   {
-    icon: Crosshair,
-    title: "Proof, not just a pin",
-    body: "Each geolocation carries its argument: the source media next to the satellite view, annotated anchors, coordinates, event date, and capture source.",
-  },
-  {
-    icon: Import,
-    title: "Your history, imported in one step",
-    body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and vouch for. No manual re-entry.",
-  },
-  {
-    icon: AtSign,
-    title: "Tag @ViditBot, it's archived",
-    body: "Tag @ViditBot under a geolocation post on X and it lands here as a structured draft, with an in-thread reply telling you what was captured. You never leave your workflow.",
-  },
-  {
-    icon: Archive,
-    title: "Your work outlives its source",
-    body: "Every image and video is copied to Vidit's own storage as a permanent, locked record, so it survives even when the original is deleted, the channel vanishes, or an account is banned.",
-  },
-  {
-    icon: Code,
-    title: "Open source, end to end",
-    body: "The entire platform is AGPL-3.0 on GitHub: auditable, forkable, self-hostable. Infrastructure the community can trust because it can read it.",
+    audience: "For analysts",
+    features: [
+      {
+        icon: Import,
+        title: "Your history, imported in one step",
+        body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and vouch for. No manual re-entry.",
+      },
+      {
+        icon: AtSign,
+        title: "Tag @ViditBot, it's archived",
+        body: "Tag @ViditBot under a geolocation post on X and it lands here as a structured draft, with an in-thread reply telling you what was captured. You never leave your workflow.",
+      },
+      {
+        icon: Archive,
+        title: "Your work outlives its source",
+        body: "Every image and video is copied to Vidit's own storage as a permanent, locked record, so it survives even when the original is deleted, the channel vanishes, or an account is banned.",
+      },
+      {
+        icon: IdCard,
+        title: "A portfolio that speaks for you",
+        body: "Your public profile reads as a portfolio: your insights, a coverage map of your geolocations, and rich link previews wherever you share it.",
+      },
+    ],
   },
 ];
 
@@ -183,26 +206,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="pb-20">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {FEATURES.map(({ icon: Icon, title, body }) => (
-              <div
-                key={title}
-                className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
-              >
-                <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                  <Icon size={17} />
-                </span>
-                <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                  {title}
-                </h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                  {body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {FEATURE_GROUPS.map(({ audience, features }) => (
+          <section key={audience} className="pb-20">
+            <div className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
+                {audience}
+              </h2>
+            </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              {features.map(({ icon: Icon, title, body }) => (
+                <div
+                  key={title}
+                  className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
+                >
+                  <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
+                    <Icon size={17} />
+                  </span>
+                  <h3 className="mt-4 text-sm font-medium text-neutral-100">
+                    {title}
+                  </h3>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
+                    {body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
 
         <section className="pb-20">
           <div className="text-center">
