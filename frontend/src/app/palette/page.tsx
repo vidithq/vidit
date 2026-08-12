@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/BrandGlyphs";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
+import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -190,6 +191,34 @@ const MOCK_DETAIL: EventDetail = {
   geolocators: [],
   investigator_count: 0,
   investigators: [],
+};
+
+// The two states a Detections queue row can be in: the draft that carries the
+// whole evidence floor and needs only the two human choices, and the one that
+// names what the import did not find.
+const MOCK_DRAFT_READY: EventDetail = {
+  ...MOCK_DETAIL,
+  id: "draft-ready",
+  status: "detected",
+  is_demo: false,
+  source_url: "https://t.me/channel/12345",
+  proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
+  media: [
+    {
+      id: "m1",
+      storage_url: "/local-storage/demo.jpg",
+      media_type: "image",
+      role: "source",
+    },
+  ],
+};
+
+const MOCK_DRAFT_INCOMPLETE: EventDetail = {
+  ...MOCK_DRAFT_READY,
+  id: "draft-incomplete",
+  title: "Convoy on a rural road, unnamed",
+  proof: null,
+  media: [],
 };
 
 // The same detail body with a real source captured at both providers, plus one
@@ -506,7 +535,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Used per row in the detections batch-completion table. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
+          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Carries the capture-source pick in the detections review flow. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Select defaultValue="">
@@ -1062,11 +1091,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: detection (no media)" usage="Detections queue: click leads to edit; no-media placeholder">
+          <Item name="<EntityCard variant=compact>: no media" usage="A card whose entity carries no media: the marked no-media placeholder, not a generated stand-in">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/events/demo/edit"
+                detailHref="/events/demo"
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.owner.username }}
@@ -1074,6 +1103,13 @@ export default function PalettePage() {
                 coords={MOCK_DETAIL.event_coords}
                 tags={MOCK_DETAIL.tags}
               />
+            </div>
+          </Item>
+
+          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), one state badge, whole row clicks through to the edit form">
+            <div className="w-full max-w-xl space-y-2">
+              <DetectionQueueRow draft={MOCK_DRAFT_READY} />
+              <DetectionQueueRow draft={MOCK_DRAFT_INCOMPLETE} />
             </div>
           </Item>
 

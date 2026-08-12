@@ -176,9 +176,9 @@ const CONFLICTS_PREVIEW = 30;
  * deselectable, and drop out of the result list.
  *
  * Exported for the surfaces that pick conflicts WITHOUT the rest of the
- * classification card: the detections batch completion sets one conflict for a
- * whole selection. Everything picking conflicts alongside tags takes
- * `<TagPicker>` instead.
+ * classification card: the detections review flow picks one per draft, and
+ * carries the pick to the next draft. Everything picking conflicts alongside
+ * tags takes `<TagPicker>` instead.
  */
 export function ConflictTypeahead({
   conflicts,
