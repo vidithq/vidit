@@ -1,22 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
-/** How long the "copied" flash stays up before the label reverts. */
-const COPIED_FLASH_MS = 1500;
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Copy text to the clipboard and flash a confirmation. `copied` is true for
- * `COPIED_FLASH_MS` after a successful copy; a second copy within the window
- * restarts the flash instead of queuing a duplicate timer (which would flip the
- * label back early), and unmounting clears it.
+ * Copy text to the clipboard and flash a "copied" flag for `resetMs`.
  *
- * A failed write resolves silently: `navigator.clipboard` rejects on insecure
- * contexts (http://, embedded webviews), where the value is still on screen (or
- * in the address bar) to copy by hand, so a thrown error would be noise.
+ * The one home for the copy gesture's behaviour (write, flash, reset), so the
+ * share rows on an event, the profile share control and the admin invite codes
+ * can't drift on the reset window or leak a timer. Callers keep their own
+ * markup and read `copied` to swap icon / label.
+ *
+ * A failed write resolves `false` instead of throwing: the Clipboard API is
+ * unavailable on insecure contexts (plain http, some embedded webviews), and
+ * every call site's fallback is the same (the value stays on screen or in the
+ * address bar), so no call site has to carry a try/catch.
  */
-export function useCopyToClipboard() {
+export function useCopyToClipboard(resetMs = 1500) {
   const [copied, setCopied] = useState(false);
+  // Held so a second copy inside the window replaces the pending reset instead
+  // of queueing a duplicate (which would clear the flag early), and so unmount
+  // drops it.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -25,16 +28,20 @@ export function useCopyToClipboard() {
     };
   }, []);
 
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
-    setCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopied(false), COPIED_FLASH_MS);
-  };
+  const copy = useCallback(
+    async (text: string): Promise<boolean> => {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        return false;
+      }
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), resetMs);
+      return true;
+    },
+    [resetMs]
+  );
 
   return { copied, copy };
 }

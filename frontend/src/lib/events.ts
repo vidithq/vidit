@@ -1,12 +1,14 @@
 import { apiFetch } from "./api";
 import { archiveTooLarge } from "./archive";
-import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
+import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage } from "./proof";
+import type { components } from "@/lib/api-types";
 import type {
   ArchiveImportJob,
   ArchiveImportPresign,
   EventDetail,
   EventStatus,
+  Media,
   TagCategory,
 } from "@/types";
 
@@ -92,10 +94,14 @@ export interface EventListParams {
   tag?: string;
   author?: string;
   limit?: number;
+  /** Cursor of the next page, from a `Link: rel="next"` header. */
+  cursor?: string | null;
 }
 
 /** Build the `GET /events` query string for one lifecycle view. Defaults to
- *  `view=located`; the requested queue passes `view=requested`. */
+ *  `view=located`; the requested queue passes `view=requested`. The response
+ *  is capped at 100 rows whatever `limit` asks for, so reading further means
+ *  passing the `cursor` the previous page's `Link` header carried. */
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
@@ -103,6 +109,7 @@ export function eventListPath(params: EventListParams = {}): string {
   if (params.tag) search.set("tag", params.tag);
   if (params.author) search.set("author", params.author);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.cursor) search.set("cursor", params.cursor);
   const qs = search.toString();
   return `/events${qs ? `?${qs}` : ""}`;
 }
@@ -133,16 +140,6 @@ export function parseGuessCoords(
   const lng = cleanNumber(lngStr);
   if (lat === null || lng === null) return {};
   return { lat, lng };
-}
-
-/** Parse a whole string as a finite number, or `null`. Unlike `parseFloat`,
- *  this rejects partially-numeric input (`"50.1abc"`), so a malformed pair
- *  clears the coordinates rather than storing a truncated value. Blank /
- *  whitespace-only reads as absent (`null`), preserving both-or-neither. */
-export function cleanNumber(value: string): number | null {
-  if (value.trim() === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 export function getEvent(id: string): Promise<EventDetail> {
@@ -535,6 +532,69 @@ export async function awaitImportJob(
   }
 }
 
+/**
+ * What stops one `detected` draft from publishing in a batch, as human labels.
+ * Empty means the row only needs its capture source (which the batch supplies)
+ * to clear the floor.
+ *
+ * Mirrors the server floor in `services/events._publish_draft`, and only that:
+ * a batch writes no fields, so the form-level requirements a submit adds (a
+ * title, the source post time) are not part of it. Computed on the queue
+ * payload the detections list already carries, so the table can grey out the
+ * rows that need a manual pass before anything is posted; the server stays the
+ * authority and answers the same misses per row.
+ */
+export function batchCompletionBlockers(geo: {
+  event_coords: unknown | null;
+  source_url: string | null;
+  proof: Record<string, unknown> | null;
+  media: readonly Pick<Media, "role">[];
+}): string[] {
+  // Listed in the server's own check order, so the labels read in the order the
+  // API would have reported them had the row been posted.
+  const missing: string[] = [];
+  if (!geo.source_url?.trim()) missing.push(FIELD_LABELS.source_url);
+  if (!geo.event_coords) missing.push(FIELD_LABELS.coordinates);
+  // The floor is a `source` media row, not any media row. `EventRead` only
+  // serializes `source` rows today, so the predicate is stricter than the
+  // payload needs; it is written against the rule rather than the projection,
+  // and `Pick<Media, "role">` makes `tsc` hold it there.
+  if (!geo.media.some((m) => m.role === "source")) missing.push(FIELD_LABELS.source_media);
+  // The proof-image leg: already satisfied when the import carried annotation
+  // media, and the one the queue most often has to flag.
+  if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);
+  return missing;
+}
+
+/** Body of `POST /events/batch-complete`: the conflict set chosen once for the
+ *  whole selection, and one `capture_source` tag per draft. Aliased from the
+ *  generated spec types rather than restated, so a backend field rename fails
+ *  `tsc` instead of drifting. */
+export type BatchCompletionInput =
+  components["schemas"]["BatchCompletionCreate"];
+
+/** Per-row verdicts of a batch completion: `published` rows moved to
+ *  `geolocated`, the rest stayed drafts and carry the floor error that stopped
+ *  them (`code` / `message`), in the order the rows were submitted. */
+export type BatchCompletionResult =
+  components["schemas"]["BatchCompletionRead"];
+
+/**
+ * Publish a selection of `detected` drafts in one call:
+ * `POST /events/batch-complete` (JSON, no upload). The drafts keep the evidence
+ * the import gave them; this supplies only the two judgment calls the floor
+ * needs, the conflict (once) and the capture source (per row). Each row commits
+ * on its own, so the response is a mixed verdict list, never all-or-nothing.
+ */
+export function batchCompleteDrafts(
+  input: BatchCompletionInput
+): Promise<BatchCompletionResult> {
+  return apiFetch<BatchCompletionResult>("/events/batch-complete", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /** Close an event: withdraw a request or reject a detection (owner-only).
  *  `POST /events/{id}/close`. The reason stays publicly visible next to the
  *  closed badge, so it's required. */
@@ -645,13 +705,7 @@ export function missingEventFields(
   // to 48.85 at publish, so the readiness gate matches what actually posts.
   const lat = cleanNumber(s.lat);
   const lng = cleanNumber(s.lng);
-  const coordsValid =
-    lat !== null &&
-    lat >= LAT_MIN &&
-    lat <= LAT_MAX &&
-    lng !== null &&
-    lng >= LNG_MIN &&
-    lng <= LNG_MAX;
+  const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
 
   const missing: MissingField[] = [];
   if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });

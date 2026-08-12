@@ -41,7 +41,6 @@ import sentry_sdk
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import SessionLocal
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.user import User
@@ -313,7 +312,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             skipped=job.skipped_count,
             recreated=job.recreated_count,
             failed=job.failed_count,
-            detections_link=f"{settings.frontend_url.rstrip('/')}/profile/{owner.username}/detections",
+            detections_link=email.detections_link(owner.username),
         )
     )
 

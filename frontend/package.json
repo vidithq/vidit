@@ -14,7 +14,7 @@
     "palette:check": "node scripts/check-palette-coverage.mjs"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.68.0",
+    "@sentry/nextjs": "^10.69.0",
     "@tiptap/extension-image": "^3.29.2",
     "@tiptap/pm": "^3.29.2",
     "@tiptap/react": "^3.29.2",
@@ -24,11 +24,13 @@
     "fflate": "^0.8.3",
     "lucide-react": "^1.25.0",
     "maplibre-gl": "^5.21.1",
+    "media-chrome": "^4.19.2",
     "next": "^16.2.12",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "undici": "^7.29.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",

@@ -9,8 +9,13 @@ import type { PublicProfile } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
 import { BioCard } from "@/components/profile/BioCard";
 import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
-import { ProfileHeader } from "@/components/profile/ProfileHeader";
+import {
+  ProfileActions,
+  ProfileHeaderEditFields,
+  ProfileTitle,
+} from "@/components/profile/ProfileHeader";
 import { ProfileInsights } from "@/components/profile/ProfileInsights";
+import { ProfileMap } from "@/components/profile/ProfileMap";
 import { ProfileStats } from "@/components/profile/ProfileStats";
 import {
   RecentSubmissions,
@@ -78,44 +83,64 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
+  // Portfolio order: who, then the work, then the account. The handle titles
+  // the page, the bio positions it, and everything below is evidence, shape of
+  // work first (`ProfileInsights`), then where it happened (`ProfileMap`), then
+  // the events themselves. Owner-only account affordances (linked accounts,
+  // the detections queue, sign out) sink under all of it, so a visitor lands on
+  // a portfolio and the owner still finds their controls in one place.
+  //
+  // Editing collapses that order to the form alone: every editable field sits
+  // between the header and Save, with the read-only portfolio sections dropped
+  // for the duration. Interleaved, the linked-accounts inputs landed a full
+  // page below the bio and the Save button was off screen by the time you
+  // reached them.
   return (
-    <PageShell back title="Profile">
-        <ProfileHeader
-          profile={profile}
-          isOwn={isOwn}
-          email={currentUser?.email}
-          edit={edit}
-        />
+    <PageShell
+      back
+      title={<ProfileTitle profile={profile} edit={edit} />}
+      subtitle={isOwn ? currentUser?.email : undefined}
+      actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
+    >
+      <ProfileHeaderEditFields edit={edit} />
 
-        <ProfileStats profile={profile} />
+      <BioCard profile={profile} edit={edit} />
 
-        <ProfileInsights username={profile.username} />
-
-        <BioCard profile={profile} edit={edit} />
-
+      {edit.editing ? (
         <LinkedAccountsCard profile={profile} edit={edit} />
+      ) : (
+        <>
+          <ProfileStats profile={profile} />
 
-        {isOwn && detectionCount > 0 && (
-          <DetectionsEntry username={profile.username} count={detectionCount} />
-        )}
+          <ProfileInsights username={profile.username} />
 
-        <RecentSubmissions
-          profile={profile}
-          submissions={submissions}
-          isOwn={isOwn}
-        />
+          <ProfileMap username={profile.username} />
 
-        {isOwn && (
-          <div className="pt-4 border-t border-neutral-800 flex justify-center">
-            <Button
-              variant={signOut.armed ? "danger" : "secondary"}
-              onClick={signOut.trigger}
-            >
-              <LogOut size={14} strokeWidth={1.8} />
-              {signOut.armed ? "Confirm sign out" : "Sign out"}
-            </Button>
-          </div>
-        )}
+          <RecentSubmissions
+            profile={profile}
+            submissions={submissions}
+            isOwn={isOwn}
+          />
+
+          <LinkedAccountsCard profile={profile} edit={edit} />
+
+          {isOwn && detectionCount > 0 && (
+            <DetectionsEntry username={profile.username} count={detectionCount} />
+          )}
+
+          {isOwn && (
+            <div className="pt-4 border-t border-neutral-800 flex justify-center">
+              <Button
+                variant={signOut.armed ? "danger" : "secondary"}
+                onClick={signOut.trigger}
+              >
+                <LogOut size={14} strokeWidth={1.8} />
+                {signOut.armed ? "Confirm sign out" : "Sign out"}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
     </PageShell>
   );
 }

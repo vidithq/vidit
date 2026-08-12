@@ -21,6 +21,7 @@ from app.schemas.admin import (
 )
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import collect_media_keys
+from app.services.pagination import keyset_before, take_page
 from app.services.storage import sweep_keys
 
 
@@ -212,18 +213,28 @@ def create_invite_code(
     return invite
 
 
-def list_invite_codes(db: Session) -> list[InviteCode]:
-    """Return every invite code, newest first.
+def list_invite_codes(
+    db: Session,
+    *,
+    limit: int,
+    cursor: tuple[datetime, uuid.UUID] | None = None,
+) -> tuple[list[InviteCode], bool]:
+    """One page of invite codes, newest first, plus whether another follows.
 
     No status filtering: an admin reviewing the table needs revoked /
-    expired rows to remember what was issued, not just the live ones.
+    expired rows to remember what was issued, not just the live ones. Paged
+    all the same, on the same ``created_at DESC, id DESC`` keyset as the
+    catalog lists: the table grows one row per invite forever and had no
+    ceiling at all.
     """
-    return (
+    query = (
         db.query(InviteCode)
         .options(joinedload(InviteCode.used_by_user))
-        .order_by(InviteCode.created_at.desc())
-        .all()
+        .order_by(InviteCode.created_at.desc(), InviteCode.id.desc())
     )
+    if cursor is not None:
+        query = query.filter(keyset_before(InviteCode.created_at, InviteCode.id, cursor))
+    return take_page(query.limit(limit + 1).all(), limit)
 
 
 def revoke_invite_code(

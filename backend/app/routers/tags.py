@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -6,10 +8,32 @@ from app.dependencies import get_current_user, get_db
 from app.models.event import Event
 from app.models.tag import Tag, event_tags
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
+from app.services.pagination import REFERENTIAL_MAX_ROWS
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _warn_if_truncated(rows: list[Tag], *, view: str) -> list[Tag]:
+    """Log when a referential response lands exactly on the ceiling.
+
+    A vocabulary hydrated whole has no ``Link`` header to say it was cut, so a
+    picker silently loses options once the referential outgrows the ceiling.
+    The log is the signal to raise ``REFERENTIAL_MAX_ROWS`` or page the
+    picker.
+    """
+    if len(rows) == REFERENTIAL_MAX_ROWS:
+        logger.warning(
+            "GET /tags (%s) hit the %d-row referential ceiling; "
+            "the response is truncated and the picker is missing options",
+            view,
+            REFERENTIAL_MAX_ROWS,
+        )
+    return rows
+
 
 # Categories authenticated users may create via the API. `capture_source`
 # is curated (by the seeding migration) since it is a required, filterable
@@ -24,6 +48,7 @@ CURATED_CATEGORIES = ("capture_source",)
 
 
 @router.get("", response_model=list[TagRead])
+@authenticated_read_quota
 @limiter.limit("60/minute")
 def list_tags(
     request: Request,
@@ -43,12 +68,23 @@ def list_tags(
     needs *every* option in this required bucket up front so the analyst can
     pick the right one even when they're first to tag it; the usage filter
     that's right for the map is wrong here.
+
+    Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
+    pickers and the filter panel hydrate this vocabulary whole and filter it
+    client-side, so a page of it would be a page of missing options. The
+    ceiling is what keeps ``free``-category growth (the one user-writable
+    category) from turning this into an unbounded hydration, and a response
+    that lands on it is logged, since the payload carries no way to say it was
+    cut.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))
         if category:
             query = query.filter(Tag.category == category)
-        return query.order_by(Tag.category, Tag.name).all()
+        return _warn_if_truncated(
+            query.order_by(Tag.category, Tag.name).limit(REFERENTIAL_MAX_ROWS).all(),
+            view="curated",
+        )
 
     query = (
         db.query(Tag)
@@ -59,7 +95,9 @@ def list_tags(
     )
     if category:
         query = query.filter(Tag.category == category)
-    return query.order_by(Tag.name).all()
+    return _warn_if_truncated(
+        query.order_by(Tag.name).limit(REFERENTIAL_MAX_ROWS).all(), view="live"
+    )
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)

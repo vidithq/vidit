@@ -101,13 +101,11 @@ def test_detections_caps_per_page(author):
     assert response.json()["per_page"] == 100
 
 
-def test_detections_clamps_out_of_range_paging(author):
-    """``page``/``per_page`` below 1 are clamped, not run as a negative OFFSET /
+def test_detections_rejects_out_of_range_paging(author):
+    """``page``/``per_page`` below 1 are 422, not run as a negative OFFSET /
     non-positive LIMIT (which Postgres rejects with a 500)."""
     headers = login_as(client, author)
-    page0 = client.get(f"{_URL}?page=0", headers=headers)
-    assert page0.status_code == 200
-    assert page0.json()["page"] == 1
-    perpage0 = client.get(f"{_URL}?per_page=0", headers=headers)
-    assert perpage0.status_code == 200
-    assert perpage0.json()["per_page"] == 1
+    assert client.get(f"{_URL}?page=0", headers=headers).status_code == 422
+    assert client.get(f"{_URL}?per_page=0", headers=headers).status_code == 422
+    assert client.get(f"{_URL}?per_page=-5", headers=headers).status_code == 422
+    assert client.get(f"{_URL}?page=abc", headers=headers).status_code == 422

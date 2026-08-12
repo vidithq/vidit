@@ -54,7 +54,7 @@ const LINES: { step: string; label: string; body: string }[] = [
   {
     step: "1",
     label: "Title",
-    body: "The first line of your post becomes the draft's title.",
+    body: "The first line of your post that is not just a link becomes the draft's title.",
   },
   {
     step: "2",
@@ -214,11 +214,15 @@ export default function BotGuidePage() {
           </div>
           <p className="mt-4 text-center text-[13px] leading-relaxed text-neutral-400">
             Anything else you write in the post is kept as the draft&apos;s
-            proof note. Prefer explicit prefixes? Writing the three lines as{" "}
-            <span className="font-mono text-neutral-300">T: title</span>,{" "}
-            <span className="font-mono text-neutral-300">C: coordinates</span>,{" "}
-            <span className="font-mono text-neutral-300">S: source</span> works
-            too.
+            proof note. Prefer explicit prefixes? Marking the lines{" "}
+            <span className="font-mono text-neutral-300">C: coordinates</span>{" "}
+            and <span className="font-mono text-neutral-300">S: source</span>{" "}
+            works too.{" "}
+            <span className="font-mono text-neutral-300">T: title</span> is
+            optional: leave it out and the first other line that is not just a
+            link becomes the title, but an empty{" "}
+            <span className="font-mono text-neutral-300">T:</span> line is
+            refused.
           </p>
         </section>
 
@@ -239,9 +243,8 @@ export default function BotGuidePage() {
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
                 One post carrying the tag and the three lines. When the source
                 is an X post or a public Telegram post, Vidit fetches the
-                footage and its post date for you. Quoting the source post
-                works too. Attach your annotated screenshots: they land as
-                proof.
+                footage and its post date for you. Quoting the source post works
+                too. Attach your annotated screenshots: they land as proof.
               </p>
               <div className="mt-4">
                 <MockPost
@@ -273,9 +276,9 @@ export default function BotGuidePage() {
                 from those, so relay it yourself. Post the title and
                 coordinates, then tag the bot in a direct reply to your own
                 post, carrying the source link and the re-uploaded footage
-                attached alone (one attachment lands as the source;
-                annotations belong on the first post). The source link can
-                sit on either post.
+                attached alone (one attachment lands as the source; annotations
+                belong on the first post). The source link can sit on either
+                post.
               </p>
               <div className="mt-4 space-y-3">
                 <MockPost
@@ -355,12 +358,12 @@ export default function BotGuidePage() {
                 </li>
                 <li>
                   The draft waits in your profile&apos;s detections queue.
-                  Review it, fix the event date (the post date is only a
-                  proxy), then publish.
+                  Review it, fix the event date (the post date is only a proxy),
+                  then publish.
                 </li>
                 <li>
-                  If the shape is incomplete, the bot replies with the one
-                  thing that broke; the full format lives in this guide.
+                  If the shape is incomplete, the bot replies with the one thing
+                  that broke; the full format lives in this guide.
                 </li>
               </ul>
               <div className="mt-4">
@@ -395,14 +398,13 @@ export default function BotGuidePage() {
                   collapses onto the first import.
                 </li>
                 <li>
-                  The bot reads public posts only: tags from a protected
-                  account cannot import.
+                  The bot reads public posts only: tags from a protected account
+                  cannot import.
                 </li>
               </ul>
             </div>
           </div>
         </section>
-
       </PageFrame>
     </main>
   );

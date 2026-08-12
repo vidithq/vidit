@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { formatDate, formatInstant } from "@/lib/format";
+import { formatCoordinates } from "@/lib/coordinates";
 import { sourceIsSynthetic } from "@/lib/events";
 import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
@@ -170,13 +171,33 @@ function DetailRows({
         value={formatDate(geo.created_at)}
       />
       <DetailRow label="Source" concept="source_url" compact={compact}>
-        <SourceLabel
-          isDemo={sourceIsSynthetic(geo)}
-          url={geo.source_url}
-          variant="link"
-          maxWidthClass={sourceMaxWidth}
-          className={sourceClass}
-        />
+        {/* The archived copy sits beside the source rather than replacing it:
+            the original stays the primary link while it resolves, and the
+            fallback is one click away the day it stops. */}
+        <span className="flex min-w-0 items-baseline justify-end">
+          <SourceLabel
+            isDemo={sourceIsSynthetic(geo)}
+            url={geo.source_url}
+            variant="link"
+            maxWidthClass={sourceMaxWidth}
+            className={sourceClass}
+          />
+          {geo.archived_source_url && !sourceIsSynthetic(geo) && (
+            <a
+              href={geo.archived_source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Archived copy, readable if the source is taken down"
+              /* The link text alone reads as "archived" out of context, and
+                 `title` is not announced: name the target for a screen
+                 reader. */
+              aria-label="Archived copy of the source"
+              className={`${TEXT_LINK} ml-2 shrink-0 text-xs`}
+            >
+              archived
+            </a>
+          )}
+        </span>
       </DetailRow>
       {/* Mirrors of the same media, directly under the primary they mirror.
           Collapsed: they are corroboration, not the evidence anchor, so they
@@ -263,7 +284,7 @@ function DetailRows({
           >
             <span className="text-neutral-200 font-mono text-xs">
               {geo.event_coords
-                ? `${geo.event_coords.lat.toFixed(6)}, ${geo.event_coords.lng.toFixed(6)}`
+                ? formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)
                 : "—"}
             </span>
           </DetailRow>
@@ -351,8 +372,12 @@ function SecondarySourcesRow({
 }
 
 function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
+  // A proof body carries pasted URLs, and a link whose text is the full URL is
+  // one unbreakable token: without an anywhere-break it ran past the frame and
+  // scrolled the whole page sideways on a phone. The one wrapper both the page
+  // and the map panel render through, so neither can regress alone.
   const body = geo.proof ? (
-    <div className="text-sm text-neutral-300 leading-relaxed">
+    <div className="text-sm text-neutral-300 leading-relaxed [overflow-wrap:anywhere]">
       {renderProof(geo.proof)}
     </div>
   ) : (

@@ -1,7 +1,8 @@
 """On-demand maintenance ops surfaced via the admin Maintenance panel.
 
 An admin clicks when they remember rather than a cron firing on a schedule.
-That holds while the sweeps here cover low-cost rows / objects whose backlog
+That holds while every op here sweeps low-cost rows / objects (or, for the
+archival backfill, only enqueues work the worker paces itself) whose backlog
 isn't latency-sensitive; if a table or the S3 bill outgrows admin attention,
 the move is a Railway scheduled job hitting these endpoints, not a
 standalone script.
@@ -9,11 +10,19 @@ standalone script.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.auth_token import AuthToken
+from app.models.event import STATUS_DETECTED, Event
+from app.models.user import User
+from app.services import email as email_service
+from app.services import source_archive as source_archive_service
+
+logger = logging.getLogger(__name__)
 
 # Consumed tokens kept for replay-debugging via the audit log; live-but-
 # expired rows have no value and are dropped immediately past expiry.
@@ -52,3 +61,107 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     )
     db.commit()
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
+
+
+# One click's scan ceiling for the archival backfill. Bounds the request's
+# wall-clock cost; the enqueue is idempotent per link, so a catalog past this
+# size is covered by clicking again.
+ARCHIVAL_BACKFILL_LIMIT = 5000
+
+
+def enqueue_source_archival(db: Session) -> dict[str, int]:
+    """Queue archival for the links of every live event that lacks it.
+
+    The catalog backfill: events created before archival existed carry no
+    ``source_archives`` rows, so nothing would ever capture their sources.
+    Enqueue only, no HTTP: the worker drains the queue at its own paced rate,
+    so the click returns immediately whatever the catalog size.
+    """
+    return source_archive_service.enqueue_catalog(db, limit=ARCHIVAL_BACKFILL_LIMIT)
+
+
+# One click's ceiling on the completion digest, the same shape as
+# ARCHIVAL_BACKFILL_LIMIT above: the action is one provider round-trip per
+# analyst with no resume marker, so the wall-clock cost of the request has to be
+# bounded by something other than the size of the analyst base. Rows come
+# ordered by backlog, so the cap keeps the analysts the digest is for; a base
+# past this size is covered by clicking again once the tail matters.
+COMPLETION_DIGEST_LIMIT = 200
+
+
+def drafts_awaiting_completion(
+    db: Session, *, limit: int = COMPLETION_DIGEST_LIMIT
+) -> list[tuple[User, str, int]]:
+    """Every analyst holding unpublished ``detected`` drafts, with the count.
+
+    The digest's selection rule, split out so it is readable and testable on
+    its own. Who is in: an account that still exists (not soft-deleted), is
+    active, and has an address to write to. What counts: live drafts (never a
+    soft-deleted row, never a published or closed one) that are real work, so
+    seeded demo rows are excluded and an analyst holding only demo drafts is
+    not written to at all. Ordered by count, biggest backlog first, and cut at
+    ``limit``.
+
+    The address rides in the tuple rather than being re-read off the user: the
+    ``email IS NOT NULL`` filter is what makes it a ``str``, and returning it
+    keeps that guarantee where the query is instead of forcing a second check
+    at every call site.
+    """
+    rows = (
+        db.query(User, User.email, func.count(Event.id))
+        .join(Event, Event.owner_id == User.id)
+        .filter(
+            Event.status == STATUS_DETECTED,
+            Event.deleted_at.is_(None),
+            Event.is_demo.is_(False),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+            User.email.isnot(None),
+        )
+        .group_by(User.id)
+        .order_by(func.count(Event.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return [(user, email, count) for user, email, count in rows]
+
+
+def send_completion_digests(db: Session) -> dict[str, int]:
+    """Email each analyst the count of drafts still awaiting completion.
+
+    The other half of the completion flow: an import lands dozens of drafts and
+    nothing brings the analyst back to the queue once the import mail has
+    scrolled away. One message per analyst, a count and a link to their own
+    queue (see :func:`drafts_awaiting_completion` for who gets one, and for the
+    :data:`COMPLETION_DIGEST_LIMIT` ceiling one click carries).
+
+    A provider failure on one address is logged and counted, never raised: the
+    remaining analysts still get theirs, and a digest is by definition
+    re-sendable on the next run. Returns the analysts written to, the drafts
+    the delivered messages covered, and the failed sends.
+    """
+    notified = 0
+    drafts = 0
+    failures = 0
+    for user, address, count in drafts_awaiting_completion(db):
+        try:
+            email_service.send(
+                email_service.completion_digest_email(
+                    to=address,
+                    count=count,
+                    link=email_service.detections_link(user.username),
+                )
+            )
+        except email_service.EmailSendError:
+            failures += 1
+            logger.warning("completion digest send failed for user %s", user.id, exc_info=True)
+            continue
+        notified += 1
+        # Counted after the send, so ``drafts_pending`` reads as "drafts a
+        # delivered digest covered" rather than "drafts we looked at".
+        drafts += count
+    return {
+        "analysts_notified": notified,
+        "drafts_pending": drafts,
+        "digest_send_failures": failures,
+    }

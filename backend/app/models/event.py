@@ -291,6 +291,14 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventGeolocator.created_at",
     )
+    # One row per link carried by the event (its ``source_url`` plus every
+    # href in the proof body), each holding that link's archived copy once the
+    # worker has one. See ``models.source_archive``.
+    archives = relationship(
+        "SourceArchive",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
     source_links = relationship(
         "EventSourceLink",
         back_populates="event",
@@ -364,4 +372,11 @@ class Event(Base):
         # noted in planning/next.md for a later index-cleanup pass.
         Index("ix_events_owner_id", "owner_id"),
         Index("ix_events_owner_created", "owner_id", "created_at"),
+        # Backs the keyset the capped list endpoints walk: `/events`,
+        # `/events/detections` and `/timeline` all order by
+        # ``created_at DESC, id DESC`` and cut their pages with a row
+        # comparison over that exact pair
+        # (``services/pagination.keyset_before``), which Postgres reads off a
+        # composite index on the pair.
+        Index("ix_events_created_at_id", "created_at", "id"),
     )

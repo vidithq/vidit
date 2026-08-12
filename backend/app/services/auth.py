@@ -2,6 +2,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import bcrypt
 import jwt
@@ -54,6 +55,40 @@ def create_access_token(user: User) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": str(user.id), "exp": expire, "tv": user.token_version}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_session_token_with_reason(token: str) -> tuple[dict[str, Any] | None, str | None]:
+    """:func:`decode_session_token`, plus PyJWT's message for the failure.
+
+    The reason is for a log line and nothing else: handing it to a caller over
+    the wire would tell an attacker whether a leaked token is live or merely
+    expired. ``/auth/logout`` is the one consumer, which WARNs on a rejected
+    cookie so a forged one is greppable instead of collapsing into the same
+    silent NULL as a legitimate no-cookie logout.
+    """
+    try:
+        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]), None
+    except jwt.InvalidTokenError as exc:
+        return None, str(exc)
+
+
+def decode_session_token(token: str) -> dict[str, Any] | None:
+    """Verify and decode a session JWT; ``None`` when it isn't valid.
+
+    The counterpart of :func:`create_access_token` and the one place the
+    session secret and algorithm are read on the way in, so a caller never
+    re-implements the decode. Raises nothing: ``None`` covers every failure
+    mode PyJWT raises from ``InvalidTokenError`` (bad signature, expired,
+    malformed, claim mismatch), so callers that must answer "who is this?" get
+    the same opaque outcome whatever went wrong. The one caller that needs to
+    log *which* mode uses :func:`decode_session_token_with_reason`.
+
+    Claims are returned as decoded, unchecked: the account behind ``sub`` may
+    be soft-deleted, deactivated, or carrying a stale ``tv``. Reading the row
+    and enforcing that is ``dependencies.get_current_user``'s job.
+    """
+    payload, _reason = decode_session_token_with_reason(token)
+    return payload
 
 
 def bump_token_version(user: User) -> None:

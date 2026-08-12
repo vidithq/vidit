@@ -18,7 +18,12 @@ from shapely.geometry import Point
 from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, Event
 from app.models.tag import Tag
-from tests.events._helpers import _make_geo, client
+from app.services.event_filters import parse_bbox
+from tests.events._helpers import WORLD_BBOX, _make_geo, client
+
+# The parsed twin of ``WORLD_BBOX``: the cache-key builder keys off the float
+# tuple, not the raw query string. Derived, so the two can't drift.
+WORLD_BOUNDS = parse_bbox(WORLD_BBOX)
 
 # ── GET /geolocations — list ──────────────────────────────────────────────
 
@@ -148,7 +153,10 @@ def test_list_rejects_author_with_like_meta(author):
 
 
 def test_points_rejects_author_with_like_meta(author):
-    response = client.get("/api/v1/events/points", params={"author": "a%"})
+    # One ``params=`` dict, never a query string plus ``params=``: httpx
+    # *replaces* the URL's query with the mapping, which would drop ``bbox``
+    # and pass the test on the missing-parameter 422 instead of the guard.
+    response = client.get("/api/v1/events/points", params={"bbox": WORLD_BBOX, "author": "a%"})
     assert response.status_code == 422
 
 
@@ -252,9 +260,119 @@ def test_detail_404_for_soft_deleted_geo(db, author):
 # ── GET /geolocations/points ──────────────────────────────────────────────
 
 
+def test_points_requires_bbox():
+    """No ``bbox``, no payload: the map serves a viewport, and a bare
+    ``curl /events/points`` must not walk away with the catalog."""
+    response = client.get("/api/v1/events/points")
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "1,2,3",
+        "1,2,3,4,5",
+        "foo,bar,baz,qux",
+        "95.0,0.0,96.0,1.0",
+        "0.0,200.0,1.0,201.0",
+        "46.0,30.0,44.0,32.0",
+        "44.0,32.0,46.0,30.0",
+    ],
+    ids=[
+        "empty",
+        "too-few",
+        "too-many",
+        "non-numeric",
+        "latitude-out-of-range",
+        "longitude-out-of-range",
+        "south-above-north",
+        "west-east-of-east",
+    ],
+)
+def test_points_rejects_malformed_bbox(bad):
+    """Every rejection ``parse_bbox`` makes reaches the caller as a 422.
+
+    The empty case matters most: on ``/events`` an empty ``bbox`` reads as
+    "filter omitted", and if ``/points`` inherited that it would hand back
+    the whole catalog to ``?bbox=``.
+    """
+    response = client.get(f"/api/v1/events/points?bbox={bad}")
+    assert response.status_code == 422, f"expected 422 for bbox={bad!r}"
+
+
+def test_points_filters_by_bbox(db, author):
+    """The viewport, not the catalog, decides what comes back."""
+    inside = _make_geo(db, author=author, lat=48.5, lng=34.5)
+    outside = _make_geo(db, author=author, lat=10.0, lng=10.0)
+
+    response = client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0")
+    assert response.status_code == 200
+    ids = {row[0] for row in response.json()}
+    assert str(inside.id) in ids
+    assert str(outside.id) not in ids
+
+
+def test_points_cache_keys_on_bbox(db, author):
+    """Two viewports must not share a cache entry.
+
+    Without ``bbox`` in the key, the first viewport's payload would be
+    served for every later one, so the map would render another region's
+    pins (and the required parameter would buy nothing).
+    """
+    _make_geo(db, author=author, lat=48.5, lng=34.5)
+    _make_geo(db, author=author, lat=10.0, lng=10.0)
+
+    ukraine = client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0")
+    africa = client.get("/api/v1/events/points?bbox=5.0,5.0,15.0,15.0")
+    assert ukraine.headers.get("x-cache") == "MISS"
+    assert africa.headers.get("x-cache") == "MISS", "a different viewport must MISS"
+    assert ukraine.content != africa.content
+    # The same viewport twice still warms, so the key is bbox-aware, not
+    # bbox-poisoned.
+    assert client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0").headers["x-cache"] == "HIT"
+
+
+def test_points_cache_hits_across_one_grid_cell(db, author):
+    """Two viewports inside one grid cell share a cache entry.
+
+    Client boxes carry ~11 m precision, so keying on them raw would miss on
+    nearly every request and let one caller cycle a low decimal to evict the
+    whole LRU. ``snap_bbox`` grows each box outward onto the server grid
+    before it is keyed, so a jitter smaller than a cell warms the same entry.
+    """
+    _make_geo(db, author=author, lat=48.5, lng=34.5)
+
+    first = client.get("/api/v1/events/points?bbox=45.01,30.01,49.99,39.99")
+    second = client.get("/api/v1/events/points?bbox=45.02,30.02,49.98,39.98")
+    assert first.headers.get("x-cache") == "MISS"
+    assert second.headers.get("x-cache") == "HIT", "same grid cell must share an entry"
+    assert first.content == second.content
+
+
+def test_points_cache_key_covers_bbox():
+    """The builder itself separates two boxes under an identical filter set."""
+    from app.routers.events.read import _build_points_cache_key
+
+    def key(bbox: tuple[float, float, float, float]) -> str:
+        return _build_points_cache_key(
+            bbox=bbox,
+            conflict=None,
+            capture_source=None,
+            tag=None,
+            event_date_from=None,
+            event_date_to=None,
+            submitted_from=None,
+            submitted_to=None,
+            author=None,
+        )
+
+    assert key((45.0, 30.0, 50.0, 40.0)) != key((5.0, 5.0, 15.0, 15.0))
+
+
 def test_points_returns_compact_shape(db, author):
     geo = _make_geo(db, author=author, lat=48.5, lng=34.5)
-    response = client.get("/api/v1/events/points")
+    response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert response.status_code == 200
     body = response.json()
     matching = [row for row in body if row[0] == str(geo.id)]
@@ -286,7 +404,7 @@ def test_points_null_event_date_serialises_as_null(db, author):
     db.commit()
     db.refresh(geo)
 
-    response = client.get("/api/v1/events/points")
+    response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert response.status_code == 200
     row = next(r for r in response.json() if r[0] == str(geo.id))
     assert row[3] is None
@@ -296,7 +414,7 @@ def test_points_null_event_date_serialises_as_null(db, author):
 def test_points_excludes_soft_deleted(db, author):
     live = _make_geo(db, author=author)
     dead = _make_geo(db, author=author, deleted=True)
-    response = client.get("/api/v1/events/points")
+    response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     ids = {row[0] for row in response.json()}
     assert str(live.id) in ids
     assert str(dead.id) not in ids
@@ -319,7 +437,7 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     db.refresh(geo)
 
     # /points — the compact map payload marks it with the detected flag.
-    points = client.get("/api/v1/events/points").json()
+    points = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
     point = next(r for r in points if r[0] == str(geo.id))
     assert point[5] == 1
 
@@ -343,9 +461,9 @@ def test_points_cache_miss_then_hit(db, author):
     bypass (e.g. someone removing the `points_cache.set` call).
     """
     _make_geo(db, author=author)
-    first = client.get("/api/v1/events/points")
+    first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert first.headers.get("x-cache") == "MISS"
-    second = client.get("/api/v1/events/points")
+    second = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert second.headers.get("x-cache") == "HIT"
     # Bytes identical too — the cached path returns the same bytes object.
     assert first.content == second.content
@@ -360,8 +478,8 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     _make_geo(db, author=author, tags=[free_tag])
     _make_geo(db, author=author)
 
-    unfiltered = client.get("/api/v1/events/points")
-    filtered = client.get(f"/api/v1/events/points?tag={free_tag.name}")
+    unfiltered = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
+    filtered = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={free_tag.name}")
     assert unfiltered.headers.get("x-cache") == "MISS"
     assert filtered.headers.get("x-cache") == "MISS", "different filter must MISS"
     assert len(filtered.json()) < len(unfiltered.json())
@@ -381,24 +499,25 @@ def test_points_filters_media_and_demo(db, author):
     db.commit()
 
     def ids(query: str) -> set[str]:
-        return {row[0] for row in client.get(f"/api/v1/events/points{query}").json()}
+        url = f"/api/v1/events/points?bbox={WORLD_BBOX}&{query}"
+        return {row[0] for row in client.get(url).json()}
 
-    media_ids = ids("?media=video")
+    media_ids = ids("media=video")
     assert str(with_video.id) in media_ids
     assert str(plain.id) not in media_ids
 
-    nodemo_ids = ids("?hide_demo=true")
+    nodemo_ids = ids("hide_demo=true")
     assert str(plain.id) in nodemo_ids
     assert str(demo.id) not in nodemo_ids
 
     # The unfiltered payload marks the demo row so the filter panel knows
     # whether to offer its hide-demo toggle at all.
-    all_rows = client.get("/api/v1/events/points").json()
+    all_rows = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
     assert next(r for r in all_rows if r[0] == str(demo.id))[6] == 1
     assert next(r for r in all_rows if r[0] == str(plain.id))[6] == 0
 
     # A junk media value is rejected (422), not silently treated as "no match".
-    assert client.get("/api/v1/events/points?media=bogus").status_code == 422
+    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&media=bogus").status_code == 422
 
 
 def test_points_cache_key_builder_is_separator_safe():
@@ -414,6 +533,7 @@ def test_points_cache_key_builder_is_separator_safe():
     from app.routers.events.read import _build_points_cache_key
 
     colliding_a = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=["a:b"],
         capture_source=None,
         tag=None,
@@ -424,6 +544,7 @@ def test_points_cache_key_builder_is_separator_safe():
         author=None,
     )
     colliding_b = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=["a"],
         capture_source=None,
         tag=["b"],
@@ -439,6 +560,7 @@ def test_points_cache_key_builder_is_separator_safe():
     # builder swap so a regression doesn't silently turn every request
     # into a MISS.
     same_a = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
         capture_source=None,
         tag=None,
@@ -449,6 +571,7 @@ def test_points_cache_key_builder_is_separator_safe():
         author=None,
     )
     same_b = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
         capture_source=None,
         tag=None,
@@ -464,6 +587,7 @@ def test_points_cache_key_builder_is_separator_safe():
     # differ only by capture_source must not collide (guards against the
     # new bucket being dropped from the hashed payload).
     cs_a = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=None,
         capture_source=["Satellite"],
         tag=None,
@@ -474,6 +598,7 @@ def test_points_cache_key_builder_is_separator_safe():
         author=None,
     )
     cs_b = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         conflict=None,
         capture_source=["Drone"],
         tag=None,
@@ -505,6 +630,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
 
     buckets = ("conflict", "capture_source", "tag")
     forward = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         **{bucket: ["alpha", "beta"]},
         **{other: None for other in buckets if other != bucket},
         event_date_from=None,
@@ -514,6 +640,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
         author=None,
     )
     reverse = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
         **{bucket: ["beta", "alpha"]},
         **{other: None for other in buckets if other != bucket},
         event_date_from=None,
@@ -542,7 +669,9 @@ def test_points_or_within_free_tag_list(db, author):
     geo_none = _make_geo(db, author=author)
 
     try:
-        response = client.get(f"/api/v1/events/points?tag={tag_a.name}&tag={tag_b.name}")
+        response = client.get(
+            f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={tag_a.name}&tag={tag_b.name}"
+        )
         assert response.status_code == 200
         ids = {row[0] for row in response.json()}
         assert str(geo_a.id) in ids
@@ -572,7 +701,7 @@ def test_points_or_within_conflict_list(db, author):
 
     try:
         response = client.get(
-            f"/api/v1/events/points?conflict={conflict_a.name}&conflict={conflict_b.name}"
+            f"/api/v1/events/points?bbox={WORLD_BBOX}&conflict={conflict_a.name}&conflict={conflict_b.name}"
         )
         assert response.status_code == 200
         ids = {row[0] for row in response.json()}
@@ -605,7 +734,9 @@ def test_points_and_across_conflict_and_tag(db, author):
     free_only = _make_geo(db, author=author, tags=[free])
 
     try:
-        response = client.get(f"/api/v1/events/points?conflict={conflict.name}&tag={free.name}")
+        response = client.get(
+            f"/api/v1/events/points?bbox={WORLD_BBOX}&conflict={conflict.name}&tag={free.name}"
+        )
         assert response.status_code == 200
         ids = {row[0] for row in response.json()}
         assert str(matching.id) in ids
@@ -626,7 +757,7 @@ def test_points_single_tag_value_back_compat(db, author, free_tag):
     geo = _make_geo(db, author=author, tags=[free_tag])
     _make_geo(db, author=author)
 
-    response = client.get(f"/api/v1/events/points?tag={free_tag.name}")
+    response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={free_tag.name}")
     assert response.status_code == 200
     ids = {row[0] for row in response.json()}
     assert str(geo.id) in ids

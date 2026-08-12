@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -6,11 +6,12 @@ from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.event import PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
+from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
@@ -66,6 +67,7 @@ def update_my_profile(
 
 
 @router.get("/{username}", response_model=UserProfile)
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def get_user_profile(
     request: Request,
@@ -101,6 +103,7 @@ def get_user_profile(
 
 
 @router.get("/{username}/stats", response_model=UserStatsRead)
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def get_user_stats(
     request: Request,
@@ -151,18 +154,27 @@ def unfollow_user(
 
 
 @router.get("/{username}/events", response_model=PaginatedEvents)
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def get_user_geolocations(
     request: Request,
     username: str,
-    page: int = 1,
-    per_page: int = 20,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
     db: Session = Depends(get_db),
 ):
+    """One analyst's events, newest event date first, capped at 100 per page.
+
+    Offset-paged rather than cursor-paged: the ordering the profile reads by
+    is ``event_date``, which is nullable and editable and so cannot key a
+    cursor, and one analyst's output is not the enumeration surface the
+    catalog list is. The pager's page is bounded either way.
+    """
     user = _get_live_user_or_404(db, username)
 
-    if per_page > 100:
-        per_page = 100
+    # Over-asking is clamped, not rejected; ``ge=1`` above keeps a page below 1
+    # from reaching Postgres as a negative OFFSET (a 500).
+    per_page = page_size(per_page)
 
     total = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
 
@@ -181,7 +193,12 @@ def get_user_geolocations(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
-        .order_by(Event.event_date.desc())
+        # ``event_date`` alone is neither unique nor non-null, so an OFFSET
+        # walk over it lets Postgres return tied rows in any order it likes
+        # and a page can repeat a row the previous one already served, or skip
+        # one. ``created_at, id`` breaks every tie and makes the ordering
+        # total.
+        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

@@ -11,6 +11,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     title: "Strike on ammunition depot",
     event_coords: { lat: 48.015883, lng: 37.802411 },
     capture_source_coords: null,
+    archived_source_url: null,
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
@@ -234,7 +235,7 @@ describe("EventDetailBody", () => {
     ).toBeTruthy();
   });
 
-  it("renders video media as a controllable <video>, not an image", () => {
+  it("renders video media in the shared player, not as an image", () => {
     const { container } = render(
       <EventDetailBody
         geo={geoFixture({
@@ -256,13 +257,10 @@ describe("EventDetailBody", () => {
         variant="panel"
       />
     );
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
-    // `#t=0.1` + preload="metadata" paints the first frame as a poster
-    // (MediaGallery's video treatment) instead of a black box before play.
-    expect(video).toHaveAttribute("src", "/local-storage/clip.mp4#t=0.1");
-    expect(video).toHaveAttribute("preload", "metadata");
-    expect(video).toHaveAttribute("controls");
+    // A clip plays in `VideoPlayer`, so the tile is the player's controller
+    // rather than a bare native element with `controls`.
+    expect(container.querySelector("media-controller")).not.toBeNull();
+    expect(container.querySelector("video[controls]")).toBeNull();
     // The image sibling still renders through next/image.
     expect(screen.getByRole("img")).toBeInTheDocument();
   });
@@ -382,6 +380,32 @@ describe("EventDetailBody", () => {
   it("omits the Event time row when no time is set", () => {
     render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
+  });
+
+  it("offers the archived copy beside the source once one exists", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          archived_source_url: "https://web.archive.org/web/2026/t.me/channel/12345",
+        })}
+        variant="page"
+      />
+    );
+    // Named for a screen reader, not by the "archived" label alone.
+    const archived = screen.getByRole("link", { name: "Archived copy of the source" });
+    expect(archived).toHaveAttribute(
+      "href",
+      "https://web.archive.org/web/2026/t.me/channel/12345"
+    );
+    // The original stays the primary link; the archive is the fallback.
+    expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
+  });
+
+  it("shows no archived link before the worker has a capture", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    expect(
+      screen.queryByRole("link", { name: "Archived copy of the source" })
+    ).not.toBeInTheDocument();
   });
 
   it("omits the Secondary sources row when the event declares no mirror", () => {

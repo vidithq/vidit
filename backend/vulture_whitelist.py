@@ -50,6 +50,12 @@ fulfilled  # schemas/admin.py
 closed  # schemas/admin.py
 deleted_requests  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
+events_scanned  # schemas/admin.py AdminMaintenanceResponse
+links_enqueued  # schemas/admin.py AdminMaintenanceResponse
+analysts_notified  # schemas/admin.py AdminMaintenanceResponse
+drafts_pending  # schemas/admin.py AdminMaintenanceResponse
+digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
+archived_source_url  # schemas/event.py EventRead
 machine_total  # schemas/admin.py AdminDetectionStatsRead
 machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead

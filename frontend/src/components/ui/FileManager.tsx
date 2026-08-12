@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Plus, Upload, X } from "lucide-react";
+
+import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
 export interface FileManagerItem {
   /** Stable React key. */
@@ -18,6 +20,9 @@ export interface FileManagerItem {
    *  the archive import's file card), which then renders inert, as before. */
   viewContent?: ReactNode;
   viewLabel?: string;
+  /** Extra controls for the open lightbox (a download for a persisted row),
+   *  placed beside its close button. */
+  viewActions?: ReactNode;
 }
 
 interface FileManagerProps {
@@ -62,15 +67,6 @@ export function FileManager({
   const [viewingKey, setViewingKey] = useState<string | null>(null);
   const viewingItem = items.find((it) => it.key === viewingKey && it.viewContent);
 
-  useEffect(() => {
-    if (!viewingItem) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setViewingKey(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewingItem]);
-
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     // Reset so re-picking the same file still fires onChange.
@@ -105,29 +101,17 @@ export function FileManager({
       it.content
     );
 
+  // The overlay shell is the shared <MediaOverlay>, so a staged file in this
+  // picker and a persisted one on a detail page open into the same viewer.
+  // Only the enlarged rendering is the caller's (`viewContent`).
   const lightbox = viewingItem ? (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={viewingItem.viewLabel ?? "View"}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
-      onClick={() => setViewingKey(null)}
+    <MediaOverlay
+      label={viewingItem.viewLabel ?? "View"}
+      actions={viewingItem.viewActions}
+      onClose={() => setViewingKey(null)}
     >
-      <div
-        className="relative max-h-full max-w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {viewingItem.viewContent}
-        <button
-          type="button"
-          onClick={() => setViewingKey(null)}
-          aria-label="Close"
-          className="absolute -top-3 -right-3 flex size-8 items-center justify-center rounded-full bg-neutral-950/90 text-neutral-200 transition-colors hover:text-white"
-        >
-          <X size={16} />
-        </button>
-      </div>
-    </div>
+      {viewingItem.viewContent}
+    </MediaOverlay>
   ) : null;
 
   const dropzone = onAddFiles ? (

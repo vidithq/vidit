@@ -1,3 +1,5 @@
+import math
+import time
 from pathlib import Path
 
 import sentry_sdk
@@ -10,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.middleware.csrf import CSRFMiddleware
-from app.ratelimit import limiter
+from app.ratelimit import AUTHENTICATED_READ_SCOPE, limiter
 from app.routers import (
     admin,
     auth,
@@ -46,11 +48,48 @@ app = FastAPI(
 app.state.limiter = limiter
 
 
+# The two limiter layers fail very differently: a per-endpoint limit is a
+# throttle measured in seconds, the per-user read quota is a fixed hour-long
+# window a client cannot shorten by slowing down. One generic body for both
+# left a caller unable to tell "wait a moment" from "come back after the
+# hour", so each carries the typed `{"code", "message"}` envelope the rest of
+# the API uses for machine-readable errors, and every 429 carries
+# `Retry-After` in seconds so the wait is a number rather than a guess.
+RATE_LIMITED_CODE = "rate_limited"
+READ_QUOTA_EXCEEDED_CODE = "read_quota_exceeded"
+
+
+def _retry_after_seconds(request: Request) -> int | None:
+    """Whole seconds until the exceeded window resets, or ``None`` if unknown.
+
+    slowapi records the limit it rejected on as ``request.state.
+    view_rate_limit``, a ``(item, [key, scope])`` pair, immediately before
+    raising. That is enough to ask the storage when the bucket resets, which
+    beats reporting the window length: a caller that spent its quota 50
+    minutes ago is told to wait 10 minutes, not 60.
+    """
+    current = getattr(request.state, "view_rate_limit", None)
+    if not current:
+        return None
+    item, args = current
+    reset_at, _remaining = limiter.limiter.get_window_stats(item, *args)
+    return max(1, math.ceil(reset_at - time.time()))
+
+
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    quota = getattr(exc.limit, "scope", "") == AUTHENTICATED_READ_SCOPE
+    code = READ_QUOTA_EXCEEDED_CODE if quota else RATE_LIMITED_CODE
+    message = (
+        "Hourly read quota exceeded. Try again later."
+        if quota
+        else "Rate limit exceeded. Try again later."
+    )
+    retry_after = _retry_after_seconds(request)
     return JSONResponse(
         status_code=429,
-        content={"detail": "Rate limit exceeded. Try again later."},
+        content={"detail": {"code": code, "message": message}},
+        headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
     )
 
 
@@ -170,6 +209,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # `allow_headers` governs the request direction only. Without this, a
+    # cross-origin browser client cannot read `Retry-After` off a 429 and the
+    # header the limiter handler emits is invisible to exactly the callers
+    # meant to back off on it. `Link` is the same problem on the read path: it
+    # carries the next-page cursor of every capped list, so a browser client
+    # that cannot read it cannot page past the first 100 rows.
+    expose_headers=["Retry-After", "Link"],
 )
 
 

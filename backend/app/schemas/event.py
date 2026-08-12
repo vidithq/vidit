@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import BeforeClosedStatus, EventStatus
@@ -90,6 +90,82 @@ class EventCloseRequest(BaseModel):
     close_reason: str = Field(min_length=1, max_length=2000)
 
 
+# Largest page ``GET /events/detections`` will serve, whatever ``per_page``
+# asks for. Kept equal to ``services/pagination.MAX_PAGE_SIZE`` (the clamp the
+# endpoint applies); stated here as a literal so schemas stay import-free of
+# the service layer.
+DETECTIONS_MAX_PER_PAGE = 100
+
+# How many drafts one batch completion may carry: a full page of the queue, so
+# whatever the analyst can see they can publish in one call, and no client can
+# ask for an unbounded loop of row-level transactions.
+MAX_COMPLETION_ROWS = DETECTIONS_MAX_PER_PAGE
+
+# How many conflicts one batch may set. The selection shares them, and an
+# import dominated by more than a handful of conflicts is not a batch.
+MAX_COMPLETION_CONFLICTS = 10
+
+
+class BatchCompletionRowCreate(BaseModel):
+    """One draft in a batch completion: which row, and the capture source its
+    analyst picked for it."""
+
+    event_id: uuid.UUID
+    capture_source_tag_id: uuid.UUID
+
+
+class BatchCompletionCreate(BaseModel):
+    """Body of ``POST /events/batch-complete``.
+
+    The conflict set is chosen once for the whole selection (an import is
+    usually dominated by one conflict); the capture source varies row to row.
+    """
+
+    conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
+    rows: list[BatchCompletionRowCreate] = Field(min_length=1, max_length=MAX_COMPLETION_ROWS)
+
+    @field_validator("rows")
+    @classmethod
+    def _reject_duplicate_events(
+        cls, rows: list[BatchCompletionRowCreate]
+    ) -> list[BatchCompletionRowCreate]:
+        """One row per draft: a repeated ``event_id`` is a 422, not a retry.
+
+        The second occurrence can only fail (the first published the draft, so
+        the row is no longer ``detected``), which would inflate ``failed`` and
+        report a state error against a draft that did publish. A client sending
+        the same id twice is asking two different things of one row anyway,
+        since each occurrence carries its own capture source.
+        """
+        seen: set[uuid.UUID] = set()
+        for row in rows:
+            if row.event_id in seen:
+                raise ValueError(f"Duplicate event_id in rows: {row.event_id}")
+            seen.add(row.event_id)
+        return rows
+
+
+class BatchCompletionRowRead(BaseModel):
+    """One row's outcome. ``code`` / ``message`` are NULL when the draft
+    published; otherwise they carry the same stable error code the single-row
+    geolocate would have answered with, so the queue can render the reason
+    against that row."""
+
+    event_id: uuid.UUID
+    published: bool
+    code: str | None
+    message: str | None
+
+
+class BatchCompletionRead(BaseModel):
+    """Response of ``POST /events/batch-complete``: the per-row verdicts in the
+    order they were submitted, plus the two headline counts."""
+
+    published: int
+    failed: int
+    rows: list[BatchCompletionRowRead]
+
+
 class EventRead(BaseModel):
     id: uuid.UUID
     title: str
@@ -106,6 +182,10 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
+    # The archived copy of ``source_url``, rendered as the fallback once the
+    # original dies. NULL until the archival worker has a capture (and on a
+    # source-less draft). Required-nullable: the key is always serialised.
+    archived_source_url: str | None
     # Mirrors of the same media on other networks (or other same-POV posts), in
     # the order the submitter gave them. Empty when the event declares none;
     # always serialised. Unlike ``source_url`` these are not the frozen evidence

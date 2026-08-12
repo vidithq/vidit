@@ -22,6 +22,7 @@ from app.schemas.event import CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
 from app.schemas.user import AuthorRef
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.source_archive import archived_url_for
 from app.services.thumbnails import pick_thumbnail
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
@@ -32,6 +33,8 @@ SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,
+    "event_not_found": 404,
+    "coordinates_required": 400,
     "invalid_coordinates": 400,
     "invalid_proof": 400,
     "proof_image_required": 400,
@@ -130,6 +133,10 @@ def build_event_read(
         event_coords=coords_or_none(lat, lng),
         capture_source_coords=coords_or_none(capture_lat, capture_lng),
         source_url=geo.source_url,
+        # Reads the eager-loaded ``archives`` collection; callers that skip
+        # that load pay a lazy query per event, so every detail loader carries
+        # it (see ``_DETAIL_LOADS``).
+        archived_source_url=archived_url_for(geo, geo.source_url),
         # Ordered by the relationship's ``position``, so the read order is the
         # order the submitter gave.
         secondary_source_urls=[link.url for link in geo.source_links],

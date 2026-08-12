@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { cleanNumber } from "@/lib/coordinates";
 import {
-  cleanNumber,
   createEvent,
   createEventRequest,
   FIELD_LABELS,

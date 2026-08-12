@@ -43,7 +43,7 @@ PARENT_ID = "9300000000000000002"
 TAGGED_ID = "9300000000000000003"
 BARE_ID = "9300000000000000004"
 FREETEXT_ID = "9300000000000000005"
-MISSING_T_ID = "9300000000000000006"
+NO_TITLE_ID = "9300000000000000006"
 MISSING_C_ID = "9300000000000000007"
 MISSING_S_ID = "9300000000000000008"
 REPLY_BARE_ID = "9300000000000000010"
@@ -52,6 +52,7 @@ RELAY_TAGGED_ID = "9300000000000000012"
 RELAY_TAGGED_TWICE_ID = "9300000000000000013"
 FOREIGN_PARENT_TAG_ID = "9300000000000000014"
 BARE_FMT_ID = "9300000000000000015"
+DERIVED_TITLE_ID = "9300000000000000016"
 SOURCE_ID = "9300000000000000042"
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
@@ -105,11 +106,28 @@ BODIES = {
         "text": "@viditbot Geolocated 55.751200, 37.617600 near the bridge https://t.co/src",
         "entities": _SOURCE_ENTITIES,
     },
-    MISSING_T_ID: {
-        "id_str": MISSING_T_ID,
+    # C: and S: pinned, no T: line and no prose line either: nothing to
+    # title the draft with, from a marker or from the shape.
+    NO_TITLE_ID: {
+        "id_str": NO_TITLE_ID,
         "created_at": "2026-03-11T15:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/src",
+        "entities": _SOURCE_ENTITIES,
+    },
+    # The dominant field shape: a prose paragraph, then the C: and S:
+    # markers. T: is optional, so the first prose line titles the draft.
+    DERIVED_TITLE_ID: {
+        "id_str": DERIVED_TITLE_ID,
+        "created_at": "2026-03-11T15:30:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "@viditbot\n"
+            "Air defence position on the rooftop\n"
+            "C: 35.700886, 51.391665\n"
+            "S: https://t.co/src\n"
+            "Rooftop layout matches"
+        ),
         "entities": _SOURCE_ENTITIES,
     },
     MISSING_C_ID: {
@@ -480,8 +498,26 @@ async def test_free_text_coordinates_are_not_a_fallback(db, linked_owner):
     assert ledger.reply_tweet_id == "777"
 
 
-@pytest.mark.parametrize("mention_id", [MISSING_T_ID, MISSING_C_ID, MISSING_S_ID])
-async def test_each_missing_marker_fails_the_mention(db, linked_owner, mention_id):
+async def test_marker_mention_without_a_title_marker_creates_draft(db, linked_owner):
+    # C: and S: pinned, no T:: the prose line above them titles the draft and
+    # leaves the proof, the same positional rule the bare shape applies.
+    outcome, _, _, _ = await _run(db, [DERIVED_TITLE_ID])
+
+    assert outcome.events_created == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.title == "Air defence position on the rooftop"
+    point = to_shape(event.event_coords)
+    assert point.y == pytest.approx(35.700886)
+    assert point.x == pytest.approx(51.391665)
+    assert event.source_url == _SOURCE_URL
+    proof = json.dumps(event.proof)
+    assert "Rooftop layout matches" in proof
+    assert "Air defence position" not in proof
+    assert "C:" not in proof and "S:" not in proof
+
+
+@pytest.mark.parametrize("mention_id", [NO_TITLE_ID, MISSING_C_ID, MISSING_S_ID])
+async def test_each_missing_field_fails_the_mention(db, linked_owner, mention_id):
     outcome, _, posted, _ = await _run(db, [mention_id])
 
     assert outcome.no_detection == 1

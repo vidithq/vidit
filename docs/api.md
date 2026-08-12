@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side-effect: `login` on success, `failed_login` on any rejected login (with `user_id` only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL since no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches so the audit trail is a "rate of requests" signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best-effort inside a SAVEPOINT; an audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses, and frontend `apiFetch` ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalises all three. (1) **Plain string**, `{"detail": "Invite code not found"}` for direct `HTTPException` raises in routers (e.g. `DELETE /admin/invite-codes/{id}` 404). (2) **Pydantic validation array**, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}` for request-body / query-string validation failures (FastAPI default). (3) **Typed envelope**, `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` for business-rule errors raised from the service layer and translated by the router. Used by every `/auth/register` + `/auth/confirm-registration` + `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`), every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`), and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file/media codes via `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` / `detected`. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). The `code` is the stable contract surface: branch on it, not on `message`. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -33,7 +33,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/change-password` | 🔒 | Authenticated password rotation; requires current password |
 | **Events** | | | |
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
-| GET | `/events/points` | 🌐 | Compact map-points tuples (cached) |
+| GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
 | GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
@@ -45,6 +45,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
+| POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Owner withdraws a request or rejects a detection (→ `closed`) |
 | POST | `/events/{id}/investigate` | 🔒 | "I'm working on this" (idempotent, multi-analyst) |
 | DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
@@ -80,14 +81,20 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
+| POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
+| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
 
 ---
 
 ## Rate limits
 
-One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)), keyed per client IP, the right-most `X-Forwarded-For` entry (see [`engineering.md`](engineering.md) → *Particularities*). Limits are per-endpoint; there is **no global floor**, so any endpoint absent from this table is unlimited. Buckets are in-process (one replica today). An over-quota request gets `429` with `{"detail": "Rate limit exceeded. Try again later."}`. `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev). Every read limit in this table is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)); write limits have wiring-level coverage only.
+One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py)) enforces two layers: the per-endpoint limits in the table below, and the per-user read quota below it. Table limits are keyed per client IP (the right-most `X-Forwarded-For` entry, see [`engineering.md`](engineering.md) → *Particularities*) unless the row says otherwise. They have **no global floor**, so any endpoint absent from the table is unlimited. Buckets are in-process (one replica today). `RATE_LIMIT_ENABLED=false` disables every limit at once (local dev).
 
-| Endpoint | Limit (per IP) |
+A rejected request gets `429` with the typed envelope, `{"detail": {"code": "rate_limited", "message": "…"}}` for a table limit and `{"detail": {"code": "read_quota_exceeded", "message": "…"}}` for the read quota, plus a `Retry-After` header in whole seconds counted to the exact bucket reset. Branch on the `code`: the two waits differ by orders of magnitude, a per-minute throttle clearing in seconds against a fixed hour-long quota window.
+
+Every limit on this page is behaviorally pinned (N requests answer, N+1 returns `429`; see [`test_rate_limits.py`](../backend/tests/test_rate_limits.py)), so dropping one fails CI. One tier is not: `POST /auth/login`'s 30/hour. Reaching it requires exhausting the 5/min tier six times over, and the minute tier answers `429` from request 6, so no test can drive the hourly bucket to its own wall.
+
+| Endpoint | Limit |
 |---|---|
 | **Auth** | |
 | `POST /auth/login` | 5/min + 30/hour |
@@ -108,6 +115,7 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
 | `POST /events/{id}/geolocate` | 30/min |
+| `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -122,9 +130,21 @@ One shared **slowapi** limiter ([`app/ratelimit.py`](../backend/app/ratelimit.py
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
-| `POST /admin/maintenance/reap-*` | 30/hour |
+| `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+
+### Per-user read quota
+
+**1000/hour per account**, one bucket shared by the whole read surface rather than one per endpoint:
+
+`GET /events` · `/events/{id}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/timeline`
+
+The key is `User.id`, read from the signature-verified session cookie, so a forged `sub` cannot mint a bucket and the cap travels with the account instead of with its source address: the per-IP table caps one client, this caps one account's read throughput wherever it reads from. The two layers stack, and the table limit is evaluated first, so a request it rejects costs the account nothing.
+
+This is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so a caller that drops the session cookie leaves the quota behind and lands back under the per-IP limits alone. What the quota adds is a ceiling the per-IP table cannot express: a bound on how much any one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
+
+Anonymous callers are exempt from the quota and keep the per-IP limits alone. So does every authenticated read absent from the list above, `GET /auth/me` and the read-only admin probes among them. Two are absent by decision rather than by nature, `GET /events/import-archive/{job_id}` and `GET /events/import-from-tweet/media`: a single import flow polls both hard enough to drain a shared budget on one import. Exempting them cannot widen the catalog surface, because neither returns catalog rows. The archive poll returns one job's own progress counters, and the media proxy returns bytes for a URL the caller already holds, one attachment per call, with no listing, search, or enumeration to walk.
 
 ---
 
@@ -342,7 +362,8 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422 (used to silently 500 from Postgres `InvalidDatetimeFormat`). |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Same 422-on-malformed shape as the event-date filters. |
 | `author` | string | Exact, case-insensitive match on owner username ("this analyst's work"; pick real handles via [`GET /search/authors`](#get-searchauthors)). Whitelisted to `[A-Za-z0-9_-]{1,50}`, any other character returns 422. |
-| `limit` | int | Default 200, must be in [1, 200], 422 otherwise. |
+| `limit` | int | Rows per page, default 100. Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. A malformed value returns 422. See [Pagination](#pagination). |
 
 **Response 200:**
 ```json
@@ -378,6 +399,8 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 ]
 ```
 
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists. Ordering is `created_at DESC, id DESC`; see [Pagination](#pagination).
+
 `status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
@@ -386,16 +409,33 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
 
-Results are cached in-memory for 60s per unique filter combination; the response
-echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. Rate-limited
-to 60/min/IP.
+`bbox` is **required**: the payload tracks the area asked for, and the map's own
+calls are viewport-sized. Nothing caps that area, since the map legitimately asks
+for the world box at low zoom. Unlike on `GET /events`, an empty `?bbox=` is a
+rejection here, not an omitted filter.
 
-**Query params:** `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`
-`submitted_from`, `submitted_to`, `author` (see `GET /events` for semantics), plus
-map-only filters `media` (repeatable, `?media=image&media=video`, matches a geolocation
-carrying any attachment of a listed type; values are constrained to `image`/`video`, else
-422) and `hide_demo` (exclude demo rows). The date
-params are still accepted but the map now filters dates client-side from the payload.
+Results are cached in-memory for 60s per unique `bbox` + filter combination; the
+response echoes `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
+Rate-limited to 60/min/IP.
+
+The `bbox` is snapped outward onto a fixed 0.05° server-side grid before it is
+keyed and queried. Two viewports inside one cell therefore share a cache entry
+and get a payload covering the snapped (slightly larger) box, which always
+contains the box requested.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `bbox` | string, **required** | `south,west,north,east` (four comma-separated floats), same shape and validation as on `GET /events`: latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. Missing, empty, or malformed → 422. Boxes crossing the antimeridian are not modelled: the map widens such a viewport to the full longitude range rather than splitting it into two calls. |
+| `media` | string (repeatable) | `?media=image&media=video`, matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
+| `hide_demo` | bool | Exclude demo rows. |
+| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | See `GET /events` for semantics. The date params are accepted, and the map filters dates client-side off the payload instead of sending them. |
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Points inside `bbox` |
+| 422 | `bbox` missing or malformed, a malformed `event_date_from` / `event_date_to` / `submitted_from` / `submitted_to` (ISO `YYYY-MM-DD`), or a `media` / `author` value outside its domain |
 
 **Response 200:**
 ```json
@@ -642,6 +682,7 @@ Full detail for a single event, in any lifecycle state.
   "event_coords": { "lat": 48.123, "lng": 37.456 },
   "capture_source_coords": null,
   "source_url": "https://t.me/channel/12345",
+  "archived_source_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
   "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
@@ -696,7 +737,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source_url` is the Wayback (or archive.today) copy of that `source_url`, `null` on a `detected` draft (whose links are archived when it is published), on a source-less row, and until the archival worker has a capture; the detail surface renders it as a fallback link beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
@@ -763,8 +804,11 @@ The owner "Detections" queue: the caller's machine-`detected` events awaiting a 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -854,6 +898,67 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
 | 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
+
+---
+
+### `POST /events/batch-complete` 🔒
+
+Publish a selection of your own `detected` drafts in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine draft already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
+
+Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a `detected` draft; the rest of the selection still publishes. Publishing a row credits the caller in `event_geolocators` and queues its links for archival, exactly as a single geolocate does.
+
+Owner-only: every targeted draft must belong to the caller. There is no fulfil-someone-else's-row path here, unlike `requested` events.
+
+**Request body:**
+```json
+{
+  "conflict_ids": ["3f1c…"],
+  "rows": [
+    { "event_id": "9a2b…", "capture_source_tag_id": "77de…" },
+    { "event_id": "5c04…", "capture_source_tag_id": "9b31…" }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the drafts held |
+| `rows` | object[] | 1-100 drafts, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row the caller owns; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
+
+**Response 200:** verdicts in the order the rows were submitted.
+```json
+{
+  "published": 1,
+  "failed": 1,
+  "rows": [
+    { "event_id": "9a2b…", "published": true, "code": null, "message": null },
+    { "event_id": "5c04…", "published": false, "code": "proof_image_required",
+      "message": "At least one proof image is required" }
+  ]
+}
+```
+
+A `200` does **not** mean everything published; read `published` / `failed`. A failed row's `code`:
+
+| `code` | Case |
+|--------|------|
+| `source_url_required` | The draft carries no source URL |
+| `coordinates_required` | The import found no location in the thread, so the draft carries no point |
+| `media_required` | The draft carries no `source` media row |
+| `proof_image_required` | The stored proof body holds no image (the imported thread carried no annotation media) |
+| `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or is not a `capture_source` tag |
+| `invalid_state` | The row is no longer `detected` |
+| `event_not_found` | Hard-deleted, or soft-deleted by an admin |
+| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the draft is untouched, so the row is retriable as-is |
+
+The first six are the same stable codes the single-row geolocate answers with, and they are checked in the order above.
+
+**Errors** (whole-call, evaluated before any row publishes):
+| Code | Case |
+|------|------|
+| 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
+| 403 | A targeted draft belongs to another analyst; nothing is published |
+| 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
 
 ---
 
@@ -1031,6 +1136,8 @@ List tags. By default returns only tags referenced by at least one **live** geol
 | `category` | string | `capture_source` or `free` |
 | `curated` | bool | When `true`, return the full curated `capture_source` taxonomy **regardless of live usage**, ignoring the default usage filter. Conflicts are no longer tags; the full conflict list lives on [`GET /conflicts`](#get-conflicts). |
 
+Returned whole, not paged: the pickers and the filter panel hydrate this vocabulary and filter it client-side. Bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)).
+
 **Response 200:**
 ```json
 [
@@ -1075,7 +1182,7 @@ Create a tag. Only `free` tags are creatable; `capture_source` is server-managed
 
 ### `GET /conflicts`
 
-List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Rate-limited to 60/min/IP.
+List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Returned whole rather than paged, and bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)). Rate-limited to 60/min/IP.
 
 **Query params:**
 | Param | Type | Description |
@@ -1191,13 +1298,15 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 ### `GET /users/{username}/events`
 
-Geolocations for a given analyst.
+Geolocations for a given analyst, newest event date first, ties broken by `created_at DESC, id DESC`.
+
+Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
 
 **Response 200:**
 ```json
@@ -1257,13 +1366,16 @@ Unfollow another analyst. Idempotent. Unknown username returns 404 rather than n
 
 ### `GET /timeline` 🔒
 
-Activity feed of geolocations submitted by analysts the current user follows, ordered by event date descending.
+Activity feed of geolocations submitted by analysts the current user follows, newest submission first (`created_at DESC, id DESC`).
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** same `PaginatedEvents` shape as `GET /users/{username}/events`.
 
@@ -1279,7 +1391,7 @@ Activity feed of geolocations submitted by analysts the current user follows, or
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>16 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance reapers). Expand for full contracts.</summary>
+<summary>18 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1352,7 +1464,17 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 
 ### `GET /admin/invite-codes` 🛡️
 
-List every invite code (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+
+Capped and cursor-paged like the catalog lists (the table is append-only, one row per invite ever issued).
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Rows per page, default 100. Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:**
 ```json
@@ -1567,6 +1689,24 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 { "pending_registrations_deleted": 7 }
 ```
 
+### `POST /admin/maintenance/enqueue-source-archival` 🛡️
+
+Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live non-demo events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
+
+**Response 200:**
+```json
+{ "events_scanned": 412, "links_enqueued": 173 }
+```
+
+### `POST /admin/maintenance/send-completion-digests` 🛡️
+
+Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+
+**Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
+```json
+{ "analysts_notified": 4, "drafts_pending": 137, "digest_send_failures": 0 }
+```
+
 </details>
 
 ---
@@ -1607,7 +1747,21 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 
 ### Pagination
 
-Endpoints that return paginated lists use this shape:
+**Every list response is capped at 100 rows**, whatever `limit` / `per_page` asks for. Over-asking is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to a `(created_at, id)` pair). A cursor that decodes cleanly is honoured whether or not the server minted it: it names a position in an ordering, carries no authorisation, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
+
+**Reading past the first page** means following a cursor. A capped response whose next page holds at least one row carries a `Link` header:
+
+```
+Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
+```
+
+The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and is not a value callers need to construct.
+
+Cursor-paged: [`GET /events`](#get-events), `GET /events/detections`, `GET /timeline`, `GET /admin/invite-codes`. All four order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
+
+`page` / `per_page` still work on the endpoints that had them, and a `cursor` supersedes `page` when both arrive.
+
+Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
 {
   "items": [],
@@ -1617,7 +1771,15 @@ Endpoints that return paginated lists use this shape:
 }
 ```
 
-`GET /events` and `GET /events/points` are intentionally **unpaginated** today. A hard server-side `LIMIT` will land before public read access.
+`page` echoes what the caller sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at whatever `page` the request carried (`1` by default) on every page of the walk. Read `Link` for position, not `page`. `total` is the match count either way.
+
+Three kinds of list sit outside the cursor scheme:
+
+- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor. `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common.
+- [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
+- [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
+
+[`GET /events/points`](#get-eventspoints) returns no rows in the list sense and takes no cursor: it is bounded by the required `bbox`, so the requested area decides the payload size.
 
 ### Errors
 
