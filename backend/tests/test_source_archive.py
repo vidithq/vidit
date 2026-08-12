@@ -16,7 +16,14 @@ import pytest
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.database import SessionLocal
-from app.models.event import SOURCE_URL_MAX_LENGTH, STATUS_DETECTED, Event, EventSourceLink
+from app.models.event import (
+    SOURCE_URL_MAX_LENGTH,
+    STATUS_CLOSED,
+    STATUS_DETECTED,
+    STATUS_REQUESTED,
+    Event,
+    EventSourceLink,
+)
 from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import source_archive
@@ -84,6 +91,30 @@ def event(db, owner):
         proof=_proof_doc(PROOF_LINK),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    yield row
+    db.expire_all()
+    db.query(Event).filter(Event.id == row.id).delete(synchronize_session=False)
+    db.commit()
+
+
+@pytest.fixture
+def published_event(db, owner):
+    """A published event, the only kind the catalog backfill sweeps.
+
+    ``requested`` is the cheapest published state to build (no coordinate, no
+    geolocation stamp). What the backfill reads is that the row is public, not
+    which published state it holds.
+    """
+    row = Event(
+        owner_id=owner.id,
+        title="Published event",
+        source_url=SOURCE,
+        proof=_proof_doc(PROOF_LINK),
+        status=STATUS_REQUESTED,
     )
     db.add(row)
     db.commit()
@@ -322,44 +353,81 @@ def test_enqueue_event_best_effort_swallows_any_failure(db, event, monkeypatch):
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
 
 
-def test_enqueue_catalog_covers_an_event_written_before_archival(db, event):
+def test_enqueue_catalog_covers_an_event_written_before_archival(db, published_event):
     result = source_archive.enqueue_catalog(db)
     assert result["links_enqueued"] >= 2
     assert (
         db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
+        .filter(
+            SourceArchive.event_id == published_event.id,
+            SourceArchive.original_url == SOURCE,
+        )
         .count()
         == 1
     )
 
 
-def test_enqueue_catalog_skips_events_it_already_covered(db, event):
-    """The scan is an anti-join, so a sweep converges: what the first click
-    enqueued drops out of the second click's scan entirely."""
-    source_archive.enqueue_event(db, event)
-    assert event.id not in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
+def test_enqueue_catalog_skips_events_it_already_covered(db, published_event):
+    """The scan converges: an event whose links are all queued drops out of the
+    next click's scan entirely."""
+    source_archive.enqueue_event(db, published_event)
+    assert published_event.id not in {
+        row[0] for row in source_archive._backfill_chunk(db, None, 500)
+    }
     source_archive.enqueue_catalog(db)
     assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 2
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == published_event.id).count() == 2
 
 
-def test_enqueue_catalog_covers_an_event_whose_only_links_are_secondary(db, owner):
-    """A draft born without a source URL and without proof citations still
-    carries mirrors; the backfill reads them from the child table, which the
-    keyset column walk does not select."""
+def test_enqueue_catalog_reaches_a_mirror_on_an_already_queued_event(db, published_event):
+    """The widened scan's reason to exist: an event whose ``source_url`` is
+    already queued still qualifies while one of its mirrors is not.
+
+    A scan keyed on "carries no archival rows at all" would drop this event and
+    the mirror would never be captured. The mirrors come from the child table,
+    which the chunk's keyset column walk does not select, so this also pins
+    that read.
+    """
+    source_archive.enqueue_catalog(db)
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
+
+    _with_mirrors(db, published_event, MIRROR)
+    assert published_event.id in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 1
+    rows = db.query(SourceArchive).filter(SourceArchive.event_id == published_event.id).all()
+    assert {(r.original_url, r.origin) for r in rows} == {
+        (SOURCE, "source_url"),
+        (MIRROR, "secondary_source"),
+        (PROOF_LINK, "proof_link"),
+    }
+    # And it converges again: nothing is left unqueued.
+    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
+
+
+def test_enqueue_catalog_leaves_an_unpublished_draft_alone(db, event):
+    """Save Page Now is public and timestamped, so a machine ``detected`` draft
+    is not submitted by the admin backfill either; its promotion enqueues it."""
+    _with_mirrors(db, event, MIRROR)
+    assert event.id not in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
+    source_archive.enqueue_catalog(db)
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
+
+
+def test_enqueue_catalog_leaves_a_rejected_draft_alone(db, owner):
+    """A draft closed off ``detected`` is a rejected detection: it was never
+    published, so closing it does not hand its links to a public archive."""
     row = Event(
         owner_id=owner.id,
-        title="Mirrors only",
-        source_url=None,
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
+        title="Rejected detection",
+        source_url=SOURCE,
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_DETECTED,
+        closed_at=datetime.now(UTC),
     )
     db.add(row)
     db.commit()
-    _with_mirrors(db, row, MIRROR)
     source_archive.enqueue_catalog(db)
-    queued = db.query(SourceArchive).filter(SourceArchive.event_id == row.id).all()
-    assert [(r.original_url, r.origin) for r in queued] == [(MIRROR, "secondary_source")]
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
 
 
 def test_enqueue_catalog_skips_demo_rows(db, owner):
@@ -370,8 +438,7 @@ def test_enqueue_catalog_skips_demo_rows(db, owner):
         title="Demo event",
         source_url="https://vidit.app/demo-data",
         is_demo=True,
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
+        status=STATUS_REQUESTED,
     )
     db.add(row)
     db.commit()
@@ -379,15 +446,15 @@ def test_enqueue_catalog_skips_demo_rows(db, owner):
     assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
 
 
-def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, event):
-    """A source-less draft yields nothing to enqueue; the keyset cursor still
-    advances, or the sweep would re-read it forever."""
+def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, published_event):
+    """An event whose stored source the allowlist refuses yields nothing to
+    enqueue, so it never leaves the scan; the keyset cursor still advances, or
+    the sweep would re-read it forever and never reach the rest."""
     row = Event(
         owner_id=owner.id,
-        title="Source-less draft",
-        source_url=None,
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
+        title="Unarchivable source",
+        source_url="ftp://files.example.org/clip.mp4",
+        status=STATUS_REQUESTED,
     )
     db.add(row)
     db.commit()
@@ -395,7 +462,10 @@ def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, event):
     assert result["events_scanned"] >= 2
     assert (
         db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
+        .filter(
+            SourceArchive.event_id == published_event.id,
+            SourceArchive.original_url == SOURCE,
+        )
         .count()
         == 1
     )

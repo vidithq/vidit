@@ -12,8 +12,11 @@ recreated rather than altered, which is what Postgres offers.
 
 Downgrade narrows the domain back and deletes the ``secondary_source`` rows,
 since a row the constraint would reject cannot survive the swap. Only queue
-entries are lost; the links themselves stay in ``event_source_links`` and a
-backfill re-enqueues them.
+entries are lost: the links themselves stay in ``event_source_links``, and on
+a re-upgrade the catalog backfill re-enqueues them for every published event,
+since its scan selects an event holding a secondary link with no matching
+``source_archives`` row. An unpublished ``detected`` draft is not swept (the
+backfill is published-only); its own promotion enqueues them instead.
 """
 
 from typing import Sequence, Union

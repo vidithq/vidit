@@ -83,12 +83,15 @@ ARCHIVAL_BACKFILL_LIMIT = 5000
 
 
 def enqueue_source_archival(db: Session) -> dict[str, int]:
-    """Queue archival for the links of every live event that lacks it.
+    """Queue archival for the links of every live published event that lacks it.
 
     The catalog backfill: events created before archival existed carry no
-    ``source_archives`` rows, so nothing would ever capture their sources.
-    Enqueue only, no HTTP: the worker drains the queue at its own paced rate,
-    so the click returns immediately whatever the catalog size.
+    ``source_archives`` rows, so nothing would ever capture their sources, and
+    an event that gained a link after its first enqueue carries rows for the
+    others but not for it. Published rows only, since submitting a link to Save
+    Page Now announces it. Enqueue only, no HTTP: the worker drains the queue
+    at its own paced rate, so the click returns immediately whatever the
+    catalog size.
     """
     return source_archive_service.enqueue_catalog(db, limit=ARCHIVAL_BACKFILL_LIMIT)
 
