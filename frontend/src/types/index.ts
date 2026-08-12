@@ -1,19 +1,16 @@
 import type { components } from "@/lib/api-types";
 
-/** Public author summary on an event / request / search hit. */
-type Author = components["schemas"]["AuthorRef"];
-
 /**
- * Linktree-style profile links. Each value is free-form — handle
- * (`@username`) or URL — and the frontend decides whether to render it as a
+ * Linktree-style profile links. Each value is free-form: a handle
+ * (`@username`) or a URL, and the frontend decides whether to render it as a
  * clickable anchor by sniffing for an http scheme.
+ *
+ * Aliased from the dedicated backend schema, which is per-platform typed. The
+ * read payloads (`UserRead` / `UserProfile`) declare their `external_links`
+ * column as a loose `{[key: string]: string | null}` map, so this is the
+ * narrow shape the frontend keys off.
  */
-export interface ExternalLinks {
-  x?: string | null;
-  discord?: string | null;
-  website?: string | null;
-  github?: string | null;
-}
+export type ExternalLinks = components["schemas"]["ExternalLinks"];
 
 export interface User {
   id: string;
@@ -88,84 +85,36 @@ export function filterPointsByStatus(points: MapPoint[], statuses: string[]): Ma
   return points.filter((p) => statuses.includes(pointLifecycleStatus(p)));
 }
 
+/** One coordinate pair parsed out of a tweet's text. */
+export type TweetImportCoord = components["schemas"]["TweetImportCoord"];
+
+/** One attachment on a parsed tweet. ``kind`` is the shared media-file kind (a
+ *  stored `Media`'s ``media_type``); ``origin`` is ``op`` for the analyst's own
+ *  attachment (→ proof imagery) and ``quote`` for the quoted-tweet attachment
+ *  (→ primary geolocation media). */
+export type TweetImportMedia = components["schemas"]["TweetImportMedia"];
+
 /**
- * Pre-fill payload from POST /events/import-from-tweet. Best-effort:
- * any field can be empty if the tweet lacks the signal (e.g. no coords in
- * the text → ``parsed_coords`` is ``[]``).
+ * Pre-fill payload from `POST /events/import-from-tweet`. Best-effort: any
+ * field can be empty if the tweet lacks the signal (no coords in the text →
+ * ``parsed_coords`` is ``[]``). What the form does with the nullable fields:
+ *
+ *  - ``source_url``: the quoted tweet's URL when the OP quote-retweets, an
+ *    off-platform footage link when the OP declares one, otherwise null (no
+ *    fallback to the OP's own URL). Bound directly to the Source URL field,
+ *    which starts empty when null.
+ *  - ``original_tweet_url``: the OP's URL, kept separately so the proof body
+ *    can still credit the analyst when ``source_url`` points at the quote.
+ *  - ``source_posted_at``: the source's own post instant. Null when unknown;
+ *    the field starts empty rather than falling back to ``posted_at`` (the
+ *    OP's own date, which the form truncates to a UTC date).
+ *  - ``secondary_source_urls``: the post's other declared links, ordered and
+ *    already capped at the event's secondary-link ceiling.
+ *  - ``media``: OP + quoted-tweet attachments combined, ``origin`` telling
+ *    primary from proof.
+ *  - ``detected``: the machine path's view of the same tweet, for inspection.
  */
-export interface TweetImportCoord {
-  lat: number;
-  lng: number;
-}
-
-/** Media file kind, shared by attachment payloads (a tweet-import media's
- *  ``kind`` and a stored ``Media``'s ``media_type``). Derived from the backend
- *  ``MediaType`` literal via the OpenAPI spec. */
-export type MediaType = components["schemas"]["MediaRead"]["media_type"];
-
-export interface TweetImportMedia {
-  kind: MediaType;
-  remote_url: string;
-  content_type: string;
-  /** ``op`` = analyst's own attachment (→ proof imagery), ``quote`` = the
-   *  quoted-tweet attachment (→ primary geolocation media). */
-  origin: "op" | "quote";
-}
-
-export interface TweetImportQuotedTweet {
-  source_url: string;
-  author_handle: string;
-  tweet_text: string;
-}
-
-/** One machine detection the pipeline would produce from a pasted tweet: the
- *  no-persist preview output (zero DB writes). The UI doesn't render this yet
- *  (the analyst-facing preview is deferred); the type keeps the contract
- *  honest with the backend ``DetectedGeolocPreview`` schema. */
-export interface DetectedGeolocPreview {
-  lat: number;
-  lng: number;
-  title: string;
-  proof_text: string;
-  detected_from_url: string;
-  /** Null when the tweet's timestamp is unusable. */
-  event_date: string | null;
-  /** The mirrors the detection would carry (the post's other declared links). */
-  secondary_source_urls: string[];
-  media: TweetImportMedia[];
-}
-
-export interface TweetImportResponse {
-  /** SOURCE URL: the quoted tweet's URL when the OP quote-retweets, an
-   *  off-platform footage link when the OP declares one, otherwise null (no
-   *  fallback to the OP's own URL). The form binds this directly to its
-   *  ``Source URL`` field, starting empty when null. */
-  source_url: string | null;
-  /** The post's other declared links, ordered and already capped at the
-   *  event's secondary-link ceiling. Prefills the form's secondary source
-   *  rows; empty when the post linked nothing else. */
-  secondary_source_urls: string[];
-  /** The OP's URL, kept separately so the proof body can still credit
-   *  the analyst even when ``source_url`` points at the quoted tweet. */
-  original_tweet_url: string;
-  /** ISO 8601 timestamp from X. The form truncates to date in UTC. */
-  posted_at: string;
-  /** The source's own post instant (the quote's timestamp), ISO 8601. Null
-   *  when the source has no known date; the form field starts empty rather
-   *  than falling back to ``posted_at`` (the OP's own date). */
-  source_posted_at: string | null;
-  author_handle: string;
-  tweet_text: string;
-  suggested_title: string;
-  parsed_coords: TweetImportCoord[];
-  /** OP + quoted tweet media combined; ``origin`` tells the frontend
-   *  which is primary vs proof. */
-  media: TweetImportMedia[];
-  quoted_tweet: TweetImportQuotedTweet | null;
-  /** The machine path's view of the same tweet: the detections the pipeline
-   *  would produce, for inspection. Empty when no coordinate parses. */
-  detected: DetectedGeolocPreview[];
-}
+export type TweetImportResponse = components["schemas"]["TweetImportResponse"];
 
 /**
  * One candidate from the submit-form duplicate probe

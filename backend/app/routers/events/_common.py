@@ -5,8 +5,9 @@ none imports another:
 
 * the typed-error → HTTP envelope (``_raise_event_error`` over the
   ``code → status`` map),
-* :func:`build_event_read`, the single ``EventRead`` assembler shared by
-  create, detail, and the lifecycle mutations, and
+* :func:`build_event_read` and :func:`build_event_list`, the single
+  ``EventRead`` / ``EventList`` assemblers shared by every response site
+  (including the users and social routers, which import from here), and
 * the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
   every serializer leans on.
 """
@@ -17,8 +18,9 @@ from pydantic import StringConstraints
 
 from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
-from app.schemas.event import CoordsRead, EventRead
+from app.schemas.event import CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
+from app.schemas.user import AuthorRef
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.source_archive import archived_url_for
 from app.services.thumbnails import pick_thumbnail
@@ -67,6 +69,40 @@ def thumbnail_media(geo: Event) -> MediaRead | None:
     """
     row = pick_thumbnail(geo.media)
     return MediaRead.model_validate(row) if row is not None else None
+
+
+def build_event_list(
+    geo: Event,
+    *,
+    lat: float | None,
+    lng: float | None,
+    investigator_count: int | None = None,
+    investigators_sample: list[AuthorRef] | None = None,
+) -> EventList:
+    """Assemble the ``EventList`` card for one event.
+
+    The list-payload twin of :func:`build_event_read`, shared by every paged
+    surface (the events index, a user's geolocations, the follow timeline) so
+    a card is the same shape wherever it renders. Coordinates come in
+    re-projected by the caller, same contract as :func:`build_event_read`.
+    The investigator aggregates default to ``None``: only the requested view
+    computes them (see ``services.events.investigator_aggregates``).
+    """
+    return EventList(
+        id=geo.id,
+        title=geo.title,
+        event_coords=coords_or_none(lat, lng),
+        event_date=geo.event_date,
+        is_demo=geo.is_demo,
+        status=geo.status,
+        before_closed_status=geo.before_closed_status,
+        owner=geo.owner,
+        media=thumbnail_media(geo),
+        tags=geo.tags,
+        conflicts=geo.conflicts,
+        investigator_count=investigator_count,
+        investigators_sample=investigators_sample,
+    )
 
 
 def build_event_read(

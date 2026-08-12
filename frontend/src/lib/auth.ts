@@ -16,7 +16,16 @@ export function readCsrfToken(): string | null {
   const prefix = `${CSRF_COOKIE}=`;
   for (const part of document.cookie.split("; ")) {
     if (part.startsWith(prefix)) {
-      return decodeURIComponent(part.slice(prefix.length));
+      const value = part.slice(prefix.length);
+      // A malformed percent sequence must not throw during AuthContext boot
+      // (hasSessionCookie routes through here), so a URIError falls back to
+      // the raw slice. Backend tokens are URL-safe, so a real one never needs
+      // decoding and the echo still matches.
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
     }
   }
   return null;
@@ -34,9 +43,7 @@ export function readCsrfToken(): string | null {
  * every logged-out page load.
  */
 export function hasSessionCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  const prefix = `${CSRF_COOKIE}=`;
-  return document.cookie.split("; ").some((part) => part.startsWith(prefix));
+  return readCsrfToken() !== null;
 }
 
 /**

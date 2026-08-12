@@ -1,6 +1,8 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+
 import { LocationPicker } from "./LocationPicker";
 
 const baseProps = {
@@ -54,11 +56,11 @@ describe("LocationPicker", () => {
     // inputs (via CoordinateInputs' `invalid` prop): the section's own label
     // turns red too, not just the inputs.
     expect(screen.getByText("Subject").closest("span")).toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
     // The optional camera position never gets flagged.
     expect(screen.getByText("Camera position").closest("span")).not.toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
   });
 

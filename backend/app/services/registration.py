@@ -32,10 +32,12 @@ from sqlalchemy.orm import Session
 from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
+from app.schemas.admin import InviteCodeStatus
 from app.services.auth import (
     consume_invite_code,
     hash_password,
     hash_token,
+    invite_code_status,
     maybe_promote_admin,
     validate_invite_code,
 )
@@ -58,6 +60,17 @@ class RegistrationError(Exception):
 
 class InvalidInviteError(RegistrationError):
     code = "invalid_invite"
+
+
+# The user-facing wording per non-``active`` invite status. Confirm-time
+# rejection names the actual reason (the holder waited out the expiry, an
+# admin pulled the code, a sibling pending row took the single use), so the
+# analyst knows whether to ask for a fresh invite or just re-register.
+_INVITE_REJECTION: dict[InviteCodeStatus, str] = {
+    "revoked": "Invite code has been revoked.",
+    "expired": "Invite code has expired.",
+    "exhausted": "Invite code has already been used.",
+}
 
 
 class EmailAlreadyRegisteredError(RegistrationError):
@@ -351,18 +364,13 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     if invite is None:
         db.commit()
         raise InvalidInviteError("Invite code is no longer valid.")
-    if invite.revoked_at is not None:
+    status = invite_code_status(invite)
+    if status != "active":
+        # ``exhausted`` here means a sibling pending row (the same code pasted
+        # into two browsers, or re-issued to two analysts) consumed the single
+        # use first.
         db.commit()
-        raise InvalidInviteError("Invite code has been revoked.")
-    if invite.expires_at is not None and invite.expires_at < now:
-        db.commit()
-        raise InvalidInviteError("Invite code has expired.")
-    if invite.use_count >= invite.max_uses:
-        # Single-use code already consumed by a sibling pending row.
-        # Release the address so the loser can re-register under a fresh
-        # invite instead of looping against a dead one for 24h.
-        db.commit()
-        raise InvalidInviteError("Invite code has already been used.")
+        raise InvalidInviteError(_INVITE_REJECTION[status])
 
     user = User(
         id=uuid.uuid4(),

@@ -153,7 +153,7 @@ export function buildSeedProof(
       },
     ],
   });
-  if (parsed.quoted_tweet !== null) {
+  if (parsed.quoted_tweet) {
     content.push({
       type: "paragraph",
       content: [

@@ -12,7 +12,6 @@ import secrets
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.types import ASGIApp
 
 from app.services.auth_cookies import (
     CSRF_COOKIE,
@@ -47,9 +46,6 @@ CSRF_EXEMPT_PATHS = frozenset(
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
-
     async def dispatch(self, request: Request, call_next):
         if request.method in SAFE_METHODS:
             return await call_next(request)

@@ -146,9 +146,12 @@ class AdminUserDeleteResponse(BaseModel):
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
     # A request is a ``requested`` event since the merge, so a single event
-    # cascade covers both located and requested rows — one count, no separate
-    # request tally. ``media_count`` covers every file (source and proof roles).
+    # cascade covers both located and requested rows: one count, no separate
+    # request tally.
     cascaded_geolocations: int = 0
+    # Storage objects swept across those events: every media file, source and
+    # proof roles alike, hero / thumb derivatives included. Runs higher than
+    # the media-row count an event delete reports for the same footage.
     media_count: int = 0
 
 
@@ -163,7 +166,9 @@ class AdminEventDeleteResponse(BaseModel):
     title: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
-    # Every file swept, source and proof roles alike.
+    # Media rows dropped, source and proof roles alike. Rows, not storage
+    # objects: the sweep also removes each row's hero / thumb derivatives,
+    # which this count does not include.
     media_count: int = 0
 
 

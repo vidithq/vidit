@@ -3,11 +3,9 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { apiFetch } from "@/lib/api";
 import { cleanNumber } from "@/lib/coordinates";
 import {
   createEvent,
@@ -23,17 +21,20 @@ import {
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import type { Conflict, EventDetail, Tag } from "@/types";
+import type { EventDetail } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TweetImportBanner } from "@/components/event/TweetImportBanner";
-import { TagPicker } from "@/components/ui/TagPicker";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
-import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
+import { XGlyph } from "@/components/ui/BrandGlyphs";
+import {
+  TaxonomyFields,
+  useTaxonomy,
+} from "@/components/geolocations/TaxonomyFields";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
@@ -75,17 +76,6 @@ const GEO_EXTRA_REQS: Req[] = [
   { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
   { label: FIELD_LABELS.capture_source_tag, keys: ["capture_source_tag"] },
 ];
-
-// Inline X logo for the "From an X post" segment: lucide ships none, and the
-// segment reads clearer with the platform's own mark than a generic import
-// glyph. Sized to sit with the lucide icons on the sibling segments.
-function XGlyph({ size = 14 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  );
-}
 
 // The readiness tick-list: one Pill per requirement, a check once met and a
 // hollow ring while pending. Met reads as the `secondary` (outline) tone,
@@ -173,32 +163,13 @@ function SubmitForm() {
   // (work started but not finished) or stay imageless.
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [files, setFiles] = useState<File[]>([]);
-  // useState, not useApiResource: TagPicker appends newly created tags
-  // via setTags, so the list is server-seeded but locally mutable.
-  const [tags, setTags] = useState<Tag[]>([]);
-  // Curated selectors (conflict + capture source). Required only to publish a
-  // geolocation, so the field itself is optional; the readiness list names them
-  // as part of the geolocation floor. `?curated=true` includes the full taxonomy
-  // even for options no live geolocation references yet, else the first analyst
-  // to use one couldn't pick it. A failed load surfaces a recoverable error.
-  const {
-    data: curatedTagsData,
-    error: curatedTagsError,
-    refetch: reloadCuratedTags,
-  } = useApiResource<Tag[]>("/tags?curated=true");
-  // Stable reference (the `?? []` fallback would otherwise mint a new array each
-  // render), so the readiness memos below don't recompute on unrelated renders.
-  const curatedTags = useMemo(() => curatedTagsData ?? [], [curatedTagsData]);
+  // Curated selectors (conflict + capture source) plus the free-tag list, all
+  // owned by the shared taxonomy block. Required only to publish a geolocation,
+  // so the field itself is optional; the readiness list names them as part of
+  // the geolocation floor.
+  const taxonomy = useTaxonomy();
+  const { curatedTags } = taxonomy;
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  // The conflicts referential, fetched whole once (~800 rows) and filtered
-  // client-side by the picker's typeahead. Same recoverable-error treatment as
-  // the curated tags: a failed load blocks publish with a retryable banner.
-  const {
-    data: conflictsData,
-    error: conflictsError,
-    refetch: reloadConflicts,
-  } = useApiResource<Conflict[]>("/conflicts");
-  const conflicts = useMemo(() => conflictsData ?? [], [conflictsData]);
   const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>([]);
 
   // In-form red outlines: set when a publish action is clicked while its floor
@@ -228,12 +199,6 @@ function SubmitForm() {
     setFiles,
     setProof,
   });
-
-  useEffect(() => {
-    apiFetch<Tag[]>("/tags")
-      .then(setTags)
-      .catch(() => {});
-  }, []);
 
   // Load the request being fulfilled to pre-fill + lock inherited fields.
   // On fulfilment the server forces only `source_url` + media from the request;
@@ -419,8 +384,7 @@ function SubmitForm() {
   // Readiness drives the button emphasis: full strength when the floor is met,
   // dimmed while short. The button stays clickable so a click still flags the
   // gaps red; the dim is the at-a-glance "not ready yet" cue.
-  const geoReady =
-    geoMissing.length === 0 && curatedTags.length > 0 && conflicts.length > 0;
+  const geoReady = geoMissing.length === 0 && taxonomy.blockedMessage === null;
   const reqReady = reqMissing.length === 0;
 
   // Both publish handlers clear the shared error banner (the two mutations share
@@ -436,12 +400,8 @@ function SubmitForm() {
     // A pending / failed curated-tags or conflicts load is a recoverable state,
     // not a missing field: surface it in the banner (Retry lives above) instead
     // of the outlines.
-    if (curatedTags.length === 0 || conflicts.length === 0) {
-      geolocationMutation.setError(
-        curatedTagsError || conflictsError
-          ? "Couldn’t load the required Conflict and Capture source options. Use Retry above, or reload the page."
-          : "Still loading the required Conflict and Capture source options. Give it a moment and try again."
-      );
+    if (taxonomy.blockedMessage !== null) {
+      geolocationMutation.setError(taxonomy.blockedMessage);
       return;
     }
     if (geoMissing.length) {
@@ -632,25 +592,10 @@ function SubmitForm() {
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 
-        {curatedTagsError && (
-          <CuratedTagsError
-            onRetry={reloadCuratedTags}
-            message="Couldn't load the Capture source options."
-          />
-        )}
-        {conflictsError && (
-          <CuratedTagsError
-            onRetry={reloadConflicts}
-            message="Couldn't load the Conflict options."
-          />
-        )}
-        <TagPicker
-          tags={tags}
-          setTags={setTags}
-          curatedTags={curatedTags}
+        <TaxonomyFields
+          taxonomy={taxonomy}
           selectedTagIds={selectedTagIds}
           setSelectedTagIds={setSelectedTagIds}
-          conflicts={conflicts}
           selectedConflictIds={selectedConflictIds}
           setSelectedConflictIds={setSelectedConflictIds}
           conflictInvalid={invalidKeys.has("conflict_tag")}

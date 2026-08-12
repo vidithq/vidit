@@ -47,6 +47,17 @@ function apiIsLocal() {
   }
 }
 
+/**
+ * Hostname of the CDN production media is served from, read the same way as
+ * NEXT_PUBLIC_API_URL above (Next loads the `.env*` files before evaluating
+ * this config). Set NEXT_PUBLIC_MEDIA_HOST to point a deployment at its own
+ * distribution; the fallback is the distribution declared in
+ * `docs/engineering.md`. Bare hostname, no scheme or path: it feeds the
+ * `remotePatterns` entry below.
+ */
+const mediaHost =
+  process.env.NEXT_PUBLIC_MEDIA_HOST || "d10w3bld05vsky.cloudfront.net";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
@@ -89,13 +100,13 @@ const nextConfig = {
   // avatar URLs from arbitrary domains, etc.) must stay outside the
   // optimizer and render as plain `<img>` instead.
   //
-  // Production media lives behind the CloudFront distribution declared in
-  // CLAUDE.md (`d10w3bld05vsky.cloudfront.net`). Local dev media is served
-  // by the FastAPI backend's `/local-storage/...` route (see
+  // Production media lives behind the CloudFront distribution `mediaHost`
+  // resolves to (see above). Local dev media is served by the FastAPI
+  // backend's `/local-storage/...` route (see
   // `backend/app/services/storage.py::LocalStorage`).
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "d10w3bld05vsky.cloudfront.net" },
+      { protocol: "https", hostname: mediaHost },
       { protocol: "http", hostname: "localhost", port: "8000" },
     ],
     // Next 16's optimizer resolves each upstream host and refuses to fetch when

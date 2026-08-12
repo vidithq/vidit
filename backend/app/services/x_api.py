@@ -64,26 +64,35 @@ class Mention:
     in_reply_to_user_id: str | None = None
 
 
-def _get(
+def _json_request(
+    method: str,
     url: str,
     *,
-    params: dict[str, str],
-    bearer_token: str,
+    headers: dict[str, str],
+    params: dict[str, str] | None = None,
+    json_body: dict[str, object] | None = None,
+    ok_statuses: tuple[int, ...],
     client: httpx.Client | None,
 ) -> dict[str, object]:
-    headers = {
-        "Authorization": f"Bearer {bearer_token}",
-        "User-Agent": _USER_AGENT,
-    }
+    """Run one X API call and return its JSON object body.
+
+    The shared shell of every call this module makes: reuse the caller's
+    ``httpx.Client`` when there is one (the tests inject a mock transport
+    that way) or open a short-lived one, then fold every failure mode
+    (transport, unexpected status, unparseable or non-object body) into
+    :class:`XApiError` so no httpx type leaks past this module.
+    """
     try:
         if client is None:
             with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own_client:
-                resp = own_client.get(url, params=params, headers=headers)
+                resp = own_client.request(
+                    method, url, params=params, json=json_body, headers=headers
+                )
         else:
-            resp = client.get(url, params=params, headers=headers)
+            resp = client.request(method, url, params=params, json=json_body, headers=headers)
     except httpx.HTTPError as exc:
         raise XApiError(f"transport error: {exc}") from exc
-    if resp.status_code != 200:
+    if resp.status_code not in ok_statuses:
         raise XApiError(f"upstream returned {resp.status_code}: {resp.text[:200]}")
     try:
         body = resp.json()
@@ -92,6 +101,27 @@ def _get(
     if not isinstance(body, dict):
         raise XApiError("upstream returned non-object body")
     return body
+
+
+def _get(
+    url: str,
+    *,
+    params: dict[str, str],
+    bearer_token: str,
+    client: httpx.Client | None,
+) -> dict[str, object]:
+    """GET under the app-only bearer token (the billed read side)."""
+    return _json_request(
+        "GET",
+        url,
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "User-Agent": _USER_AGENT,
+        },
+        params=params,
+        ok_statuses=(200,),
+        client=client,
+    )
 
 
 def fetch_mentions(
@@ -264,34 +294,24 @@ def _post_user_context(
     """POST ``payload`` as JSON under OAuth 1.0a user context; return the
     parsed body. A JSON body stays out of the signature base string (RFC
     5849), so only the oauth_* params are signed."""
-    headers = {
-        "Authorization": _oauth1_header(
-            "POST",
-            url,
-            consumer_key=consumer_key,
-            consumer_secret=consumer_secret,
-            token=access_token,
-            token_secret=access_token_secret,
-        ),
-        "User-Agent": _USER_AGENT,
-    }
-    try:
-        if client is None:
-            with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own_client:
-                resp = own_client.post(url, json=payload, headers=headers)
-        else:
-            resp = client.post(url, json=payload, headers=headers)
-    except httpx.HTTPError as exc:
-        raise XApiError(f"transport error: {exc}") from exc
-    if resp.status_code not in (200, 201):
-        raise XApiError(f"upstream returned {resp.status_code}: {resp.text[:200]}")
-    try:
-        body = resp.json()
-    except ValueError as exc:
-        raise XApiError(f"unparseable upstream body: {exc}") from exc
-    if not isinstance(body, dict):
-        raise XApiError("upstream returned non-object body")
-    return body
+    return _json_request(
+        "POST",
+        url,
+        headers={
+            "Authorization": _oauth1_header(
+                "POST",
+                url,
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                token=access_token,
+                token_secret=access_token_secret,
+            ),
+            "User-Agent": _USER_AGENT,
+        },
+        json_body=payload,
+        ok_statuses=(200, 201),
+        client=client,
+    )
 
 
 def post_reply(

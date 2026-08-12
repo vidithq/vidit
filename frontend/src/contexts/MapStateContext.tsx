@@ -1,14 +1,29 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+
+import {
+  EMPTY_DATE_WINDOWS,
+  EMPTY_EVENT_FILTERS,
+  type DateWindows,
+  type EventFilterValues,
+} from "@/components/filters/EventFilterSections";
 
 /**
  * Persistent map-page state that survives navigation away and back.
  *
- * The home page lives at /; navigating to /profile/<x> or /events/<x>
- * unmounts /page.tsx and would lose its useState. Lifting state into a
- * context provider in the root layout (Providers) keeps it, so returning
- * from a deep page restores the view, selected point, and filter set.
+ * The map lives at /map; navigating to /profile/<x> or /events/<x> unmounts the
+ * page and would lose its useState. Lifting state into a context provider in the
+ * root layout (Providers) keeps it, so returning from a deep page restores the
+ * view, selected point, and filter set.
  */
 
 export interface ViewState {
@@ -30,46 +45,30 @@ interface MapState {
   selectedId: string | null;
   setSelectedId: (v: string | null) => void;
 
-  // Filters — every tag bucket is multi-select. Within a bucket the server
-  // applies OR (any-of); across buckets AND (a geo must satisfy each bucket
-  // independently). See `routers/events::_apply_filters`.
-  // Lifecycle status: geolocated / detected, the two the map serves. The
-  // points payload already flags each row (`POINT_DETECTED_FLAG`), so the
-  // chips filter client-side like the timelines, no refetch per pick.
-  selectedStatuses: string[];
-  setSelectedStatuses: (v: string[] | ((prev: string[]) => string[])) => void;
-  selectedConflicts: string[];
-  setSelectedConflicts: (v: string[] | ((prev: string[]) => string[])) => void;
-  selectedCaptureSources: string[];
-  setSelectedCaptureSources: (v: string[] | ((prev: string[]) => string[])) => void;
-  selectedTags: string[];
-  setSelectedTags: (v: string[] | ((prev: string[]) => string[])) => void;
-  // Media presence — image / video; a geo matches if it has any attachment of
-  // a selected type. ``hideDemo`` is a global toggle.
-  selectedMediaTypes: string[];
-  setSelectedMediaTypes: (v: string[] | ((prev: string[]) => string[])) => void;
-  hideDemo: boolean;
-  setHideDemo: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** The shared event-filter vocabulary, in the same shape the filter panel
+   *  speaks (`EventFilterValues`), so the map hands it straight through. Every
+   *  tag bucket is multi-select: the server applies OR within a bucket and AND
+   *  across them (see `routers/events::_apply_filters`). The lifecycle status
+   *  pick is the exception, applied client-side: the points payload already
+   *  flags each row (`POINT_DETECTED_FLAG`), so status chips filter in memory
+   *  with no refetch. */
+  filters: EventFilterValues;
+  setFilters: Dispatch<SetStateAction<EventFilterValues>>;
 
-  // Two timeline windows — Event date (event_date, point[3]) and Submitted
-  // date (created_at, point[4]). Each is an active date range filtered
-  // client-side from the per-point dates, so dragging and playback never
-  // refetch. Empty string = open at that edge (snaps to the data's min/max).
-  eventStart: string;
-  setEventStart: (v: string) => void;
-  eventEnd: string;
-  setEventEnd: (v: string) => void;
+  /** Event date (event_date, point[3]) and Added (created_at, point[4]). Both
+   *  filter client-side off the per-point dates, so dragging and playback never
+   *  refetch. */
+  dateWindows: DateWindows;
+  setDateWindows: Dispatch<SetStateAction<DateWindows>>;
   eventPlaying: boolean;
   setEventPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
-  submittedStart: string;
-  setSubmittedStart: (v: string) => void;
-  submittedEnd: string;
-  setSubmittedEnd: (v: string) => void;
-  submittedPlaying: boolean;
-  setSubmittedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
+  addedPlaying: boolean;
+  setAddedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
 
-  authorFilter: string;
-  setAuthorFilter: (v: string) => void;
+  /** Global toggle, not part of the shared vocabulary: the map is the only
+   *  surface that serves demo rows. */
+  hideDemo: boolean;
+  setHideDemo: (v: boolean | ((prev: boolean) => boolean)) => void;
 
   filtersOpen: boolean;
   setFiltersOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -80,19 +79,11 @@ const MapStateContext = createContext<MapState | null>(null);
 export function MapStateProvider({ children }: { children: ReactNode }) {
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
-  const [selectedCaptureSources, setSelectedCaptureSources] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>([]);
-  const [hideDemo, setHideDemo] = useState(false);
-  const [eventStart, setEventStart] = useState("");
-  const [eventEnd, setEventEnd] = useState("");
+  const [filters, setFilters] = useState<EventFilterValues>(EMPTY_EVENT_FILTERS);
+  const [dateWindows, setDateWindows] = useState<DateWindows>(EMPTY_DATE_WINDOWS);
   const [eventPlaying, setEventPlaying] = useState(false);
-  const [submittedStart, setSubmittedStart] = useState("");
-  const [submittedEnd, setSubmittedEnd] = useState("");
-  const [submittedPlaying, setSubmittedPlaying] = useState(false);
-  const [authorFilter, setAuthorFilter] = useState("");
+  const [addedPlaying, setAddedPlaying] = useState(false);
+  const [hideDemo, setHideDemo] = useState(false);
   // Collapsed by default: the map leads with the catalogue, and the pills row
   // (ActiveFilterPills) still surfaces any active filter while collapsed.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -107,51 +98,27 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setViewState,
       selectedId,
       setSelectedId,
-      selectedStatuses,
-      setSelectedStatuses,
-      selectedConflicts,
-      setSelectedConflicts,
-      selectedCaptureSources,
-      setSelectedCaptureSources,
-      selectedTags,
-      setSelectedTags,
-      selectedMediaTypes,
-      setSelectedMediaTypes,
-      hideDemo,
-      setHideDemo,
-      eventStart,
-      setEventStart,
-      eventEnd,
-      setEventEnd,
+      filters,
+      setFilters,
+      dateWindows,
+      setDateWindows,
       eventPlaying,
       setEventPlaying,
-      submittedStart,
-      setSubmittedStart,
-      submittedEnd,
-      setSubmittedEnd,
-      submittedPlaying,
-      setSubmittedPlaying,
-      authorFilter,
-      setAuthorFilter,
+      addedPlaying,
+      setAddedPlaying,
+      hideDemo,
+      setHideDemo,
       filtersOpen,
       setFiltersOpen,
     }),
     [
       viewState,
       selectedId,
-      selectedStatuses,
-      selectedConflicts,
-      selectedCaptureSources,
-      selectedTags,
-      selectedMediaTypes,
-      hideDemo,
-      eventStart,
-      eventEnd,
+      filters,
+      dateWindows,
       eventPlaying,
-      submittedStart,
-      submittedEnd,
-      submittedPlaying,
-      authorFilter,
+      addedPlaying,
+      hideDemo,
       filtersOpen,
     ]
   );

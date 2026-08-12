@@ -64,8 +64,6 @@ function InviteCodeRow({
   onRevoke: (id: string) => Promise<void>;
 }) {
   const [revoking, setRevoking] = useState(false);
-  // Shared copy behaviour (write, flash, reset); a failed write is a no-op,
-  // the code is on screen to copy by hand.
   const { copied, copy } = useCopyToClipboard();
 
   const canRevoke = invite.status === "active" || invite.status === "exhausted";

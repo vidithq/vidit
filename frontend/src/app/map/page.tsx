@@ -30,17 +30,9 @@ export default function HomePage() {
     setViewState,
     selectedId,
     setSelectedId,
-    selectedStatuses,
-    selectedConflicts,
-    selectedCaptureSources,
-    selectedTags,
-    selectedMediaTypes,
+    filters,
+    dateWindows,
     hideDemo,
-    eventStart,
-    eventEnd,
-    submittedStart,
-    submittedEnd,
-    authorFilter,
   } = useMapState();
 
   const [points, setPoints] = useState<MapPoint[]>([]);
@@ -78,15 +70,15 @@ export default function HomePage() {
     params.set("bbox", bbox);
     // Append each chip independently. The backend applies OR within a
     // bucket and AND across buckets (`routers/events::_apply_filters`).
-    selectedConflicts.forEach((c) => params.append("conflict", c));
-    selectedCaptureSources.forEach((s) => params.append("capture_source", s));
-    selectedTags.forEach((t) => params.append("tag", t));
-    selectedMediaTypes.forEach((m) => params.append("media", m));
+    filters.conflicts.forEach((c) => params.append("conflict", c));
+    filters.captureSources.forEach((s) => params.append("capture_source", s));
+    filters.tags.forEach((t) => params.append("tag", t));
+    filters.mediaTypes.forEach((m) => params.append("media", m));
     if (hideDemo) params.set("hide_demo", "true");
     // The commit-style Author section only applies gated values, but the
     // context could carry a stale one; the shared gate (same source as the
     // section's commit) keeps an ineligible value from 422ing the fetch.
-    const cleanAuthor = authorFilter.trim();
+    const cleanAuthor = filters.author.trim();
     if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
 
     setLoading(true);
@@ -108,14 +100,18 @@ export default function HomePage() {
         // read as a finished load while points are still coming.
         if (abortRef.current === controller) setLoading(false);
       });
+    // Per-bucket deps, not the whole `filters` object: the status pick and the
+    // date windows are applied client-side, so a status chip must not fire a
+    // refetch. A patch keeps the untouched buckets' array identities, so these
+    // only change when a server-side bucket actually does.
   }, [
     bbox,
-    selectedConflicts,
-    selectedCaptureSources,
-    selectedTags,
-    selectedMediaTypes,
+    filters.conflicts,
+    filters.captureSources,
+    filters.tags,
+    filters.mediaTypes,
+    filters.author,
     hideDemo,
-    authorFilter,
   ]);
 
   useEffect(() => {
@@ -199,14 +195,15 @@ export default function HomePage() {
   // instantly with no /points refetch. A point must match the status pick
   // (any-of, empty = all) and fall inside both windows.
   const visiblePoints = useMemo(() => {
-    const statusFiltered = filterPointsByStatus(points, selectedStatuses);
-    if (!eventStart && !eventEnd && !submittedStart && !submittedEnd) return statusFiltered;
+    const statusFiltered = filterPointsByStatus(points, filters.statuses);
+    const { eventFrom, eventTo, addedFrom, addedTo } = dateWindows;
+    if (!eventFrom && !eventTo && !addedFrom && !addedTo) return statusFiltered;
     const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
     const hi = (iso: string) => (iso ? Date.parse(`${iso}T23:59:59Z`) : Infinity);
-    const evLo = lo(eventStart);
-    const evHi = hi(eventEnd);
-    const subLo = lo(submittedStart);
-    const subHi = hi(submittedEnd);
+    const evLo = lo(eventFrom);
+    const evHi = hi(eventTo);
+    const subLo = lo(addedFrom);
+    const subHi = hi(addedTo);
     return statusFiltered.filter((p) => {
       // A missing/unparseable date must not silently drop the point (NaN fails
       // every comparison): treat that dimension as unconstrained, matching the
@@ -218,7 +215,7 @@ export default function HomePage() {
       const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
       return evOk && subOk;
     });
-  }, [points, selectedStatuses, eventStart, eventEnd, submittedStart, submittedEnd]);
+  }, [points, filters.statuses, dateWindows]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-neutral-950">

@@ -28,7 +28,7 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import build_event_read, coords_or_none, thumbnail_media
+from app.routers.events._common import build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
@@ -388,18 +388,10 @@ def list_events(
         counts, sample = investigator_aggregates(db, ids)
 
     return [
-        EventList(
-            id=geo.id,
-            title=geo.title,
-            event_coords=coords_or_none(lat, lng),
-            event_date=geo.event_date,
-            is_demo=geo.is_demo,
-            status=geo.status,
-            before_closed_status=geo.before_closed_status,
-            owner=geo.owner,
-            media=thumbnail_media(geo),
-            tags=geo.tags,
-            conflicts=geo.conflicts,
+        build_event_list(
+            geo,
+            lat=lat,
+            lng=lng,
             investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
             investigators_sample=sample.get(geo.id, []) if view == "requested" else None,
         )
@@ -456,10 +448,13 @@ def list_detections(
             ST_Y(Event.capture_source_coords).label("capture_lat"),
             ST_X(Event.capture_source_coords).label("capture_lng"),
         )
-        # ``selectinload`` for the many-to-many / one-to-many sets — a
-        # ``joinedload`` would row-multiply against ``LIMIT`` and truncate the
-        # page; ``joinedload`` is safe only for the many-to-one owner /
-        # requested_by (always NULL on a detection, loaded to skip a lazy hit).
+        # The loader rule for every paged event query (this one, the user
+        # geolocations page, the follow timeline): ``selectinload`` for the
+        # many-to-many / one-to-many sets, because a ``joinedload`` would
+        # row-multiply against ``LIMIT`` and silently truncate the page.
+        # ``joinedload`` is safe only for the many-to-one owner / requested_by
+        # (no inflation; here always NULL on a detection, loaded to skip a
+        # lazy hit).
         .options(
             joinedload(Event.owner),
             joinedload(Event.requested_by),

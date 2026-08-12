@@ -140,16 +140,13 @@ def delete_event(
     geo = _resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 
-    # Snapshot the S3 keys before the cascade drops the rows; the objects are
-    # deleted after the commit so a failed commit doesn't strand referenced
-    # files.
+    # Snapshot the S3 keys before the cascade drops the rows, then
+    # commit-then-sweep (see ``services.storage.sweep_keys``).
     media_keys = collect_media_keys(list(geo.media))
 
     db.delete(geo)
     db.commit()
 
-    # On per-key S3 failures (transient outage, key already gone) the rows
-    # are already deleted, so swallow and log (accepted residual orphan risk).
     sweep_keys(media_keys, context=f"event {geo.id} delete")
 
     points_cache.invalidate()

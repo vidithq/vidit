@@ -11,6 +11,8 @@ import { updateMyProfile, type PublicProfile } from "@/lib/users";
 import { useMutation } from "@/hooks/useMutation";
 import type { ExternalLinks } from "@/types";
 
+// Bio ceiling, mirroring the backend BIO_MAX_LEN in schemas/user.py so the
+// counter and the textarea cap read the same limit the API enforces.
 export const BIO_MAX_LEN = 500;
 
 interface UseProfileEditArgs {

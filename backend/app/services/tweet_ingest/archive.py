@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from app.services.storage import image_content_type_for_extension
+
 from .acquire import quoted_from_syndication
 from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
 from .resolve import FootageCandidate, footage_candidates
@@ -52,13 +54,6 @@ _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 # canonical prefix is dropped along with real retweets, its content being
 # someone else's either way.
 _RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
-
-_IMAGE_CONTENT_TYPE = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
-}
 
 
 def _to_iso(created_at: str) -> str:
@@ -165,7 +160,7 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
             if not isinstance(url, str) or not url:
                 continue
             basename = url.rsplit("/", 1)[-1]
-            content_type = _IMAGE_CONTENT_TYPE.get(Path(basename).suffix.lower())
+            content_type = image_content_type_for_extension(Path(basename).suffix)
             if content_type is None:
                 continue
             out.append(

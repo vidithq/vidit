@@ -112,8 +112,6 @@ const pref = createAttributePreference<PaletteId>({
 export const getPalette = pref.get;
 /** Persist the accent palette, reflect it on <html>, and notify readers. */
 export const setPalette = pref.set;
-/** Reflect the palette onto <html data-palette>, which remaps the accent scale. */
-export const applyPalette = pref.apply;
 
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;

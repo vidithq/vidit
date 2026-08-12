@@ -34,4 +34,3 @@ const pref = createAttributePreference<ThemeId>({
 
 export const getTheme = pref.get;
 export const setTheme = pref.set;
-export const applyTheme = pref.apply;

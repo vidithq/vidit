@@ -242,7 +242,7 @@ def test_list_honours_limit(db, author):
         _make_request(db, author=author)
     response = client.get(f"{_LIST}&limit=2")
     assert response.status_code == 200
-    assert len(response.json()) <= 2
+    assert len(response.json()) == 2
 
 
 def test_list_rejects_unusable_limit(author):
@@ -751,25 +751,10 @@ def test_create_populates_sha256_on_media(db, author):
 # ── DELETE /events/{id} on a request ──────────────────────────────────────
 
 
-def test_delete_requires_authentication(db, author):
-    request = _make_request(db, author=author)
-    response = client.delete(f"/api/v1/events/{request.id}")
-    assert response.status_code == 401
-
-
-def test_delete_returns_404_for_soft_deleted(db, author):
-    request = _make_request(db, author=author, deleted=True)
-    response = client.delete(f"/api/v1/events/{request.id}", headers=login_as(client, author))
-    assert response.status_code == 404
-
-
-def test_delete_returns_403_when_not_owner(db, author, second_user):
-    request = _make_request(db, author=author)
-    response = client.delete(f"/api/v1/events/{request.id}", headers=login_as(client, second_user))
-    assert response.status_code == 403
-
-
 def test_delete_succeeds_for_owner_and_cascades_media(db, author):
+    """The auth / 404 / 403 guards on DELETE are shared with the located view
+    and covered in ``test_owner_flow.py``; what is specific here is that a
+    request's media rows go with it."""
     request = _make_request(db, author=author)
     request_id = request.id
     response = client.delete(f"/api/v1/events/{request_id}", headers=login_as(client, author))

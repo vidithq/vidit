@@ -8,10 +8,17 @@ contract for malformed input lives in one place instead of being recopied per fo
 
 import json
 import uuid
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime, time
 from typing import Any
 
 from fastapi import HTTPException
+
+# The date parser lives with the filter vocabulary in
+# ``services.event_filters`` (its heaviest consumer); re-exported here so the
+# multipart submit forms keep their one import site for form parsers.
+from app.services.event_filters import (
+    parse_optional_iso_date as parse_optional_iso_date,
+)
 
 # Sanity cap on a JSON-array form field (tag_ids / conflict_ids /
 # remove_media_ids): no legitimate submission attaches more than a handful of
@@ -65,28 +72,6 @@ def parse_json_id_list(raw: str | None, *, field: str, as_uuid: bool = False) ->
         return [uuid.UUID(str(item)) for item in value]
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=f"'{field}' must contain only UUIDs") from exc
-
-
-def parse_iso_date(raw: str, *, field: str) -> date:
-    """Parse a required ISO-8601 (YYYY-MM-DD) date form field; 422 on garbage.
-
-    An empty string is garbage here (→ 422). ``parse_optional_iso_date``
-    short-circuits empty to ``None`` before delegating, so only required
-    callers reach this with an empty value.
-    """
-    try:
-        return date.fromisoformat(raw)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail=f"{field} must be an ISO-8601 date (YYYY-MM-DD)"
-        ) from exc
-
-
-def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
-    """Parse an optional ISO-8601 (YYYY-MM-DD) date form field. Empty → ``None``; 422 on garbage."""
-    if not raw:
-        return None
-    return parse_iso_date(raw, field=field)
 
 
 def parse_optional_iso_time(raw: str | None, *, field: str) -> time | None:

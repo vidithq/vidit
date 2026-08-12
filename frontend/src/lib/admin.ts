@@ -1,27 +1,12 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 
-export type InviteCodeStatus = "active" | "exhausted" | "revoked" | "expired";
+export type InviteCodeStatus =
+  components["schemas"]["AdminInviteCodeRead"]["status"];
 
-/** The first consumer of a code with its onboarding counters, nested in the
- *  invite list so the admin table renders activity without per-row fetches. */
-export type InviteRedeemer = components["schemas"]["AdminInviteRedeemerRead"];
-
-export interface InviteCode {
-  id: string;
-  code: string;
-  max_uses: number;
-  use_count: number;
-  expires_at: string | null;
-  revoked_at: string | null;
-  created_at: string;
-  status: InviteCodeStatus;
-  redeemer: InviteRedeemer | null;
-  used_at: string | null;
-  /** The X handle the code binds; redemption copies it onto the new
-   *  account as its bot-attribution link. */
-  x_handle: string | null;
-}
+/** One onboarding invite row. ``x_handle`` is the handle the code binds;
+ *  redemption copies it onto the new account as its bot-attribution link. */
+export type InviteCode = components["schemas"]["AdminInviteCodeRead"];
 
 export interface CreateInviteCodeBody {
   expires_in_days: number | null;
@@ -53,17 +38,10 @@ export function revokeInviteCode(id: string): Promise<InviteCode> {
   });
 }
 
-export interface AdminUser {
-  id: string;
-  username: string;
-  // NULL on legacy credential-less rows, mirroring `AdminUserRead`.
-  email: string | null;
-  is_admin: boolean;
-  /** The X handle the bot attributes mentions to; admin-linked, null when
-   *  no handle is linked. */
-  x_handle: string | null;
-  created_at: string;
-}
+/** One row of the admin user search. ``email`` is NULL on legacy
+ *  credential-less rows; ``x_handle`` is the handle the bot attributes mentions
+ *  to (admin-linked, null when none is). */
+export type AdminUser = components["schemas"]["AdminUserRead"];
 
 export function searchUsers(query: string): Promise<AdminUser[]> {
   if (!query.trim()) return Promise.resolve([]);
@@ -100,16 +78,10 @@ export function deleteEvent(
   return apiFetch<AdminEventDeleteResponse>(path, { method: "DELETE" });
 }
 
-export interface AdminUserDeleteResponse {
-  user_id: string;
-  username: string;
-  mode: "soft" | "hard";
-  deleted_at: string | null;
-  cascaded_geolocations: number;
-  /** Every file swept, source and proof roles alike (`proof_images` folded
-   *  into `media`, so there's no separate proof-image tally). */
-  media_count: number;
-}
+/** ``media_count`` is every file swept, source and proof roles alike
+ *  (`proof_images` is folded into `media`, so there's no separate tally). */
+export type AdminUserDeleteResponse =
+  components["schemas"]["AdminUserDeleteResponse"];
 
 export function deleteUser(
   id: string,
@@ -205,17 +177,9 @@ export function getDetectionStats(): Promise<DetectionStats> {
 // ── Maintenance ───────────────────────────────────────────────────────
 
 /** One shape for every maintenance action; the UI renders only the keys present
- *  in the response. Mirrors the backend `AdminMaintenanceResponse`. */
-export interface MaintenanceResponse {
-  expired?: number;
-  old_consumed?: number;
-  pending_registrations_deleted?: number;
-  events_scanned?: number;
-  links_enqueued?: number;
-  analysts_notified?: number;
-  drafts_pending?: number;
-  digest_send_failures?: number;
-}
+ *  in the response. */
+export type MaintenanceResponse =
+  components["schemas"]["AdminMaintenanceResponse"];
 
 export function reapAuthTokens(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>("/admin/maintenance/reap-auth-tokens", {

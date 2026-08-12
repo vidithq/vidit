@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatDate } from "@/lib/format";
 import type { EventStatus } from "@/types";
 import { Button } from "@/components/ui/Button";
+import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { CopyButton } from "@/components/ui/CopyButton";
 
 interface ShareButtonsProps {
@@ -19,21 +20,8 @@ interface ShareButtonsProps {
   status: EventStatus;
 }
 
-// Inline X logo: lucide doesn't ship one, and the legacy Twitter bird reads
-// dated next to "Share on X". ~200B, so a dependency would be heavier.
-function XLogo({ size = 13 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  );
-}
+// How long an armed share / copy waits for its confirming re-click.
+const ARM_MS = 3000;
 
 export default function ShareButtons({
   id,
@@ -47,6 +35,10 @@ export default function ShareButtons({
   // A `detected` link points at an editable draft, so sharing it asks for a
   // confirming re-click first (mirrors the review queue's two-click delete).
   // `armed` is which action is awaiting that re-click; it auto-disarms.
+  // Held here rather than on `useConfirmAction` because the copy half is a
+  // `<CopyButton>`, which owns the clipboard write and only takes a synchronous
+  // go/no-go gate; one state machine covering both buttons beats two arming
+  // mechanisms in one row.
   const [armed, setArmed] = useState<null | "copy" | "share">(null);
   const armResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -61,7 +53,7 @@ export default function ShareButtons({
   const arm = (which: "copy" | "share") => {
     setArmed(which);
     if (armResetTimer.current) clearTimeout(armResetTimer.current);
-    armResetTimer.current = setTimeout(() => setArmed(null), 3000);
+    armResetTimer.current = setTimeout(() => setArmed(null), ARM_MS);
   };
   const disarm = () => {
     setArmed(null);
@@ -133,7 +125,7 @@ export default function ShareButtons({
         aria-label="Share on X"
         title={armed === "share" ? "Click again to share this draft" : "Share on X"}
       >
-        <XLogo size={14} />
+        <XGlyph size={14} />
       </Button>
     </div>
   );

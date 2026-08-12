@@ -22,6 +22,11 @@ import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
+import {
+  DiscordGlyph,
+  GitHubGlyph,
+  XGlyph,
+} from "@/components/ui/BrandGlyphs";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
@@ -372,7 +377,7 @@ export default function PalettePage() {
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | strong, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -382,7 +387,6 @@ export default function PalettePage() {
                 <Pill tone="secondary">secondary</Pill>
                 <Pill tone="neutral">neutral</Pill>
                 <Pill tone="danger">danger</Pill>
-                <Pill tone="strong">strong</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">chips</span>
@@ -651,7 +655,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges and the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
+          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -661,6 +665,14 @@ export default function PalettePage() {
                 <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
               </span>
             </Variant>
+          </Item>
+
+          <Item name="BrandGlyphs (XGlyph / GitHubGlyph / DiscordGlyph)" usage="The three third-party marks lucide doesn't ship, as inline SVG paths painting currentColor. `size` in px, so they sit with lucide icons at the same stop: the sidebar's community links, the submit form's 'From an X post' segment, the event share row.">
+            <span className="inline-flex items-center gap-3 text-neutral-400">
+              <XGlyph />
+              <GitHubGlyph />
+              <DiscordGlyph />
+            </span>
           </Item>
 
           <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">

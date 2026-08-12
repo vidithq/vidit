@@ -23,6 +23,8 @@ hardware).
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -73,6 +75,80 @@ class EvidenceProcessingError(ValueError):
     """
 
 
+@contextmanager
+def _guarded_open(data: bytes) -> Iterator[Image.Image]:
+    """Open image bytes behind the pre-decode guards and yield a usable image.
+
+    One home for the hardening both transforms need:
+
+    * ``Image.open`` is lazy (header parse, no pixel decode), so the
+      decompression-bomb ceiling and the animated-image refusal both fire
+      before ``load()`` would allocate 100s of MB. ``is_animated`` is only
+      set on animatable formats (GIF / APNG / animated WebP), hence the
+      ``getattr``; flattening a clip to one frame would lose an analyst's
+      evidence, so it is a rejection rather than a silent drop.
+    * Palette modes (``P``, ``PA``) store pixels as indexes into
+      ``img.palette``, so ``tobytes()`` returns indexes rather than colour
+      and a rebuild without the palette renders black / garbage. Convert to
+      a full colour mode first, keeping alpha whenever the source carries
+      any: ``has_transparency_data`` rather than ``"transparency" in
+      img.info``, since the latter misses ``mode == "PA"`` (palette + alpha
+      plane) and would flatten alpha to opaque.
+
+    A palette source yields the converted copy; every other mode yields the
+    opened ``ImageFile`` itself, which the ``with`` block closes on exit
+    either way.
+    """
+    # Fresh BytesIO so ``img.load()`` can fully detach from the buffer;
+    # otherwise PIL holds a reference to the source bytes for lazy decode.
+    with Image.open(BytesIO(data)) as img:
+        width, height = img.size
+        pixels = width * height
+        if pixels > MAX_DECODED_PIXELS:
+            raise EvidenceProcessingError(
+                f"Image dimensions {width}x{height} ({pixels} px) "
+                f"exceed the {MAX_DECODED_PIXELS} pixel cap"
+            )
+
+        if getattr(img, "is_animated", False):
+            raise EvidenceProcessingError(
+                "Animated images are not supported. Upload as a video instead"
+            )
+
+        img.load()
+
+        if img.mode in {"P", "PA"}:
+            yield img.convert("RGBA" if img.has_transparency_data else "RGB")
+        else:
+            yield img
+
+
+@contextmanager
+def _decode_errors(context: str, *, undecodable: str) -> Iterator[None]:
+    """Map Pillow's failure modes onto :class:`EvidenceProcessingError`.
+
+    ``context`` prefixes the log line with the transform and its inputs;
+    ``undecodable`` is the message a corrupt / truncated / format-mismatched
+    file gets. The guards inside :func:`_guarded_open` already raise a shaped
+    error, so that arm re-raises untouched: re-wrapping would log "cannot
+    decode" for what was a bomb or animation rejection. Everything else logs
+    for the Sentry rate and raises a clean ``ValueError`` so the router emits
+    400, not 500.
+    """
+    try:
+        yield
+    except EvidenceProcessingError:
+        raise
+    except Image.DecompressionBombError as exc:
+        # Pillow's default 89 MP tripwire fired (we don't override it).
+        # Backstop in case it fires before our explicit size check.
+        logger.warning("%s: Pillow DecompressionBombError: %s", context, exc)
+        raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
+    except (UnidentifiedImageError, OSError) as exc:
+        logger.warning("%s: cannot decode image: %s", context, exc)
+        raise EvidenceProcessingError(undecodable) from exc
+
+
 def strip_metadata(data: bytes, content_type: str) -> bytes:
     """Return ``data`` with all metadata stripped.
 
@@ -99,101 +175,38 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
     if content_type not in _STRIPPABLE_IMAGE_TYPES:
         return data
 
-    try:
-        # Fresh BytesIO so ``img.load()`` can fully detach from the buffer;
-        # otherwise PIL holds a reference to the source bytes for lazy decode.
-        with Image.open(BytesIO(data)) as img:
-            # ``Image.open`` is lazy (header parse, no pixel decode), so the
-            # bomb check fires before the load() below would allocate 100s
-            # of MB.
-            width, height = img.size
-            pixels = width * height
-            if pixels > MAX_DECODED_PIXELS:
-                raise EvidenceProcessingError(
-                    f"Image dimensions {width}x{height} ({pixels} px) "
-                    f"exceed the {MAX_DECODED_PIXELS} pixel cap"
-                )
+    with (
+        _decode_errors(
+            f"strip_metadata (content_type={content_type}, {len(data)} bytes)",
+            undecodable=f"Could not decode {content_type} for metadata stripping",
+        ),
+        _guarded_open(data) as source,
+    ):
+        # Rebuild from raw pixel bytes only, which drops the whole
+        # ``img.info`` dict (EXIF, IPTC, XMP, ICC, JFIF, comments,
+        # thumbnails). Mode + size preserved so PNG / WebP alpha survives.
+        cleaned = Image.frombytes(source.mode, source.size, source.tobytes())
 
-            # ``is_animated`` is only set on animatable formats (GIF / APNG
-            # / animated WebP); ``getattr`` covers single-frame inputs.
-            if getattr(img, "is_animated", False):
-                raise EvidenceProcessingError(
-                    "Animated images are not supported. Upload as a video instead"
-                )
-
-            img.load()
-
-            # Palette-mode (``P``, ``PA``) stores pixels as indexes into
-            # ``img.palette``; ``img.tobytes()`` returns the *indexes*, not
-            # RGB triples, and ``frombytes`` without the palette renders
-            # black / garbage. Convert to a full colour mode first.
-            #
-            # ``has_transparency_data`` rather than ``"transparency" in
-            # img.info``: the latter misses ``mode == "PA"`` (palette + alpha
-            # plane) and would silently flatten alpha to opaque.
-            # ``has_transparency_data`` is True across RGBA / tRNS / PA / etc.
-            #
-            # ``source`` is a fresh local so ``img`` stays ``ImageFile`` for
-            # the ``with`` block's __exit__.
-            source: Image.Image
-            if img.mode in {"P", "PA"}:
-                target_mode = "RGBA" if img.has_transparency_data else "RGB"
-                source = img.convert(target_mode)
-            else:
-                source = img
-
-            # Rebuild from raw pixel bytes only — drops the whole
-            # ``img.info`` dict (EXIF, IPTC, XMP, ICC, JFIF, comments,
-            # thumbnails). Mode + size preserved so PNG / WebP alpha survives.
-            cleaned = Image.frombytes(source.mode, source.size, source.tobytes())
-
-            output = BytesIO()
-            if content_type == "image/jpeg":
-                # JPEG can't hold transparency; convert RGBA→RGB if the
-                # source had alpha (real uploads are usually RGB anyway).
-                save_target = cleaned
-                if save_target.mode not in {"RGB", "L"}:
-                    save_target = cleaned.convert("RGB")
-                save_target.save(
-                    output,
-                    format="JPEG",
-                    quality=95,
-                    subsampling=0,
-                    optimize=True,
-                    progressive=False,
-                )
-            elif content_type == "image/png":
-                cleaned.save(output, format="PNG", optimize=True)
-            else:  # image/webp
-                cleaned.save(output, format="WEBP", quality=95, method=6)
-            return output.getvalue()
-    except EvidenceProcessingError:
-        # Already shaped for the router. Don't re-wrap, or the outer
-        # ``except (UnidentifiedImageError, OSError)`` would log "cannot
-        # decode" for what was a bomb / animation rejection.
-        raise
-    except Image.DecompressionBombError as exc:
-        # Pillow's default 89 MP tripwire fired (we don't override it).
-        # Backstop in case it fires before our explicit size check.
-        logger.warning(
-            "strip_metadata: Pillow DecompressionBombError (content_type=%s, %d bytes): %s",
-            content_type,
-            len(data),
-            exc,
-        )
-        raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
-    except (UnidentifiedImageError, OSError) as exc:
-        # Corrupt / truncated / format-mismatched. Log for the Sentry rate
-        # but raise a clean ValueError so the router emits 400, not 500.
-        logger.warning(
-            "strip_metadata: cannot decode image (content_type=%s, %d bytes): %s",
-            content_type,
-            len(data),
-            exc,
-        )
-        raise EvidenceProcessingError(
-            f"Could not decode {content_type} for metadata stripping"
-        ) from exc
+        output = BytesIO()
+        if content_type == "image/jpeg":
+            # JPEG can't hold transparency; convert RGBA→RGB if the
+            # source had alpha (real uploads are usually RGB anyway).
+            save_target = cleaned
+            if save_target.mode not in {"RGB", "L"}:
+                save_target = cleaned.convert("RGB")
+            save_target.save(
+                output,
+                format="JPEG",
+                quality=95,
+                subsampling=0,
+                optimize=True,
+                progressive=False,
+            )
+        elif content_type == "image/png":
+            cleaned.save(output, format="PNG", optimize=True)
+        else:  # image/webp
+            cleaned.save(output, format="WEBP", quality=95, method=6)
+        return output.getvalue()
 
 
 # Display-derivative dimensions. Hero = detail-page render (full-width in a
@@ -243,83 +256,44 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     if content_type not in _STRIPPABLE_IMAGE_TYPES:
         return data
 
-    try:
-        with Image.open(BytesIO(data)) as img:
-            width, height = img.size
-            pixels = width * height
-            if pixels > MAX_DECODED_PIXELS:
-                raise EvidenceProcessingError(
-                    f"Image dimensions {width}x{height} ({pixels} px) "
-                    f"exceed the {MAX_DECODED_PIXELS} pixel cap"
-                )
+    with (
+        _decode_errors(
+            f"make_jpeg_derivative (content_type={content_type}, "
+            f"max_dim={max_dim}, {len(data)} bytes)",
+            undecodable=f"Could not decode {content_type} for derivative resize",
+        ),
+        _guarded_open(data) as opened,
+    ):
+        # ``_guarded_open`` hands back palette-with-alpha as RGBA (not RGB),
+        # which matters here even though the encode discards alpha:
+        # ``thumbnail`` with LANCZOS in RGBA gives alpha-aware antialiasing at
+        # transparent/opaque edges. Downscaling in RGB blends garbage
+        # RGB-under-transparent-pixels into the edges (black bleeding on
+        # logo-shaped images). The trailing ``convert("RGB")`` drops alpha
+        # *after* the downscale.
+        #
+        # Honour EXIF Orientation before resize, see the docstring's
+        # exif_transpose paragraph. No-op when the source carries no
+        # Orientation tag (e.g. post-strip bytes).
+        source = ImageOps.exif_transpose(opened)
 
-            if getattr(img, "is_animated", False):
-                raise EvidenceProcessingError(
-                    "Animated images are not supported. Upload as a video instead"
-                )
+        # ``thumbnail`` won't upscale a source already smaller on both edges,
+        # but still JPEG-recompresses at the lower quality: intended, so
+        # bytes-on-the-wire are consistent regardless of source size.
+        source.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
 
-            img.load()
+        # JPEG can't hold transparency, so ``convert("RGB")`` discards alpha
+        # (Pillow does NOT composite onto a background; pixels under
+        # transparency render at whatever the RGB triple was).
+        if source.mode not in {"RGB", "L"}:
+            source = source.convert("RGB")
 
-            source: Image.Image
-            if img.mode in {"P", "PA"}:
-                # Palette-with-alpha → RGBA (not RGB) before resize even
-                # though the encode discards alpha: ``thumbnail`` with LANCZOS
-                # in RGBA gives alpha-aware antialiasing at transparent/opaque
-                # edges. Converting to RGB first blends garbage
-                # RGB-under-transparent-pixels into the edges (black bleeding
-                # on logo-shaped images). The trailing ``convert("RGB")`` drops
-                # alpha *after* the downscale.
-                target_mode = "RGBA" if img.has_transparency_data else "RGB"
-                source = img.convert(target_mode)
-            else:
-                source = img
-
-            # Honour EXIF Orientation before resize — see the docstring's
-            # exif_transpose paragraph. No-op when the source carries no
-            # Orientation tag (e.g. post-strip bytes).
-            source = ImageOps.exif_transpose(source)
-
-            # ``thumbnail`` won't upscale a source already smaller on both
-            # edges, but still JPEG-recompresses at the lower quality —
-            # intended, so bytes-on-the-wire are consistent regardless of
-            # source size.
-            source.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-
-            # JPEG can't hold transparency — ``convert("RGB")`` discards
-            # alpha (Pillow does NOT composite onto a background; pixels
-            # under transparency render at whatever the RGB triple was).
-            if source.mode not in {"RGB", "L"}:
-                source = source.convert("RGB")
-
-            output = BytesIO()
-            source.save(
-                output,
-                format="JPEG",
-                quality=DERIVATIVE_JPEG_QUALITY,
-                optimize=True,
-                progressive=False,
-            )
-            return output.getvalue()
-    except EvidenceProcessingError:
-        raise
-    except Image.DecompressionBombError as exc:
-        logger.warning(
-            "make_jpeg_derivative: Pillow DecompressionBombError "
-            "(content_type=%s, max_dim=%d, %d bytes): %s",
-            content_type,
-            max_dim,
-            len(data),
-            exc,
+        output = BytesIO()
+        source.save(
+            output,
+            format="JPEG",
+            quality=DERIVATIVE_JPEG_QUALITY,
+            optimize=True,
+            progressive=False,
         )
-        raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
-    except (UnidentifiedImageError, OSError) as exc:
-        logger.warning(
-            "make_jpeg_derivative: cannot decode image (content_type=%s, max_dim=%d, %d bytes): %s",
-            content_type,
-            max_dim,
-            len(data),
-            exc,
-        )
-        raise EvidenceProcessingError(
-            f"Could not decode {content_type} for derivative resize"
-        ) from exc
+        return output.getvalue()

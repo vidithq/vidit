@@ -126,8 +126,7 @@ export interface paths {
         put?: never;
         /**
          * Maintenance Reap Auth Tokens
-         * @description Drop expired and old-consumed auth_tokens rows. Replaces the cron
-         *     that previously lived in `scripts/reap_auth_tokens.py`.
+         * @description Drop expired and old-consumed auth_tokens rows.
          */
         post: operations["maintenance_reap_auth_tokens_api_v1_admin_maintenance_reap_auth_tokens_post"];
         delete?: never;

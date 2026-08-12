@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
+import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { formatDate } from "@/lib/format";
 import type { PossibleDuplicate } from "@/types";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
@@ -40,39 +42,47 @@ export function DuplicateProbe({
   // Soft warning: rows surfaced as "maybe the same event".
   const [hits, setHits] = useState<PossibleDuplicate[]>([]);
 
-  useEffect(() => {
-    if (skip) return;
+  // The probe's query string, or null when this edit can't be probed at all:
+  // fulfilment mode, missing / out-of-range coords (proximity is the always-on
+  // leg), or neither a source URL nor an event date (the backend would return
+  // [] with no usable leg).
+  const query = useMemo(() => {
+    if (skip) return null;
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
-    // Need coords at minimum — proximity is the always-on leg. With no
-    // source URL or event date the backend returns []; drop to skip it.
     if (
       Number.isNaN(latNum) ||
       Number.isNaN(lngNum) ||
-      latNum < -90 ||
-      latNum > 90 ||
-      lngNum < -180 ||
-      lngNum > 180
+      latNum < LAT_MIN ||
+      latNum > LAT_MAX ||
+      lngNum < LNG_MIN ||
+      lngNum > LNG_MAX
     ) {
-      setHits([]);
-      return;
+      return null;
     }
-    if (!sourceUrl && !eventDate) {
-      setHits([]);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams({
-        lat: latNum.toString(),
-        lng: lngNum.toString(),
-      });
-      if (sourceUrl) params.set("source_url", sourceUrl);
-      if (eventDate) params.set("event_date", eventDate);
-      apiFetch<PossibleDuplicate[]>(
-        `/events/possible-duplicates?${params.toString()}`,
-        { signal: controller.signal },
-      )
+    if (!sourceUrl && !eventDate) return null;
+    const params = new URLSearchParams({
+      lat: latNum.toString(),
+      lng: lngNum.toString(),
+    });
+    if (sourceUrl) params.set("source_url", sourceUrl);
+    if (eventDate) params.set("event_date", eventDate);
+    return params.toString();
+  }, [lat, lng, sourceUrl, eventDate, skip]);
+
+  // Not debounced: an edit that makes the form unprobeable drops the warning on
+  // the keystroke, rather than leaving a stale one up for a debounce window.
+  useEffect(() => {
+    if (query === null) setHits([]);
+  }, [query]);
+
+  useDebouncedEffect(
+    () => {
+      if (query === null) return;
+      const controller = new AbortController();
+      apiFetch<PossibleDuplicate[]>(`/events/possible-duplicates?${query}`, {
+        signal: controller.signal,
+      })
         .then((rows) => {
           if (controller.signal.aborted) return;
           setHits(rows);
@@ -83,12 +93,11 @@ export function DuplicateProbe({
           // would otherwise wipe a warning the analyst is looking at; the
           // next successful fetch overwrites, so a stale list stays truthful.
         });
-    }, DUPLICATE_PROBE_DEBOUNCE_MS);
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [lat, lng, sourceUrl, eventDate, skip]);
+      return () => controller.abort();
+    },
+    [query],
+    DUPLICATE_PROBE_DEBOUNCE_MS,
+  );
 
   if (hits.length === 0) return null;
   return <DuplicateWarning hits={hits} />;

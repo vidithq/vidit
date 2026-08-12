@@ -29,6 +29,7 @@ from app.schemas.admin import (
 )
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
+from app.services import registration as registration_service
 from app.services import seed as seed_service
 from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
 
@@ -393,8 +394,7 @@ def maintenance_reap_auth_tokens(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired and old-consumed auth_tokens rows. Replaces the cron
-    that previously lived in `scripts/reap_auth_tokens.py`."""
+    """Drop expired and old-consumed auth_tokens rows."""
     result = maintenance_service.reap_auth_tokens(db)
     admin_service.log_admin_event(
         db,
@@ -417,7 +417,7 @@ def maintenance_reap_pending_registrations(
     its email + username until the user confirms or the TTL expires;
     the create path sweeps inline so this button mostly mops up the
     long tail of abandoned signups."""
-    result = maintenance_service.reap_pending_registrations(db)
+    result = registration_service.reap_pending_registrations(db)
     admin_service.log_admin_event(
         db,
         actor_id=current_user.id,

@@ -1,12 +1,11 @@
 """On-demand maintenance ops surfaced via the admin Maintenance panel.
 
-Replaces the periodic cron scripts that lived in `backend/scripts/`.
-Trade-off: an admin clicks when they remember rather than on a schedule,
-which is fine while every op here sweeps low-cost rows / objects (or, for
-the archival backfill, only enqueues work the worker paces itself) whose
-backlog isn't latency-sensitive. If a table or the S3 bill outgrows admin
-attention, the move is a Railway scheduled job hitting these endpoints, not
-a return to standalone scripts.
+An admin clicks when they remember rather than a cron firing on a schedule.
+That holds while every op here sweeps low-cost rows / objects (or, for the
+archival backfill, only enqueues work the worker paces itself) whose backlog
+isn't latency-sensitive; if a table or the S3 bill outgrows admin attention,
+the move is a Railway scheduled job hitting these endpoints, not a
+standalone script.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from app.models.auth_token import AuthToken
 from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services import email as email_service
-from app.services import registration as registration_service
 from app.services import source_archive as source_archive_service
 
 logger = logging.getLogger(__name__)
@@ -63,17 +61,6 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     )
     db.commit()
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
-
-
-def reap_pending_registrations(db: Session) -> dict[str, int]:
-    """Drop expired ``pending_registrations`` rows.
-
-    A pending row holds the address until the user confirms or the TTL
-    expires. The create path also sweeps inline, so this button mostly mops
-    up rows from users who never came back, keeping the address pool open
-    for legitimate retries.
-    """
-    return registration_service.reap_pending_registrations(db)
 
 
 # One click's scan ceiling for the archival backfill. Bounds the request's

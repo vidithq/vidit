@@ -719,11 +719,12 @@ function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
 
 // Dev-only camera handle for the promo-recording pipeline (video/): exposes
 // the maplibre instance so a Playwright take can drive smooth easeTo camera
-// moves instead of synthetic wheel events. Never mounts in production.
+// moves instead of synthetic wheel events. The production gate is at the render
+// site below, so the component never mounts there in the first place.
 function DevMapHandle() {
   const { current: map } = useMap();
   useEffect(() => {
-    if (process.env.NODE_ENV === "production" || !map) return;
+    if (!map) return;
     const w = window as unknown as { __viditMap?: unknown };
     w.__viditMap = map.getMap();
     return () => {

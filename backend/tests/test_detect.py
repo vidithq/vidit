@@ -19,9 +19,7 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     TweetRecord,
     detect,
-    detect_relay,
     detect_relay_diagnosed,
-    detect_structured,
     detect_structured_diagnosed,
     fetch_relay_parent,
     stitch,
@@ -186,7 +184,7 @@ def _quoted_rec(text: str = _CONFORMING, media: list[ParsedMedia] | None = None)
 
 
 def test_structured_conforming_tweet_maps_markers_to_fields():
-    out = detect_structured(_quoted_rec(), bot_handle="viditbot")
+    out, _ = detect_structured_diagnosed(_quoted_rec(), bot_handle="viditbot")
     assert len(out) == 1
     d = out[0]
     assert d.title == "Strike on the depot"
@@ -200,7 +198,7 @@ def test_structured_conforming_tweet_maps_markers_to_fields():
 
 def test_structured_proof_is_the_non_marker_lines_only():
     record = _quoted_rec("Context first\n" + _CONFORMING + "\nSecond proof line https://t.co/x")
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     # https://t.co/x has no entity (the wrapper X appends for media): stripped.
     assert d.proof_text == "Context first\nSmoke plume matches\nSecond proof line"
     # Markers, raw coordinate, the tag, and leftover shortlinks are all gone.
@@ -219,7 +217,7 @@ def test_structured_proof_reference_link_survives_expanded():
         quoted=_QUOTE,
         external_sources=[_QUOTE_LINK, ref],
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://x.com/warfootage/status/42"
     assert "Background reading https://example.org/report" in d.proof_text
     assert "t.co" not in d.proof_text
@@ -227,7 +225,7 @@ def test_structured_proof_reference_link_survives_expanded():
 
 def test_structured_markers_are_case_insensitive():
     text = "@ViditBot\nt: Strike on the depot\nc: 48.123456, 37.654321\ns: https://t.co/q"
-    out = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    out, _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert len(out) == 1
     assert out[0].title == "Strike on the depot"
 
@@ -265,7 +263,7 @@ def test_structured_rejects_any_incomplete_or_invalid_format(text):
     # No inline quote: the record carries the quote's link entity only, so
     # every rejection here is the format's, not a missing-fixture artefact.
     record = _struct_rec(text, external_sources=[_QUOTE_LINK])
-    assert detect_structured(record, bot_handle="viditbot") == []
+    assert detect_structured_diagnosed(record, bot_handle="viditbot")[0] == []
 
 
 @pytest.mark.parametrize(
@@ -278,7 +276,7 @@ def test_structured_rejects_any_incomplete_or_invalid_format(text):
     ],
 )
 def test_structured_empty_marker_line_does_not_shadow_a_later_value(text):
-    out = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    out, _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert len(out) == 1
     d = out[0]
     assert d.title == "Strike on the depot"
@@ -297,7 +295,7 @@ _DERIVED_TITLE_TEXT = (
 def test_structured_missing_t_derives_the_title_from_the_first_line():
     # C: and S: pinned, no T: line: the title is the first remaining line,
     # the same positional rule the bare shape applies, and it leaves the proof.
-    (d,) = detect_structured(_quoted_rec(_DERIVED_TITLE_TEXT), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(_DERIVED_TITLE_TEXT), bot_handle="viditbot")
     assert d.title == "Iranian air defence site on the rooftop"
     assert d.coordinate.lat == pytest.approx(35.700886)
     assert d.proof_text == "Rooftop layout matches"
@@ -311,7 +309,7 @@ def test_structured_derived_title_collapses_and_truncates_on_a_word_boundary():
     # inside a word for the word-boundary rule to do anything.
     assert collapsed[TITLE_MAX_LENGTH - 1] != " " and collapsed[TITLE_MAX_LENGTH] != " "
     text = f"@viditbot\n{long_line}\nC: 48.123456, 37.654321\nS: https://t.co/q"
-    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert d.title.startswith("Strike on the depot at word")
     assert d.title.endswith("word")
     assert len(d.title) <= TITLE_MAX_LENGTH
@@ -321,7 +319,7 @@ def test_structured_derived_title_skips_a_stray_coordinate_line():
     # A whole-line decimal pair above the markers is not a title: the value's
     # home is the C: field, so the prose line below it wins.
     text = "@viditbot\n48.1, 37.6\nStrike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/q"
-    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert d.title == "Strike on the depot"
 
 
@@ -332,7 +330,7 @@ def test_structured_derived_title_skips_a_url_only_line():
         "@viditbot\nC: 48.123456, 37.654321\nS: https://t.co/q\n"
         "https://t.co/media\nStrike on the depot"
     )
-    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert "t.co" not in d.proof_text
 
@@ -383,7 +381,7 @@ def test_structured_off_vocabulary_link_is_stored_link_only():
             SourceLink(url="https://example.org/report", host="other", shortlink="https://t.co/a")
         ],
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://example.org/report"
     assert d.source_posted_at is None
     assert d.source_media == []
@@ -393,14 +391,14 @@ def test_structured_attached_media_is_proof_quote_media_is_source():
     own = ParsedMedia(
         kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
     )
-    (d,) = detect_structured(_quoted_rec(media=[own]), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(media=[own]), bot_handle="viditbot")
     assert [m.remote_url for m in d.proof_media] == ["https://pbs.twimg.com/own.jpg"]
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
 
 
 def test_structured_repeated_marker_keeps_first_value_and_strips_both():
     text = _CONFORMING + "\nT: A second title line"
-    (d,) = detect_structured(_quoted_rec(text), bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(_quoted_rec(text), bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert "second title" not in d.proof_text
 
@@ -421,7 +419,7 @@ def test_structured_s_line_designates_among_several_links():
         return httpx.Response(404)  # embed unavailable: degrades to link-only
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://t.me/channel/5"
     assert "see also https://x.com/warfootage/status/77" in d.proof_text
 
@@ -440,7 +438,7 @@ def test_structured_non_designated_quote_does_not_steal_the_source():
         return httpx.Response(404)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://t.me/channel/5"
     assert d.source_media == []
 
@@ -452,7 +450,7 @@ def test_structured_quote_card_without_token_designates_the_quote():
         "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: source below",
         quoted=_QUOTE,
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://x.com/warfootage/status/42"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/q.mp4"]
@@ -482,7 +480,7 @@ def test_structured_chases_the_designated_x_status():
         ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://x.com/warfootage/status/77"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 9)
 
@@ -506,7 +504,7 @@ def test_structured_telegram_source_is_link_and_embed_date():
         ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://t.me/channel/5"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 8)
     assert d.source_media == []
@@ -525,7 +523,7 @@ def test_structured_failed_chase_degrades_to_link_only():
         ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://x.com/warfootage/status/78"
     assert d.source_posted_at is None
     assert d.source_media == []
@@ -546,7 +544,7 @@ def test_structured_chase_transport_error_degrades_to_link_only():
         ],
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        (d,) = detect_structured(record, bot_handle="viditbot", client=client)
+        (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://x.com/warfootage/status/79"
     assert d.source_posted_at is None
     assert d.source_media == []
@@ -566,7 +564,7 @@ _BARE_CONFORMING = (
 
 def test_bare_conforming_tweet_maps_shape_to_fields():
     record = _struct_rec(_BARE_CONFORMING, external_sources=[_REPORT_LINK])
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert d.coordinate.lat == pytest.approx(48.123456)
     assert d.coordinate.lng == pytest.approx(37.654321)
@@ -580,7 +578,7 @@ def test_bare_quote_card_is_the_designated_source():
         "@viditbot\nStrike on the depot\n48.123456, 37.654321\nSmoke plume matches",
         quoted=_QUOTE,
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert d.source_url == "https://x.com/warfootage/status/42"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
@@ -594,7 +592,7 @@ def test_bare_sole_inline_link_is_the_source():
         "@viditbot\nStrike on the depot\n48.123456, 37.654321\nGeolocated from https://t.co/r footage",
         external_sources=[_REPORT_LINK],
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://example.org/report"
     assert "Geolocated from https://example.org/report footage" in d.proof_text
 
@@ -606,7 +604,7 @@ def test_bare_several_inline_links_are_ambiguous():
         "@viditbot\nStrike on the depot\n48.123456, 37.654321\nsee https://t.co/r and https://t.co/o",
         external_sources=[_REPORT_LINK, other],
     )
-    assert detect_structured(record, bot_handle="viditbot") == []
+    assert detect_structured_diagnosed(record, bot_handle="viditbot")[0] == []
 
 
 def test_bare_url_only_line_designates_among_several_links():
@@ -617,7 +615,7 @@ def test_bare_url_only_line_designates_among_several_links():
         "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nsee also https://t.co/o",
         external_sources=[_REPORT_LINK, other],
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://example.org/report"
     assert "see also https://example.org/other" in d.proof_text
 
@@ -630,7 +628,7 @@ def test_bare_unbound_media_wrapper_line_is_ignored():
         "@viditbot\nStrike on the depot\n48.123456, 37.654321\nhttps://t.co/r\nhttps://t.co/media",
         external_sources=[_REPORT_LINK],
     )
-    (d,) = detect_structured(record, bot_handle="viditbot")
+    (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot")
     assert d.source_url == "https://example.org/report"
     assert d.title == "Strike on the depot"
     assert "t.co" not in d.proof_text
@@ -757,7 +755,7 @@ def test_relay_reply_media_is_the_source_media():
         kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
     )
     parent = _relay_parent_rec(media=[proof_img])
-    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(_relay_reply_rec(), parent, bot_handle="viditbot")
     # The parent runs the same strict mapper as an inline mention.
     assert d.title == "Strike on the depot"
     assert d.coordinate.lat == pytest.approx(48.123456)
@@ -777,13 +775,15 @@ def test_relay_requires_the_same_author():
     # A stranger replying under the analyst's marker tweet cannot relay
     # media onto it.
     reply = _relay_reply_rec(handle="stranger")
-    assert detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot") == []
+    assert detect_relay_diagnosed(reply, _relay_parent_rec(), bot_handle="viditbot")[0] == []
 
 
 def test_relay_without_media_resolves_the_parent_as_if_inline():
     # A media-less reply-tag still counts (the analyst forgot the inline tag):
     # the parent resolves exactly as an inline mention would, plus the caption.
-    (d,) = detect_relay(_relay_reply_rec(media=[]), _relay_parent_rec(), bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(
+        _relay_reply_rec(media=[]), _relay_parent_rec(), bot_handle="viditbot"
+    )
     assert d.source_url == "https://www.tiktok.com/@war/video/7"
     assert d.source_media == []
     assert d.proof_text == "Smoke plume matches\nfootage saved below"
@@ -798,7 +798,7 @@ def test_relay_media_outranks_chased_media_but_keeps_the_chased_date():
         quoted=_QUOTE,
         external_sources=[],
     )
-    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(_relay_reply_rec(), parent, bot_handle="viditbot")
     assert d.source_url == "https://x.com/warfootage/status/42"
     assert d.source_posted_at is not None and d.source_posted_at.date() == date(2026, 3, 10)
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
@@ -809,7 +809,7 @@ def test_relay_accepts_a_bare_parent():
     parent = _relay_parent_rec(
         "Strike on the depot\n48.123456, 37.654321\nhttps://t.co/tk\nSmoke plume matches"
     )
-    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(_relay_reply_rec(), parent, bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert d.source_url == "https://www.tiktok.com/@war/video/7"
     assert [m.remote_url for m in d.source_media] == ["https://video.twimg.com/relay.mp4"]
@@ -820,7 +820,7 @@ def test_relay_accepts_a_parent_without_a_title_marker():
     parent = _relay_parent_rec(
         "Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/tk\nSmoke plume matches"
     )
-    (d,) = detect_relay(_relay_reply_rec(), parent, bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(_relay_reply_rec(), parent, bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert d.source_url == "https://www.tiktok.com/@war/video/7"
     assert d.proof_text == "Smoke plume matches\nfootage saved below"
@@ -831,7 +831,7 @@ def test_relay_reply_markers_never_shadow_the_parent():
     # merged into the parent's fields (a fully conforming reply would have
     # taken the inline path before relay is ever consulted).
     reply = _relay_reply_rec("@viditbot\nT: A different title\ncaption line")
-    (d,) = detect_relay(reply, _relay_parent_rec(), bot_handle="viditbot")
+    (d,), _ = detect_relay_diagnosed(reply, _relay_parent_rec(), bot_handle="viditbot")
     assert d.title == "Strike on the depot"
     assert "different title" not in d.proof_text
     assert "caption line" in d.proof_text

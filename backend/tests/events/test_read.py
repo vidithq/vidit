@@ -210,10 +210,14 @@ def test_list_filters_by_bbox(db, author):
 
 
 def test_list_honours_limit(db, author):
-    geos = [_make_geo(db, author=author) for _ in range(3)]  # noqa: F841
+    """One ``limit`` code path serves both views, so this covers the requested
+    queue too."""
+    for _ in range(3):
+        _make_geo(db, author=author)
     response = client.get("/api/v1/events?limit=2")
     assert response.status_code == 200
-    assert len(response.json()) <= 2
+    # Three matching rows seeded, so the cap is exact, not just an upper bound.
+    assert len(response.json()) == 2
 
 
 # ── GET /geolocations/{id} — detail ───────────────────────────────────────

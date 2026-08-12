@@ -99,10 +99,9 @@ def test_create_rejects_half_typed_capture_coords(author):
 
 def test_create_rejects_invalid_event_date(author):
     """``event_date='not-a-date'`` returns a clean 422 before any S3
-    round-trip. Before the fix the raw string flowed through to a
-    ``Mapped[date]`` column and 500'd at flush, AFTER the files
-    had already been uploaded. 422 matches the ``_parse_filter_date``
-    / ``_parse_bbox`` shape so malformed-input rejections share a code."""
+    round-trip: an unvalidated string reaching the ``Mapped[date]`` column
+    500s at flush, after the files have already been uploaded. 422 matches
+    the ``parse_bbox`` shape so malformed-input rejections share a code."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -111,6 +110,45 @@ def test_create_rejects_invalid_event_date(author):
     )
     assert response.status_code == 422
     assert "event_date" in response.json()["detail"].lower()
+
+
+def test_create_event_date_tolerates_only_a_separated_time_tail(
+    db, author, conflict, capture_source_tag, tmp_path, monkeypatch
+):
+    """``2026-05-01T12:00:00Z`` stores 2026-05-01 (a saved URL or an older
+    client may still send the datetime form); a tail glued on without the ISO
+    separator is garbage, not a date, so it 422s instead of being silently
+    truncated to a date the caller never wrote."""
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    def _submit(event_date: str):
+        return client.post(
+            "/api/v1/events",
+            headers=login_as(client, author),
+            data=_form(
+                title="date tail",
+                event_date=event_date,
+                tag_ids=json.dumps([str(capture_source_tag.id)]),
+                conflict_ids=json.dumps([str(conflict.id)]),
+            ),
+            files=_files(),
+        )
+
+    plain = _submit("2026-05-01")
+    assert plain.status_code == 201, plain.text
+    assert plain.json()["event_date"] == "2026-05-01"
+
+    with_time = _submit("2026-05-01T12:00:00Z")
+    assert with_time.status_code == 201, with_time.text
+    assert with_time.json()["event_date"] == "2026-05-01"
+
+    for garbage in ("2026-05-01junk", "2026-05-0199"):
+        response = _submit(garbage)
+        assert response.status_code == 422, f"{garbage!r} → {response.status_code}"
+        assert "event_date" in response.json()["detail"].lower()
 
 
 def test_list_rejects_malformed_date_filter(author):
@@ -124,6 +162,13 @@ def test_list_rejects_malformed_date_filter(author):
         headers=login_as(client, author),
     )
     assert response.status_code == 422
+    # A date with junk glued on is rejected the same way: the datetime
+    # tolerance covers a ``T`` or space separated tail, nothing else.
+    glued = client.get(
+        f"/api/v1/events/points?bbox={WORLD_BBOX}&event_date_from=2026-05-0199",
+        headers=login_as(client, author),
+    )
+    assert glued.status_code == 422
 
 
 def test_create_rejects_too_many_proof_files(author, conflict, capture_source_tag):

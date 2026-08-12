@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_PALETTE,
   PALETTES,
-  applyPalette,
   getPalette,
   paletteMapColors,
   setPalette,
@@ -42,13 +41,6 @@ describe("setPalette", () => {
     expect(window.localStorage.getItem("vidit:palette")).toBe("violet");
     expect(document.documentElement.dataset.palette).toBe("violet");
     expect(notified).toBe(true);
-  });
-});
-
-describe("applyPalette", () => {
-  it("sets the data-palette attribute", () => {
-    applyPalette("rose");
-    expect(document.documentElement.dataset.palette).toBe("rose");
   });
 });
 

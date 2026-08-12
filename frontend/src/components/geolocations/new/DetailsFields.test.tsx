@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+
 import { DetailsFields } from "./DetailsFields";
 
 const baseProps = {
@@ -78,17 +80,17 @@ describe("DetailsFields", () => {
     // applied to its input (via `Input`'s `invalid` prop): the same
     // treatment, not just one or the other.
     expect(screen.getByText("Source posted (UTC)").closest("label")).toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
     expect(screen.getByText("Source URL").closest("label")).toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
     // Event date and time are never required, so they never get flagged.
     expect(screen.getByText("Event date").closest("label")).not.toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
     expect(screen.getByText("Event time").closest("label")).not.toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
   });
 

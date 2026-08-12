@@ -7,8 +7,8 @@ from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import coords_or_none, thumbnail_media
-from app.schemas.event import EventList, PaginatedEvents
+from app.routers.events._common import build_event_list
+from app.schemas.event import PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
 from app.services.pagination import page_size
@@ -28,27 +28,6 @@ def _get_live_user_or_404(db: Session, username: str) -> User:
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-
-def _profile_payload(
-    user: User,
-    geolocations_count: int,
-    followers_count: int,
-    following_count: int,
-    is_following: bool,
-) -> UserProfile:
-    return UserProfile(
-        id=user.id,
-        username=user.username,
-        bio=user.bio,
-        avatar_url=user.avatar_url,
-        external_links=user.external_links or {},
-        created_at=user.created_at,
-        geolocations_count=geolocations_count,
-        followers_count=followers_count,
-        following_count=following_count,
-        is_following=is_following,
-    )
 
 
 @router.patch("/me", response_model=UserRead)
@@ -98,7 +77,9 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
-    count = db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
+    geolocations_count = (
+        db.query(Event).filter(Event.owner_id == user.id, Event.deleted_at.is_(None)).count()
+    )
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
     following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
@@ -107,9 +88,14 @@ def get_user_profile(
     if current_user is not None and current_user.id != user.id:
         is_following = social.is_following(db, follower_id=current_user.id, followed_id=user.id)
 
-    return _profile_payload(
-        user,
-        geolocations_count=count,
+    return UserProfile(
+        id=user.id,
+        username=user.username,
+        bio=user.bio,
+        avatar_url=user.avatar_url,
+        external_links=user.external_links or {},
+        created_at=user.created_at,
+        geolocations_count=geolocations_count,
         followers_count=followers_count,
         following_count=following_count,
         is_following=is_following,
@@ -198,9 +184,8 @@ def get_user_geolocations(
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
         )
-        # ``selectinload`` for tags + media: a many-to-many / one-to-many
-        # ``joinedload`` would row-multiply against ``LIMIT`` and silently
-        # truncate the page.
+        # Loader choice: see the note on ``list_detections`` in
+        # ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
@@ -219,21 +204,6 @@ def get_user_geolocations(
         .all()
     )
 
-    items = [
-        EventList(
-            id=geo.id,
-            title=geo.title,
-            event_coords=coords_or_none(lat, lng),
-            event_date=geo.event_date,
-            is_demo=geo.is_demo,
-            status=geo.status,
-            before_closed_status=geo.before_closed_status,
-            owner=geo.owner,
-            media=thumbnail_media(geo),
-            tags=geo.tags,
-            conflicts=geo.conflicts,
-        )
-        for geo, lat, lng in rows
-    ]
+    items = [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
 
     return PaginatedEvents(items=items, total=total, page=page, per_page=per_page)

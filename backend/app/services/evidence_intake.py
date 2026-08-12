@@ -28,6 +28,7 @@ for both shared and type-specific failures.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import UploadFile
@@ -48,6 +49,8 @@ from app.services.storage import (
     upload_proof_image,
     validate_file,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceIntakeError(Exception):
@@ -336,15 +339,21 @@ def collect_media_keys(media_rows: list[Media]) -> list[str]:
     """S3 keys for a set of ``Media`` rows, derivatives included.
 
     The shared "what does deleting these rows orphan on S3" resolver used by
-    the owner DELETE. Hero / thumb JPEG derivatives exist only for ``source``
-    images (proof uploads and videos skip them). Foreign URLs (nothing this
-    storage layer wrote) resolve to no key and are skipped.
+    the owner DELETE and by the admin GDPR erasures. Hero / thumb JPEG
+    derivatives exist only for ``source`` images (proof uploads and videos
+    skip them). Foreign URLs (nothing this storage layer wrote) resolve to no
+    key: they are logged and skipped rather than failing the delete.
     """
     storage = get_storage()
     keys: list[str] = []
     for m in media_rows:
         key = storage.key_from_url(m.storage_url)
         if key is None:
+            logger.warning(
+                "Media row %s has unrecognised storage_url %s, skipping S3 delete",
+                m.id,
+                m.storage_url,
+            )
             continue
         keys.append(key)
         if m.role == "source" and m.media_type == "image":

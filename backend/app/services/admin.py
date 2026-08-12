@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -19,14 +18,11 @@ from app.schemas.admin import (
     AdminDetectionStatsRead,
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
-    InviteCodeStatus,
 )
-from app.services.auth import bump_token_version, generate_invite_code
+from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import collect_media_keys
 from app.services.pagination import keyset_before, take_page
-from app.services.storage import get_storage, sweep_keys
-
-logger = logging.getLogger(__name__)
+from app.services.storage import sweep_keys
 
 
 class AdminError(Exception):
@@ -50,16 +46,6 @@ class EventNotFoundError(AdminError):
 
 class XHandleConflictError(AdminError):
     code = "x_handle_conflict"
-
-
-def _invite_code_status(invite: InviteCode) -> InviteCodeStatus:
-    if invite.revoked_at is not None:
-        return "revoked"
-    if invite.expires_at is not None and invite.expires_at < datetime.now(UTC):
-        return "expired"
-    if invite.use_count >= invite.max_uses:
-        return "exhausted"
-    return "active"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -143,7 +129,7 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
             expires_at=invite.expires_at,
             revoked_at=invite.revoked_at,
             created_at=invite.created_at,
-            status=_invite_code_status(invite),
+            status=invite_code_status(invite),
             redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
             used_at=invite.used_at,
             x_handle=invite.x_handle,
@@ -378,33 +364,17 @@ def hard_delete_geolocation(
 ) -> dict[str, Any]:
     """GDPR-grade erasure: drop the row, the media rows, and the S3 objects.
 
-    The DB transaction commits *before* the S3 delete so a flaky storage
-    backend can't strand DB rows pointing at a still-live key. Per-key S3
-    failures are logged and swallowed (the accepted residual orphan risk).
-    Reachable on already-soft-deleted rows (escalation: soft now, hard later)
-    and on live rows (admin override).
+    Commit-then-sweep, see :func:`services.storage.sweep_keys`. Reachable on
+    already-soft-deleted rows (escalation: soft now, hard later) and on live
+    rows (admin override).
     """
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
 
     # Capture S3 keys *before* the cascade fires: every media row, source and
-    # proof roles alike. Media rows store the public URL; reverse-lookup via
-    # the storage layer so `delete_many` gets actual keys (its contract).
-    storage = get_storage()
-    media_keys: list[str] = []
-    for m in geo.media:
-        key = storage.key_from_url(m.storage_url)
-        if key:
-            media_keys.append(key)
-        else:
-            # Foreign URL we didn't write — log and skip rather than
-            # crash the delete.
-            logger.warning(
-                "Media row %s has unrecognised storage_url %s — skipping S3 delete",
-                m.id,
-                m.storage_url,
-            )
+    # proof roles alike, derivatives included.
+    media_keys = collect_media_keys(list(geo.media))
 
     target = {
         "geolocation_id": str(geo.id),
@@ -512,34 +482,18 @@ def hard_delete_user(
        ``invite_codes.created_by`` / ``.used_by`` flip to NULL via
        migration f1a3b5c7d9e0 — invite-code rows are audit trail and
        should outlive the user.
-    4. Commit, *then* sweep S3. On S3 failure the DB is already consistent;
-       a failed delete is a logged orphan (accepted residual risk).
+    4. Commit, *then* sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
 
-    storage = get_storage()
-
-    def _resolve_keys(media_rows: list[Media]) -> list[str]:
-        keys: list[str] = []
-        for m in media_rows:
-            key = storage.key_from_url(m.storage_url)
-            if key:
-                keys.append(key)
-            else:
-                logger.warning(
-                    "Media row %s has unrecognised storage_url %s — skipping S3 delete",
-                    m.id,
-                    m.storage_url,
-                )
-        return keys
-
-    # 1. Capture every S3 key this user's events reference (media all roles).
+    # 1. Capture every S3 key this user's events reference (media all roles,
+    # derivatives included).
     geolocations = db.query(Event).filter(Event.owner_id == user.id).all()
     geo_media_keys: list[str] = []
     for geo in geolocations:
-        geo_media_keys.extend(_resolve_keys(list(geo.media)))
+        geo_media_keys.extend(collect_media_keys(list(geo.media)))
 
     target = {
         "user_id": str(user.id),

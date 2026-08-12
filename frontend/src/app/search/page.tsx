@@ -31,14 +31,21 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import {
+  EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
   STATUS_FILTER_OPTIONS,
+  addedWindowActive,
   buildActiveFilterPills,
+  buildDateWindowPills,
+  eventWindowActive,
+  hasAnyFilter,
+  type DateWindows,
   type EventFilterPatch,
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
@@ -59,13 +66,6 @@ const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request
 // Debounce window: reactive enough to feel live, long enough not to fire
 // on every keystroke of a long phrase.
 const DEBOUNCE_MS = 300;
-
-interface DateWindows {
-  eventFrom: string;
-  eventTo: string;
-  addedFrom: string;
-  addedTo: string;
-}
 
 export default function SearchPage() {
   // `useSearchParams` opts out of static prerender, so the body lives
@@ -107,14 +107,7 @@ function SearchPageBody() {
     addedFrom: searchParams.get("submitted_from") ?? "",
     addedTo: searchParams.get("submitted_to") ?? "",
   };
-  const arrivedFiltered =
-    Object.values(initialDates).some(Boolean) ||
-    initialValues.statuses.length > 0 ||
-    initialValues.conflicts.length > 0 ||
-    initialValues.captureSources.length > 0 ||
-    initialValues.tags.length > 0 ||
-    initialValues.mediaTypes.length > 0 ||
-    !!initialValues.author;
+  const arrivedFiltered = hasAnyFilter(initialValues, initialDates);
   // A filtered link without an explicit type (the profile's "Show more")
   // lands on the Events scope: filters are event predicates.
   const initialType =
@@ -140,37 +133,19 @@ function SearchPageBody() {
   const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => {
     setValues(EMPTY_EVENT_FILTERS);
-    setDates({ eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" });
+    setDates(EMPTY_DATE_WINDOWS);
   };
 
-  const eventWindowActive = !!(dates.eventFrom || dates.eventTo);
-  const addedWindowActive = !!(dates.addedFrom || dates.addedTo);
-
-  // The shared pill entries plus this surface's two window entries.
+  // The shared value + date-window pill entries.
   const activeFilters: ActiveFilter[] = [
     ...buildActiveFilterPills(values, onPatch),
-    ...(eventWindowActive
-      ? [
-          {
-            key: "event-window",
-            label: `Event: ${rangeSummary(dates.eventFrom, dates.eventTo)}`,
-            onRemove: () => setDates((d) => ({ ...d, eventFrom: "", eventTo: "" })),
-          },
-        ]
-      : []),
-    ...(addedWindowActive
-      ? [
-          {
-            key: "added-window",
-            label: `Added: ${rangeSummary(dates.addedFrom, dates.addedTo)}`,
-            onRemove: () => setDates((d) => ({ ...d, addedFrom: "", addedTo: "" })),
-          },
-        ]
-      : []),
+    ...buildDateWindowPills(
+      dates,
+      () => setDates((d) => ({ ...d, eventFrom: "", eventTo: "" })),
+      () => setDates((d) => ({ ...d, addedFrom: "", addedTo: "" }))
+    ),
   ];
-  // The author narrows the view without carrying a pill (its chip lives in
-  // the Author section), so it counts as active on its own.
-  const hasActiveFilters = activeFilters.length > 0 || !!values.author.trim();
+  const hasActiveFilters = hasAnyFilter(values, dates);
   const onEventScope = EVENT_TYPES.includes(typeFilter);
 
   // Monotonic request token: each fetch increments it, late responses
@@ -182,8 +157,8 @@ function SearchPageBody() {
   // Debounced commit: inputs → the committed snapshot + the URL via
   // `replace` (not `push`) so the back button doesn't fill with
   // intermediate states.
-  useEffect(() => {
-    const t = setTimeout(() => {
+  useDebouncedEffect(
+    () => {
       // Identity-preserving commit: if nothing changed (e.g. the chip click
       // already committed synchronously), keep the previous object so the
       // fetch effect doesn't refire on a content-identical snapshot.
@@ -206,9 +181,10 @@ function SearchPageBody() {
       if (dates.addedTo) params.set("submitted_to", dates.addedTo);
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
-    }, DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [queryInput, typeFilter, values, dates, router]);
+    },
+    [queryInput, typeFilter, values, dates, router],
+    DEBOUNCE_MS
+  );
 
   // Issue the API call whenever the committed snapshot / type changes.
   // Any active filter with an empty query is a valid search (browse mode:
@@ -217,15 +193,7 @@ function SearchPageBody() {
     const q = committed.q.trim();
     const v = committed.values;
     const d = committed.dates;
-    const filtersActive =
-      v.statuses.length > 0 ||
-      v.conflicts.length > 0 ||
-      v.captureSources.length > 0 ||
-      v.tags.length > 0 ||
-      v.mediaTypes.length > 0 ||
-      !!v.author.trim() ||
-      Object.values(d).some(Boolean);
-    if (!q && !filtersActive) {
+    if (!q && !hasAnyFilter(v, d)) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -280,8 +248,11 @@ function SearchPageBody() {
     // filters first (type=user&conflict=… flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       clearFilters();
-      const cleared: DateWindows = { eventFrom: "", eventTo: "", addedFrom: "", addedTo: "" };
-      setCommitted({ q: queryInput, values: EMPTY_EVENT_FILTERS, dates: cleared });
+      setCommitted({
+        q: queryInput,
+        values: EMPTY_EVENT_FILTERS,
+        dates: EMPTY_DATE_WINDOWS,
+      });
     } else {
       setCommitted({ q: queryInput, values, dates });
     }
@@ -344,7 +315,7 @@ function SearchPageBody() {
                 title: "Event date",
                 concept: "event_date",
                 summary: rangeSummary(dates.eventFrom, dates.eventTo),
-                active: eventWindowActive,
+                active: eventWindowActive(dates),
                 children: (
                   <DateRange
                     label="Event date"
@@ -358,7 +329,7 @@ function SearchPageBody() {
                 title: "Added",
                 concept: "added",
                 summary: rangeSummary(dates.addedFrom, dates.addedTo),
-                active: addedWindowActive,
+                active: addedWindowActive(dates),
                 children: (
                   <DateRange
                     label="Added"
