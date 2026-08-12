@@ -28,10 +28,14 @@ export const OG_CONTENT_TYPE = "image/png";
 /**
  * Card palette, the hex values behind the Tailwind classes the app uses:
  * `neutral-950` surface, `neutral-900` panel, `neutral-800` border and minor
- * graticule, `neutral-700` major graticule, `orange-500` accent, and
- * `neutral-100` / `neutral-400` / `neutral-500` type. Satori takes no class
- * names, so the scale is restated here as literals; it is the one place the
- * cards read colour from.
+ * graticule, `neutral-700` major graticule, `neutral-600` coastline,
+ * `orange-500` accent, and `neutral-100` / `neutral-400` / `neutral-500` type.
+ * Satori takes no class names, so the scale is restated here as literals; it is
+ * the one place the cards read colour from.
+ *
+ * `land` is the one value off that scale, a step between `neutral-900` and
+ * `neutral-800`: it lifts the locator panel's landmass off the panel while
+ * leaving the minor graticule visible where it crosses land.
  */
 export const OG_COLOR = {
   surface: "#0a0a0a",
@@ -39,6 +43,8 @@ export const OG_COLOR = {
   border: "#262626",
   grid: "#262626",
   gridMajor: "#404040",
+  land: "#1f1f1f",
+  landEdge: "#525252",
   accent: "#f97316",
   accentDim: "#7c3d13",
   text: "#f5f5f5",

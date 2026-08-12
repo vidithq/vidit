@@ -1,13 +1,15 @@
 import { projectEquirectangular } from "@/lib/og";
 
 import { OG_COLOR } from "./card";
+import { OG_LANDMASS_PATH, OG_LANDMASS_VIEWBOX } from "./landmass";
 
-// The event card's locator panel: a plate-carrée graticule with the event's
-// point marked on it. Deliberately drawn from positioned rectangles rather than
-// from map tiles, so rendering a card costs no basemap request, no tile
-// provider key, and no new runtime dependency; a share card is a thumbnail, and
-// the useful signal at that size is the hemisphere and the rough region, which
-// a graticule carries. The real map is one click away on the page.
+// The event card's locator panel: a coastline outline under a plate-carrée
+// graticule, with the event's point marked on it. The outline is committed path
+// data (see `landmass.ts`) and the graticule is positioned rectangles, so
+// rendering a card costs no basemap request, no tile provider key, and no new
+// runtime dependency. A share card is a thumbnail, and the useful signal at
+// that size is the region, which a coastline plus a graticule carries; the real
+// map is one click away on the page.
 //
 // Satori supports `position: absolute` and needs an explicit `display` on every
 // node, so each line is its own absolutely positioned flex div.
@@ -48,6 +50,26 @@ export function OgMiniMap({
         overflow: "hidden",
       }}
     >
+      {/* The world outline, under everything else. Its user space is the same
+          plate-carrée frame the marker is projected into, scaled to the panel
+          by the viewBox, so the coastline and the crosshair agree by
+          construction and no coordinate is computed twice. */}
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${OG_LANDMASS_VIEWBOX.width} ${OG_LANDMASS_VIEWBOX.height}`}
+        preserveAspectRatio="none"
+        style={{ position: "absolute", top: 0, left: 0 }}
+      >
+        <path
+          d={OG_LANDMASS_PATH}
+          fill={OG_COLOR.land}
+          stroke={OG_COLOR.landEdge}
+          strokeWidth={0.5}
+          strokeLinejoin="round"
+        />
+      </svg>
+
       {/* Meridians. The prime meridian reads brighter, so the eye can place a
           point east or west of it without labels. */}
       {Array.from({ length: MERIDIANS - 1 }, (_, i) => i + 1).map((i) => (

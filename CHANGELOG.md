@@ -8,7 +8,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+- **The event share card's locator panel draws a coastline** ([`frontend/src/app/_og/landmass.ts`](frontend/src/app/_og/landmass.ts), [`docs/design.md`](docs/design.md#share-cards)). A simplified Natural Earth world outline sits under the graticule, so the marker reads as a place instead of as a point on a grid, and the card still fetches nothing at request time.
 
 ## v0.5.0, 2026-08-12
 
