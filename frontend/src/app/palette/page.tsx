@@ -49,6 +49,11 @@ import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
+import {
+  ArchivedCopyLink,
+  PRIMARY_SOURCE_DESCRIPTION,
+  mirrorDescription,
+} from "@/components/ui/ArchivedCopyLink";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   TEXT_LINK,
@@ -616,6 +621,36 @@ export default function PalettePage() {
             <SourceLabel isDemo url="synthetic://demo" variant="inline" />
           </Item>
 
+          <Item
+            name="<ArchivedCopyLink>"
+            usage="The archived-copy fallback beside an outbound source link, on the event detail surfaces: the primary Source row and every expanded secondary mirror. Sits next to the original rather than replacing it, so the original stays the primary link while it resolves. Renders nothing without a capture, so a caller hands it the payload field with no guard of its own. The visible text is the same on every instance, so the accessible name carries the target: PRIMARY_SOURCE_DESCRIPTION for the source, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+          >
+            <Variant label="captured (primary source)">
+              <span className="text-sm text-neutral-300">
+                t.me
+                <ArchivedCopyLink
+                  href="https://web.archive.org/web/20260601120000/https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                />
+              </span>
+            </Variant>
+            <Variant label="captured (mirror 2 of a multi-mirror list)">
+              <span className="text-sm text-neutral-300">
+                t.me
+                <ArchivedCopyLink
+                  href="https://web.archive.org/web/20260601120100/https://t.me/mirror/1"
+                  describes={mirrorDescription("t.me", 1, 2)}
+                />
+              </span>
+            </Variant>
+            <Variant label="no capture yet (renders nothing)">
+              <span className="text-sm text-neutral-300">
+                t.me
+                <ArchivedCopyLink href={null} describes={PRIMARY_SOURCE_DESCRIPTION} />
+              </span>
+            </Variant>
+          </Item>
+
           <Item name="<Dot>" usage="The orange notification dot: sidebar nav badges and the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
             <Variant label="bare">
               <Dot />
@@ -968,7 +1003,7 @@ export default function PalettePage() {
               <Variant label="demo source (synthetic, no archived copy)">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
-              <Variant label="real source + archived fallback (expand Secondary sources for the mirrors')">
+              <Variant label="real source + archived fallback (expand Secondary sources for the mirrors)">
                 <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
               </Variant>
             </div>

@@ -11,7 +11,11 @@ import { sourceIsSynthetic } from "@/lib/events";
 import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { ArchivedCopyLink } from "@/components/event/ArchivedCopyLink";
+import {
+  ArchivedCopyLink,
+  PRIMARY_SOURCE_DESCRIPTION,
+  mirrorDescription,
+} from "@/components/ui/ArchivedCopyLink";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
@@ -181,7 +185,10 @@ function DetailRows({
             className={sourceClass}
           />
           {!sourceIsSynthetic(geo) && (
-            <ArchivedCopyLink href={geo.archived_source_url} describes="the source" />
+            <ArchivedCopyLink
+              href={geo.archived_source_url}
+              describes={PRIMARY_SOURCE_DESCRIPTION}
+            />
           )}
         </span>
       </DetailRow>
@@ -359,12 +366,15 @@ function SecondarySourcesRow({
                 maxWidthClass={maxWidthClass}
                 className={textSize}
               />
-              {/* Named by host rather than "the source": several archived links
-                  can sit on one page, and each needs its own target announced. */}
+              {/* Named per mirror rather than "the source": several archived
+                  links can sit on one page, and each needs its own target
+                  announced. `mirrorDescription` owns that name, including the
+                  two cases a bare host cannot carry (mirrors sharing a host, a
+                  URL with no host to show). */}
               {!isDemo && (
                 <ArchivedCopyLink
                   href={archivedUrls[index] ?? null}
-                  describes={safeHostname(url)}
+                  describes={mirrorDescription(safeHostname(url), index, urls.length)}
                 />
               )}
             </span>

@@ -462,9 +462,10 @@ describe("EventDetailBody", () => {
     fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
 
     // Named per target, so the two archived links on this page stay tellable
-    // apart by their accessible name.
+    // apart by their accessible name. The position leads, since a host is not
+    // an identity: two mirrors of one channel would otherwise share a name.
     const archived = screen.getByRole("link", {
-      name: "Archived copy of www.youtube.com",
+      name: "Archived copy of mirror 2, www.youtube.com",
     });
     expect(archived).toHaveAttribute(
       "href",
@@ -473,10 +474,68 @@ describe("EventDetailBody", () => {
     expect(archived).toHaveAttribute("target", "_blank");
     expect(archived).toHaveAttribute("rel", "noopener noreferrer");
     expect(
-      screen.queryByRole("link", { name: "Archived copy of x.com" })
+      screen.queryByRole("link", { name: /Archived copy of mirror 1/ })
     ).not.toBeInTheDocument();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("names two mirrors sharing a host apart, and the primary apart from both", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          archived_source_url: "https://web.archive.org/web/2026/t.me/channel/12345",
+          secondary_source_urls: ["https://t.me/mirror/1", "https://t.me/mirror/2"],
+          archived_secondary_source_urls: [
+            "https://web.archive.org/web/2026/t.me/mirror/1",
+            "https://web.archive.org/web/2026/t.me/mirror/2",
+          ],
+        })}
+        variant="page"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
+
+    expect(
+      screen.getByRole("link", { name: "Archived copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Archived copy of mirror 1, t.me" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Archived copy of mirror 2, t.me" })
+    ).toBeInTheDocument();
+  });
+
+  it("names a lone mirror by its host, falling back to a literal without one", () => {
+    const { unmount } = render(
+      <EventDetailBody
+        geo={geoFixture({
+          secondary_source_urls: ["https://t.me/mirror/1"],
+          archived_secondary_source_urls: ["https://web.archive.org/web/2026/t.me/mirror/1"],
+        })}
+        variant="page"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
+    expect(screen.getByRole("link", { name: "Archived copy of t.me" })).toBeInTheDocument();
+    unmount();
+
+    // A stored value the URL parser gives no host for still announces
+    // something a reader can act on.
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          secondary_source_urls: ["mailto:tips@example.org"],
+          archived_secondary_source_urls: ["https://web.archive.org/web/2026/tips"],
+        })}
+        variant="page"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
+    expect(
+      screen.getByRole("link", { name: "Archived copy of this mirror" })
+    ).toBeInTheDocument();
   });
 
   it("singularises the toggle on a lone secondary source", () => {
