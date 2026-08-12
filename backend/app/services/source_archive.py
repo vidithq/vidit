@@ -5,8 +5,8 @@ exactly the evidence the catalog promises to preserve. Publishing an event
 pushes its links to the Wayback Machine and to archive.today so a dead original
 still has a readable copy.
 
-Publication is the trigger, not creation: Save Page Now is a public,
-timestamped service, so submitting a link announces it. An event that is
+Publication is the trigger, not creation: both archiving services are public
+and timestamped, so submitting a link announces it. An event that is
 public already (a directly created geolocation, a request, a draft the
 analyst promotes with ``geolocate``) loses nothing by that; a machine
 ``detected`` draft is unpublished working state, so its links are not
@@ -283,7 +283,7 @@ _BACKFILL_CHUNK = 200
 # The published set, which is the set the write paths enqueue: a direct
 # ``geolocated`` create, a public ``requested`` row, a draft promoted with
 # ``geolocate``, and a ``closed`` row that was a request before it was
-# withdrawn. Save Page Now is public and timestamped, so a machine ``detected``
+# withdrawn. The archiving services are public and timestamped, so a machine ``detected``
 # draft (and a rejected one, ``closed`` off ``detected``) stays out until it is
 # published; the promotion enqueues its links then. Written as the set to
 # include rather than as "not detected", so a status added later has to be

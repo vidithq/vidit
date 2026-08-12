@@ -423,8 +423,9 @@ def test_enqueue_catalog_reaches_a_mirror_on_an_already_queued_event(db, publish
 
 
 def test_enqueue_catalog_leaves_an_unpublished_draft_alone(db, event):
-    """Save Page Now is public and timestamped, so a machine ``detected`` draft
-    is not submitted by the admin backfill either; its promotion enqueues it."""
+    """The archiving services are public and timestamped, so a machine
+    ``detected`` draft is not submitted by the admin backfill either; its
+    promotion enqueues it."""
     _with_mirrors(db, event, MIRROR)
     assert event.id not in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
     source_archive.enqueue_catalog(db)
