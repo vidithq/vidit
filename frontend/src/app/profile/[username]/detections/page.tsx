@@ -23,10 +23,24 @@ import {
  *  screen: readiness is computed from the payload, not asked of the server. */
 type QueueFilter = "all" | "ready" | "incomplete";
 
-const FILTERS: { value: QueueFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "ready", label: "Ready" },
-  { value: "incomplete", label: "Incomplete" },
+/** One-word labels for three states an analyst has no way to tell apart from
+ *  the words alone, so each option carries the sentence it stands for. The
+ *  wording matches the row badges: "Ready" is about evidence, never about the
+ *  draft being finished. */
+const FILTERS: { value: QueueFilter; label: string; title: string }[] = [
+  { value: "all", label: "All", title: "Every draft on this page, ready or not." },
+  {
+    value: "ready",
+    label: "Ready",
+    title:
+      "Drafts the import left with every piece of evidence they need. A review pass adds the conflict and the capture source, then publishes them.",
+  },
+  {
+    value: "incomplete",
+    label: "Incomplete",
+    title:
+      "Drafts the import left short of the evidence floor. A review can't supply what's missing, so open one on the full form to fill it in.",
+  },
 ];
 
 export default function DetectionsPage() {

@@ -481,7 +481,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track; title on an option is hover text on that option's button, for a one-word label that needs a sentence (the detections queue filter).">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Demo mode"
