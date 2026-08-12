@@ -5,12 +5,13 @@ import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { EventDetail } from "@/types";
-import { formatDate, formatInstant } from "@/lib/format";
+import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { sourceIsSynthetic } from "@/lib/events";
 import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
+import { ArchivedCopyLink } from "@/components/event/ArchivedCopyLink";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
@@ -171,9 +172,6 @@ function DetailRows({
         value={formatDate(geo.created_at)}
       />
       <DetailRow label="Source" concept="source_url" compact={compact}>
-        {/* The archived copy sits beside the source rather than replacing it:
-            the original stays the primary link while it resolves, and the
-            fallback is one click away the day it stops. */}
         <span className="flex min-w-0 items-baseline justify-end">
           <SourceLabel
             isDemo={sourceIsSynthetic(geo)}
@@ -182,20 +180,8 @@ function DetailRows({
             maxWidthClass={sourceMaxWidth}
             className={sourceClass}
           />
-          {geo.archived_source_url && !sourceIsSynthetic(geo) && (
-            <a
-              href={geo.archived_source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Archived copy, readable if the source is taken down"
-              /* The link text alone reads as "archived" out of context, and
-                 `title` is not announced: name the target for a screen
-                 reader. */
-              aria-label="Archived copy of the source"
-              className={`${TEXT_LINK} ml-2 shrink-0 text-xs`}
-            >
-              archived
-            </a>
+          {!sourceIsSynthetic(geo) && (
+            <ArchivedCopyLink href={geo.archived_source_url} describes="the source" />
           )}
         </span>
       </DetailRow>
@@ -205,6 +191,7 @@ function DetailRows({
       {geo.secondary_source_urls.length > 0 && (
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
+          archivedUrls={geo.archived_secondary_source_urls}
           isDemo={sourceIsSynthetic(geo)}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
@@ -312,17 +299,22 @@ function DetailRows({
 /**
  * The Secondary sources row: a count that expands into the list. Rendered only
  * for a non-empty list (the caller guards), so the Details block gains nothing
- * on an event that declares no mirror. Each link is a `SourceLabel`, the same
- * host-reduced new-tab affordance as the Source row above, so the primary and
- * its mirrors read alike.
+ * on an event that declares no mirror. Each link is a `SourceLabel` trailed by
+ * its `ArchivedCopyLink`, the same pair the Source row above renders, so the
+ * primary and its mirrors read alike.
+ *
+ * `archivedUrls` is index-aligned with `urls` (the payload's contract), so
+ * mirror `i` takes capture `i`.
  */
 function SecondarySourcesRow({
   urls,
+  archivedUrls,
   isDemo,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
+  archivedUrls: (string | null)[];
   isDemo: boolean;
   compact: boolean;
   maxWidthClass: string;
@@ -356,15 +348,26 @@ function SecondarySourcesRow({
           )}
         </button>
         {open &&
-          urls.map((url) => (
-            <SourceLabel
-              key={url}
-              isDemo={isDemo}
-              url={url}
-              variant="link"
-              maxWidthClass={maxWidthClass}
-              className={textSize}
-            />
+          urls.map((url, index) => (
+            // Index key: two mirrors may repeat a URL, and the archived entry
+            // is paired by position anyway.
+            <span key={index} className="flex min-w-0 items-baseline justify-end">
+              <SourceLabel
+                isDemo={isDemo}
+                url={url}
+                variant="link"
+                maxWidthClass={maxWidthClass}
+                className={textSize}
+              />
+              {/* Named by host rather than "the source": several archived links
+                  can sit on one page, and each needs its own target announced. */}
+              {!isDemo && (
+                <ArchivedCopyLink
+                  href={archivedUrls[index] ?? null}
+                  describes={safeHostname(url)}
+                />
+              )}
+            </span>
           ))}
       </div>
     </DetailRow>

@@ -156,6 +156,7 @@ const MOCK_DETAIL: EventDetail = {
     "https://t.me/mirror/1",
     "https://www.youtube.com/watch?v=demo",
   ],
+  archived_secondary_source_urls: [null, null],
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
@@ -175,14 +176,18 @@ const MOCK_DETAIL: EventDetail = {
   investigators: [],
 };
 
-// The same detail body with a real source and its Wayback capture: the
-// archived fallback is suppressed on a synthetic demo source, so the mock
-// above can never show it.
+// The same detail body with a real source and its Wayback capture, plus one
+// captured mirror and one still uncaptured: the archived fallback is
+// suppressed on a synthetic demo source, so the mock above can never show it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
   is_demo: false,
   source_url: "https://t.me/channel/12345",
   archived_source_url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+  archived_secondary_source_urls: [
+    "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
+    null,
+  ],
 };
 
 // The lighter geolocation-card payload (timeline / recent-submissions shape).
@@ -963,7 +968,7 @@ export default function PalettePage() {
               <Variant label="demo source (synthetic, no archived copy)">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
-              <Variant label="real source + archived fallback">
+              <Variant label="real source + archived fallback (expand Secondary sources for the mirrors')">
                 <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
               </Variant>
             </div>

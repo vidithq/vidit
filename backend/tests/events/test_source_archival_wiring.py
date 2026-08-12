@@ -196,3 +196,57 @@ def test_event_detail_archived_source_is_null_without_a_capture(db, author):
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
     assert body["archived_source_url"] is None
+
+
+def test_event_detail_aligns_mirror_captures_with_their_urls(db, author):
+    """``archived_secondary_source_urls`` is index-aligned with
+    ``secondary_source_urls``: the entry carries that mirror's capture, or NULL
+    while the worker has none. The alignment is the contract the detail surface
+    reads, so a capture must not slide onto the neighbouring mirror when only
+    some of the list is done."""
+    second = "https://rumble.com/v-mirror"
+    geo = _make_geo(
+        db,
+        author=author,
+        source_url=SOURCE,
+        secondary_source_urls=[MIRROR, second],
+    )
+    # Only the second mirror has landed, and the queue row order is the reverse
+    # of the link order, so an implementation zipping the two collections
+    # instead of looking each URL up fails here.
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=second,
+            origin="secondary_source",
+            status="done",
+            provider="wayback",
+            archived_url=f"https://web.archive.org/web/20260811120002/{second}",
+        )
+    )
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=MIRROR,
+            origin="secondary_source",
+            status="queued",
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["secondary_source_urls"] == [MIRROR, second]
+    assert body["archived_secondary_source_urls"] == [
+        None,
+        f"https://web.archive.org/web/20260811120002/{second}",
+    ]
+
+
+def test_event_detail_mirror_captures_are_empty_without_mirrors(db, author):
+    """An event declaring no mirror serialises both lists empty, so the surface
+    reads one shape rather than branching on a missing key."""
+    geo = _make_geo(db, author=author, source_url=SOURCE)
+
+    body = client.get(f"/api/v1/events/{geo.id}").json()
+    assert body["secondary_source_urls"] == []
+    assert body["archived_secondary_source_urls"] == []

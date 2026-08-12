@@ -133,7 +133,7 @@ Source tweets get deleted and accounts get suspended, which destroys exactly the
 
 **Backfill.** The admin Maintenance panel's *Queue source archival for the catalog* button ([`POST /admin/maintenance/enqueue-source-archival`](api.md#post-adminmaintenanceenqueue-source-archival)) walks live non-demo events oldest first, capped per click, and enqueues the links of every event that has no `source_archives` row at all. Enqueue only, no HTTP calls: the rows are queue entries the worker paces. The scan is an anti-join, so an event covered by one click drops out of the next one's scan and repeated clicks walk the catalog forward instead of re-reading its oldest page.
 
-**Read surface.** `EventRead.archived_source_url` carries the capture of the event's own `source_url` (see [`api.md`](api.md#get-eventsid)), and the event detail surface renders it as a small fallback link beside the source. Proof-body captures are stored but not rendered inline.
+**Read surface.** `EventRead.archived_source_url` carries the capture of the event's own `source_url`, and `archived_secondary_source_urls` the captures of its mirrors, index-aligned with `secondary_source_urls` (see [`api.md`](api.md#get-eventsid)). The event detail surface renders each as a small fallback link beside the link it captures ([`ArchivedCopyLink`](../frontend/src/components/event/ArchivedCopyLink.tsx), one affordance for both). Proof-body captures are stored but not rendered inline.
 
 **Runner.** The always-on worker described under [Archive import worker](#archive-import-worker) drains this queue on a thread of its own, separate from the import and mention passes: a capture run is paced in seconds per row, and inline it would be time an analyst's import spends waiting behind a backfill.
 

@@ -191,6 +191,11 @@ class EventRead(BaseModel):
     # always serialised. Unlike ``source_url`` these are not the frozen evidence
     # anchor: a fulfiller replaces the whole list at the geolocate transition.
     secondary_source_urls: list[str]
+    # The archived copies of ``secondary_source_urls``, same length and same
+    # order: entry ``i`` is the capture of mirror ``i``, NULL until the archival
+    # worker has one. A parallel list rather than a list of objects keeps
+    # ``secondary_source_urls`` the shape every existing consumer already reads.
+    archived_secondary_source_urls: list[str | None]
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.

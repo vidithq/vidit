@@ -39,6 +39,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     ],
     source_url: "https://t.me/channel/12345",
     secondary_source_urls: [],
+    archived_secondary_source_urls: [],
     proof: {
       type: "doc",
       content: [
@@ -437,6 +438,44 @@ describe("EventDetailBody", () => {
     expect(link).toHaveAttribute("href", "https://x.com/user/status/9");
     // Same new-tab affordance as the primary Source row.
     expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("offers the archived copy beside each captured mirror, and only those", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          secondary_source_urls: [
+            "https://x.com/user/status/9",
+            "https://www.youtube.com/watch?v=abc",
+          ],
+          // Only the second mirror has a capture: the affordance follows the
+          // capture, not the mirror.
+          archived_secondary_source_urls: [
+            null,
+            "https://web.archive.org/web/2026/youtube.com/watch?v=abc",
+          ],
+        })}
+        variant="page"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
+
+    // Named per target, so the two archived links on this page stay tellable
+    // apart by their accessible name.
+    const archived = screen.getByRole("link", {
+      name: "Archived copy of www.youtube.com",
+    });
+    expect(archived).toHaveAttribute(
+      "href",
+      "https://web.archive.org/web/2026/youtube.com/watch?v=abc"
+    );
+    expect(archived).toHaveAttribute("target", "_blank");
+    expect(archived).toHaveAttribute("rel", "noopener noreferrer");
+    expect(
+      screen.queryByRole("link", { name: "Archived copy of x.com" })
+    ).not.toBeInTheDocument();
+    // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
   });
 
