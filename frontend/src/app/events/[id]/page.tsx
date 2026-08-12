@@ -86,8 +86,12 @@ export default function EventPage() {
                   {/* The pair plus its two actions is wider than the row on a
                       narrow phone, so the group wraps and the actions take a
                       second line under the coordinates rather than pushing the
-                      page sideways. */}
-                  <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 ml-4 min-w-0">
+                      page sideways. `min-w-0` lets this flex item shrink below
+                      its content width, which is what makes the wrap happen at
+                      all instead of the row growing past the frame, and
+                      `justify-end` keeps the wrapped line flush right like the
+                      tag rows above. */}
+                  <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
                     <span className="text-sm text-neutral-200 font-mono">
                       {formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)}
                     </span>

@@ -33,15 +33,19 @@ export function PageShell({
           // whether or not the back arrow renders. That gutter only exists once
           // the centred column has room to sit off the rail, which is from `lg`
           // up: below it the button landed under the fixed sidebar, where taps
-          // reached the nav rather than the button. There it sits in flow above
-          // the title instead, pulled left by the icon shape's own padding so
-          // the arrow still lines up with the heading.
+          // reached the nav rather than the button. Below `lg` it sits in flow
+          // above the title, and `flex` says so: the row above the heading is
+          // the intended layout, not an inline atom that happens to break
+          // before its block sibling (`size-9` fixes the width, so a block-level
+          // flex box can't stretch the square). `-ml-2` pulls it back toward the
+          // heading: the 36px square insets its 18px glyph by 9px, and the class
+          // takes 8 of those back.
           <Button
             icon
             variant="ghost"
             onClick={handleBack}
             aria-label="Back"
-            className="-ml-2 mb-1 lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0"
+            className="flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0"
           >
             <ArrowLeft size={18} />
           </Button>

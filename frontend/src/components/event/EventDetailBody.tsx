@@ -377,7 +377,7 @@ function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   // scrolled the whole page sideways on a phone. The one wrapper both the page
   // and the map panel render through, so neither can regress alone.
   const body = geo.proof ? (
-    <div className="text-sm text-neutral-300 leading-relaxed break-words [overflow-wrap:anywhere]">
+    <div className="text-sm text-neutral-300 leading-relaxed [overflow-wrap:anywhere]">
       {renderProof(geo.proof)}
     </div>
   ) : (
