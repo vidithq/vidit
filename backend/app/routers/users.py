@@ -208,7 +208,12 @@ def get_user_geolocations(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
-        .order_by(Event.event_date.desc())
+        # ``event_date`` alone is neither unique nor non-null, so an OFFSET
+        # walk over it lets Postgres return tied rows in any order it likes
+        # and a page can repeat a row the previous one already served, or skip
+        # one. ``created_at, id`` breaks every tie and makes the ordering
+        # total.
+        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

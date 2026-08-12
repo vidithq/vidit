@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchPage } from "@/lib/api";
 
 interface PagedResult<T> {
@@ -21,9 +21,13 @@ interface PagedResult<T> {
  * `hasMore` is true exactly while the server says another page exists.
  *
  * `buildPath` takes the cursor of the page to fetch (`null` for the first) and
- * returns its path, so each caller keeps its own query builder. It must be
- * stable across renders (`useCallback`), or the first page refetches on every
- * render.
+ * returns its path, so each caller keeps its own query builder. The first-page
+ * effect keys on the path string, not on the function, so an unmemoized
+ * builder costs a new `loadMore` identity each render rather than a refetch;
+ * memoizing it (`useCallback`) is still the shape to write.
+ *
+ * `reload` refetches the first page and drops the walk so far, for a caller
+ * whose own writes change the set (minting or revoking an invite code).
  */
 export function useCursorList<T>(buildPath: (cursor: string | null) => string): {
   items: T[];
@@ -32,6 +36,7 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
   loadingMore: boolean;
   hasMore: boolean;
   loadMore: () => void;
+  reload: () => void;
 } {
   const [result, setResult] = useState<PagedResult<T>>({
     items: [],
@@ -40,6 +45,11 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
     path: null,
   });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
+  // The in-flight `loadMore`, so the first-page effect's cleanup can abort it:
+  // a page-2 answer belongs to the path that minted its cursor, and once that
+  // path is gone (a filter change, an unmount) the rows are unusable.
+  const moreRequest = useRef<AbortController | null>(null);
 
   const firstPath = buildPath(null);
 
@@ -64,33 +74,62 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
           path: firstPath,
         });
       });
-    return () => controller.abort();
-  }, [firstPath]);
+    return () => {
+      controller.abort();
+      moreRequest.current?.abort();
+      moreRequest.current = null;
+    };
+  }, [firstPath, reloadToken]);
 
   const fresh = result.path === firstPath ? result : null;
   const cursor = fresh?.cursor ?? null;
 
   const loadMore = useCallback(() => {
     if (cursor === null || loadingMore) return;
+    // The path this page belongs to, captured now: by the time the answer
+    // lands the caller may have rebuilt the query, and appending rows from
+    // the old filter set onto the new list is how a walk shows two sets at
+    // once.
+    const walk = firstPath;
+    const controller = new AbortController();
+    moreRequest.current = controller;
     setLoadingMore(true);
-    apiFetchPage<T[]>(buildPath(cursor))
+    apiFetchPage<T[]>(buildPath(cursor), { signal: controller.signal })
       .then((page) => {
+        if (controller.signal.aborted) return;
         // Append, never replace: the walk is totally ordered, so a page can
         // neither repeat a row already shown nor skip one.
-        setResult((prev) => ({
-          ...prev,
-          items: [...prev.items, ...page.items],
-          cursor: page.nextCursor,
-        }));
+        setResult((prev) =>
+          prev.path !== walk
+            ? prev
+            : {
+                ...prev,
+                items: [...prev.items, ...page.items],
+                cursor: page.nextCursor,
+              }
+        );
       })
       .catch((e: unknown) => {
-        setResult((prev) => ({
-          ...prev,
-          error: e instanceof Error ? e.message : "Request failed",
-        }));
+        if (controller.signal.aborted) return;
+        setResult((prev) =>
+          prev.path !== walk
+            ? prev
+            : {
+                ...prev,
+                error: e instanceof Error ? e.message : "Request failed",
+              }
+        );
       })
-      .finally(() => setLoadingMore(false));
-  }, [buildPath, cursor, loadingMore]);
+      .finally(() => {
+        if (moreRequest.current === controller) moreRequest.current = null;
+        // Unconditional: at most one `loadMore` is ever in flight (the guard
+        // above), so an aborted one still has to clear the flag or the button
+        // stays disabled forever.
+        setLoadingMore(false);
+      });
+  }, [buildPath, cursor, firstPath, loadingMore]);
+
+  const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 
   return {
     items: fresh?.items ?? [],
@@ -99,5 +138,6 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
     loadingMore,
     hasMore: cursor !== null,
     loadMore,
+    reload,
   };
 }

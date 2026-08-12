@@ -303,9 +303,15 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     record_user(author_b)
     record_user(stranger)
 
+    # A and B carry opposed orderings on the two candidate keys: A's event date
+    # is the older one, its submission the newer. So the assertion below reads
+    # the contract (newest submission first) rather than agreeing with both
+    # keys by accident, which is what equal insertion order would give.
     geo_a = _make_geo(db, author=author_a, title="A", event=date(2026, 5, 10))
     geo_b = _make_geo(db, author=author_b, title="B", event=date(2026, 5, 11))
     geo_stranger = _make_geo(db, author=stranger, title="Stranger", event=date(2026, 5, 12))
+    geo_b.created_at = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
+    geo_a.created_at = datetime(2026, 5, 20, 10, 0, tzinfo=UTC)
     record_geo(geo_a)
     record_geo(geo_b)
     record_geo(geo_stranger)
@@ -328,8 +334,9 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     titles = [item["title"] for item in body["items"]]
     assert "A" in titles and "B" in titles
     assert "Stranger" not in titles
-    # Newest event date first.
-    assert titles.index("B") < titles.index("A")
+    # Newest submission first: A was submitted after B, though B's event date
+    # is the later one. Ordering by event date would put B first.
+    assert titles.index("A") < titles.index("B")
     assert body["total"] == 2
     # Coordinates are inline (no N+1 follow-up fetch required).
     for item in body["items"]:

@@ -15,6 +15,17 @@ describe("nextCursor", () => {
     );
   });
 
+  it("keeps a link whose URL carries commas", () => {
+    // The next-page URL repeats every filter the page was minted under, and
+    // `bbox` is four comma-separated floats: splitting the header on `,`
+    // shredded exactly the links the map's own walk would follow.
+    expect(
+      nextCursor(
+        '<https://a.test/events?bbox=-90,-180,90,180&cursor=abc>; rel="next"'
+      )
+    ).toBe("abc");
+  });
+
   it("reads the next relation out of a multi-relation header", () => {
     expect(
       nextCursor('<https://a.test/x?cursor=p>; rel="prev", <https://a.test/x?cursor=n>; rel="next"')

@@ -9,7 +9,12 @@ built. Shared fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` in
 
 from __future__ import annotations
 
+import base64
 import re
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import orjson
 
 from app.models.event import STATUS_DETECTED
 from app.services.pagination import MAX_PAGE_SIZE
@@ -109,11 +114,25 @@ def test_list_cursor_holds_across_a_row_landing_mid_walk(db, author):
 
     A row inserted between two pages is newer than the cursor, so it belongs
     to a page already served: it must not push an unread row out of sight.
+
+    The four rows get explicit, minute-apart ``created_at`` values: rows
+    created back to back can share a timestamp, and then the exact-order
+    assertion below would be pinning the ``id`` tiebreaker's arbitrary
+    outcome rather than the contract.
     """
-    first_batch = [str(_make_geo(db, author=author).id) for _ in range(4)]
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    first_batch = []
+    for minute in range(4):
+        geo = _make_geo(db, author=author)
+        geo.created_at = base + timedelta(minutes=minute)
+        first_batch.append(str(geo.id))
+    db.commit()
 
     page1 = client.get(f"{_LIST}?limit=2&author={author.username}")
-    _make_geo(db, author=author)  # lands at the head of the ordering
+    # Lands at the head of the ordering: newer than every row above.
+    late = _make_geo(db, author=author)
+    late.created_at = base + timedelta(hours=1)
+    db.commit()
     page2 = client.get(_next_path(page1))
 
     walked = [row["id"] for row in page1.json()] + [row["id"] for row in page2.json()]
@@ -152,10 +171,56 @@ def test_list_rejects_malformed_paging_params(author):
         assert response.status_code == 422, f"expected 422 for {query!r}"
 
 
-def test_list_rejects_a_cursor_it_did_not_mint(author):
-    for cursor in ("garbage", "!!!", "e30", "W10", "MTIz", ""):
+def _encode(payload: object) -> str:
+    """Base64url a JSON payload the way ``encode_cursor`` does, shape aside."""
+    return base64.urlsafe_b64encode(orjson.dumps(payload)).decode("ascii").rstrip("=")
+
+
+def test_list_rejects_a_malformed_cursor(author):
+    """Every way a cursor can fail to be a ``[created_at, id]`` pair of strings.
+
+    The non-string members matter: a pair whose halves are not strings used to
+    reach ``datetime.fromisoformat`` / ``uuid.UUID`` and raise out of the
+    handler as an uncaught ``AttributeError``, a 500 on an unauthenticated
+    path.
+    """
+    malformed = [
+        "garbage",
+        "!!!",
+        "",
+        _encode({}),
+        _encode([]),
+        _encode(["2026-01-01T00:00:00"]),
+        _encode(123),
+        _encode("2026-01-01T00:00:00"),
+        _encode(["2026-01-01T00:00:00", 5]),
+        _encode([5, "2026-01-01T00:00:00"]),
+        _encode([None, None]),
+        _encode(["2026-01-01T00:00:00", ["nested"]]),
+        _encode(["not-a-date", str(uuid.uuid4())]),
+        _encode(["2026-01-01T00:00:00", "not-a-uuid"]),
+    ]
+    for cursor in malformed:
         response = client.get(f"{_LIST}?cursor={cursor}")
         assert response.status_code == 422, f"expected 422 for cursor={cursor!r}"
+
+
+def test_list_accepts_a_well_formed_cursor_it_did_not_mint(db, author):
+    """Deliberate: well-formed is the whole test, minted-by-us is not.
+
+    A cursor names a position in ``created_at DESC, id DESC``. A caller who
+    assembles one reads the rows that position sorts before, which is what a
+    minted cursor naming the same position returns; the encoding carries no
+    authorisation and every filter still applies.
+    """
+    for _ in range(3):
+        _make_geo(db, author=author)
+
+    forged = _encode([datetime.now(UTC).isoformat(), str(uuid.uuid4())])
+    response = client.get(f"{_LIST}?cursor={forged}&author={author.username}")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 3
 
 
 def test_detections_rejects_a_cursor_it_did_not_mint(author):

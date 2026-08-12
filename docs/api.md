@@ -360,7 +360,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Same 422-on-malformed shape as the event-date filters. |
 | `author` | string | Exact, case-insensitive match on owner username ("this analyst's work"; pick real handles via [`GET /search/authors`](#get-searchauthors)). Whitelisted to `[A-Za-z0-9_-]{1,50}`, any other character returns 422. |
 | `limit` | int | Rows per page, default 100. Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. A value this server did not mint returns 422. See [Pagination](#pagination). |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. A malformed value returns 422. See [Pagination](#pagination). |
 
 **Response 200:**
 ```json
@@ -1234,9 +1234,9 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 ### `GET /users/{username}/events`
 
-Geolocations for a given analyst, newest event date first.
+Geolocations for a given analyst, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)).
+Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
 **Query params:**
 | Param | Type | Description |
@@ -1674,7 +1674,7 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 
 ### Pagination
 
-**Every list response is capped at 100 rows**, whatever `limit` / `per_page` asks for. Over-asking is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a `cursor` this server did not mint. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
+**Every list response is capped at 100 rows**, whatever `limit` / `per_page` asks for. Over-asking is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to a `(created_at, id)` pair). A cursor that decodes cleanly is honoured whether or not the server minted it: it names a position in an ordering, carries no authorisation, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
 
 **Reading past the first page** means following a cursor. A capped response whose next page holds at least one row carries a `Link` header:
 
@@ -1682,7 +1682,7 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
 ```
 
-The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and is not a value callers construct.
+The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and is not a value callers need to construct.
 
 Cursor-paged: [`GET /events`](#get-events), `GET /events/detections`, `GET /timeline`, `GET /admin/invite-codes`. All four order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
@@ -1698,9 +1698,11 @@ Endpoints that page return this envelope, `total` being the pre-cap match count:
 }
 ```
 
+`page` echoes what the caller sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at whatever `page` the request carried (`1` by default) on every page of the walk. Read `Link` for position, not `page`. `total` is the match count either way.
+
 Three kinds of list sit outside the cursor scheme:
 
-- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor.
+- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor. `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common.
 - [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
 - [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
 

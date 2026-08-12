@@ -14,16 +14,17 @@
  *  ask for", so the caller stops.
  */
 export function nextCursor(header: string | null): string | null {
-  if (!header) return null;
-  for (const part of header.split(",")) {
-    const match = part.match(/^\s*<([^>]+)>\s*;\s*rel="?next"?\s*$/);
-    if (!match) continue;
-    try {
-      return new URL(match[1]).searchParams.get("cursor");
-    } catch {
-      // A header we cannot parse is not a page we can reach.
-      return null;
-    }
+  // One match over the whole header, not a split on `,`: a comma is legal
+  // inside a URL and the next-page URL carries the whole query the page was
+  // minted under, so a filter like `bbox=-90,-180,90,180` would be cut into
+  // fragments that match nothing. `<[^>]+>` cannot straddle two links (a URL
+  // holds no `>`), and the trailing lookahead keeps `rel="nextpage"` out.
+  const match = header?.match(/<([^>]+)>\s*;\s*rel="?next"?(?=\s*(?:[,;]|$))/);
+  if (!match) return null;
+  try {
+    return new URL(match[1]).searchParams.get("cursor");
+  } catch {
+    // A header we cannot parse is not a page we can reach.
+    return null;
   }
-  return null;
 }

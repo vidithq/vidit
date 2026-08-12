@@ -142,7 +142,9 @@ export async function apiFetchPage<T>(
 ): Promise<{ items: T; nextCursor: string | null }> {
   const res = await send(path, options);
   return {
-    items: (await res.json()) as T,
+    // Same 204 guard as `apiFetch`: a body-less response has nothing to parse
+    // and `res.json()` throws on it.
+    items: (res.status === 204 ? undefined : await res.json()) as T,
     nextCursor: nextCursor(res.headers.get("Link")),
   };
 }

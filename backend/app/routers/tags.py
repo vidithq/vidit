@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,7 +12,28 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
 from app.services.pagination import REFERENTIAL_MAX_ROWS
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _warn_if_truncated(rows: list[Tag], *, view: str) -> list[Tag]:
+    """Log when a referential response lands exactly on the ceiling.
+
+    A vocabulary hydrated whole has no ``Link`` header to say it was cut, so a
+    picker silently loses options once the referential outgrows the ceiling.
+    The log is the signal to raise ``REFERENTIAL_MAX_ROWS`` or page the
+    picker.
+    """
+    if len(rows) == REFERENTIAL_MAX_ROWS:
+        logger.warning(
+            "GET /tags (%s) hit the %d-row referential ceiling; "
+            "the response is truncated and the picker is missing options",
+            view,
+            REFERENTIAL_MAX_ROWS,
+        )
+    return rows
+
 
 # Categories authenticated users may create via the API. `capture_source`
 # is curated (by the seeding migration) since it is a required, filterable
@@ -50,13 +73,18 @@ def list_tags(
     pickers and the filter panel hydrate this vocabulary whole and filter it
     client-side, so a page of it would be a page of missing options. The
     ceiling is what keeps ``free``-category growth (the one user-writable
-    category) from turning this into an unbounded hydration.
+    category) from turning this into an unbounded hydration, and a response
+    that lands on it is logged, since the payload carries no way to say it was
+    cut.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))
         if category:
             query = query.filter(Tag.category == category)
-        return query.order_by(Tag.category, Tag.name).limit(REFERENTIAL_MAX_ROWS).all()
+        return _warn_if_truncated(
+            query.order_by(Tag.category, Tag.name).limit(REFERENTIAL_MAX_ROWS).all(),
+            view="curated",
+        )
 
     query = (
         db.query(Tag)
@@ -67,7 +95,9 @@ def list_tags(
     )
     if category:
         query = query.filter(Tag.category == category)
-    return query.order_by(Tag.name).limit(REFERENTIAL_MAX_ROWS).all()
+    return _warn_if_truncated(
+        query.order_by(Tag.name).limit(REFERENTIAL_MAX_ROWS).all(), view="live"
+    )
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)

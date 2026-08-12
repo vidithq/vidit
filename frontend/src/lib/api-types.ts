@@ -564,9 +564,12 @@ export interface paths {
          *     zero results. Mirrors the orphan filter on ``GET /tags``.
          *
          *     Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
-         *     submit picker filters the whole referential client-side, and the sync that
-         *     writes it caps its own row count, so the ceiling bounds the response
-         *     without ever cutting an option the picker needs.
+         *     submit picker filters the whole referential client-side, so a page of it
+         *     would be a page of missing options. The daily sync's sanity band bounds
+         *     one parse pass, not the table: rows accumulate across passes (an ended
+         *     conflict is kept, and the Wikidata seed and operator rows add their own),
+         *     so the ceiling is what bounds the response. A response landing on it is
+         *     logged, since the payload carries no way to say it was cut.
          */
         get: operations["list_conflicts_api_v1_conflicts_get"];
         put?: never;
@@ -1069,7 +1072,9 @@ export interface paths {
          *     pickers and the filter panel hydrate this vocabulary whole and filter it
          *     client-side, so a page of it would be a page of missing options. The
          *     ceiling is what keeps ``free``-category growth (the one user-writable
-         *     category) from turning this into an unbounded hydration.
+         *     category) from turning this into an unbounded hydration, and a response
+         *     that lands on it is logged, since the payload carries no way to say it was
+         *     cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;

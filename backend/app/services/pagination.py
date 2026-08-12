@@ -11,9 +11,10 @@ Two rules hold across every list endpoint:
   :data:`MAX_PAGE_SIZE` rows gets :data:`MAX_PAGE_SIZE`, never an error:
   over-asking is not malformed, it just doesn't buy anything.
 * **Malformed is a 422.** A page size below 1, a page below 1, a cursor that
-  is not one this server minted: all rejected before they reach the query,
-  where a negative ``OFFSET`` or a non-positive ``LIMIT`` would be a 500 from
-  Postgres.
+  does not decode to a ``(created_at, id)`` pair: all rejected before they
+  reach the query, where a negative ``OFFSET`` or a non-positive ``LIMIT``
+  would be a 500 from Postgres. A cursor that decodes cleanly is honoured
+  whether or not this server minted it; see :func:`decode_cursor`.
 
 The cursor is keyset, not offset: ``(created_at, id)`` under
 ``ORDER BY created_at DESC, id DESC``. ``id`` is the tiebreaker that makes the
@@ -29,12 +30,12 @@ import base64
 import binascii
 import uuid
 from datetime import datetime
-from typing import Any
 
 import orjson
 from fastapi import HTTPException, Request
 from sqlalchemy import tuple_
 from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 # The hard ceiling on rows in one list response, whatever the caller asks for.
 # Reading the catalog past it costs a cursor walk (one round-trip per 100 rows)
@@ -68,12 +69,26 @@ def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
 def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     """Parse a cursor back into its ``(created_at, id)`` pair.
 
-    Anything this server did not mint is a 422: the alternative is feeding a
-    half-parsed value into the keyset predicate and answering 500.
+    A malformed cursor is a 422: the alternative is feeding a half-parsed
+    value into the keyset predicate and answering 500. The shape is checked
+    before either conversion runs, so a payload that decodes to something
+    other than a pair of strings (``["2026-01-01T00:00:00", 5]``) is rejected
+    rather than raising out of ``uuid.UUID``.
+
+    Well-formed is the whole test: a caller who assembles a pair of their own
+    gets the rows that pair sorts before, which is the same answer a minted
+    cursor naming the same position would give. There is nothing to forge, the
+    encoding hides no authorisation, and every filter still applies.
     """
     padded = cursor + "=" * (-len(cursor) % 4)
     try:
         decoded = orjson.loads(base64.urlsafe_b64decode(padded))
+        if not (
+            isinstance(decoded, list)
+            and len(decoded) == 2
+            and all(isinstance(part, str) for part in decoded)
+        ):
+            raise ValueError("cursor does not decode to a [created_at, id] pair")
         created_raw, id_raw = decoded
         return datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
     except (ValueError, TypeError, binascii.Error) as exc:
@@ -84,11 +99,15 @@ def keyset_before(
     created_at_col: InstrumentedAttribute[datetime],
     id_col: InstrumentedAttribute[uuid.UUID],
     cursor: tuple[datetime, uuid.UUID],
-) -> Any:
+) -> ColumnElement[bool]:
     """Predicate for the rows after ``cursor`` under ``created_at DESC, id DESC``.
 
     A row comparison, not ``created_at < :ts OR (created_at = :ts AND id < :id)``:
-    Postgres evaluates ``(a, b) < (:x, :y)`` against a composite index directly.
+    Postgres can evaluate ``(a, b) < (:x, :y)`` against a composite index on the
+    same pair directly. ``events`` carries that index
+    (``ix_events_created_at_id``); ``invite_codes`` does not, and reads its
+    pages off a sort of the whole table, which is the right trade for a table
+    only admins list and that grows one row per invite issued.
     """
     return tuple_(created_at_col, id_col) < cursor
 
