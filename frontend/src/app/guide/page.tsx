@@ -163,7 +163,7 @@ const STEPS: NumberedStep[] = [
 
 export default function GuidePage() {
   return (
-    <PageShell title={TITLE}>
+    <PageShell title={TITLE} back backFallback="/about">
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
           Vidit is one shared map of conflict geolocations, each carrying the

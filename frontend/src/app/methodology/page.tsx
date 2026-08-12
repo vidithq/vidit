@@ -84,6 +84,8 @@ export default function MethodologyPage() {
   return (
     <PageShell
       title={TITLE}
+      back
+      backFallback="/about"
     >
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">

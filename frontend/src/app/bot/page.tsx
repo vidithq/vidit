@@ -131,7 +131,7 @@ function TagCase({
 
 export default function BotGuidePage() {
   return (
-    <PageShell title={TITLE}>
+    <PageShell title={TITLE} back backFallback="/about">
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
           Tag @ViditBot on a geolocation post on X. The bot reads the post and

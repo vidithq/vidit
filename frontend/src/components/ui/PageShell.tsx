@@ -13,17 +13,23 @@ export function PageShell({
   title,
   subtitle,
   back = false,
+  backFallback,
   actions,
   children,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   back?: boolean;
+  /** Where Back lands when the session carries nothing to return to, i.e. the
+   *  reader arrived straight from a search result. Forwards to `smartBack`'s
+   *  own `fallback`, which stays `/` when this is unset. The public guides pass
+   *  their hub, so a cold entry still has somewhere to go. */
+  backFallback?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   const router = useRouter();
-  const handleBack = () => smartBack(router);
+  const handleBack = () => smartBack(router, backFallback);
   return (
     <PageFrame className="pt-10 pb-16 space-y-6">
       <header className="relative">

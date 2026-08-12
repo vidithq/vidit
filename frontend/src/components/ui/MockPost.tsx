@@ -32,6 +32,26 @@ export function MockPostLink({ children }: { children: ReactNode }) {
   return <span className="text-sky-500">{children}</span>;
 }
 
+/** The grey box standing in for an attached photo or video. */
+function Attachment({
+  kind,
+  label,
+}: {
+  kind: "video" | "image";
+  label: string;
+}) {
+  return (
+    <div className="flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
+      <span className="flex flex-col items-center gap-2 text-neutral-500">
+        <span className="flex size-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
+          {kind === "video" ? <Play size={16} /> : <ImageIcon size={16} />}
+        </span>
+        <span className="text-[11px]">{label}</span>
+      </span>
+    </div>
+  );
+}
+
 export function MockPost({
   name,
   handle,
@@ -39,6 +59,7 @@ export function MockPost({
   bot = false,
   replyingTo,
   media,
+  quoted,
   children,
 }: {
   name: string;
@@ -51,6 +72,12 @@ export function MockPost({
   replyingTo?: string;
   /** One attachment placeholder under the body. */
   media?: { kind: "video" | "image"; label: string };
+  /** The quote card X renders when the post quotes another post. */
+  quoted?: {
+    handle: string;
+    text: string;
+    media?: { kind: "video" | "image"; label: string };
+  };
   children: ReactNode;
 }) {
   return (
@@ -79,21 +106,29 @@ export function MockPost({
           </p>
         </div>
       </div>
-      <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100">
+      {/* `overflow-wrap:anywhere` for the same reason the proof body carries it:
+          a mock link is one unbreakable token, and a long one sets the column's
+          min-content width, which pushed the guide's two-column case grid a few
+          pixels past its track on a phone. */}
+      <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100 [overflow-wrap:anywhere]">
         {children}
       </div>
+      {quoted && (
+        <div className="mt-3 rounded-xl border border-neutral-800 p-3">
+          <p className="text-[13px] text-neutral-500">{quoted.handle}</p>
+          <p className="mt-1 whitespace-pre-line text-[13px] leading-[19px] text-neutral-100">
+            {quoted.text}
+          </p>
+          {quoted.media && (
+            <div className="mt-2">
+              <Attachment {...quoted.media} />
+            </div>
+          )}
+        </div>
+      )}
       {media && (
-        <div className="mt-3 flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
-          <span className="flex flex-col items-center gap-2 text-neutral-500">
-            <span className="flex size-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
-              {media.kind === "video" ? (
-                <Play size={16} />
-              ) : (
-                <ImageIcon size={16} />
-              )}
-            </span>
-            <span className="text-[11px]">{media.label}</span>
-          </span>
+        <div className="mt-3">
+          <Attachment {...media} />
         </div>
       )}
     </div>
