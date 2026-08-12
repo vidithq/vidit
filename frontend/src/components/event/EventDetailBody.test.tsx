@@ -235,7 +235,7 @@ describe("EventDetailBody", () => {
     ).toBeTruthy();
   });
 
-  it("renders video media as a controllable <video>, not an image", () => {
+  it("renders video media in the shared player, not as an image", () => {
     const { container } = render(
       <EventDetailBody
         geo={geoFixture({
@@ -257,13 +257,10 @@ describe("EventDetailBody", () => {
         variant="panel"
       />
     );
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
-    // `#t=0.1` + preload="metadata" paints the first frame as a poster
-    // (MediaGallery's video treatment) instead of a black box before play.
-    expect(video).toHaveAttribute("src", "/local-storage/clip.mp4#t=0.1");
-    expect(video).toHaveAttribute("preload", "metadata");
-    expect(video).toHaveAttribute("controls");
+    // A clip plays in `VideoPlayer`, so the tile is the player's controller
+    // rather than a bare native element with `controls`.
+    expect(container.querySelector("media-controller")).not.toBeNull();
+    expect(container.querySelector("video[controls]")).toBeNull();
     // The image sibling still renders through next/image.
     expect(screen.getByRole("img")).toBeInTheDocument();
   });

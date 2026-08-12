@@ -20,6 +20,28 @@ export const TAPPABLE_HOVER = "hover:border-orange-500/40 transition-colors";
 // empty-state CTAs). Size / weight stay at the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
 
+// Backdrop for an icon control floating over media (a tile's download, the
+// lightbox's expand and close). Media is arbitrary pixels, so a bare glyph can
+// land on anything; the translucent dark plate plus blur keeps it readable over
+// a white sky as well as a night frame. The colours are the player's own
+// register (#f5f5f5 glyph, white hover wash, no accent), so a floating control
+// next to the player reads as part of the same family rather than an
+// app-accent button floating over a frame. Applied over
+// <Button icon variant="ghost">: the neutral colours here override the ghost
+// orange (cn resolves the conflict in the caller's favour).
+export const FLOATING_CONTROL =
+  "size-[38px] rounded-lg bg-black/60 text-neutral-100 hover:bg-white/20 hover:text-white backdrop-blur-sm";
+
+// Floating media controls that stay out of the reader's way: invisible at rest,
+// revealed when the pointer is over the frame (put `group` on the frame) or when
+// a control inside takes keyboard focus. Tailwind gates `hover:` behind
+// `(hover: hover)`, so a touch device would never reveal them at all; the
+// coarse-pointer rule pins them visible there instead of locking mobile out of
+// a control it cannot summon. Opacity only: the cluster's position and its
+// buttons stay at the call site.
+export const HOVER_REVEAL =
+  "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100";
+
 // Amber "caution / heads-up" surface — the warning counterpart to the red error
 // banners (a hard error). Amber reads as "check this, you're not blocked"
 // (duplicate-probe, curated-tags load failure, tweet-import notice). Colour only
