@@ -82,11 +82,10 @@ export default function ArchiveGuidePage() {
       <Card as="section">
         <p className={BODY}>
           Vidit reads your X archive and creates a draft event for each
-          geolocation it finds. The archive contains your reply threads and
-          media files, which the public API does not expose. Drafts appear on
-          the map immediately, labeled as machine drafts and attributed to your
-          account. Review each draft to publish it as a geolocation or to reject
-          it.
+          geolocation it finds. Threads and media files import intact. Drafts
+          appear on the map immediately, labeled as machine drafts and
+          attributed to your account. Review each draft to publish it as a
+          geolocation or to reject it.
         </p>
       </Card>
 
