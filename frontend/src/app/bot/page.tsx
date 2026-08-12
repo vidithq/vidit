@@ -26,7 +26,7 @@ import {
 const TITLE = "Import by tagging @ViditBot";
 const SECTION = "text-sm font-medium text-neutral-200";
 const DESCRIPTION =
-  "Tag @ViditBot on a geolocation post on X. Vidit reads the post and creates a draft with its coordinates, source, media, and proof note.";
+  "Tag @ViditBot on a geolocation post on X. The bot reads the post and creates a draft on Vidit with its coordinates, source, media, and proof note.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -134,13 +134,13 @@ export default function BotGuidePage() {
     <PageShell title={TITLE}>
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
-          Tag @ViditBot on a geolocation post on X.{" "}
+          Tag @ViditBot on a geolocation post on X. The bot reads the post and
+          creates a draft on{" "}
           <Link href="/" className={TEXT_LINK}>
             Vidit
           </Link>{" "}
-          reads the post and creates a draft with its coordinates, source,
-          media, and proof note. You do not leave your feed and you retype
-          nothing.
+          with its coordinates, source, media, and proof note. You do not leave
+          your feed and you retype nothing.
         </p>
       </Card>
 
