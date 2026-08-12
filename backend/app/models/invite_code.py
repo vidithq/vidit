@@ -25,7 +25,7 @@ class InviteCode(Base):
     # Set at mint time by the admin; redemption copies it onto the new
     # account's `users.x_handle` so the bot can attribute that handle's
     # mentions. Delivery of the code over X DM to that handle is the
-    # possession proof in closed beta. Fail-soft on redemption: if the handle
+    # possession proof during the beta. Fail-soft on redemption: if the handle
     # was taken meanwhile, the account is still created, without the link.
     x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

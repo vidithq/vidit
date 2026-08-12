@@ -63,7 +63,7 @@ Work breakdown: [`next.md`](next.md) → *v0.9*.
 
 ## v1.0: Public v1
 
-Open write and the public launch. Self-registration opens and the invite-code gate retires; the threat model widens to account-farmers and unknown uploaded content, absorbed by the layers built in v0.6-v0.9 plus a registration anti-abuse stack (CAPTCHA, honeypot, disposable-email blocklist, rate limits, account lockout), auth hardening, and self-serve handle verification (verify-by-post, with a claim/dispute path), since open registration removes the admin touchpoint that binds a handle today. The legal foundation lands (legal entity, CGU, DSA compliance, DPA agreements, professional insurance), plus map density, cost tuning, and the closed-beta framing removed.
+Open write and the public launch. Self-registration opens and the invite-code gate retires; the threat model widens to account-farmers and unknown uploaded content, absorbed by the layers built in v0.6-v0.9 plus a registration anti-abuse stack (CAPTCHA, honeypot, disposable-email blocklist, rate limits, account lockout), auth hardening, and self-serve handle verification (verify-by-post, with a claim/dispute path), since open registration removes the admin touchpoint that binds a handle today. The legal foundation lands (legal entity, CGU, DSA compliance, DPA agreements, professional insurance), plus map density, cost tuning, and the beta framing removed.
 
 Work breakdown: [`next.md`](next.md) → *v1.0*.
 

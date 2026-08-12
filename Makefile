@@ -25,7 +25,7 @@ help:
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
 	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
-	@echo "  make promo         - Regenerate the closed-beta promo MP4 (see video/README.md)"
+	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -65,7 +65,7 @@ mock-demo-user:
 #
 # Master is rendered at Remotion `--scale 2` (4K canvas) so the
 # rasterised captions / brand chrome are crisp, then ffmpeg downscales
-# to 2K. A 1080p intermediate isn't worth maintaining at closed-beta
+# to 2K. A 1080p intermediate isn't worth maintaining at beta
 # traffic — the master streams fine over CloudFront and the browser
 # downscales for free.
 # See video/README.md for the breakdown of each step.

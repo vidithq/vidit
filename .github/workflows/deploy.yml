@@ -1,7 +1,7 @@
 name: deploy
 
 # Manual production deploy. Auto-deploy on push to main is intentionally off
-# during the closed beta — every prod release goes through this workflow so
+# during the beta: every prod release goes through this workflow so
 # the deploy ref is recorded on a GitHub Actions run page.
 #
 # Required repository secrets:
@@ -120,7 +120,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           # Full history so `git describe --tags` resolves the closest tag
-          # for the build-version baked into the "Closed beta · v..." badge.
+          # for the build-version baked into the "Beta · v..." badge.
           fetch-depth: 0
 
       - name: Resolve build version
@@ -163,7 +163,7 @@ jobs:
       - name: Build
         env:
           # Baked into the bundle by next.config.mjs and read by
-          # ClosedBetaBanner. Passed explicitly here so the value shown on
+          # BetaBanner. Passed explicitly here so the value shown on
           # the deployed site matches the version recorded in the run summary
           # above, regardless of whether `git describe` works inside the
           # Vercel build container.

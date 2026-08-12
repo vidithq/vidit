@@ -4,7 +4,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /**
  * Build-time version string baked into NEXT_PUBLIC_BUILD_VERSION so the
- * "Closed beta · v..." badge can show the actually deployed ref.
+ * "Beta · v..." badge can show the actually deployed ref.
  *
  * Resolution order:
  *  1. NEXT_PUBLIC_BUILD_VERSION already set in the env (the deploy workflow

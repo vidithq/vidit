@@ -12,7 +12,7 @@ real post instant. On both ``geolocations`` and ``bounties``:
 * ``source_date`` (DATE, nullable) becomes ``source_posted_at``
   (TIMESTAMPTZ, NOT NULL): a post always has a time. Existing day-only values
   are read as ``00:00 UTC``; pre-existing NULLs are backfilled from
-  ``created_at`` (a visible placeholder; the closed-beta catalog is wiped before
+  ``created_at`` (a visible placeholder; the beta catalog is wiped before
   the public launch). The submit/edit forms then always supply a real timestamp.
 
 And on ``geolocations`` only:

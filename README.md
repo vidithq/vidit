@@ -5,7 +5,7 @@
 
 A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + Tiptap proof + tags), community requests, and analyst profiles.
 
-Live at **[vidit.app](https://vidit.app)** (closed beta).
+Live at **[vidit.app](https://vidit.app)** (beta).
 
 ---
 

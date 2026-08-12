@@ -350,18 +350,18 @@ async function prepareRequestUpload(auth) {
   // cursor isn't captured by page.screenshot() (only the page bitmap
   // is); rendering our own SVG cursor inside the page DOM means it
   // shows up in every frame. Same init script also hides the
-  // "Closed beta · v…" pill (`position: fixed` element that flickers
+  // "Beta · v…" pill (`position: fixed` element that flickers
   // on scroll on some Chrome builds), once per page so the rule
   // survives navigations.
   await ctx.addInitScript(() => {
     const install = () => {
-      // Hide the closed-beta pill site-wide via a stylesheet that gets
+      // Hide the beta pill site-wide via a stylesheet that gets
       // re-injected on every navigation.
       if (!document.getElementById("__demo_hide_beta__")) {
         const style = document.createElement("style");
         style.id = "__demo_hide_beta__";
         style.textContent =
-          '[aria-label="Closed beta"] { display: none !important; }';
+          '[aria-label="Beta"] { display: none !important; }';
         document.head.appendChild(style);
       }
       if (document.getElementById("__demo_cursor__")) return;

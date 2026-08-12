@@ -126,7 +126,7 @@ const ROADMAP: {
     version: "v1.0",
     state: "upcoming",
     title: "Public v1",
-    body: "Open self-registration behind a hardened moderation and legal stack, map density, and the closed-beta framing removed. The full release.",
+    body: "Open self-registration behind a hardened moderation and legal stack, map density, and the beta framing removed. The full release.",
   },
 ];
 
