@@ -30,36 +30,45 @@ type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_stat
  * Shown on cards, the detail pages (geolocation + requested), search results,
  * and the Detections queue.
  */
+/**
+ * The reader-facing word and emphasis for each lifecycle status: the one source
+ * this badge and the generated event share card
+ * ([`events/[id]/opengraph-image.tsx`](../../app/events/[id]/opengraph-image.tsx))
+ * both read, so a page and the image of that page cannot name the same row
+ * differently. `tone` is the two-value subset both renderers accept, `Pill`'s
+ * and `OgBadge`'s, so neither has to translate it.
+ */
+export const EVENT_STATUS_META: Record<
+  EventStatus,
+  { label: string; tone: Extract<PillTone, "accent" | "neutral"> }
+> = {
+  requested: { label: "Requested", tone: "accent" },
+  detected: { label: "Detected", tone: "accent" },
+  geolocated: { label: "Geolocated", tone: "neutral" },
+  closed: { label: "Closed", tone: "neutral" },
+};
+
+/** The icon and tooltip half, which only the page badge has a use for. */
 interface StatusMeta {
-  tone: PillTone;
   icon: ReactNode;
-  label: string;
   title: string;
 }
 
 const STATUS: Record<EventStatus, StatusMeta> = {
   requested: {
-    tone: "accent",
     icon: <Megaphone size={11} />,
-    label: "Requested",
     title: "An open request to geolocate this footage",
   },
   detected: {
-    tone: "accent",
     icon: <Bot size={11} />,
-    label: "Detected",
     title: "Machine-detected from a tweet, shown until the owner submits it",
   },
   geolocated: {
-    tone: "neutral",
     icon: <MapPin size={11} />,
-    label: "Geolocated",
     title: "Geolocated by a person, not independently verified",
   },
   closed: {
-    tone: "neutral",
     icon: <X size={11} />,
-    label: "Closed",
     // Generic fallback; `closedTitle` refines it from `before_closed_status`.
     title: "Closed, kept as an audit row",
   },
@@ -82,10 +91,11 @@ export function StatusBadge({
   beforeClosedStatus?: BeforeClosedStatus;
 }) {
   const meta = STATUS[status];
+  const { label, tone } = EVENT_STATUS_META[status];
   const title = status === "closed" ? closedTitle(beforeClosedStatus) : meta.title;
   return (
-    <Pill tone={meta.tone} icon={meta.icon} title={title}>
-      {meta.label}
+    <Pill tone={tone} icon={meta.icon} title={title}>
+      {label}
     </Pill>
   );
 }

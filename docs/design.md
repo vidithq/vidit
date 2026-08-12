@@ -157,6 +157,43 @@ Editing collapses that order. While the owner is editing, the page renders the h
 
 The copy-link control is the shared [`<CopyButton>`](../frontend/src/components/ui/CopyButton.tsx), the same primitive as the event share row.
 
+### Share cards
+
+A pasted link is how most readers meet the platform, so the two pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*); the palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
+
+| Card | Content |
+|---|---|
+| Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline and subhead. Inherited by every route that generates none of its own. |
+| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and the counts strip: geolocated, followers, media. Top conflicts sit in the footer. |
+| Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge (plus the **Demo** badge on a synthetic row, so a demo link stays labelled once it leaves the site), and the locator panel. |
+
+The **locator panel** ([`_og/MiniMap.tsx`](../frontend/src/app/_og/MiniMap.tsx)) is a plate-carrée graticule with the event's point marked on it, drawn from positioned rectangles: no tiles, no basemap request, no static-map service, and no mapping library on the server. What a reader can use at card size is the hemisphere and the rough region, and the real `<Map>` is one click away on the page. The projection is [`lib/og.ts`](../frontend/src/lib/og.ts)'s `projectEquirectangular`, which clamps rather than escapes the frame.
+
+The event card takes its lifecycle word and emphasis from `EVENT_STATUS_META` in [`StatusBadge.tsx`](../frontend/src/components/event/StatusBadge.tsx), the same map the page's badge renders from, so a row cannot be called one thing on the page and another in the image of the page.
+
+Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, or `GET /events/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream.
+
+An upstream read answers one of three ways, and the difference is visible because a crawler caches what it is served:
+
+| Read | Card | Tags |
+|---|---|---|
+| Answered | The data card | Title, description, `og:*`, `twitter:*` from the payload |
+| Permanent miss (`404`, or the `422` a path parameter that names no row draws) | The branded *No analyst here* / *No event here* card | The matching not-found title and description, in the same tag shape as a hit |
+| Failed (`429`, `5xx`, timeout, undecodable body) | The site-default composition | None: the page inherits the site-wide metadata |
+
+The failed path says nothing about the link because nothing is known about it, and its image response carries `Cache-Control: no-store` so the CDN and any crawler that honours it ask again rather than keep a card built from a bad second. A crawler that caches on its own policy regardless cannot be reached from here, which is the other half of why that path emits no not-found copy: whatever it keeps, it keeps a neutral preview.
+
+Card reads carry a 15 min revalidate. That window is also the rate-limit headroom: every card request egresses from the deployment's shared IP against the per-IP limit on `/users/{username}` and `/events/{id}`, so a link going wide is one cached read per window rather than one backend round trip per unfurl. A link wide enough to still trip the limit degrades to the site-default card, never to a broken image.
+
+Both pages are client components, so their `generateMetadata` lives on the segment layout: title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
+
+`users.avatar_url` is a free-form URL its owner types and the renderer runs on the server, so a fetch of one is a server-side request forgery primitive whose response would be published as a public image. Two guards, in [`lib/og.ts`](../frontend/src/lib/og.ts) and [`_og/data.ts`](../frontend/src/app/_og/data.ts):
+
+- **The name**, before any connection: https only, no address literal in any spelling (WHATWG parsing normalises decimal and hex IPv4 to a dotted quad, which the shape check rejects), a dotted hostname, and no `.local` / `.internal` / `.localhost` / `.home.arpa` suffix. A trailing root dot is stripped first, so `localhost.` is judged as `localhost`.
+- **The address it resolves to**, in the connector: the avatar fetch runs on an `undici` `Agent` whose `connect.lookup` classifies every answer before the socket opens, so the address the guard judged is the address the socket uses. A name check alone cannot cover this: `169.254.169.254.nip.io` is a public dotted hostname whose A record is the cloud metadata address. Rejected, v4: `0.0.0.0/8`, `10/8`, `100.64/10`, `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, and `224/4` upward. v6: `::`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`, and any IPv4-mapped form, which is judged against the v4 list. A host that answers with any private address is rejected whole rather than filtered down to its public answers.
+
+The fetch itself follows no redirect (a public host must not be able to bounce the renderer onto a private one), holds a 2 s budget, refuses a declared length over 2 MB and enforces the same ceiling as the body streams, and accepts only PNG / JPEG / GIF, the types Satori decodes. Anything rejected renders the monogram: a share card degrades, it does not fail.
+
 ### Buttons
 
 One primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). Four variants on two axes, tone (accent or danger) and emphasis (filled, outline, text):
@@ -197,6 +234,7 @@ Decided once, so review doesn't re-litigate them:
 - **Search's `UserResult`** re-declares `EntityCard`'s shell: folding it in would leak avatar / no-thumbnail conditionals into `EntityCard` for one consumer. Commented at the call site.
 - **`ProofSection`** composes `<Card className="p-4">`, one density step tighter than the `p-5` form cards, because proof is a reading surface.
 - **Admin dev tooling** ([`admin/DevToolPanel.tsx`](../frontend/src/components/admin/DevToolPanel.tsx), [`admin/ActionReceipt.tsx`](../frontend/src/components/admin/ActionReceipt.tsx)) is a deliberately lighter register than `<Card as="section">`, admin-local on purpose: admin-only surfaces don't earn `ui/` primitives.
+- **The Satori surfaces** ([`app/_og/`](../frontend/src/app/_og) and the generated [`icon.tsx`](../frontend/src/app/icon.tsx) / [`apple-icon.tsx`](../frontend/src/app/apple-icon.tsx)) render to a PNG on the server, never to a DOM, and Satori supports neither class names nor most of the CSS the primitives rely on. The share cards all compose the one frame in `_og/card.tsx` (see *Share cards*), which is the boundary: one frame for the cards, not one layout per route. The icons draw a single letter at three sizes and share only the font read, which is not a frame's worth of chrome.
 
 ## What we avoid
 
