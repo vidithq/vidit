@@ -55,6 +55,27 @@ const PROVIDERS: readonly ProviderSpec[] = [
 ];
 
 /**
+ * Takes the glyph out of hit testing, so the pointer lands on the `title`
+ * carrier instead.
+ *
+ * The wrapper is exactly the size of the 13px glyph: no padding, no text, so
+ * every hoverable pixel of it sits over the SVG. A browser resolves a tooltip
+ * from the element under the pointer, and the element under the pointer was the
+ * SVG's `path`, which carries no title of its own and does not lend the
+ * wrapper's. The result was an icon with no hover text at all, on every state,
+ * for a sighted reader. Making the glyph transparent to pointer events puts the
+ * `a` / `span` under the pointer, which is where the title is, and is how the
+ * rest of the product behaves: every other titled icon control (the lightbox
+ * controls, `Pill`) has padding or text of its own, so its hit area was never
+ * only the glyph.
+ *
+ * Clicking a captured copy still works: a transparent child does not stop its
+ * parent from being hit, so the link takes the click and the cursor stays a
+ * pointer.
+ */
+const GLYPH_HIT_THROUGH = "pointer-events-none";
+
+/**
  * The archived copies beside an outbound source link: one icon per archiving
  * service, accent and clickable where that service holds a copy, greyed and
  * inert where it does not.
@@ -100,7 +121,7 @@ export function ArchivedCopies({
               aria-label={name}
               className={`${TEXT_LINK} inline-flex`}
             >
-              <Glyph size={13} aria-hidden />
+              <Glyph size={13} aria-hidden className={GLYPH_HIT_THROUGH} />
             </a>
           );
         }
@@ -112,7 +133,7 @@ export function ArchivedCopies({
             aria-label={name}
             className="inline-flex text-neutral-600"
           >
-            <Glyph size={13} aria-hidden />
+            <Glyph size={13} aria-hidden className={GLYPH_HIT_THROUGH} />
           </span>
         );
       })}

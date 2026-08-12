@@ -95,6 +95,33 @@ describe("ArchivedCopies", () => {
     expect(screen.queryByTitle("Archived when published")).not.toBeInTheDocument();
   });
 
+  it("leaves the pointer on the titled element in every state", () => {
+    // The wrapper is exactly the glyph's size, so if the glyph took the
+    // pointer, the element under it would be an SVG node carrying no title and
+    // the hover text would never appear, which is how every state lost its
+    // tooltip in a real browser while the attribute sat in the markup.
+    const states = [
+      { copies: { wayback: WAYBACK, archive_today: ARCHIVE_TODAY, unavailable: false } },
+      { copies: { wayback: WAYBACK, archive_today: null, unavailable: false } },
+      { copies: { wayback: null, archive_today: null, unavailable: false } },
+      { copies: { wayback: null, archive_today: null, unavailable: true } },
+      { copies: null, pendingPublication: true },
+    ];
+    for (const state of states) {
+      const { container, unmount } = render(
+        <ArchivedCopies describes={PRIMARY_SOURCE_DESCRIPTION} {...state} />
+      );
+      const carriers = container.querySelectorAll("[title]");
+      expect(carriers).toHaveLength(2);
+      for (const carrier of carriers) {
+        expect(carrier.getAttribute("title")).toBeTruthy();
+        const glyph = carrier.querySelector("svg");
+        expect(glyph).toHaveClass("pointer-events-none");
+      }
+      unmount();
+    }
+  });
+
   it("renders nothing for an untracked link on a published event", () => {
     const { container } = render(
       <ArchivedCopies copies={null} describes={PRIMARY_SOURCE_DESCRIPTION} />
