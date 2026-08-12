@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayUrlsFor } from "./mediaUrls";
+import { displayUrlsFor, posterFrameUrl } from "./mediaUrls";
 
 const image = (storage_url: string) =>
   ({ storage_url, media_type: "image" }) as const;
@@ -66,5 +66,31 @@ describe("displayUrlsFor", () => {
     expect(displayUrlsFor(image("/media/uploads/g1/abc.jpg")).hero).toBe(
       "/media/uploads/g1/abc_hero.jpg"
     );
+  });
+});
+
+describe("posterFrameUrl", () => {
+  it("appends the poster-frame fragment to a plain clip URL", () => {
+    expect(posterFrameUrl("https://cdn.example.com/uploads/g1/clip.mp4")).toBe(
+      "https://cdn.example.com/uploads/g1/clip.mp4#t=0.1"
+    );
+  });
+
+  it("handles relative storage URLs (local-dev storage backend)", () => {
+    expect(posterFrameUrl("/media/uploads/g1/clip.mp4")).toBe(
+      "/media/uploads/g1/clip.mp4#t=0.1"
+    );
+  });
+
+  it("leaves a URL that already names a fragment alone", () => {
+    // An explicit start time from a caller wins; appending would produce two
+    // fragments and the browser would honour neither.
+    const url = "https://cdn.example.com/a/clip.mp4#t=12";
+    expect(posterFrameUrl(url)).toBe(url);
+  });
+
+  it("is idempotent", () => {
+    const once = posterFrameUrl("/media/clip.mp4");
+    expect(posterFrameUrl(once)).toBe(once);
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Expand } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -28,8 +29,17 @@ import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
  * Plain `<img>` on purpose, matching the rest of the renderer: a proof image
  * has unknown natural dimensions from an arbitrary allowlisted host, which
  * `next/image` cannot size. The lazy + no-referrer hints cover the load
- * discipline `next/image` would add. `src` is validated by the caller. Inline
- * wrappers (`span`) because a proof image can sit inside a paragraph.
+ * discipline `next/image` would add. `src` is validated by the caller. The
+ * wrappers are `span` + `inline-block` to keep the hover cluster's positioning
+ * context the picture itself and nothing wider; the node is block level in the
+ * document (`renderBlock` in [`lib/proof.tsx`](../../lib/proof.tsx) is the only
+ * place it renders), so it never nests inside a paragraph.
+ *
+ * The viewer goes through a portal to `document.body`. It positions itself
+ * `fixed`, which is relative to the nearest transformed / filtered ancestor
+ * rather than the viewport whenever one exists, and a proof body is arbitrary
+ * rendered content that may sit inside one; portalling puts the overlay out of
+ * reach of that entirely.
  */
 export function ProofImage({
   src,
@@ -78,13 +88,15 @@ export function ProofImage({
           <Expand size={16} />
         </Button>
       </span>
-      {open && (
-        <MediaLightbox
-          source={{ src, kind: "image" }}
-          alt={alt}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {open &&
+        createPortal(
+          <MediaLightbox
+            source={{ src, kind: "image" }}
+            alt={alt}
+            onClose={() => setOpen(false)}
+          />,
+          document.body,
+        )}
     </span>
   );
 }

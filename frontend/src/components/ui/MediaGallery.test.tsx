@@ -27,7 +27,10 @@ describe("MediaGallery", () => {
     render(<MediaGallery media={[IMAGE]} alt="A street corner" />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "View image" }));
+    // Named by its alt, so several tiles in one gallery stay distinguishable.
+    fireEvent.click(
+      screen.getByRole("button", { name: "View image: A street corner" }),
+    );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
@@ -40,7 +43,7 @@ describe("MediaGallery", () => {
 
     expect(container.querySelector("media-controller")).not.toBeNull();
     expect(container.querySelector("video[controls]")).toBeNull();
-    expect(screen.queryByRole("button", { name: "View image" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^View image/ })).toBeNull();
     // The one download is the player's own, sitting in its control bar rather
     // than floating over the tile.
     expect(

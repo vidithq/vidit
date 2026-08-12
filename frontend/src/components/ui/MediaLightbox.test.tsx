@@ -66,6 +66,52 @@ describe("MediaLightbox", () => {
     expect(screen.queryByRole("button", { name: "Expand video" })).toBeNull();
   });
 
+  // A player put into real fullscreen layers over the overlay, and the browser
+  // exits it on Escape by itself. Closing here too would collapse both layers
+  // from one press and drop the reader back onto the page.
+  it("leaves Escape to fullscreen while a player is fullscreen", () => {
+    const onClose = vi.fn();
+    render(<MediaLightbox source={VIDEO} onClose={onClose} />);
+
+    const fullscreen = { configurable: true, value: document.createElement("div") };
+    Object.defineProperty(document, "fullscreenElement", fullscreen);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Out of fullscreen, the same key closes the viewer as before.
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the keyboard on open and hands it back on close", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+
+    const { unmount } = render(<MediaLightbox source={IMAGE} onClose={vi.fn()} />);
+    // The dialog's own exit is where the keyboard lands, not wherever the page
+    // happened to leave it.
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+
+    // Tab wraps inside the overlay rather than walking out into the page under
+    // the backdrop.
+    const stops = screen
+      .getAllByRole("button")
+      .filter((el) => screen.getByRole("dialog").contains(el));
+    stops[stops.length - 1].focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(document.activeElement).toBe(stops[0]);
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
   it("takes a plain {src, kind} source, downloadable like a persisted row", () => {
     render(
       <MediaLightbox

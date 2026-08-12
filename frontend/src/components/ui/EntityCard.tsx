@@ -5,7 +5,7 @@ import { MapPin, Users } from "lucide-react";
 import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
-import { displayUrlsFor } from "@/lib/mediaUrls";
+import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
@@ -23,7 +23,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   `media` is present, its marked "no media" box otherwise.
 
 // The one fixed-ratio media slot on cards: the real media when there is one
-// (image thumbnail, or muted video first-frame via a `#t=0.1` media fragment +
+// (image thumbnail, or muted video first-frame via `posterFrameUrl` +
 // `preload="metadata"` so it paints as a poster), else a marked "no media"
 // box. No generated stand-ins: a card without media says so. The video is
 // `object-contain` on the slot's backdrop, so a portrait clip letterboxes in
@@ -47,7 +47,7 @@ export function MediaThumb({ media, className }: { media?: Media; className?: st
           />
         ) : (
           <video
-            src={`${media.storage_url}#t=0.1`}
+            src={posterFrameUrl(media.storage_url)}
             className="w-full h-full object-contain"
             preload="metadata"
             playsInline

@@ -87,13 +87,40 @@ describe("VideoPlayer", () => {
 
   // A clip the browser refuses swaps to the shared notice instead of leaving a
   // silent black box.
-  it("says so when the clip fails to load", () => {
+  it("says so when the clip fails to load, keeping the original saveable", () => {
     const { container } = render(
-      <VideoPlayer src="/media/broken.mp4" source={VIDEO} compact />,
+      <VideoPlayer
+        src="/media/broken.mp4"
+        source={VIDEO}
+        compact
+        className="max-w-4xl"
+      />,
     );
 
     fireEvent.error(container.querySelector("video")!);
     expect(screen.getByText("Video unavailable")).toBeInTheDocument();
     expect(container.querySelector("media-controller")).toBeNull();
+    // An undecodable codec is exactly when saving the original matters, and the
+    // bar that normally carries the download is gone with the player.
+    expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
+    // The notice takes the box the controller would have had, so it fills the
+    // tile instead of collapsing to an unsized line in the lightbox.
+    expect(container.firstElementChild).toHaveClass("h-full", "w-full", "max-w-4xl");
+  });
+
+  // The verdict belongs to the URL that earned it: the lightbox reuses one
+  // player across sources, so a flag would strand every later clip on the
+  // notice.
+  it("gives a new src a fresh verdict after a failure", () => {
+    const { container, rerender } = render(
+      <VideoPlayer src="/media/broken.mp4" source={VIDEO} />,
+    );
+
+    fireEvent.error(container.querySelector("video")!);
+    expect(screen.getByText("Video unavailable")).toBeInTheDocument();
+
+    rerender(<VideoPlayer src="/media/good.mp4" source={VIDEO} />);
+    expect(screen.queryByText("Video unavailable")).toBeNull();
+    expect(container.querySelector("media-controller")).not.toBeNull();
   });
 });

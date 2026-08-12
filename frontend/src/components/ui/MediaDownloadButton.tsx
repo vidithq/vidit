@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { FLOATING_CONTROL } from "@/components/ui/styles";
@@ -18,11 +19,14 @@ function resolveDownload(source: DownloadSource): {
 } {
   const isMedia = "media_type" in source;
   const url = isMedia ? source.storage_url : source.src;
-  const filename =
-    (isMedia ? source.original_filename : source.filename) ??
-    new URL(url, window.location.href).pathname.split("/").pop() ??
-    "media";
-  return { url, filename };
+  // Each rung falls through when it is missing *or* empty: a row whose
+  // `original_filename` is the empty string, and a URL whose path ends in a
+  // slash, both yield "", which `??` would have accepted and handed to
+  // `a.download` as a nameless save.
+  const named = (isMedia ? source.original_filename : source.filename) ?? "";
+  const basename =
+    new URL(url, window.location.href).pathname.split("/").pop() ?? "";
+  return { url, filename: named || basename || "media" };
 }
 
 // The download control on a media tile or a lightbox corner: fetches the
@@ -56,8 +60,16 @@ export function MediaDownloadButton({
       const a = document.createElement("a");
       a.href = blobUrl;
       a.download = filename;
+      // Firefox ignores a synthetic click on an anchor that is not in the
+      // document, so the link is attached for the click and taken straight
+      // back out. Revoking is deferred to a macrotask for the same reason it
+      // is attached: the save is kicked off by the click but not finished by
+      // the time it returns, and pulling the object URL out from under it in
+      // the same tick can cancel the download.
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(blobUrl);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
     } catch {
       setFailed(true);
     } finally {
@@ -80,18 +92,7 @@ export function MediaDownloadButton({
       disabled={busy}
       onClick={download}
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-4"
-        aria-hidden
-      >
-        <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" />
-      </svg>
+      <Download size={16} />
     </Button>
   );
 }

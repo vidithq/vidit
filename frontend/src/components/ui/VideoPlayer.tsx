@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/MediaDownloadButton";
 import { TileNotice } from "@/components/ui/TileNotice";
 import { cn } from "@/lib/cn";
+import { posterFrameUrl } from "@/lib/mediaUrls";
 
 /**
  * The player's whole skin. media-chrome renders each control in its own shadow
@@ -95,10 +96,18 @@ const BAR_CONTROL = "px-2.5";
  * **Sizing.** The controller fills its container and the frame is letterboxed
  * (`object-contain`), so a portrait clip keeps its shape instead of being
  * cropped by a landscape tile, and the bars show the tile's own backdrop. The
- * volume slider is the one control that drops out under 768 px of container
- * width (a container query, so it is the tile that decides, not the viewport):
- * the seven controls overflow a gallery tile, and the controller clips what
- * does not fit. The lightbox is wide enough to keep all of them.
+ * volume slider is the one control that drops out under 448 px of container
+ * width (`@max-md`, Tailwind's `md` container breakpoint at 28rem, so it is the
+ * tile that decides, not the viewport): the seven controls overflow a gallery
+ * tile, which is ~380 px in the map panel and ~384 px in the page grid, and the
+ * controller clips what does not fit. The lightbox is wide enough to keep all
+ * of them.
+ *
+ * **Failure.** A clip the browser refuses to decode swaps to a notice, keeping
+ * the download beside it: an unplayable codec is exactly when saving the
+ * original matters most. The verdict is keyed on the URL that produced it, so
+ * a player handed a new `src` (the lightbox swapping media) starts fresh
+ * instead of staying stuck on the notice.
  */
 export function VideoPlayer({
   src,
@@ -124,9 +133,25 @@ export function VideoPlayer({
    *  player offers the actual full screen. Omit for the lightbox context. */
   onExpand?: () => void;
 }) {
-  const [failed, setFailed] = useState(false);
+  // The URL that failed, not a bare flag: comparing it to the current `src` is
+  // what resets the verdict when the call site swaps clips, with no effect to
+  // keep in sync.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  if (failed) return <TileNotice compact={compact}>Video unavailable</TileNotice>;
+  if (failedSrc === src) {
+    return (
+      // The same box the controller would have taken, so the notice fills the
+      // tile (and the lightbox's frame) instead of collapsing to a bare line.
+      <div className={cn("relative block h-full w-full", className)}>
+        <TileNotice compact={compact}>Video unavailable</TileNotice>
+        {/* No player means no control bar, so the download the bar carries
+            moves to the corner, where an image tile keeps its own. */}
+        <div className="absolute right-2 top-2 z-10">
+          <MediaDownloadButton source={source} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <MediaController
@@ -141,13 +166,15 @@ export function VideoPlayer({
         playsInline
         preload="metadata"
         className="h-full w-full object-contain"
-        onError={() => setFailed(true)}
+        onError={() => setFailedSrc(src)}
       />
       <MediaControlBar className="w-full bg-black/60 backdrop-blur-sm">
         <MediaPlayButton className={BAR_CONTROL} />
         <MediaTimeRange />
         <MediaTimeDisplay showDuration className={BAR_CONTROL} />
         <MediaMuteButton className={BAR_CONTROL} />
+        {/* Hidden under a 448 px container (`md` = 28rem), where the full set
+            of controls no longer fits. See the Sizing note above. */}
         <MediaVolumeRange className="@max-md:hidden" />
         <MediaDownloadButton source={source} className={BAR_BUTTON} />
         {/* One big-view icon per context: a tile expands into the shared
@@ -172,11 +199,3 @@ export function VideoPlayer({
   );
 }
 
-/**
- * The source URL carrying the media fragment that makes an unplayed clip paint
- * its first frame. A URL that already names a fragment keeps it, so an explicit
- * start time from a caller wins.
- */
-function posterFrameUrl(src: string): string {
-  return src.includes("#") ? src : `${src}#t=0.1`;
-}

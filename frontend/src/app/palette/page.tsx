@@ -604,7 +604,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<VideoPlayer>" usage="The one video player: media-chrome's web components around a native <video>, mounted by MediaGallery's video tiles and by MediaLightboxBody, so playback chrome is identical on every surface and in every browser (the controls are custom elements, so they owe nothing to the React version). The bar holds exactly play, scrub, time, mute, volume, download and one big-view control, and nothing else (no casting, PiP, speed or captions); it fades out after two undisturbed seconds of playback and returns on pointer move, hover or focus. Big view is per context: a tile gets an expand control opening the shared lightbox, the lightbox itself gets real fullscreen. The download is MediaDownloadButton, since a plain <a download> is ignored cross-origin. Fills its container and letterboxes, so a portrait clip keeps its shape, and posters its first frame through the #t=0.1 media fragment. The skin is CSS variables set on the controller (neutral-100 glyphs, transparent controls on a translucent dark bar), so nothing reaches inside a shadow root and nothing fights Tailwind. A source the browser refuses swaps to TileNotice, which is what this demo shows unless NEXT_PUBLIC_DEMO_VIDEO_URL points at a real clip (no sample ships with the repo).">
+          <Item name="<VideoPlayer>" usage="The one video player: media-chrome's web components around a native <video>, mounted by MediaGallery's video tiles and by MediaLightboxBody, so playback chrome is identical on every surface and in every browser (the controls are custom elements, so they owe nothing to the React version). The bar holds exactly play, scrub, time, mute, volume, download and one big-view control, and nothing else (no casting, PiP, speed or captions); it fades out after two undisturbed seconds of playback and returns on pointer move, hover or focus. Big view is per context: a tile gets an expand control opening the shared lightbox, the lightbox itself gets real fullscreen. The download is MediaDownloadButton, since a plain <a download> is ignored cross-origin. Fills its container and letterboxes, so a portrait clip keeps its shape, and posters its first frame through the #t=0.1 media fragment. The skin is CSS variables set on the controller (neutral-100 glyphs, transparent controls on a translucent dark bar), so nothing reaches inside a shadow root and nothing fights Tailwind. A source the browser refuses swaps to TileNotice, keeping a download beside it so an undecodable original stays saveable, and that notice is what this demo shows unless NEXT_PUBLIC_DEMO_VIDEO_URL points at a real .mp4 (no sample ships with the repo).">
             <div className="h-48 w-full max-w-sm overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900">
               <VideoPlayer
                 src={PALETTE_VIDEO_SRC}
@@ -976,7 +976,9 @@ const PALETTE_MEDIA: Media = {
 // No sample clip ships with the repo, so the player demo plays whatever the
 // landing's demo video is pointed at when that is configured, and otherwise
 // falls to a source the browser cannot fetch, which is what puts the graceful
-// failure notice on screen.
+// failure notice on screen. Point the variable at an `.mp4`: the demo names its
+// download `demo.mp4`, so another container would save under a wrong extension
+// here (only here, since a real Media row is named by `original_filename`).
 const PALETTE_VIDEO_SRC =
   process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
 
@@ -111,12 +111,30 @@ export function MediaLightboxBody({
   );
 }
 
+// What Tab is allowed to reach inside the overlay. `[tabindex]` is what carries
+// the media-chrome controls: each is a custom element that puts the tabstop on
+// its own host, so a selector listing only native controls would walk straight
+// past the whole player.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * The overlay shell: dark backdrop over the whole viewport, closing on a
  * backdrop click or Escape, with the content click stopped so a click on the
  * media (a video's own controls included) never dismisses it. Controls sit in
  * one row at the content's top-right corner, so a download and the close never
  * land on each other.
+ *
+ * **Escape** belongs to fullscreen first. A player put into real fullscreen is
+ * layered over this overlay, and the browser exits it on Escape on its own, so
+ * handling the same keystroke here as well would collapse both layers at once
+ * and drop the reader back onto the page from one press.
+ *
+ * **Focus** is moved to the close button on mount, kept inside the overlay
+ * while it is open (Tab wraps at either end), and handed back to whatever was
+ * focused before on unmount, so dismissing the viewer returns the keyboard to
+ * the tile that opened it. Hand-rolled rather than a focus-trap dependency:
+ * it is one dialog with one exit, and this is the whole of it.
  */
 export function MediaOverlay({
   label,
@@ -131,16 +149,49 @@ export function MediaOverlay({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        // Fullscreen owns this press; the browser is already exiting it.
+        if (document.fullscreenElement) return;
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const stops = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
+      );
+      if (stops.length === 0) return;
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      // Focus inside a shadow root reports as its host, which is in the list,
+      // so a media-chrome control compares correctly here.
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    const restoreTo = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>("[data-overlay-close]")?.focus();
+    // The opener can be gone by the time the viewer closes (a re-render, a
+    // navigation), so restoring is best-effort.
+    return () => restoreTo?.focus?.();
+  }, []);
+
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={label}
@@ -160,6 +211,7 @@ export function MediaOverlay({
             className={FLOATING_CONTROL}
             aria-label="Close"
             title="Close"
+            data-overlay-close=""
             onClick={onClose}
           >
             <X size={16} />

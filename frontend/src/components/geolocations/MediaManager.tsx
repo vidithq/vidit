@@ -7,7 +7,7 @@ import { FileManager, type FileManagerItem } from "@/components/ui/FileManager";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightboxBody } from "@/components/ui/MediaLightbox";
 import { ACCEPTED_MEDIA_MIME } from "@/lib/mediaTypes";
-import { displayUrlsFor } from "@/lib/mediaUrls";
+import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
 interface MediaManagerProps {
@@ -75,7 +75,7 @@ export function MediaManager({
           />
         ) : (
           <video
-            src={`${m.storage_url}#t=0.1`}
+            src={posterFrameUrl(m.storage_url)}
             preload="metadata"
             playsInline
             className="h-full w-full object-cover"
@@ -104,7 +104,7 @@ export function MediaManager({
           key: `${f.name}-${i}`,
           content: f.type.startsWith("video/") ? (
             <video
-              src={`${stagedUrls[i]}#t=0.1`}
+              src={posterFrameUrl(stagedUrls[i])}
               preload="metadata"
               playsInline
               className="h-full w-full object-cover"

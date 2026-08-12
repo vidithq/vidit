@@ -65,9 +65,15 @@ console.warn = (...args: unknown[]) => {
   warn(...args);
 };
 
-// jsdom implements no media queries either. Every query reports unmatched,
+// jsdom implements no media queries: `matchMedia` is one of its documented
+// gaps, not something it answers falsely. Every query reports unmatched here,
 // which is the neutral answer: no reduced motion, no coarse pointer, no dark
 // system preference.
+//
+// Load-bearing, and not only for components that query it themselves:
+// media-chrome probes `globalThis.matchMedia` for PiP support at *import*
+// time, so without this every module reaching `VideoPlayer` throws before a
+// single test runs. Deleting it fails ten suites.
 window.matchMedia ??= ((query: string) => ({
   matches: false,
   media: query,

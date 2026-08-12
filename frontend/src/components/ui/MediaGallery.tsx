@@ -87,7 +87,10 @@ export function MediaGallery({
           <button
             type="button"
             onClick={() => setViewing(m)}
-            aria-label="View image"
+            // Named by its alt, like a proof image: a gallery holds several
+            // tiles, and "View image" repeated N times tells a screen-reader
+            // user nothing about which one they are on.
+            aria-label={alt ? `View image: ${alt}` : "View image"}
             className="absolute inset-0 h-full w-full cursor-zoom-in"
           />
           <div
