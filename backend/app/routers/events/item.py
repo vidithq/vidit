@@ -187,6 +187,9 @@ async def geolocate_event(
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
+    # The author's graphic-content declaration, posted with the rest of the
+    # state: omitting it clears the flag, exactly like an emptied field.
+    is_graphic: bool = Form(False),
     # Ids of existing media to drop (JSON array). A replacement source rides
     # in ``files``; the proof body's new inline images in ``proof_files``.
     remove_media_ids: str | None = Form(None),
@@ -198,8 +201,9 @@ async def geolocate_event(
     """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
 
     The one generalized fulfil / submit transition. The caller posts the whole
-    form (title, coordinates, source URL, dates, proof + its images, tags, and
-    the source media: ``files`` added, ``remove_media_ids`` dropped), and on
+    form (title, coordinates, source URL, dates, the graphic-content flag,
+    proof + its images, tags, and the source media: ``files`` added,
+    ``remove_media_ids`` dropped), and on
     success the row is written and frozen as ``geolocated``, with the caller
     credited as a geolocator. Only ``detected_from_url`` (provenance) and
     ``status`` carry no field. A ``detected`` draft is owner-only (403
@@ -240,6 +244,7 @@ async def geolocate_event(
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
             conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
             remove_media_ids=parsed_remove_ids,
             files=files,
             proof_files=proof_files,

@@ -1007,8 +1007,9 @@ export interface paths {
          * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
          *
          *     The one generalized fulfil / submit transition. The caller posts the whole
-         *     form (title, coordinates, source URL, dates, proof + its images, tags, and
-         *     the source media: ``files`` added, ``remove_media_ids`` dropped), and on
+         *     form (title, coordinates, source URL, dates, the graphic-content flag,
+         *     proof + its images, tags, and the source media: ``files`` added,
+         *     ``remove_media_ids`` dropped), and on
          *     success the row is written and frozen as ``geolocated``, with the caller
          *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
          *     ``status`` carry no field. A ``detected`` draft is owner-only (403
@@ -1909,6 +1910,11 @@ export interface components {
             event_time?: string | null;
             /** File */
             file: string;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -1945,6 +1951,11 @@ export interface components {
             event_time?: string | null;
             /** File */
             file: string;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
@@ -1981,6 +1992,11 @@ export interface components {
             event_time?: string | null;
             /** Files */
             files?: string[] | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -2129,6 +2145,8 @@ export interface components {
             investigators_sample?: components["schemas"]["AuthorRef"][] | null;
             /** Is Demo */
             is_demo: boolean;
+            /** Is Graphic */
+            is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
             owner: components["schemas"]["AuthorRef"];
             /**
@@ -2186,6 +2204,8 @@ export interface components {
             investigators: components["schemas"]["AuthorRef"][];
             /** Is Demo */
             is_demo: boolean;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];

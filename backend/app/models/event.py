@@ -273,6 +273,14 @@ class Event(Base):
     # TRUE iff created by an admin demo seeder. Surfaced as a "DEMO" badge;
     # dropped en masse by the wipe button. Real submissions never set this.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # TRUE when the footage shows death, injury or human remains. The author
+    # sets it on the write forms; an admin overrides it from the moderation
+    # endpoint when a submission understated what it carries. The read surface
+    # covers a flagged event's imagery until the viewer asks to see it, so the
+    # column is public and carried by both read schemas.
+    is_graphic: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false")
+    )
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])

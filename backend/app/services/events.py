@@ -333,6 +333,7 @@ async def create_with_evidence(
     proof_data: dict | None,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
 ) -> Event:
@@ -396,6 +397,7 @@ async def create_with_evidence(
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
+        is_graphic=is_graphic,
         geolocated_at=datetime.now(UTC),
     )
     geo.tags = effective_tags
@@ -444,6 +446,7 @@ async def create_request(
     source_posted_at: datetime,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
 ) -> Event:
@@ -500,6 +503,7 @@ async def create_request(
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
+        is_graphic=is_graphic,
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -544,6 +548,7 @@ async def geolocate(
     proof_data: dict | None,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     remove_media_ids: list,
     files: list[UploadFile],
     proof_files: list[UploadFile],
@@ -553,8 +558,9 @@ async def geolocate(
     The one generalized "give this event a vouched location" write, folding
     request fulfilment and detection submit into a single step. The form posts
     the whole state (title, coordinates, source URL, event date + time, source
-    post time, proof + its images, tags, and the source media: ``files`` added,
-    ``remove_media_ids`` dropped), and on success the row becomes
+    post time, the graphic-content flag, proof + its images, tags, and the
+    source media: ``files`` added, ``remove_media_ids`` dropped), and on
+    success the row becomes
     ``geolocated`` and frozen, stamped ``geolocated_at``, with the caller
     credited in ``event_geolocators``. ``detected_from_url`` (the provenance
     anchor) and ``status`` carry no form field.
@@ -669,6 +675,9 @@ async def geolocate(
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at
+        # Posted with the rest of the state, so an author clearing the box
+        # clears the flag; only the moderation endpoint pins it against them.
+        geo.is_graphic = is_graphic
         geo.tags = effective_tags
         geo.conflicts = effective_conflicts
         geo.status = STATUS_GEOLOCATED

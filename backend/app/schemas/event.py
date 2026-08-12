@@ -239,6 +239,10 @@ class EventRead(BaseModel):
     geolocated_at: datetime | None
     closed_at: datetime | None
     is_demo: bool
+    # TRUE when the footage shows death, injury or human remains, set by the
+    # author on the write forms and overridable by an admin. Plain ``bool``: the
+    # column is NOT NULL, so the key always carries a real value.
+    is_graphic: bool
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
@@ -286,6 +290,8 @@ class EventList(BaseModel):
     event_coords: CoordsRead | None
     event_date: date | None
     is_demo: bool
+    # See ``EventRead.is_graphic``; the card covers its thumbnail on it.
+    is_graphic: bool
     # See ``EventRead.status``; a list card marks ``detected`` too.
     status: EventStatus
     # Lets the card tell a withdrawn request from a rejected detection.
