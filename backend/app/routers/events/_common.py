@@ -18,11 +18,11 @@ from pydantic import StringConstraints
 
 from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
-from app.schemas.event import CoordsRead, EventList, EventRead
+from app.schemas.event import ArchivedCopiesRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
 from app.schemas.user import AuthorRef
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
-from app.services.source_archive import archived_url_for
+from app.services.source_archive import archive_row_for
 from app.services.thumbnails import pick_thumbnail
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
@@ -105,6 +105,24 @@ def build_event_list(
     )
 
 
+def _archived_copies(geo: Event, url: str | None) -> ArchivedCopiesRead | None:
+    """One link's capture columns and dead-end flag, or ``None`` when untracked.
+
+    The one place the queue row becomes wire shape, so the primary source and
+    every mirror serialise identically. ``unavailable`` is exactly the row's
+    terminal ``failed`` state: both providers refused and the attempt budget is
+    spent, which the read surface displays rather than swallows.
+    """
+    row = archive_row_for(geo, url)
+    if row is None:
+        return None
+    return ArchivedCopiesRead(
+        wayback=row.wayback_url,
+        archive_today=row.archive_today_url,
+        unavailable=row.status == "failed",
+    )
+
+
 def build_event_read(
     geo: Event,
     *,
@@ -136,16 +154,14 @@ def build_event_read(
         # Reads the eager-loaded ``archives`` collection; callers that skip
         # that load pay a lazy query per event, so every detail loader carries
         # it (see ``_DETAIL_LOADS``).
-        archived_source_url=archived_url_for(geo, geo.source_url),
+        archived_source=_archived_copies(geo, geo.source_url),
         # Ordered by the relationship's ``position``, so the read order is the
         # order the submitter gave.
         secondary_source_urls=[link.url for link in geo.source_links],
         # Built from the same walk, so the two lists stay index-aligned by
         # construction. Reads the same eager-loaded ``archives`` collection as
-        # ``archived_source_url``, so a mirror costs no extra query.
-        archived_secondary_source_urls=[
-            archived_url_for(geo, link.url) for link in geo.source_links
-        ],
+        # ``archived_source``, so a mirror costs no extra query.
+        archived_secondary_sources=[_archived_copies(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,

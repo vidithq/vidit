@@ -55,8 +55,11 @@ links_enqueued  # schemas/admin.py AdminMaintenanceResponse
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
 drafts_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
-archived_source_url  # schemas/event.py EventRead
-archived_secondary_source_urls  # schemas/event.py EventRead
+archived_source  # schemas/event.py EventRead
+archived_secondary_sources  # schemas/event.py EventRead
+wayback  # schemas/event.py ArchivedCopiesRead
+archive_today  # schemas/event.py ArchivedCopiesRead
+unavailable  # schemas/event.py ArchivedCopiesRead
 machine_total  # schemas/admin.py AdminDetectionStatsRead
 machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead

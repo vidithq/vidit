@@ -61,10 +61,10 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchivedCopyLink,
+  ArchivedCopies,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
-} from "@/components/ui/ArchivedCopyLink";
+} from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   TEXT_LINK,
@@ -140,7 +140,7 @@ const MOCK_DETAIL: EventDetail = {
   title: "Strike on a depot, Donetsk",
   event_coords: { lat: 48.0159, lng: 37.8024 },
   capture_source_coords: null,
-  archived_source_url: null,
+  archived_source: null,
   event_date: "2026-05-09",
   is_demo: true,
   status: "geolocated",
@@ -172,7 +172,7 @@ const MOCK_DETAIL: EventDetail = {
     "https://t.me/mirror/1",
     "https://www.youtube.com/watch?v=demo",
   ],
-  archived_secondary_source_urls: [null, null],
+  archived_secondary_sources: [null, null],
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
@@ -192,17 +192,26 @@ const MOCK_DETAIL: EventDetail = {
   investigators: [],
 };
 
-// The same detail body with a real source and its Wayback capture, plus one
-// captured mirror and one still uncaptured: the archived fallback is
-// suppressed on a synthetic demo source, so the mock above can never show it.
+// The same detail body with a real source captured at both providers, plus one
+// mirror captured at one provider only and one whose archiving failed for
+// good: the archived pair is suppressed on a synthetic demo source, so the
+// mock above can never show it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
   is_demo: false,
   source_url: "https://t.me/channel/12345",
-  archived_source_url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-  archived_secondary_source_urls: [
-    "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-    null,
+  archived_source: {
+    wayback: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
+    unavailable: false,
+  },
+  archived_secondary_sources: [
+    {
+      wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
+      archive_today: null,
+      unavailable: false,
+    },
+    { wayback: null, archive_today: null, unavailable: true },
   ],
 };
 
@@ -632,31 +641,52 @@ export default function PalettePage() {
           </Item>
 
           <Item
-            name="<ArchivedCopyLink>"
-            usage="The archived-copy fallback beside an outbound source link, on the event detail surfaces: the primary Source row and every expanded secondary mirror. Sits next to the original rather than replacing it, so the original stays the primary link while it resolves. Renders nothing without a capture, so a caller hands it the payload field with no guard of its own. The visible text is the same on every instance, so the accessible name carries the target: PRIMARY_SOURCE_DESCRIPTION for the source, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            name="<ArchivedCopies>"
+            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row, an unpublished draft), so a caller hands it the payload field with no guard of its own. Every glyph looks alike across the page, so the accessible name carries the target and the state: PRIMARY_SOURCE_DESCRIPTION for the source, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="captured (primary source)">
+            <Variant label="captured at both providers (primary source)">
               <span className="text-sm text-neutral-300">
                 t.me
-                <ArchivedCopyLink
-                  href="https://web.archive.org/web/20260601120000/https://t.me/channel/12345"
+                <ArchivedCopies
+                  copies={{
+                    wayback:
+                      "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+                    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
+                    unavailable: false,
+                  }}
                   describes={PRIMARY_SOURCE_DESCRIPTION}
                 />
               </span>
             </Variant>
-            <Variant label="captured (mirror 2 of a multi-mirror list)">
+            <Variant label="captured at one provider (mirror 2 of a multi-mirror list)">
               <span className="text-sm text-neutral-300">
                 t.me
-                <ArchivedCopyLink
-                  href="https://web.archive.org/web/20260601120100/https://t.me/mirror/1"
+                <ArchivedCopies
+                  copies={{
+                    wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
+                    archive_today: null,
+                    unavailable: false,
+                  }}
                   describes={mirrorDescription("t.me", 1, 2)}
                 />
               </span>
             </Variant>
-            <Variant label="no capture yet (renders nothing)">
+            <Variant label="archiving in progress (queued, no copy yet)">
               <span className="text-sm text-neutral-300">
                 t.me
-                <ArchivedCopyLink href={null} describes={PRIMARY_SOURCE_DESCRIPTION} />
+                <ArchivedCopies
+                  copies={{ wayback: null, archive_today: null, unavailable: false }}
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                />
+              </span>
+            </Variant>
+            <Variant label="not archived (both providers failed, no retry left)">
+              <span className="text-sm text-neutral-300">
+                t.me
+                <ArchivedCopies
+                  copies={{ wayback: null, archive_today: null, unavailable: true }}
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                />
               </span>
             </Variant>
           </Item>
@@ -1049,10 +1079,10 @@ export default function PalettePage() {
 
           <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
-              <Variant label="demo source (synthetic, no archived copy)">
+              <Variant label="demo source (synthetic, no archived copies)">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
-              <Variant label="real source + archived fallback (expand Secondary sources for the mirrors)">
+              <Variant label="real source + archived copies (expand Secondary sources for the one-provider and failed mirrors)">
                 <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
               </Variant>
             </div>

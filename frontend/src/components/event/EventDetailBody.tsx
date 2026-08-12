@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { EventDetail } from "@/types";
+import type { ArchivedCopies as ArchivedCopiesPayload, EventDetail } from "@/types";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { sourceIsSynthetic } from "@/lib/events";
@@ -12,10 +12,10 @@ import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchivedCopyLink,
+  ArchivedCopies,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
-} from "@/components/ui/ArchivedCopyLink";
+} from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
@@ -185,8 +185,8 @@ function DetailRows({
             className={sourceClass}
           />
           {!sourceIsSynthetic(geo) && (
-            <ArchivedCopyLink
-              href={geo.archived_source_url}
+            <ArchivedCopies
+              copies={geo.archived_source}
               describes={PRIMARY_SOURCE_DESCRIPTION}
             />
           )}
@@ -198,7 +198,7 @@ function DetailRows({
       {geo.secondary_source_urls.length > 0 && (
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
-          archivedUrls={geo.archived_secondary_source_urls}
+          archived={geo.archived_secondary_sources}
           isDemo={sourceIsSynthetic(geo)}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
@@ -307,21 +307,21 @@ function DetailRows({
  * The Secondary sources row: a count that expands into the list. Rendered only
  * for a non-empty list (the caller guards), so the Details block gains nothing
  * on an event that declares no mirror. Each link is a `SourceLabel` trailed by
- * its `ArchivedCopyLink`, the same pair the Source row above renders, so the
- * primary and its mirrors read alike.
+ * its `ArchivedCopies` pair, the same affordance the Source row above renders,
+ * so the primary and its mirrors read alike.
  *
- * `archivedUrls` is index-aligned with `urls` (the payload's contract), so
- * mirror `i` takes capture `i`.
+ * `archived` is index-aligned with `urls` (the payload's contract), so mirror
+ * `i` takes record `i`.
  */
 function SecondarySourcesRow({
   urls,
-  archivedUrls,
+  archived,
   isDemo,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
-  archivedUrls: (string | null)[];
+  archived: (ArchivedCopiesPayload | null)[];
   isDemo: boolean;
   compact: boolean;
   maxWidthClass: string;
@@ -356,7 +356,7 @@ function SecondarySourcesRow({
         </button>
         {open &&
           urls.map((url, index) => (
-            // Index key: two mirrors may repeat a URL, and the archived entry
+            // Index key: two mirrors may repeat a URL, and the archival record
             // is paired by position anyway.
             <span key={index} className="flex min-w-0 items-baseline justify-end">
               <SourceLabel
@@ -367,13 +367,13 @@ function SecondarySourcesRow({
                 className={textSize}
               />
               {/* Named per mirror rather than "the source": several archived
-                  links can sit on one page, and each needs its own target
+                  copies can sit on one page, and each needs its own target
                   announced. `mirrorDescription` owns that name, including the
                   two cases a bare host cannot carry (mirrors sharing a host, a
                   URL with no host to show). */}
               {!isDemo && (
-                <ArchivedCopyLink
-                  href={archivedUrls[index] ?? null}
+                <ArchivedCopies
+                  copies={archived[index] ?? null}
                   describes={mirrorDescription(safeHostname(url), index, urls.length)}
                 />
               )}

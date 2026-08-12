@@ -83,6 +83,29 @@ class CoordsRead(BaseModel):
     lng: float
 
 
+class ArchivedCopiesRead(BaseModel):
+    """One link's archived copies, one field per provider, plus the dead end.
+
+    Both providers are attempted for every link, so a link can end up with two
+    copies, one, or none. An object rather than a URL per field on ``EventRead``
+    keeps the primary source and each mirror reading the same shape, and leaves
+    room for the state a bare URL cannot express: ``unavailable`` is ``true``
+    only once neither provider captured the link and no attempt is left, which
+    is what lets the detail surface show "not archived" instead of showing
+    nothing.
+    """
+
+    # The Wayback Machine replay URL, ``null`` until that capture lands and
+    # forever if it never does.
+    wayback: str | None
+    # The archive.today snapshot URL, on the same terms.
+    archive_today: str | None
+    # Terminal failure of both providers: the retry ladder is spent and the
+    # link has no copy anywhere. ``false`` while a capture is still coming, and
+    # ``false`` on a link one provider captured, whatever the other did.
+    unavailable: bool
+
+
 class EventCloseRequest(BaseModel):
     """Body for ``POST /events/{id}/close``. The reason is required: a closed
     event stays publicly visible, so the why must travel with it."""
@@ -182,20 +205,23 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
-    # The archived copy of ``source_url``, rendered as the fallback once the
-    # original dies. NULL until the archival worker has a capture (and on a
-    # source-less draft). Required-nullable: the key is always serialised.
-    archived_source_url: str | None
+    # The archived copies of ``source_url``, rendered as the fallback once the
+    # original dies. NULL when the link is not tracked at all: a source-less
+    # row, or an unpublished ``detected`` draft whose links are queued only at
+    # publication. Once tracked it is always an object, whose fields say what
+    # was captured and whether the attempts are spent. Required-nullable: the
+    # key is always serialised.
+    archived_source: ArchivedCopiesRead | None
     # Mirrors of the same media on other networks (or other same-POV posts), in
     # the order the submitter gave them. Empty when the event declares none;
     # always serialised. Unlike ``source_url`` these are not the frozen evidence
     # anchor: a fulfiller replaces the whole list at the geolocate transition.
     secondary_source_urls: list[str]
     # The archived copies of ``secondary_source_urls``, same length and same
-    # order: entry ``i`` is the capture of mirror ``i``, NULL until the archival
-    # worker has one. A parallel list rather than a list of objects keeps
-    # ``secondary_source_urls`` the shape every existing consumer already reads.
-    archived_secondary_source_urls: list[str | None]
+    # order: entry ``i`` covers mirror ``i``, NULL on the same terms as
+    # ``archived_source``. A parallel list rather than fields on the mirrors
+    # keeps ``secondary_source_urls`` the shape every existing consumer reads.
+    archived_secondary_sources: list[ArchivedCopiesRead | None]
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.

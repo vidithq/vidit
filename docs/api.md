@@ -682,9 +682,19 @@ Full detail for a single event, in any lifecycle state.
   "event_coords": { "lat": 48.123, "lng": 37.456 },
   "capture_source_coords": null,
   "source_url": "https://t.me/channel/12345",
-  "archived_source_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+  "archived_source": {
+    "wayback": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+    "archive_today": "https://archive.ph/aBcDe/https://t.me/channel/12345",
+    "unavailable": false
+  },
   "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
-  "archived_secondary_source_urls": ["https://web.archive.org/web/20260316094600/https://x.com/mirror_handle/status/1234567890"],
+  "archived_secondary_sources": [
+    {
+      "wayback": "https://web.archive.org/web/20260316094600/https://x.com/mirror_handle/status/1234567890",
+      "archive_today": null,
+      "unavailable": false
+    }
+  ],
   "proof": { "type": "doc", "content": [] },
   "event_date": "2026-03-15",
   "event_time": "14:30:00",
@@ -738,7 +748,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source_url` is the Wayback (or archive.today) copy of that `source_url`, `null` on a `detected` draft (whose links are archived when it is published), on a source-less row, and until the archival worker has a capture; the detail surface renders it as a fallback link beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_source_urls` is the same list's captures, same length and same order: entry `i` is mirror `i`'s archived copy, `null` under the same conditions as `archived_source_url`, and the detail surface renders each as a fallback link beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
