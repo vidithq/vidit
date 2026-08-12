@@ -42,12 +42,11 @@ export function DetailRow({
   value?: ReactNode;
   children?: ReactNode;
   compact?: boolean;
-  align?: "stretch" | "center" | "start";
+  align?: "stretch" | "start";
   className?: string;
 }) {
   const rowClass = cn(
     "flex justify-between",
-    align === "center" && "items-center",
     align === "start" && "items-start",
     !compact && "px-4 py-3",
     className,

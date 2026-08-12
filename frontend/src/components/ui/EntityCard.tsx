@@ -148,10 +148,6 @@ export function EntityCard({
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
-  // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
-  // real media or its own "no media" box.
-  const thumb = <MediaThumb media={media} />;
-
   if (variant === "feed") {
     return (
       <article className={`${SHELL} flex-col gap-3 ${TAPPABLE_HOVER}`}>
@@ -189,7 +185,9 @@ export function EntityCard({
   return (
     <div className={`${SHELL} ${TAPPABLE_HOVER}`}>
       {stretched}
-      {thumb}
+      {/* Always a thumbnail (keeps the row height uniform): MediaThumb renders
+          the real media or its own "no media" box. */}
+      <MediaThumb media={media} />
       <div className="flex-1 min-w-0 flex items-start gap-2">
         {/* Fixed min-height keeps every compact card the same height. Content
             packs to the top, so a 1-line title leaves its slack at the bottom

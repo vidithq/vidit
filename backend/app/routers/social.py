@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import coords_or_none, thumbnail_media
-from app.schemas.event import EventList, PaginatedEvents
+from app.routers.events._common import build_event_list
+from app.schemas.event import PaginatedEvents
 from app.services import social
 
 router = APIRouter()
@@ -27,20 +27,5 @@ def get_timeline(
     deliberate signal rather than a noisy default feed.
     """
     result = social.get_timeline(db, user_id=current_user.id, page=page, per_page=per_page)
-    items = [
-        EventList(
-            id=geo.id,
-            title=geo.title,
-            event_coords=coords_or_none(lat, lng),
-            event_date=geo.event_date,
-            is_demo=geo.is_demo,
-            status=geo.status,
-            before_closed_status=geo.before_closed_status,
-            owner=geo.owner,
-            media=thumbnail_media(geo),
-            tags=geo.tags,
-            conflicts=geo.conflicts,
-        )
-        for geo, lat, lng in result["items"]
-    ]
+    items = [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in result["items"]]
     return PaginatedEvents(items=items, total=result["total"], page=page, per_page=per_page)

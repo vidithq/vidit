@@ -706,9 +706,8 @@ def investigate(db: Session, *, geo: Event, current_user: User) -> None:
     signal; off ``requested`` it raises :class:`EventStateError` (409).
 
     The ``EventInvestigator`` composite PK ``(event_id, user_id)`` is the race
-    backstop: two concurrent signals both pass the friendly-path SELECT, only one
-    wins the INSERT, and the SAVEPOINT turns the loser's ``IntegrityError`` into
-    the idempotent no-op instead of a 500. Mirrors ``services/social.follow_user``.
+    backstop, staged in a SAVEPOINT so the loser lands on the idempotent no-op.
+    Mechanism: ``services/social.follow_user``.
     """
     if geo.status != STATUS_REQUESTED:
         raise EventStateError(f"Cannot investigate an event with status {geo.status}")

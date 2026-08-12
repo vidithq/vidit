@@ -28,7 +28,9 @@ import math
 import random
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from pathlib import PurePosixPath
 from typing import Any
 
 from geoalchemy2.shape import from_shape
@@ -58,7 +60,12 @@ from app.services.evidence_processing import (
     make_jpeg_derivative,
 )
 from app.services.sanitize import sanitize_tiptap_doc
-from app.services.storage import Storage, derivative_key, get_storage
+from app.services.storage import (
+    Storage,
+    derivative_key,
+    get_storage,
+    image_content_type_for_extension,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -306,9 +313,9 @@ def _ensure_demo_authors(db: Session) -> list[User]:
     """Create the 5 demo accounts if absent; return all 5.
 
     Race-safe via `INSERT ... ON CONFLICT (username) DO NOTHING`: two
-    concurrent admin clicks used to crash the loser on the
-    `users.username` UNIQUE; now the loser is a silent no-op and the
-    follow-up SELECT picks up the winner's row.
+    concurrent admin clicks race on the `users.username` UNIQUE, and the
+    clause makes the loser a silent no-op whose follow-up SELECT picks up
+    the winner's row.
     """
     rows = [
         {
@@ -428,21 +435,15 @@ def _media_type_from_key(key: str) -> str:
     return "image"
 
 
-# Map a pool key's extension to a content type for the evidence layer.
-# ``make_jpeg_derivative`` only checks it for the no-op gate (videos pass
-# through); the right MIME keeps the helper composable with future strip /
-# derivative logic.
-_IMAGE_CONTENT_TYPE_BY_EXT: dict[str, str] = {
-    "jpg": "image/jpeg",
-    "jpeg": "image/jpeg",
-    "png": "image/png",
-    "webp": "image/webp",
-}
-
-
 def _image_content_type_from_key(key: str) -> str | None:
-    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
-    return _IMAGE_CONTENT_TYPE_BY_EXT.get(ext)
+    """The content type for a pool key, or ``None`` when it isn't an image.
+
+    ``make_jpeg_derivative`` only checks it for the no-op gate (videos pass
+    through); the right MIME keeps the helper composable with future strip /
+    derivative logic. The suffix table lives in ``services/storage.py``.
+    """
+    suffix = PurePosixPath(key).suffix
+    return image_content_type_for_extension(suffix) if suffix else None
 
 
 def _prepare_pool_media(
@@ -640,18 +641,27 @@ class NoTemplatesError(RuntimeError):
 SEED_BATCH_SIZE = 1000
 
 
-def seed_demo(db: Session, *, count: int) -> dict[str, int]:
-    """Generate `count` demo geolocations.
+@dataclass(frozen=True)
+class _SeedContext:
+    """Everything both seeders need in hand before their per-row loop."""
 
-    Idempotent on the demo authors (created once, reused). Commits in
-    batches of `SEED_BATCH_SIZE` so memory + the SQLAlchemy identity map
-    stay bounded on large seeds (e.g. 50 000) — earlier geos are flushed
-    and detached as we move on. A mid-batch failure leaves earlier batches
-    in the DB; the wipe button gives a clean redo.
+    templates: dict[str, dict[str, list[str]]]
+    template_ids: list[str]
+    authors: list[User]
+    author_ids: list[uuid.UUID]
+    tag_ids_by_name: dict[str, uuid.UUID]
+    conflict_ids_by_name: dict[str, uuid.UUID]
+    storage: Storage
+    pool_sha256_by_key: dict[str, str]
+
+
+def _seed_context(db: Session) -> _SeedContext:
+    """Discover the pool, ensure the fixture rows, and prep the pool media.
+
+    The shared preamble of :func:`seed_demo` and :func:`seed_demo_requests`.
+    Demo authors / tags / conflicts are idempotent (created once, reused) and
+    committed here so the bulk loop's FK targets already exist.
     """
-    if count < 1:
-        raise ValueError("count must be at least 1")
-
     templates = _discover_templates()
     if not templates:
         raise NoTemplatesError(
@@ -664,18 +674,81 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     tags_by_name = _ensure_tags(db)
     conflicts_by_name = _ensure_conflicts(db)
     db.commit()  # lock in demo authors + tags before the bulk loop
-    author_ids = [a.id for a in authors]
-    # Memoise tag IDs as plain UUIDs — pure-Python lookup, no per-geo
-    # `SELECT FROM tags` round-trip (a big deal at 50 k+ scale).
-    tag_ids_by_name: dict[str, uuid.UUID] = {n: t.id for n, t in tags_by_name.items()}
-    conflict_ids_by_name: dict[str, uuid.UUID] = {n: c.id for n, c in conflicts_by_name.items()}
-    template_ids = list(templates.keys())
     storage = get_storage()
 
-    # One pass over every unique pool key (media + proof buckets): compute
-    # sha256 and produce derivatives. Runs once per invocation regardless of
-    # `count`, since the N demo rows all reference the same unique pool keys.
-    pool_sha256_by_key = _prepare_pool_media(templates, storage)
+    return _SeedContext(
+        templates=templates,
+        template_ids=list(templates.keys()),
+        authors=authors,
+        author_ids=[a.id for a in authors],
+        # Memoise tag / conflict IDs as plain UUIDs: pure-Python lookup, no
+        # per-geo `SELECT FROM tags` round-trip (a big deal at 50 k+ scale).
+        tag_ids_by_name={n: t.id for n, t in tags_by_name.items()},
+        conflict_ids_by_name={n: c.id for n, c in conflicts_by_name.items()},
+        storage=storage,
+        # One pass over every unique pool key (media + proof buckets): compute
+        # sha256 and produce derivatives. Runs once per invocation regardless
+        # of `count`, since the N generated rows all reference the same unique
+        # pool keys. Idempotent on already-derived keys, so both seeders
+        # calling it is harmless (the second is list_keys + per-key hash, no
+        # S3 writes).
+        pool_sha256_by_key=_prepare_pool_media(templates, storage),
+    )
+
+
+def _flush_link_rows(
+    db: Session,
+    *,
+    tag_links: list[dict[str, uuid.UUID]],
+    conflict_links: list[dict[str, uuid.UUID]],
+    geolocators: list[dict[str, Any]],
+    investigators: list[dict[str, Any]] | None = None,
+) -> None:
+    """Drain the buffered M2M rows into one Core INSERT per table.
+
+    Both seeders buffer link + credit rows instead of writing 1-4 ORM
+    relationship rows per generated event. ``db.flush()`` runs first so the
+    Core inserts' FK targets exist, but the commit stays with the caller, so
+    events and their links live or die together: an insert failure rolls the
+    events back too and the next click retries cleanly (``commit()`` → insert
+    links → ``commit()`` would leave events committed and tagless on a
+    mid-flush failure). Each buffer is cleared as it drains, so a batching
+    caller reuses the same lists.
+    """
+    db.flush()
+    if tag_links:
+        db.execute(insert(event_tags), tag_links)
+        tag_links.clear()
+    if conflict_links:
+        db.execute(insert(event_conflicts), conflict_links)
+        conflict_links.clear()
+    # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
+    # ``Table`` and ``insert()`` accepts it, same as ``insert(event_tags)``.
+    if investigators:
+        db.execute(insert(EventInvestigator.__table__), investigators)  # type: ignore[arg-type]
+        investigators.clear()
+    if geolocators:
+        db.execute(insert(EventGeolocator.__table__), geolocators)  # type: ignore[arg-type]
+        geolocators.clear()
+
+
+def seed_demo(db: Session, *, count: int) -> dict[str, int]:
+    """Generate `count` demo geolocations.
+
+    Idempotent on the demo authors (created once, reused). Commits in
+    batches of `SEED_BATCH_SIZE` so memory + the SQLAlchemy identity map
+    stay bounded on large seeds (e.g. 50 000) — earlier geos are flushed
+    and detached as we move on. A mid-batch failure leaves earlier batches
+    in the DB; the wipe button gives a clean redo.
+    """
+    if count < 1:
+        raise ValueError("count must be at least 1")
+
+    ctx = _seed_context(db)
+    templates, template_ids = ctx.templates, ctx.template_ids
+    authors, author_ids = ctx.authors, ctx.author_ids
+    tag_ids_by_name, conflict_ids_by_name = ctx.tag_ids_by_name, ctx.conflict_ids_by_name
+    storage, pool_sha256_by_key = ctx.storage, ctx.pool_sha256_by_key
 
     # Buffer M2M link + geolocator rows per batch, each flushed via one Core
     # INSERT, far cheaper than 1-4 ORM relationship writes per geo.
@@ -684,23 +757,12 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
     pending_geolocators: list[dict[str, Any]] = []
 
     def _flush_batch() -> None:
-        # Flush queued geos so the Core inserts' FK targets exist, but DON'T
-        # commit yet, so geos and their tag links / geolocator credit live or
-        # die together: an insert failure rolls back the geos too and the next
-        # click retries cleanly. `commit() → insert links → commit()` left
-        # geos committed and tagless on a mid-flush failure.
-        db.flush()
-        if pending_links:
-            db.execute(insert(event_tags), pending_links)
-            pending_links.clear()
-        if pending_conflict_links:
-            db.execute(insert(event_conflicts), pending_conflict_links)
-            pending_conflict_links.clear()
-        if pending_geolocators:
-            # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
-            # ``Table`` and ``insert()`` accepts it.
-            db.execute(insert(EventGeolocator.__table__), pending_geolocators)  # type: ignore[arg-type]
-            pending_geolocators.clear()
+        _flush_link_rows(
+            db,
+            tag_links=pending_links,
+            conflict_links=pending_conflict_links,
+            geolocators=pending_geolocators,
+        )
         db.commit()
         db.expire_all()
 
@@ -902,28 +964,11 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
     if count < 1:
         raise ValueError("count must be at least 1")
 
-    templates = _discover_templates()
-    if not templates:
-        raise NoTemplatesError(
-            f"No demo templates found under '{DEMO_POOL_PREFIX}'. "
-            "Populate the pool with at least one geo-XX/media/<file> "
-            "before seeding."
-        )
-
-    authors = _ensure_demo_authors(db)
-    tags_by_name = _ensure_tags(db)
-    conflicts_by_name = _ensure_conflicts(db)
-    db.commit()
-    author_ids = [a.id for a in authors]
-    tag_ids_by_name: dict[str, uuid.UUID] = {n: t.id for n, t in tags_by_name.items()}
-    conflict_ids_by_name: dict[str, uuid.UUID] = {n: c.id for n, c in conflicts_by_name.items()}
-    template_ids = list(templates.keys())
-    storage = get_storage()
-
-    # Same prep pass as ``seed_demo``. Idempotent on already-derived keys,
-    # so calling it from both seeders is harmless (second call is just
-    # list_keys + per-key hash, no S3 writes).
-    pool_sha256_by_key = _prepare_pool_media(templates, storage)
+    ctx = _seed_context(db)
+    templates, template_ids = ctx.templates, ctx.template_ids
+    authors, author_ids = ctx.authors, ctx.author_ids
+    tag_ids_by_name, conflict_ids_by_name = ctx.tag_ids_by_name, ctx.conflict_ids_by_name
+    storage, pool_sha256_by_key = ctx.storage, ctx.pool_sha256_by_key
 
     pending_geo_tag_links: list[dict[str, uuid.UUID]] = []
     pending_conflict_links: list[dict[str, uuid.UUID]] = []
@@ -1031,18 +1076,13 @@ def seed_demo_requests(db: Session, *, count: int) -> dict[str, int]:
                     )
                 claimed_count += 1
 
-    db.flush()
-    if pending_geo_tag_links:
-        db.execute(insert(event_tags), pending_geo_tag_links)
-    if pending_conflict_links:
-        db.execute(insert(event_conflicts), pending_conflict_links)
-    # mypy types ``__table__`` as ``FromClause`` but at runtime it's a
-    # ``Table`` and ``insert()`` accepts it, same as the
-    # ``insert(event_tags)`` call above.
-    if pending_investigator_rows:
-        db.execute(insert(EventInvestigator.__table__), pending_investigator_rows)  # type: ignore[arg-type]
-    if pending_geolocator_rows:
-        db.execute(insert(EventGeolocator.__table__), pending_geolocator_rows)  # type: ignore[arg-type]
+    _flush_link_rows(
+        db,
+        tag_links=pending_geo_tag_links,
+        conflict_links=pending_conflict_links,
+        geolocators=pending_geolocator_rows,
+        investigators=pending_investigator_rows,
+    )
     db.commit()
 
     return {

@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 import httpx
 
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
-from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
+from .records import QuotedTweet, TelegramFootage, TweetRecord
 from .syndication import _X_STATUS_URL_RE, ParsedMedia
 
 # External links whose target is footage (a tweet, a channel, a video), unlike a
@@ -346,14 +346,12 @@ class ResolvedTweet:
     """
 
     # Identity / provenance (from the thread head, the geoloc tweet).
-    tweet_id: str
     detected_from_url: str
     owner_handle: str
     # Raw, carried for the mappers.
     text: str
     created_at: str  # the geoloc tweet's post time, ISO 8601 (raw)
     quoted: QuotedTweet | None
-    external_sources: list[SourceLink]
     op_media: list[ParsedMedia]  # the thread's own media (op + quote origins)
     # Derived.
     coords: list[ParsedCoord]
@@ -388,13 +386,11 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
     detected_post_at = _posted_at(head.created_at)
     source_posted_at = _posted_at(source_iso) if source_iso else None
     return ResolvedTweet(
-        tweet_id=head.tweet_id,
         detected_from_url=head.permalink,
         owner_handle=head.handle,
         text=own_text,
         created_at=head.created_at,
         quoted=next((record.quoted for record in thread if record.quoted is not None), None),
-        external_sources=[link for record in thread for link in record.external_sources],
         op_media=[media for record in thread for media in record.media],
         coords=resolve_coords(thread),
         title=derive_title(own_text),

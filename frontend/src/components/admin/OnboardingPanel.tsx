@@ -12,6 +12,7 @@ import {
   type InviteCodeStatus,
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
@@ -62,20 +63,10 @@ function InviteCodeRow({
   onRevoke: (id: string) => Promise<void>;
 }) {
   const [revoking, setRevoking] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const canRevoke = invite.status === "active" || invite.status === "exhausted";
   const redeemer = invite.redeemer;
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API fails on insecure contexts; code is on screen to copy by hand.
-    }
-  };
 
   const count = (value: number | undefined) =>
     value === undefined ? (
@@ -91,7 +82,7 @@ function InviteCodeRow({
       <td className="py-2 pr-3">
         <Button
           variant="ghost"
-          onClick={onCopy}
+          onClick={() => void copy(invite.code)}
           title={copied ? "Copied" : `Copy ${invite.code}`}
         >
           <Copy size={12} className="text-neutral-500" />

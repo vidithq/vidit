@@ -17,12 +17,6 @@ export interface AttributePreference<T extends string> {
   get(): T;
   /** Persist, reflect onto `<html>`, and notify readers in this tab. */
   set(value: T): void;
-  /** Reflect a value onto `<html data-*>` without persisting (pre-paint). */
-  apply(value: T): void;
-  /** The custom event name a reader subscribes to. */
-  readonly event: string;
-  /** The value returned when nothing valid is stored. */
-  readonly fallback: T;
 }
 
 export function createAttributePreference<T extends string>(config: {
@@ -50,6 +44,9 @@ export function createAttributePreference<T extends string>(config: {
     return isValid(stored) ? stored : fallback;
   }
 
+  // Reflect onto `<html data-*>` without persisting. Internal: the pre-paint
+  // reflection is done by the inline script in the root layout, so `set` is the
+  // only caller.
   function apply(value: T): void {
     if (typeof document === "undefined") return;
     document.documentElement.dataset[attribute] = value;
@@ -62,5 +59,5 @@ export function createAttributePreference<T extends string>(config: {
     window.dispatchEvent(new Event(event));
   }
 
-  return { get, set, apply, event, fallback };
+  return { get, set };
 }

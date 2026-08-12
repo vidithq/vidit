@@ -18,6 +18,11 @@ import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 
+// Free-tag name ceiling, mirroring the backend `TagCreate.name` constraint in
+// schemas/tag.py (itself the `String(100)` column cap), so the input can't
+// accept a name the API would 422.
+const TAG_NAME_MAX_LEN = 100;
+
 interface TagPickerProps {
   /** Live tags (referenced by ≥1 geolocation) — source of the free-tag chips
    *  and the create-new dedup list. */
@@ -365,7 +370,7 @@ function NewTagInput({
           }}
           onKeyDown={onKeyDown}
           disabled={busy}
-          maxLength={100}
+          maxLength={TAG_NAME_MAX_LEN}
           placeholder="New free tag (e.g. drone)"
           aria-label="New free tag name"
           className="flex-1 max-w-xs"

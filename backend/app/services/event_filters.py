@@ -6,9 +6,11 @@ media / demo). Single-sourcing the predicates here keeps the surfaces from
 drifting; the anti-injection author pattern lives here for the same reason
 (it is a security boundary).
 
-The date / bbox / media validators raise ``HTTPException(422)`` directly:
-they are the input boundary for query parameters, moved here with the
-predicates so a filter and its validation can't separate.
+The bbox / media / status validators raise ``HTTPException(422)`` directly:
+they are the input boundary for query parameters, kept next to the
+predicates so a filter and its validation can't separate. Date parsing lives
+here too (:func:`parse_optional_iso_date`); ``routers._forms`` re-exports it
+for the multipart submit forms, keeping the import edge routers → services.
 """
 
 from dataclasses import dataclass, fields
@@ -30,6 +32,34 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
+
+
+def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
+    """Parse an optional ISO-8601 (YYYY-MM-DD) date. Empty → ``None``; 422 on garbage.
+
+    The one home for date parsing on the request boundary: the list-filter
+    query params below and the multipart submit forms (via the
+    ``routers._forms`` re-export) both land here, so neither the accepted
+    shapes nor the 422 text can drift between them. Forwarding a raw string
+    into a SQLAlchemy comparison instead would let Postgres raise
+    ``InvalidDatetimeFormat`` as a 500, which an anonymous-reachable endpoint
+    turns into scraper-driven Sentry noise.
+
+    A full ISO-8601 datetime is tolerated and truncated to its date: a saved
+    URL or an older client may send ``2026-05-01T12:00:00Z``, and 422-ing a
+    URL that used to work buys nothing. 3.11+ ``date.fromisoformat`` accepts
+    a trailing time component on its own; the ``[:10]`` makes the date-only
+    intent explicit.
+    """
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"{field} must be an ISO-8601 date (YYYY-MM-DD)"
+        ) from exc
+
 
 # Reject junk at the input boundary: restrict ``?author=`` (and the suggestion
 # query it is picked from) to the characters a real username carries, killing
@@ -108,40 +138,12 @@ def validate_status_filter(status: list[str] | None) -> None:
         )
 
 
-def parse_filter_date(value: str | None, field: str) -> date | None:
-    """Validate an ISO-8601 date filter param. Returns 422 on garbage.
-
-    Forwarding the raw string into the SQLAlchemy comparison let Postgres
-    raise ``InvalidDatetimeFormat`` as a 500; on an anonymous-reachable
-    endpoint a scraper could fill Sentry with those. Matches the
-    ``parse_bbox`` pattern.
-
-    Tolerates full ISO-8601 datetimes (a saved URL or older client may
-    send ``2026-05-01T12:00:00Z``). The time component is stripped — this
-    is a date filter — but accepting it avoids regressing working URLs
-    into a 422 just because the doc shape tightened to ``YYYY-MM-DD``.
-    """
-    if value is None or value == "":
-        return None
-    try:
-        # 3.11+ ``date.fromisoformat`` accepts a trailing time component;
-        # the [:10] truncation is belt-and-braces against older Pythons
-        # and makes the date-only intent explicit.
-        return date.fromisoformat(value[:10])
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"{field} must be an ISO-8601 date (YYYY-MM-DD)",
-        ) from exc
-
-
 def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     """Parse ``south,west,north,east`` into validated floats.
 
-    Raises ``HTTPException(422)`` on malformed input. The previous version
-    swallowed parse errors and fell back to an unfiltered query — wrong for
-    a map endpoint, where a typo then returned every point on Earth. Empty
-    is the right fail-safe; unbounded is not.
+    Raises ``HTTPException(422)`` on malformed input rather than falling back
+    to an unfiltered query: on a map endpoint a swallowed typo returns every
+    point on Earth. Empty is the right fail-safe; unbounded is not.
 
     Validation: four comma-separated floats, lat in [-90, 90], lng in
     [-180, 180], south <= north, west <= east. Antimeridian-crossing boxes
@@ -230,10 +232,10 @@ def apply_filters(
 
     # Parse dates up front so a typo returns a clean 422 instead of
     # cascading into Postgres' ``InvalidDatetimeFormat`` as a 500.
-    parsed_event_from = parse_filter_date(event_date_from, "event_date_from")
-    parsed_event_to = parse_filter_date(event_date_to, "event_date_to")
-    parsed_submitted_from = parse_filter_date(submitted_from, "submitted_from")
-    parsed_submitted_to = parse_filter_date(submitted_to, "submitted_to")
+    parsed_event_from = parse_optional_iso_date(event_date_from, field="event_date_from")
+    parsed_event_to = parse_optional_iso_date(event_date_to, field="event_date_to")
+    parsed_submitted_from = parse_optional_iso_date(submitted_from, field="submitted_from")
+    parsed_submitted_to = parse_optional_iso_date(submitted_to, field="submitted_to")
 
     if parsed_event_from:
         query = query.filter(Event.event_date >= parsed_event_from)

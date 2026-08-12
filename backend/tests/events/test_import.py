@@ -226,7 +226,7 @@ def test_import_from_tweet_media_aborts_above_size_cap(author, monkeypatch):
 
     from app.routers.events import import_tweet as geolocations_router
 
-    cap = geolocations_router._MEDIA_PROXY_MAX_BYTES
+    cap = geolocations_router.MEDIA_FETCH_MAX_BYTES
     chunk_size = max(1, cap // 4)
     # Total body is 10× the cap so a buffered implementation would
     # land all of it in memory before the size check fires.
@@ -282,7 +282,7 @@ def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, mo
 
     from app.routers.events import import_tweet as geolocations_router
 
-    cap = geolocations_router._MEDIA_PROXY_MAX_BYTES
+    cap = geolocations_router.MEDIA_FETCH_MAX_BYTES
 
     class _MockStream:
         status_code = 200

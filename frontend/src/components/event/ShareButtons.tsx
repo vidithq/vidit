@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import type { EventStatus } from "@/types";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { Button } from "@/components/ui/Button";
+import { XGlyph } from "@/components/ui/BrandGlyphs";
+
+// How long an armed share / copy waits for its confirming re-click.
+const ARM_MS = 3000;
 
 interface ShareButtonsProps {
   id: string;
@@ -19,22 +24,6 @@ interface ShareButtonsProps {
   status: EventStatus;
 }
 
-// Inline X logo — lucide doesn't ship one, and the legacy Twitter bird reads
-// dated next to "Share on X". ~200B, so a dependency would be heavier.
-function XLogo({ size = 13 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  );
-}
-
 export default function ShareButtons({
   id,
   title,
@@ -44,34 +33,7 @@ export default function ShareButtons({
   lng,
   status,
 }: ShareButtonsProps) {
-  const [copied, setCopied] = useState(false);
-  // A `detected` link points at an editable draft, so sharing it asks for a
-  // confirming re-click first (mirrors the review queue's two-click delete).
-  // `armed` is which action is awaiting that re-click; it auto-disarms.
-  const [armed, setArmed] = useState<null | "copy" | "share">(null);
-  // Tracked so a second click within the 1.5s window doesn't queue a duplicate
-  // timer (flipping "Link copied" back early), and unmount clears it.
-  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const armResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
-      if (armResetTimer.current) clearTimeout(armResetTimer.current);
-    };
-  }, []);
-
-  // A submitted link acts on the first click; a detected one arms first, then acts.
-  const needsConfirm = status === "detected";
-  const arm = (which: "copy" | "share") => {
-    setArmed(which);
-    if (armResetTimer.current) clearTimeout(armResetTimer.current);
-    armResetTimer.current = setTimeout(() => setArmed(null), 3000);
-  };
-  const disarm = () => {
-    setArmed(null);
-    if (armResetTimer.current) clearTimeout(armResetTimer.current);
-  };
+  const { copied, copy } = useCopyToClipboard();
 
   // window is undefined during SSR; the function shape keeps this safe to call
   // from any render-time path even though handlers only fire in the browser.
@@ -89,35 +51,47 @@ export default function ShareButtons({
         : []),
     ].join("\n");
 
-  const onCopy = async () => {
-    if (needsConfirm && armed !== "copy") {
-      arm("copy");
-      return;
-    }
-    disarm();
-    try {
-      await navigator.clipboard.writeText(url());
-      setCopied(true);
-      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API fails on insecure contexts (http://, embedded webviews).
-      // Silent no-op — the URL is still in the address bar.
-    }
-  };
-
-  const onShareX = () => {
-    if (needsConfirm && armed !== "share") {
-      arm("share");
-      return;
-    }
-    disarm();
+  const openIntent = () => {
     // twitter.com/intent/tweet still serves the composer post-rebrand and is
     // the documented domain, so it won't be redirected away.
     const intent = new URL("https://twitter.com/intent/tweet");
     intent.searchParams.set("text", tweetText());
     intent.searchParams.set("url", url());
     window.open(intent.toString(), "_blank", "noopener,noreferrer");
+  };
+
+  // A `detected` link points at an editable draft, so sharing it asks for a
+  // confirming re-click first (mirrors the review queue's two-click delete),
+  // via the shared two-click confirm. Each action arms independently, so
+  // arming one disarms the other: the nudge below names a single pending
+  // action, and re-clicking the *other* button must not fire it outright.
+  const copyConfirm = useConfirmAction(() => copy(url()), { timeoutMs: ARM_MS });
+  const shareConfirm = useConfirmAction(openIntent, { timeoutMs: ARM_MS });
+
+  // A submitted link acts on the first click; a detected one arms first, then acts.
+  const needsConfirm = status === "detected";
+  const armed: null | "copy" | "share" = copyConfirm.armed
+    ? "copy"
+    : shareConfirm.armed
+      ? "share"
+      : null;
+
+  const onCopy = () => {
+    if (!needsConfirm) {
+      void copy(url());
+      return;
+    }
+    shareConfirm.cancel();
+    copyConfirm.trigger();
+  };
+
+  const onShareX = () => {
+    if (!needsConfirm) {
+      openIntent();
+      return;
+    }
+    copyConfirm.cancel();
+    shareConfirm.trigger();
   };
 
   return (
@@ -162,7 +136,7 @@ export default function ShareButtons({
         className={armed === "share" ? "bg-neutral-800 ring-1 ring-neutral-500" : ""}
         title={armed === "share" ? "Click again to share this draft" : "Share on X"}
       >
-        <XLogo size={14} />
+        <XGlyph size={14} />
         <span className="sr-only">
           {armed === "share" ? "Click again to share draft" : "Share on X"}
         </span>

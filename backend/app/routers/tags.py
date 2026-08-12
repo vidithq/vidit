@@ -79,10 +79,12 @@ def create_tag(
     existing = db.query(Tag).filter(Tag.name == body.name).first()
     if existing:
         # Idempotent create: same name + same category → hand the row
-        # back. ``GET /tags`` filters orphan tags (refs == 0), so typing
-        # the exact name of an orphaned free tag previously 409'd with no
-        # way out of the form. Returns ``200 OK`` (not the ``201`` default)
-        # to surface "no new row created" to consumers that care.
+        # back. The lookup is by exact name over EVERY tag row, orphans
+        # included, because ``GET /tags`` hides orphan tags (refs == 0):
+        # a name-matched 409 here would leave the form with no way out for
+        # a tag the picker never offered. Returns ``200 OK`` (not the
+        # ``201`` default) to surface "no new row created" to consumers
+        # that care.
         if existing.category == body.category:
             return Response(
                 content=TagRead.model_validate(existing, from_attributes=True).model_dump_json(),
@@ -97,11 +99,9 @@ def create_tag(
             ),
         )
 
-    # The SELECT above gives the friendly-error path; the UNIQUE on
-    # ``tags.name`` is the actual race backstop. Two concurrent POSTs with
-    # the same name both pass the SELECT, only one wins the INSERT —
-    # without this SAVEPOINT the loser gets a 500 from the unhandled
-    # ``IntegrityError`` instead of the 409 the caller retries on. Mirrors
+    # The SELECT above only buys the friendly category-conflict message; the
+    # UNIQUE on ``tags.name`` is the actual race backstop, and the SAVEPOINT
+    # turns the loser into the 409 the caller retries on. Mechanism:
     # ``services/social.follow_user``.
     tag = Tag(name=body.name, category=body.category)
     try:

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.invite_code import InviteCode
 from app.models.user import User
+from app.schemas.admin import InviteCodeStatus
 
 
 def hash_password(password: str) -> str:
@@ -69,16 +70,28 @@ def bump_token_version(user: User) -> None:
     user.token_version = user.token_version + 1
 
 
+def invite_code_status(invite: InviteCode) -> InviteCodeStatus:
+    """Classify an invite code: ``active`` or the reason it isn't.
+
+    The single home for "is this code usable", read by the three surfaces
+    that ask: registration's create + confirm gates, the admin invite list's
+    ``status`` column, and :func:`validate_invite_code`. Revocation outranks
+    expiry outranks exhaustion, so the reported reason is the first thing an
+    admin acted on.
+    """
+    if invite.revoked_at is not None:
+        return "revoked"
+    if invite.expires_at is not None and invite.expires_at < datetime.now(UTC):
+        return "expired"
+    if invite.use_count >= invite.max_uses:
+        return "exhausted"
+    return "active"
+
+
 def validate_invite_code(db: Session, code: str) -> InviteCode | None:
     """Return the row iff usable: not revoked, not expired, not exhausted."""
     invite = db.query(InviteCode).filter(InviteCode.code == code).first()
-    if invite is None:
-        return None
-    if invite.revoked_at is not None:
-        return None
-    if invite.expires_at and invite.expires_at < datetime.now(UTC):
-        return None
-    if invite.use_count >= invite.max_uses:
+    if invite is None or invite_code_status(invite) != "active":
         return None
     return invite
 

@@ -108,8 +108,8 @@ async def create_event(
 
     # event_date: Form(str) doesn't validate date shape; feeding the raw
     # value into ``Event.event_date`` (Mapped[date]) would 500 at
-    # flush, AFTER the S3 round-trips. 422 matches ``_parse_bbox`` /
-    # ``_parse_filter_date`` so malformed-input rejections share a code.
+    # flush, AFTER the S3 round-trips. 422 matches ``parse_bbox`` so
+    # malformed-input rejections share a code.
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     # Optional hour → None when absent; required source instant, read as UTC.
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -10,26 +10,27 @@ import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { PageShell } from "@/components/ui/PageShell";
-import { TagPicker } from "@/components/ui/TagPicker";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
+import {
+  TaxonomyFields,
+  useTaxonomy,
+} from "@/components/geolocations/TaxonomyFields";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
-import { useApiResource } from "@/hooks/useApiResource";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
-import { apiFetch } from "@/lib/api";
 import {
+  cleanNumber,
   geolocateEvent,
   missingEventFields,
   parseCaptureCoords,
   type EventFieldsState,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
-import type { Conflict, EventDetail, Tag } from "@/types";
+import type { EventDetail } from "@/types";
 
 /**
  * Owner edit + submit of a machine-`detected` geolocation. Built like the create
@@ -94,20 +95,12 @@ export function EventEditForm({
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [newFiles, setNewFiles] = useState<File[]>([]);
 
-  const [tags, setTags] = useState<Tag[]>([]);
-  const { data: curatedTagsData, error: curatedTagsError, refetch: reloadCuratedTags } =
-    useApiResource<Tag[]>("/tags?curated=true");
-  const curatedTags = curatedTagsData ?? [];
+  // Curated selectors + free tags, owned by the shared taxonomy block (same
+  // lists and failure banners as the create form).
+  const taxonomy = useTaxonomy();
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
     geo.tags.map((t) => t.id)
   );
-  // The conflicts referential for the picker's typeahead, fetched whole once.
-  const {
-    data: conflictsData,
-    error: conflictsError,
-    refetch: reloadConflicts,
-  } = useApiResource<Conflict[]>("/conflicts");
-  const conflicts = conflictsData ?? [];
   const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>(
     geo.conflicts.map((c) => c.id)
   );
@@ -123,16 +116,13 @@ export function EventEditForm({
     clearIncomplete,
   } = useIncompleteForm();
 
-  useEffect(() => {
-    apiFetch<Tag[]>("/tags")
-      .then(setTags)
-      .catch(() => {});
-  }, []);
-
   const buildInput = () => ({
     title: title.trim(),
-    lat: parseFloat(lat),
-    lng: parseFloat(lng),
+    // Same strict parse as the two optional coordinate pairs, so one coordinate
+    // can't read valid one way and invalid the other. Required here (the floor
+    // check below runs first), so a NaN never reaches a submit.
+    lat: cleanNumber(lat) ?? NaN,
+    lng: cleanNumber(lng) ?? NaN,
     ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
     secondary_source_urls: secondarySourceUrls,
@@ -171,7 +161,9 @@ export function EventEditForm({
   // staged new files, and the selected curated tags.
   const keptMediaCount =
     geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
-  const selectedCurated = curatedTags.filter((t) => selectedTagIds.includes(t.id));
+  const selectedCurated = taxonomy.curatedTags.filter((t) =>
+    selectedTagIds.includes(t.id)
+  );
 
   const fieldsState = (): EventFieldsState => ({
     title,
@@ -196,14 +188,10 @@ export function EventEditForm({
     clearIncomplete();
     // The Conflict / Capture-source taxonomy must be loaded before the floor can
     // tell "didn't pick one" from "options still loading", otherwise it would
-    // spuriously report both tags missing. Recoverable state, not a missing field
-    // (mirrors the create form's guard).
-    if (curatedTags.length === 0 || conflicts.length === 0) {
-      submitMutation.setError(
-        curatedTagsError || conflictsError
-          ? "Couldn’t load the Conflict and Capture source options. Use Retry above, or reload the page."
-          : "Still loading the required Conflict and Capture source options. Give it a moment and try again."
-      );
+    // spuriously report both tags missing. Recoverable state, not a missing
+    // field, and the same message the create form shows.
+    if (taxonomy.blockedMessage !== null) {
+      submitMutation.setError(taxonomy.blockedMessage);
       return;
     }
     const missing = missingEventFields(fieldsState(), {
@@ -279,25 +267,10 @@ export function EventEditForm({
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />
 
-        {curatedTagsError && (
-          <CuratedTagsError
-            onRetry={reloadCuratedTags}
-            message="Couldn't load the Capture source options."
-          />
-        )}
-        {conflictsError && (
-          <CuratedTagsError
-            onRetry={reloadConflicts}
-            message="Couldn't load the Conflict options."
-          />
-        )}
-        <TagPicker
-          tags={tags}
-          setTags={setTags}
-          curatedTags={curatedTags}
+        <TaxonomyFields
+          taxonomy={taxonomy}
           selectedTagIds={selectedTagIds}
           setSelectedTagIds={setSelectedTagIds}
-          conflicts={conflicts}
           selectedConflictIds={selectedConflictIds}
           setSelectedConflictIds={setSelectedConflictIds}
           conflictInvalid={invalidKeys.has("conflict_tag")}

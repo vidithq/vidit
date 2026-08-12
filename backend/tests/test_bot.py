@@ -26,9 +26,11 @@ from app.models.bot_mention import BotMention
 from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services.bot import (
+    REPLY_MAX_WEIGHTED_LEN,
     BotNotConfigured,
     compose_failure_reply,
     compose_reply,
+    reply_weighted_len,
     run_bot_once,
 )
 from app.services.tweet_ingest.syndication import _cache_clear
@@ -761,19 +763,12 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert "already exists" in text
     assert "Review it from your profile" in text
     assert "http" not in text and "vidit.app" not in text
-    assert _weighted_len(text) <= 280
+    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     # No warning on a clean draft (footage stored, date known, media unseen).
     clean = compose_reply(
         event_id, source_footage_missing=False, source_date_missing=False, duplicate_media=False
     )
     assert "⚠" not in clean
-
-
-# An upper bound on X's weighted length: everything above U+2000 counts 2,
-# which covers the composer glyphs (✅ ❌ ⚠) and overcounts nothing the
-# replies use today. Stricter than the Python code-point count.
-def _weighted_len(text: str) -> int:
-    return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
 
 
 def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
@@ -784,7 +779,7 @@ def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
     assert "Guide in bio" in text
     assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
-    assert _weighted_len(text) <= 280
+    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
 
 def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
@@ -799,7 +794,7 @@ def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
         assert warning == f"⚠ {diag}"
         assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
-        assert _weighted_len(text) <= 280
+        assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     assert compose_failure_reply("no_such_reason", mention_id="1").startswith("❌ Nothing saved\n")
 
 

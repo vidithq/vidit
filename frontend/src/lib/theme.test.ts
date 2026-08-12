@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_THEME, applyTheme, getTheme, setTheme } from "./theme";
+import { DEFAULT_THEME, getTheme, setTheme } from "./theme";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -35,12 +35,5 @@ describe("setTheme", () => {
     expect(window.localStorage.getItem("vidit:theme")).toBe("light");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(notified).toBe(true);
-  });
-});
-
-describe("applyTheme", () => {
-  it("sets the data-theme attribute", () => {
-    applyTheme("light");
-    expect(document.documentElement.dataset.theme).toBe("light");
   });
 });

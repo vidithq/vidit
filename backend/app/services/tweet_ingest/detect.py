@@ -315,15 +315,6 @@ def _chase_source(record: TweetRecord, *, client: httpx.Client | None) -> TweetR
     return record
 
 
-def detect_structured(
-    record: TweetRecord, *, bot_handle: str, client: httpx.Client | None = None
-) -> list[DetectedGeoloc]:
-    """:func:`detect_structured_diagnosed` without the failure reason; the
-    mapper most callers want."""
-    detections, _ = detect_structured_diagnosed(record, bot_handle=bot_handle, client=client)
-    return detections
-
-
 def detect_structured_diagnosed(
     record: TweetRecord, *, bot_handle: str, client: httpx.Client | None = None
 ) -> tuple[list[DetectedGeoloc], str | None]:
@@ -460,18 +451,6 @@ def fetch_relay_parent(
     if parent.handle.lower() != record.handle.lower():
         return None
     return parent
-
-
-def detect_relay(
-    tagged: TweetRecord,
-    parent: TweetRecord,
-    *,
-    bot_handle: str,
-    client: httpx.Client | None = None,
-) -> list[DetectedGeoloc]:
-    """:func:`detect_relay_diagnosed` without the failure reason."""
-    detections, _ = detect_relay_diagnosed(tagged, parent, bot_handle=bot_handle, client=client)
-    return detections
 
 
 def detect_relay_diagnosed(

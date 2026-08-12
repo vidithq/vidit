@@ -721,6 +721,64 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     assert event.target["geolocation_id"] == str(geo_id)
 
 
+def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db, monkeypatch):
+    """GDPR erasure must leave nothing behind on S3, derivatives included: a
+    ``source`` image also owns ``_hero`` / ``_thumb`` JPEGs, so all three keys
+    reach the sweep."""
+    geo_id = geolocation.id
+    db.add(
+        Media(
+            event_id=geo_id,
+            role="source",
+            storage_url=f"http://localhost:8000/local-storage/uploads/{geo_id}/photo.png",
+            media_type="image",
+        )
+    )
+    db.commit()
+
+    swept: list[str] = []
+    monkeypatch.setattr(
+        "app.services.admin.sweep_keys",
+        lambda keys, *, context: swept.extend(keys),
+    )
+
+    response = client.delete(
+        f"/api/v1/admin/events/{geo_id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+
+    assert set(swept) == {
+        f"uploads/{geo_id}/photo.png",
+        f"uploads/{geo_id}/photo_hero.jpg",
+        f"uploads/{geo_id}/photo_thumb.jpg",
+    }
+
+
+def test_hard_delete_user_sweeps_source_image_derivatives(
+    admin_user, regular_user, db, monkeypatch
+):
+    """Same derivative coverage on the user-level erasure: the media rows of
+    every event the user owns resolve through the shared key collector."""
+    request_id = _seed_request(db, author_id=regular_user.id)
+
+    swept: list[str] = []
+    monkeypatch.setattr(
+        "app.services.admin.sweep_keys",
+        lambda keys, *, context: swept.extend(keys),
+    )
+
+    response = client.delete(
+        f"/api/v1/admin/users/{regular_user.id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+
+    assert f"request_uploads/{request_id}/x_hero.jpg" in swept
+    assert f"request_uploads/{request_id}/x_thumb.jpg" in swept
+    assert response.json()["media_count"] == len(swept)
+
+
 def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation):
     response = client.delete(
         f"/api/v1/admin/events/{geolocation.id}",

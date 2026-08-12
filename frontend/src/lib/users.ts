@@ -26,19 +26,16 @@ export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
 /**
  * Shape returned by `GET /users/{username}`. The profile page calls
  * `apiFetch<PublicProfile>(...)` directly rather than via a wrapper.
+ *
+ * Aliased from the generated `UserProfile`, except `external_links`: the
+ * generated field is the column's loose `{[key: string]: string | null}` map,
+ * and the profile surfaces key it per platform, so the narrow `ExternalLinks`
+ * (itself the generated per-platform schema) is kept here.
  */
-export interface PublicProfile {
-  id: string;
-  username: string;
-  bio: string | null;
-  avatar_url: string | null;
-  external_links: ExternalLinks;
-  created_at: string;
-  geolocations_count: number;
-  followers_count: number;
-  following_count: number;
-  is_following: boolean;
-}
+export type PublicProfile = Omit<
+  components["schemas"]["UserProfile"],
+  "external_links"
+> & { external_links: ExternalLinks };
 
 /**
  * Shape returned by `GET /users/{username}/stats` — the aggregated

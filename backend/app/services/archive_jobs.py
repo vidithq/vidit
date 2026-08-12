@@ -1,10 +1,10 @@
 """The durable archive-import queue: enqueue at upload, drain in the worker.
 
-``POST /events/import-archive`` used to run the whole backfill inside the
-request; a large export held its response open for minutes and its unzip +
-parse froze the single-process event loop. Now the browser uploads the zip
-straight to storage under a presigned POST (``/import-archive/presign`` mints
-the key), the JSON enqueue verifies the staged object and inserts an
+Nothing about a backfill runs inside the request: a large export's unzip +
+parse takes minutes and would freeze the single-process event loop while
+holding the response open. Instead the browser uploads the zip straight to
+storage under a presigned POST (``/import-archive/presign`` mints the key),
+``POST /events/import-archive`` verifies the staged object and inserts an
 ``archive_import_jobs`` row, and the worker service
 (``scripts/run_import_worker.py``) claims rows with ``FOR UPDATE SKIP LOCKED``,
 runs the backfill, stamps the counts, deletes the staged object, and
@@ -65,9 +65,13 @@ PROGRESS_EVERY = 10
 
 
 class StagedUploadError(Exception):
-    """Base: the ``upload_key`` handed to the enqueue can't back a job."""
+    """Base: the ``upload_key`` handed to the enqueue can't back a job.
 
-    code = "archive_upload_invalid"
+    Abstract: every raise names one of the subclasses below, so the router's
+    ``code`` → status map always sees a concrete value.
+    """
+
+    code: str
 
 
 class StagedUploadInvalidError(StagedUploadError):

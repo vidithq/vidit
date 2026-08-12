@@ -105,6 +105,28 @@ def _safe_storage_extension(content_type: str | None) -> str:
     return _EXTENSION_FOR_CONTENT_TYPE.get(content_type, "")
 
 
+# The other direction, derived from the same table so the two can't drift.
+# ``.jpeg`` is aliased in: keys we mint always carry ``.jpg``, but names that
+# arrive from outside (an X archive's ``tweets_media/`` files, a demo-pool
+# object) spell it either way.
+_CONTENT_TYPE_FOR_EXTENSION = {
+    extension: content_type for content_type, extension in _EXTENSION_FOR_CONTENT_TYPE.items()
+} | {".jpeg": "image/jpeg"}
+
+
+def image_content_type_for_extension(extension: str) -> str | None:
+    """Return the accepted image MIME a filename suffix implies, else ``None``.
+
+    Takes the suffix with its dot (``".JPG"`` reads as ``".jpg"``). Video
+    suffixes answer ``None``: both callers (the X archive parser's photo
+    branch, the demo seeder's pool prep) are asking specifically whether a
+    name is an image this codebase accepts, and an unknown suffix is a skip
+    rather than a guess.
+    """
+    content_type = _CONTENT_TYPE_FOR_EXTENSION.get(extension.lower())
+    return content_type if content_type in ALLOWED_IMAGE_TYPES else None
+
+
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 # One home for the dev API origin: the static mount URL and the dev staging
 # upload URL both derive from it, so a port change has one spot to touch.
@@ -478,9 +500,11 @@ def scrub_log(value: str) -> str:
 def sweep_keys(keys: list[str], *, context: str) -> None:
     """Best-effort delete a list of storage keys; swallow + log every failure.
 
-    Callers reach this AFTER the DB transaction has committed (or rolled
-    back): a storage failure must not propagate and turn a settled DB state
-    into a retryable 500. A failed delete leaves an orphaned object, the
+    The canonical statement of the commit-then-sweep ordering every delete
+    path follows: callers reach this AFTER the DB transaction has committed
+    (or rolled back), so a storage failure can't propagate and turn a settled
+    DB state into a retryable 500, and a still-live key can never be stranded
+    under a deleted row. A failed delete leaves an orphaned object, the
     accepted residual risk, logged for a manual sweep.
 
     ``context`` is a short caller phrase for the log, e.g.

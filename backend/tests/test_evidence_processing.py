@@ -251,10 +251,10 @@ def test_strip_metadata_rejects_animated_webp():
         strip_metadata(buf.getvalue(), "image/webp")
 
 
-def test_max_decoded_pixels_at_or_above_60mp():
-    """Guard against an accidental tightening below realistic phone /
-    DSLR uploads. Top-of-line phone cameras shoot ~50 MP today;
-    100 MP astrophotography is rare enough to safely reject.
+def test_max_decoded_pixels_clears_realistic_camera_output():
+    """Guard against an accidental tightening below realistic phone / DSLR
+    uploads: top-of-line phone cameras shoot ~50 MP today, so the cap must
+    stay at or above that. (100 MP astrophotography is rare enough to reject.)
     """
     assert MAX_DECODED_PIXELS >= 50_000_000
 

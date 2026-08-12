@@ -2,13 +2,18 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { Input } from "@/components/ui/Input";
-import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import {
+  FilterSection,
+  chipSummary,
+  rangeSummary,
+} from "@/components/ui/FilterSection";
 import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -49,6 +54,26 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 
+/** The two date windows both event surfaces carry, whatever control drives them
+ *  (the map's timeline scrubbers, the search page's date inputs). Empty string
+ *  = open at that edge. */
+export interface DateWindows {
+  eventFrom: string;
+  eventTo: string;
+  addedFrom: string;
+  addedTo: string;
+}
+
+export const EMPTY_DATE_WINDOWS: DateWindows = {
+  eventFrom: "",
+  eventTo: "",
+  addedFrom: "",
+  addedTo: "",
+};
+
+export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo);
+export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
+
 /** A surface-specific section (the date controls) rendered inside the shared
  *  accordion at its canonical position. */
 export interface InjectedSection {
@@ -58,6 +83,10 @@ export interface InjectedSection {
   active: boolean;
   children: ReactNode;
 }
+
+// Author typeahead debounce: long enough not to fetch usernames per keystroke,
+// short enough that the list is up by the time you stop typing.
+const AUTHOR_SUGGEST_DEBOUNCE_MS = 250;
 
 // Free-tag bucket grows unbounded; show this many, hide the rest behind
 // "Show all". Selected tags past the cut are surfaced regardless so you can
@@ -130,6 +159,57 @@ export function buildActiveFilterPills(
   ];
 }
 
+/** The removable-pill entries for the two date windows, appended after the
+ *  value pills above. The clear callbacks are per window rather than a patch,
+ *  because a surface may have more to reset than the dates (the map also stops
+ *  that window's playback). */
+export function buildDateWindowPills(
+  windows: DateWindows,
+  onClearEvent: () => void,
+  onClearAdded: () => void
+): ActiveFilter[] {
+  return [
+    ...(eventWindowActive(windows)
+      ? [
+          {
+            key: "event-window",
+            label: `Event: ${rangeSummary(windows.eventFrom, windows.eventTo)}`,
+            onRemove: onClearEvent,
+          },
+        ]
+      : []),
+    ...(addedWindowActive(windows)
+      ? [
+          {
+            key: "added-window",
+            label: `Added: ${rangeSummary(windows.addedFrom, windows.addedTo)}`,
+            onRemove: onClearAdded,
+          },
+        ]
+      : []),
+  ];
+}
+
+/** True when anything in the shared vocabulary narrows the view. The author
+ *  counts even though it carries no pill (its chip lives in the Author
+ *  section), so a filtered surface can never read as unfiltered. Surface-only
+ *  toggles (the map's hide-demo) are the surface's to add on top. */
+export function hasAnyFilter(
+  values: EventFilterValues,
+  windows: DateWindows
+): boolean {
+  return (
+    values.statuses.length > 0 ||
+    values.conflicts.length > 0 ||
+    values.captureSources.length > 0 ||
+    values.tags.length > 0 ||
+    values.mediaTypes.length > 0 ||
+    !!values.author.trim() ||
+    eventWindowActive(windows) ||
+    addedWindowActive(windows)
+  );
+}
+
 export function EventFilterSections({
   tags,
   conflicts,
@@ -173,29 +253,33 @@ export function EventFilterSections({
     setAuthorSuggestions([]);
   };
 
-  // Debounced typeahead over live usernames; ineligible drafts (empty, or
-  // characters the ?author= gate rejects) clear the list instead of 422ing.
+  // Debounced typeahead over live usernames. An ineligible draft (under two
+  // characters, or carrying something the ?author= gate rejects) can't be
+  // queried, so it clears the list instead of 422ing; that clear is immediate,
+  // only the fetch waits out the debounce.
+  const authorQuery = authorDraft.trim();
+  const canSuggest = authorQuery.length >= 2 && AUTHOR_FILTER_RE.test(authorQuery);
   useEffect(() => {
-    const v = authorDraft.trim();
-    if (v.length < 2 || !AUTHOR_FILTER_RE.test(v)) {
-      setAuthorSuggestions([]);
-      return;
-    }
-    let cancelled = false;
-    const t = setTimeout(() => {
-      suggestAuthors(v)
+    if (!canSuggest) setAuthorSuggestions([]);
+  }, [canSuggest, authorQuery]);
+  useDebouncedEffect(
+    () => {
+      if (!canSuggest) return;
+      let cancelled = false;
+      suggestAuthors(authorQuery)
         .then((authors) => {
           if (!cancelled) setAuthorSuggestions(authors);
         })
         .catch(() => {
           if (!cancelled) setAuthorSuggestions([]);
         });
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [authorDraft]);
+      return () => {
+        cancelled = true;
+      };
+    },
+    [authorQuery, canSuggest],
+    AUTHOR_SUGGEST_DEBOUNCE_MS,
+  );
   // Accordion open-state lives here (not per-section) so a re-render never
   // resets which sections are expanded. Curated buckets open by default.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({

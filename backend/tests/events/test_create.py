@@ -94,10 +94,9 @@ def test_create_rejects_half_typed_capture_coords(author):
 
 def test_create_rejects_invalid_event_date(author):
     """``event_date='not-a-date'`` returns a clean 422 before any S3
-    round-trip. Before the fix the raw string flowed through to a
-    ``Mapped[date]`` column and 500'd at flush, AFTER the files
-    had already been uploaded. 422 matches the ``_parse_filter_date``
-    / ``_parse_bbox`` shape so malformed-input rejections share a code."""
+    round-trip: an unvalidated string reaching the ``Mapped[date]`` column
+    500s at flush, after the files have already been uploaded. 422 matches
+    the ``parse_bbox`` shape so malformed-input rejections share a code."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),

@@ -34,9 +34,7 @@ export function readCsrfToken(): string | null {
  * every logged-out page load.
  */
 export function hasSessionCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  const prefix = `${CSRF_COOKIE}=`;
-  return document.cookie.split("; ").some((part) => part.startsWith(prefix));
+  return readCsrfToken() !== null;
 }
 
 /**

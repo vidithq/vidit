@@ -13,8 +13,7 @@ import { ACCENT_SURFACE } from "./styles";
 //              accent (mirrors the secondary button)
 //   neutral    default / tag / closed / inactive
 //   danger     a revoked / error state
-//   strong     a completed end-state (white, not green: completion isn't a win)
-export type PillTone = "accent" | "secondary" | "neutral" | "danger" | "strong";
+export type PillTone = "accent" | "secondary" | "neutral" | "danger";
 
 const BASE =
   "inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium";
@@ -29,7 +28,6 @@ const PILL_TONE: Record<PillTone, string> = {
   secondary: "text-orange-400 border border-orange-500/40",
   neutral: "bg-neutral-800 text-neutral-400 border border-neutral-700",
   danger: "bg-red-500/10 text-red-300 border border-red-500/30",
-  strong: "bg-neutral-100/10 text-neutral-100 border border-neutral-100/20",
 };
 
 interface PillProps {

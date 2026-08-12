@@ -18,7 +18,7 @@ text), spelled bare (the shape carries the fields, the primary form) or
 with explicit ``T:`` / ``C:`` / ``S:`` markers, and delivered in two forms:
 
 * **Inline**: the tagged tweet itself carries the markers
-  (:func:`tweet_ingest.detect_structured`; at most one extra syndication
+  (:func:`tweet_ingest.detect_structured_diagnosed`; at most one extra syndication
   fetch resolves the ``S:`` target's media and post date).
 * **Relay**: the tagged tweet is the analyst's direct reply to their own
   marker tweet, carrying the re-uploaded footage as attached media, for an
@@ -100,12 +100,36 @@ from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
 logger = logging.getLogger(__name__)
 
-# X's classic post length. Replies are composed under it and hard-truncated
-# as a belt: an over-long reply would 403 the (billed) create call. The cap
-# counts Python code points while X counts weighted characters (the ✅ / ❌ /
-# ⚠ glyphs weigh 2), so composed text must stay under it with margin; the
-# length test walks every reason × context combination.
-_REPLY_MAX_CHARS = 280
+# X's classic post length, in X's own units: an over-long reply would 403 the
+# (billed) create call. Every composed reply is checked against it by
+# :func:`_within_reply_cap`.
+REPLY_MAX_WEIGHTED_LEN = 280
+
+
+def reply_weighted_len(text: str) -> int:
+    """Upper bound on X's weighted character count for a composed reply.
+
+    X weighs everything above U+2000 as 2, which covers the composer glyphs
+    (✅ ❌ ⚠) and overcounts nothing the replies use today. Stricter than the
+    Python code-point count, so a text that passes here passes at X.
+    """
+    return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
+
+
+def _within_reply_cap(text: str) -> str:
+    """Check a composed reply against the cap, then hand it back.
+
+    Every input is one of this module's own literals (the diagnosis table,
+    the warning lines, a truncated ref), so an over-long reply means a code
+    change slipped past the length tests, not user input. Fail here rather
+    than burn a billed create call on a 403.
+    """
+    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN, (
+        f"Composed reply weighs {reply_weighted_len(text)}, "
+        f"cap is {REPLY_MAX_WEIGHTED_LEN}: {text!r}"
+    )
+    return text
+
 
 # Billed-spend ceilings on the write side. The mention surface is public: any
 # stranger can tag the bot on a coordinate tweet, and each posted reply is
@@ -297,14 +321,14 @@ def compose_reply(
     if duplicate_media:
         lines.append("⚠ This media already exists on Vidit. Possible duplicate")
     lines.append("Review it from your profile")
-    return "\n".join(lines)[:_REPLY_MAX_CHARS]
+    return _within_reply_cap("\n".join(lines))
 
 
 # Per failure-reason code: the diagnosis, as a terse noun phrase so every
 # ⚠ line reads in one uniform voice (no first person, no fix recipe: the
 # fix lives behind the bio guide). Keyed by the ``tweet_ingest`` reason
 # constants; keep each short (the composed reply must stay under
-# ``_REPLY_MAX_CHARS``, see :func:`compose_failure_reply`) and linkless.
+# ``REPLY_MAX_WEIGHTED_LEN``, see :func:`compose_failure_reply`) and linkless.
 _FAILURE_DIAGNOSES: dict[str, str] = {
     MARKERS_INCOMPLETE: "Incomplete T:/C:/S: marker set",
     COORDS_MISSING: "No coordinate line",
@@ -334,8 +358,7 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     the bot (the caller's loop guard). The ``mention_id`` tail makes every
     reply unique (X 403s a tweet identical to a recent one, which ate two
     failure replies on 2026-07-27) and lets the operator grep the ledger.
-    Composed length must stay under ``_REPLY_MAX_CHARS`` with margin (X
-    weighs ✅ / ❌ / ⚠ as 2).
+    Composed length must stay under ``REPLY_MAX_WEIGHTED_LEN``.
     """
     head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})"
@@ -345,7 +368,7 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     # reciting a lesson. A handle mention is not a link (the linkless
     # contract concerns URLs).
     warning = f"⚠ {diagnosis}" if diagnosis else "⚠ Unexpected case. Reach out to @vidithq"
-    return "\n".join([head, warning, f"Guide in bio{ref}"])[:_REPLY_MAX_CHARS]
+    return _within_reply_cap("\n".join([head, warning, f"Guide in bio{ref}"]))
 
 
 def _record(

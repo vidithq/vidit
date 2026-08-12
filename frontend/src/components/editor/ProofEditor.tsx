@@ -8,6 +8,14 @@ import Image from "@tiptap/extension-image";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
+// Underline is off: StarterKit v3 registers it by default (Cmd/Ctrl+U), but the
+// proof pipeline has no underline anywhere downstream. The backend sanitizer
+// drops the mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic /
+// strike / code / link) and the renderer can't paint it (`lib/proof.tsx`,
+// `applyMarks`), so an underlined run would silently lose its formatting at
+// publish. Change this only together with those two mirrors.
+const PROOF_STARTER_KIT = StarterKit.configure({ underline: false });
+
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
   /** The proof body's inline images, kept locally while typing and uploaded
@@ -192,7 +200,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: allowImages ? [StarterKit, Image] : [StarterKit],
+    extensions: allowImages ? [PROOF_STARTER_KIT, Image] : [PROOF_STARTER_KIT],
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {

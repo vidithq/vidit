@@ -1,11 +1,10 @@
 """On-demand maintenance ops surfaced via the admin Maintenance panel.
 
-Replaces the periodic cron scripts that lived in `backend/scripts/`.
-Trade-off: an admin clicks when they remember rather than on a schedule —
-fine while both ops sweep low-cost rows / objects whose backlog isn't
-latency-sensitive. If a table or the S3 bill outgrows admin attention, the
-move is a Railway scheduled job hitting these endpoints, not a return to
-standalone scripts.
+An admin clicks when they remember rather than a cron firing on a schedule.
+That holds while the sweeps here cover low-cost rows / objects whose backlog
+isn't latency-sensitive; if a table or the S3 bill outgrows admin attention,
+the move is a Railway scheduled job hitting these endpoints, not a
+standalone script.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.models.auth_token import AuthToken
-from app.services import registration as registration_service
 
 # Consumed tokens kept for replay-debugging via the audit log; live-but-
 # expired rows have no value and are dropped immediately past expiry.
@@ -54,14 +52,3 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     )
     db.commit()
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
-
-
-def reap_pending_registrations(db: Session) -> dict[str, int]:
-    """Drop expired ``pending_registrations`` rows.
-
-    A pending row holds the address until the user confirms or the TTL
-    expires. The create path also sweeps inline, so this button mostly mops
-    up rows from users who never came back, keeping the address pool open
-    for legitimate retries.
-    """
-    return registration_service.reap_pending_registrations(db)

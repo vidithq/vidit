@@ -17,11 +17,12 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
     The router resolves the target user (and enforces ``follower_id !=
     followed_user.id`` + the soft-delete filter) before calling.
 
-    Two requests can race past the existence check; only one INSERT wins,
-    the loser hits the composite-PK violation on flush. Staging the INSERT
-    in a SAVEPOINT lets that ``IntegrityError`` roll back without poisoning
-    the outer transaction, so the loser sees the same idempotent ``False``
-    instead of a 500 that would break advertised idempotency.
+    The canonical SAVEPOINT-idempotency note, shared by ``routers/tags``
+    and ``services/events.investigate``: two requests race past the existence
+    check, only one INSERT wins, and the loser hits the uniqueness violation
+    on flush. Staging the INSERT in a SAVEPOINT lets that ``IntegrityError``
+    roll back without poisoning the outer transaction, so the loser gets the
+    advertised idempotent answer instead of a 500.
     """
     existing = (
         db.query(Follow)
@@ -85,10 +86,8 @@ def get_timeline(db: Session, *, user_id: uuid.UUID, page: int = 1, per_page: in
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
         )
-        # ``selectinload`` for tags + media: a many-to-many / one-to-many
-        # ``joinedload`` would row-multiply against ``LIMIT`` and silently
-        # truncate the page.
-        # ``joinedload`` is safe for the owner (many-to-one, no inflation).
+        # Loader choice: see the note on ``list_detections`` in
+        # ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),

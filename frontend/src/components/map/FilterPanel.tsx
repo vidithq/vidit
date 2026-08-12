@@ -10,10 +10,14 @@ import { rangeSummary } from "@/components/ui/FilterSection";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { Dot } from "@/components/ui/Dot";
 import {
+  EMPTY_DATE_WINDOWS,
+  EMPTY_EVENT_FILTERS,
   EventFilterSections,
+  addedWindowActive,
   buildActiveFilterPills,
+  buildDateWindowPills,
+  eventWindowActive,
   type EventFilterPatch,
-  type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
@@ -31,7 +35,7 @@ interface FilterPanelProps {
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
-  /** Points fetch in flight — drives the pulse dot. */
+  /** Points fetch in flight, driving the pulse dot. */
   loading: boolean;
 }
 
@@ -46,113 +50,52 @@ interface FilterPanelProps {
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
-    selectedStatuses,
-    setSelectedStatuses,
-    selectedConflicts,
-    setSelectedConflicts,
-    selectedCaptureSources,
-    setSelectedCaptureSources,
-    selectedTags,
-    setSelectedTags,
-    selectedMediaTypes,
-    setSelectedMediaTypes,
-    hideDemo,
-    setHideDemo,
-    eventStart,
-    setEventStart,
-    eventEnd,
-    setEventEnd,
+    filters,
+    setFilters,
+    dateWindows,
+    setDateWindows,
     eventPlaying,
     setEventPlaying,
-    submittedStart,
-    setSubmittedStart,
-    submittedEnd,
-    setSubmittedEnd,
-    submittedPlaying,
-    setSubmittedPlaying,
-    authorFilter,
-    setAuthorFilter,
+    addedPlaying,
+    setAddedPlaying,
+    hideDemo,
+    setHideDemo,
     filtersOpen,
     setFiltersOpen,
   } = useMapState();
 
-  // Adapter: the context keeps one state atom per filter (they predate the
-  // shared panel); the shared component speaks one values object + patches.
-  const values: EventFilterValues = {
-    statuses: selectedStatuses,
-    conflicts: selectedConflicts,
-    captureSources: selectedCaptureSources,
-    tags: selectedTags,
-    mediaTypes: selectedMediaTypes,
-    author: authorFilter,
+  const onPatch: EventFilterPatch = (patch) =>
+    setFilters((v) => ({ ...v, ...patch }));
+
+  const clearEventWindow = () => {
+    setDateWindows((d) => ({ ...d, eventFrom: "", eventTo: "" }));
+    setEventPlaying(false);
   };
-  const onPatch: EventFilterPatch = (patch) => {
-    if (patch.statuses !== undefined) setSelectedStatuses(patch.statuses);
-    if (patch.conflicts !== undefined) setSelectedConflicts(patch.conflicts);
-    if (patch.captureSources !== undefined) setSelectedCaptureSources(patch.captureSources);
-    if (patch.tags !== undefined) setSelectedTags(patch.tags);
-    if (patch.mediaTypes !== undefined) setSelectedMediaTypes(patch.mediaTypes);
-    if (patch.author !== undefined) setAuthorFilter(patch.author);
+  const clearAddedWindow = () => {
+    setDateWindows((d) => ({ ...d, addedFrom: "", addedTo: "" }));
+    setAddedPlaying(false);
   };
 
   const clearFilters = () => {
-    onPatch({
-      statuses: [],
-      conflicts: [],
-      captureSources: [],
-      tags: [],
-      mediaTypes: [],
-      author: "",
-    });
-    setHideDemo(false);
-    setEventStart("");
-    setEventEnd("");
+    setFilters(EMPTY_EVENT_FILTERS);
+    setDateWindows(EMPTY_DATE_WINDOWS);
     setEventPlaying(false);
-    setSubmittedStart("");
-    setSubmittedEnd("");
-    setSubmittedPlaying(false);
+    setAddedPlaying(false);
+    setHideDemo(false);
   };
-
-  const eventActive = !!(eventStart || eventEnd);
-  const submittedActive = !!(submittedStart || submittedEnd);
 
   // The scrubbers histogram the same set the status chips leave on the map:
   // feeding them raw points would count bars no scrub can reveal while a
   // chip is active. Same helper as the map canvas, so the two can't drift.
   const statusFilteredPoints = useMemo(
-    () => filterPointsByStatus(points, selectedStatuses),
-    [points, selectedStatuses]
+    () => filterPointsByStatus(points, filters.statuses),
+    [points, filters.statuses]
   );
 
-  // The shared pill entries plus the map's two window + demo entries.
+  // The shared value + window pill entries plus the map's own demo entry.
   const activeFilters: ActiveFilter[] = [
-    ...buildActiveFilterPills(values, onPatch),
-    ...(eventActive
-      ? [
-          {
-            key: "event-window",
-            label: `Event: ${rangeSummary(eventStart, eventEnd)}`,
-            onRemove: () => {
-              setEventStart("");
-              setEventEnd("");
-              setEventPlaying(false);
-            },
-          },
-        ]
-      : []),
-    ...(submittedActive
-      ? [
-          {
-            key: "submitted-window",
-            label: `Added: ${rangeSummary(submittedStart, submittedEnd)}`,
-            onRemove: () => {
-              setSubmittedStart("");
-              setSubmittedEnd("");
-              setSubmittedPlaying(false);
-            },
-          },
-        ]
-      : []),
+    ...buildActiveFilterPills(filters, onPatch),
+    ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
     ...(hideDemo
       ? [{ key: "hide-demo", label: "Demo hidden", onRemove: () => setHideDemo(false) }]
       : []),
@@ -160,7 +103,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   // The author narrows the view without carrying a pill (its chip lives in
   // the Author section), so the badge counts it on top of the pill entries:
   // a filtered map must never read as unfiltered.
-  const activeFilterCount = activeFilters.length + (values.author.trim() ? 1 : 0);
+  const activeFilterCount = activeFilters.length + (filters.author.trim() ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
 
   return (
@@ -203,23 +146,23 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
           <EventFilterSections
             tags={tags}
             conflicts={conflicts}
-            values={values}
+            values={filters}
             onPatch={onPatch}
             dateSections={[
               {
                 title: "Event date",
                 concept: "event_date",
-                summary: rangeSummary(eventStart, eventEnd),
-                active: eventActive,
+                summary: rangeSummary(dateWindows.eventFrom, dateWindows.eventTo),
+                active: eventWindowActive(dateWindows),
                 children: (
                   <TimelineScrubber
                     points={statusFilteredPoints}
                     dateIndex={3}
                     label="Event date"
-                    start={eventStart}
-                    setStart={setEventStart}
-                    end={eventEnd}
-                    setEnd={setEventEnd}
+                    start={dateWindows.eventFrom}
+                    setStart={(v) => setDateWindows((d) => ({ ...d, eventFrom: v }))}
+                    end={dateWindows.eventTo}
+                    setEnd={(v) => setDateWindows((d) => ({ ...d, eventTo: v }))}
                     playing={eventPlaying}
                     setPlaying={setEventPlaying}
                   />
@@ -228,19 +171,19 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               {
                 title: "Added",
                 concept: "added",
-                summary: rangeSummary(submittedStart, submittedEnd),
-                active: submittedActive,
+                summary: rangeSummary(dateWindows.addedFrom, dateWindows.addedTo),
+                active: addedWindowActive(dateWindows),
                 children: (
                   <TimelineScrubber
                     points={statusFilteredPoints}
                     dateIndex={4}
                     label="Added"
-                    start={submittedStart}
-                    setStart={setSubmittedStart}
-                    end={submittedEnd}
-                    setEnd={setSubmittedEnd}
-                    playing={submittedPlaying}
-                    setPlaying={setSubmittedPlaying}
+                    start={dateWindows.addedFrom}
+                    setStart={(v) => setDateWindows((d) => ({ ...d, addedFrom: v }))}
+                    end={dateWindows.addedTo}
+                    setEnd={(v) => setDateWindows((d) => ({ ...d, addedTo: v }))}
+                    playing={addedPlaying}
+                    setPlaying={setAddedPlaying}
                   />
                 ),
               },

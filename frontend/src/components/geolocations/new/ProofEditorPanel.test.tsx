@@ -10,6 +10,8 @@ vi.mock("next/dynamic", () => ({
   },
 }));
 
+import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+
 import { ProofEditorPanel } from "./ProofEditorPanel";
 
 const base = {
@@ -20,9 +22,11 @@ const base = {
 };
 
 describe("ProofEditorPanel", () => {
-  it("renders the section heading", () => {
+  it("renders the section heading, unmarked and not optional", () => {
     render(<ProofEditorPanel {...base} />);
-    expect(screen.getByRole("heading", { name: /Proof/ })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: /Proof/ });
+    expect(heading).toBeInTheDocument();
+    expect(heading).not.toHaveClass(FORM_INVALID_LABEL);
     expect(screen.queryByText("optional")).toBeNull();
   });
 
@@ -31,14 +35,7 @@ describe("ProofEditorPanel", () => {
     // The section card already gets FORM_INVALID_FIELD's outline; the
     // heading now turns red too, matching every other required field.
     expect(screen.getByRole("heading", { name: /Proof/ })).toHaveClass(
-      "!text-red-400"
-    );
-  });
-
-  it("leaves the heading unmarked when not invalid", () => {
-    render(<ProofEditorPanel {...base} />);
-    expect(screen.getByRole("heading", { name: /Proof/ })).not.toHaveClass(
-      "!text-red-400"
+      FORM_INVALID_LABEL
     );
   });
 });

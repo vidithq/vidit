@@ -129,14 +129,6 @@ def import_from_tweet(
     )
 
 
-# Per-stream byte cap on the media-proxy response: the shared
-# MEDIA_FETCH_MAX_BYTES (one ceiling for this proxy and the archive
-# chase fetcher). Anything bigger is an unexpected upstream response or
-# a hostile content-length lie; cap and bail so we don't buffer an
-# unbounded stream in memory.
-_MEDIA_PROXY_MAX_BYTES = MEDIA_FETCH_MAX_BYTES
-
-
 @router.get("/import-from-tweet/media")
 @limiter.limit("60/minute")
 def import_from_tweet_media(
@@ -187,10 +179,14 @@ def import_from_tweet_media(
                 )
                 raise HTTPException(status_code=502, detail="Couldn't fetch media")
 
+            # ``MEDIA_FETCH_MAX_BYTES`` is one ceiling for this proxy and the
+            # archive chase fetcher. Past it the response is an unexpected
+            # upstream body or a hostile content-length lie: bail rather than
+            # buffer an unbounded stream in memory.
             advertised = upstream.headers.get("content-length")
             if advertised is not None:
                 try:
-                    if int(advertised) > _MEDIA_PROXY_MAX_BYTES:
+                    if int(advertised) > MEDIA_FETCH_MAX_BYTES:
                         raise HTTPException(status_code=502, detail="Media exceeded size cap")
                 except ValueError:
                     # Non-numeric Content-Length — fall through to the
@@ -212,7 +208,7 @@ def import_from_tweet_media(
             buffer = bytearray()
             for chunk in upstream.iter_bytes():
                 buffer.extend(chunk)
-                if len(buffer) > _MEDIA_PROXY_MAX_BYTES:
+                if len(buffer) > MEDIA_FETCH_MAX_BYTES:
                     # ``with httpx.stream(...)`` closes the connection on
                     # exit so the upstream socket isn't left dangling.
                     raise HTTPException(status_code=502, detail="Media exceeded size cap")

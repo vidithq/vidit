@@ -40,10 +40,16 @@ const X_ARCHIVE_HELP =
   "https://help.x.com/en/managing-your-account/how-to-download-your-x-archive";
 
 
+/** The one byte rendering on this panel (the picked file's size, the upload
+ *  counter): bytes below 1 KB, then KB, then real megabytes with one decimal
+ *  below 100 MB and whole megabytes above. */
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const mb = n / (1024 * 1024);
+  return `${mb.toLocaleString(undefined, {
+    maximumFractionDigits: mb < 100 ? 1 : 0,
+  })} MB`;
 }
 
 const STEPS: NumberedStep[] = [
@@ -120,15 +126,6 @@ const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
   // Past the last index: every step renders complete.
   done: IMPORT_STEP_LABELS.length,
 };
-
-/** Real megabyte rendering for the upload counter: one decimal below 100 MB,
- *  whole megabytes above, one locale convention for both. */
-function formatMB(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toLocaleString(undefined, {
-    maximumFractionDigits: mb < 100 ? 1 : 0,
-  })} MB`;
-}
 
 /**
  * The bulk-import on-ramp: the "how to export from X" guide, the drop zone (via
@@ -353,7 +350,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                     ? {
                         progress:
                           uploadBytes.total > 0 ? uploadBytes.loaded / uploadBytes.total : 0,
-                        detail: `${formatMB(uploadBytes.loaded)} of ${formatMB(uploadBytes.total)}`,
+                        detail: `${formatBytes(uploadBytes.loaded)} of ${formatBytes(uploadBytes.total)}`,
                       }
                     : {}),
                 },
