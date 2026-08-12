@@ -12,8 +12,9 @@ analyst promotes with ``geolocate``) loses nothing by that; a machine
 ``detected`` draft is unpublished working state, so its links are not
 submitted until it is published, and the promotion enqueues them then.
 
-Which links: the event's ``source_url`` plus every ``http(s)`` href carried by
-a link mark in the proof body's Tiptap document. One
+Which links: the event's ``source_url``, its secondary source links (the
+analyst-submitted mirrors in ``event_source_links``), and every ``http(s)``
+href carried by a link mark in the proof body's Tiptap document. One
 :class:`~app.models.source_archive.SourceArchive` row per link, unique on
 ``(event_id, original_url)``, so every enqueue path (create, the geolocate
 promotion, an edit that adds a citation, the catalog backfill) is safe to run
@@ -50,7 +51,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.event import SOURCE_URL_MAX_LENGTH, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventSourceLink
 from app.models.source_archive import (
     SourceArchive,
     SourceArchiveOrigin,
@@ -126,15 +127,17 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     """Every archivable link on an event, ``source_url`` first, deduped.
 
     The proof body's hrefs come from :func:`sanitize.extract_link_hrefs`, so
-    the Tiptap walk has one home. A link that appears both as the source and
-    inside the proof is kept once, attributed to the source (the stronger
-    provenance).
+    the Tiptap walk has one home. Duplicates collapse to the first origin the
+    walk reaches, which is the strongest provenance available for that URL: the
+    declared source, then an analyst-submitted mirror, then a proof citation.
     """
-    return _collect_links(event.source_url, event.proof)
+    return _collect_links(event.source_url, event.proof, [link.url for link in event.source_links])
 
 
-def _collect_links(source_url: str | None, proof: Any) -> list[tuple[str, SourceArchiveOrigin]]:
-    """:func:`collect_links` over the two columns it reads.
+def _collect_links(
+    source_url: str | None, proof: Any, secondary_urls: list[str]
+) -> list[tuple[str, SourceArchiveOrigin]]:
+    """:func:`collect_links` over the three sources it reads.
 
     Split out so the backfill can walk lightweight column tuples instead of
     hydrating ORM rows it would only re-expire on the next commit.
@@ -150,9 +153,32 @@ def _collect_links(source_url: str | None, proof: Any) -> list[tuple[str, Source
 
     if source_url:
         add(source_url, "source_url")
+    for url in secondary_urls:
+        add(url, "secondary_source")
     for href in extract_link_hrefs(proof):
         add(href, "proof_link")
     return links
+
+
+def _secondary_links_for(db: Session, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+    """One backfill chunk's secondary source links, keyed by event, in order.
+
+    One query for the whole chunk: hydrating each event's ``source_links``
+    relationship instead would cost a round trip per event, and the chunk is
+    deliberately column tuples rather than ORM rows.
+    """
+    if not event_ids:
+        return {}
+    by_event: dict[uuid.UUID, list[str]] = {}
+    rows = (
+        db.query(EventSourceLink.event_id, EventSourceLink.url)
+        .filter(EventSourceLink.event_id.in_(event_ids))
+        .order_by(EventSourceLink.event_id, EventSourceLink.position)
+        .all()
+    )
+    for event_id, url in rows:
+        by_event.setdefault(event_id, []).append(url)
+    return by_event
 
 
 def _insert_links(db: Session, rows: list[dict]) -> int:
@@ -272,12 +298,18 @@ def enqueue_catalog(db: Session, *, limit: int | None = None) -> dict[str, int]:
         chunk = _backfill_chunk(db, after, size)
         if not chunk:
             break
+        secondary = _secondary_links_for(db, [row[0] for row in chunk])
         rows: list[dict] = []
         for event_id, source_url, proof, created_at in chunk:
             events_scanned += 1
             after = (created_at, event_id)
             try:
-                rows.extend(_queue_rows(event_id, _collect_links(source_url, proof)))
+                rows.extend(
+                    _queue_rows(
+                        event_id,
+                        _collect_links(source_url, proof, secondary.get(event_id, [])),
+                    )
+                )
             except Exception:  # noqa: BLE001
                 # One unreadable proof body (a stored doc nested past what the
                 # walk can recurse) is a row to skip, not the end of the sweep.

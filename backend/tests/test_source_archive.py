@@ -13,10 +13,10 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.database import SessionLocal
-from app.models.event import SOURCE_URL_MAX_LENGTH, STATUS_DETECTED, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, STATUS_DETECTED, Event, EventSourceLink
 from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import source_archive
@@ -25,6 +25,7 @@ from app.services.sanitize import extract_link_hrefs
 
 SOURCE = "https://x.com/analyst/status/1234567890"
 PROOF_LINK = "https://example.org/report"
+MIRROR = "https://t.me/channel/42"
 CAPTURE_TS = "20260811120000"
 
 
@@ -91,6 +92,16 @@ def event(db, owner):
     db.expire_all()
     db.query(Event).filter(Event.id == row.id).delete(synchronize_session=False)
     db.commit()
+
+
+def _with_mirrors(db, event, *urls: str) -> Event:
+    """Give an event the ordered secondary source links ``urls``."""
+    event.source_links = [
+        EventSourceLink(position=index, url=url) for index, url in enumerate(urls)
+    ]
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 @pytest.fixture(autouse=True)
@@ -197,6 +208,30 @@ def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
     assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
 
 
+def test_collect_links_includes_the_secondary_source_links(db, event):
+    """The analyst-submitted mirrors are evidence with the same link-rot risk
+    as the primary source, so they queue too, tagged for where they came
+    from."""
+    _with_mirrors(db, event, MIRROR, "https://rumble.com/v-mirror")
+    assert source_archive.collect_links(event) == [
+        (SOURCE, "source_url"),
+        (MIRROR, "secondary_source"),
+        ("https://rumble.com/v-mirror", "secondary_source"),
+        (PROOF_LINK, "proof_link"),
+    ]
+
+
+def test_collect_links_keeps_a_mirror_of_the_source_url_once(db, event):
+    """A stored mirror equal to ``source_url`` is one link, attributed to the
+    source: a second row would trip the unique constraint the enqueue paths
+    rely on."""
+    _with_mirrors(db, event, SOURCE, PROOF_LINK)
+    assert source_archive.collect_links(event) == [
+        (SOURCE, "source_url"),
+        (PROOF_LINK, "secondary_source"),
+    ]
+
+
 # ── enqueue ────────────────────────────────────────────────────────────
 
 
@@ -220,6 +255,48 @@ def test_enqueue_event_picks_up_a_link_added_later(db, event):
     db.commit()
     assert source_archive.enqueue_event(db, event) == 1
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 3
+
+
+def test_enqueue_event_queues_a_mirror_of_the_source_url_once(db, event):
+    """Idempotency end to end: a mirror equal to the primary is one row, and a
+    second enqueue neither duplicates it nor errors."""
+    _with_mirrors(db, event, SOURCE, MIRROR)
+    assert source_archive.enqueue_event(db, event) == 3
+    assert source_archive.enqueue_event(db, event) == 0
+    rows = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
+    assert {(r.original_url, r.origin) for r in rows} == {
+        (SOURCE, "source_url"),
+        (MIRROR, "secondary_source"),
+        (PROOF_LINK, "proof_link"),
+    }
+
+
+def test_the_origin_constraint_accepts_a_secondary_source_row(db, event):
+    """``ck_source_archives_origin_valid`` pins the origin domain at the
+    database; the model Literal and the constraint are a hand-kept pair."""
+    db.add(
+        SourceArchive(
+            event_id=event.id,
+            original_url=MIRROR,
+            origin="secondary_source",
+            status="queued",
+        )
+    )
+    db.commit()
+    stored = db.query(SourceArchive).filter(SourceArchive.original_url == MIRROR).one()
+    assert stored.origin == "secondary_source"
+
+    db.add(
+        SourceArchive(
+            event_id=event.id,
+            original_url="https://example.net/other",
+            origin="nowhere",
+            status="queued",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
 
 
 def test_enqueue_event_best_effort_swallows_a_database_failure(db, event, monkeypatch):
@@ -264,6 +341,25 @@ def test_enqueue_catalog_skips_events_it_already_covered(db, event):
     source_archive.enqueue_catalog(db)
     assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 2
+
+
+def test_enqueue_catalog_covers_an_event_whose_only_links_are_secondary(db, owner):
+    """A draft born without a source URL and without proof citations still
+    carries mirrors; the backfill reads them from the child table, which the
+    keyset column walk does not select."""
+    row = Event(
+        owner_id=owner.id,
+        title="Mirrors only",
+        source_url=None,
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.commit()
+    _with_mirrors(db, row, MIRROR)
+    source_archive.enqueue_catalog(db)
+    queued = db.query(SourceArchive).filter(SourceArchive.event_id == row.id).all()
+    assert [(r.original_url, r.origin) for r in queued] == [(MIRROR, "secondary_source")]
 
 
 def test_enqueue_catalog_skips_demo_rows(db, owner):

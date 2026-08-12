@@ -24,6 +24,7 @@ from tests.events._helpers import _make_geo, client, proof_file_part
 
 SOURCE = "https://x.com/analyst/status/424242"
 PROOF_LINK = "https://example.org/corroborating-report"
+MIRROR = "https://t.me/channel/424242"
 
 
 def _proof_with_link_and_image(filename: str = "proof-1.jpg") -> str:
@@ -61,9 +62,9 @@ def _cleanup(db, event_id) -> None:
 
 
 def test_create_geolocated_enqueues_its_links(db, author, conflict, capture_source_tag):
-    """A directly created geolocation is public on arrival: source and every
-    proof-body citation land in the queue, each tagged with where it was
-    found."""
+    """A directly created geolocation is public on arrival: the source, every
+    submitted mirror, and every proof-body citation land in the queue, each
+    tagged with where it was found."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -72,6 +73,7 @@ def test_create_geolocated_enqueues_its_links(db, author, conflict, capture_sour
             "lat": "48.5",
             "lng": "34.5",
             "source_url": SOURCE,
+            "secondary_source_urls": [MIRROR],
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
             "proof": _proof_with_link_and_image(),
@@ -83,7 +85,11 @@ def test_create_geolocated_enqueues_its_links(db, author, conflict, capture_sour
     assert response.status_code == 201, response.text
     event_id = uuid.UUID(response.json()["id"])
 
-    assert _archived(db, event_id) == {SOURCE: "source_url", PROOF_LINK: "proof_link"}
+    assert _archived(db, event_id) == {
+        SOURCE: "source_url",
+        MIRROR: "secondary_source",
+        PROOF_LINK: "proof_link",
+    }
     _cleanup(db, event_id)
 
 
@@ -111,8 +117,9 @@ def test_geolocate_enqueues_at_publication(db, author, conflict, capture_source_
     """The promotion is where a draft's links first reach a public archive.
 
     The draft carries none while it is unpublished; publishing enqueues the
-    published set, including the source the geolocate form supplies and a
-    citation the proof body gained in the same submit.
+    published set, including the source the geolocate form supplies, the
+    mirrors it submits, and a citation the proof body gained in the same
+    submit.
     """
     draft = _make_geo(
         db,
@@ -131,6 +138,7 @@ def test_geolocate_enqueues_at_publication(db, author, conflict, capture_source_
             "lat": "48.5",
             "lng": "34.5",
             "source_url": SOURCE,
+            "secondary_source_urls": [MIRROR],
             "event_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
             "proof": _proof_with_link_and_image(),
@@ -142,7 +150,11 @@ def test_geolocate_enqueues_at_publication(db, author, conflict, capture_source_
     assert response.status_code == 200, response.text
     assert response.json()["status"] == STATUS_GEOLOCATED
 
-    assert _archived(db, draft.id) == {SOURCE: "source_url", PROOF_LINK: "proof_link"}
+    assert _archived(db, draft.id) == {
+        SOURCE: "source_url",
+        MIRROR: "secondary_source",
+        PROOF_LINK: "proof_link",
+    }
 
 
 def test_event_detail_serialises_the_archived_source(db, author):
