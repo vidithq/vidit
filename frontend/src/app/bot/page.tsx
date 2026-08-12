@@ -3,8 +3,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AtSign, Reply, History, X, type LucideIcon } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { Pill } from "@/components/ui/Pill";
-import { Dot } from "@/components/ui/Dot";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import {
@@ -133,15 +131,7 @@ function TagCase({
 
 export default function BotGuidePage() {
   return (
-    <PageShell
-      title={TITLE}
-      actions={
-        <Pill tone="accent" className="gap-2 tracking-tight">
-          <Dot />
-          <span>@ViditBot · import by tagging</span>
-        </Pill>
-      }
-    >
+    <PageShell title={TITLE}>
       <Card as="section">
         <p className="text-sm text-neutral-300 leading-relaxed">
           Tag @ViditBot on a geolocation post on X.{" "}
