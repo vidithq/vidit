@@ -186,6 +186,9 @@ def test_search_matches_geolocation_by_title(db, caller):
         # and with a source row present the pick is the source, never proof.
         assert [m["media_type"] for m in hit["media"]] == ["image"]
         assert all(m["role"] == "source" for m in hit["media"])
+        # The card covers its thumbnail on this flag, so it has to reach the
+        # hit; an unflagged event reads false rather than omitting the key.
+        assert hit["is_graphic"] is False
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
@@ -352,9 +355,51 @@ def test_search_matches_request_by_title_with_claimer_count(db, caller):
         # the same "N working" treatment.
         assert hit["claimer_count"] == 0
         assert hit["status"] == STATUS_REQUESTED
+        assert hit["is_graphic"] is False
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:
         db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_search_hits_carry_the_graphic_flag(db, caller):
+    """Both result groups report the flag, so a search card covers flagged
+    footage the way every other card does instead of painting it on a reader
+    who was only scrolling past."""
+    token = _unique_token()
+    geo = Event(
+        owner_id=caller.id,
+        title=f"Graphic {token} aftermath",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/post-graphic",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+        is_graphic=True,
+    )
+    request = Event(
+        owner_id=caller.id,
+        title=f"Graphic {token} request",
+        source_url="https://example.com/request-graphic",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+        is_graphic=True,
+    )
+    db.add_all([geo, request])
+    db.commit()
+    ids = [geo.id, request.id]
+    try:
+        response = client.get(
+            f"/api/v1/search?q={token}&type=all",
+            headers=login_as(client, caller),
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert [hit["is_graphic"] for hit in body["geolocations"]] == [True]
+        assert [hit["is_graphic"] for hit in body["requests"]] == [True]
+    finally:
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
 
 

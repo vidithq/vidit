@@ -2686,6 +2686,8 @@ export interface components {
             id: string;
             /** Is Demo */
             is_demo: boolean;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -2721,6 +2723,8 @@ export interface components {
             id: string;
             /** Is Demo */
             is_demo: boolean;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];

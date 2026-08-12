@@ -523,6 +523,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
+      isGraphic={hit.is_graphic}
       author={hit.owner}
       date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
@@ -540,6 +541,7 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
+      isGraphic={hit.is_graphic}
       author={hit.owner}
       source={{ url: hit.source_url, isDemo: hit.is_demo }}
       working={hit.claimer_count}
