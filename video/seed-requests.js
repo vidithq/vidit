@@ -5,16 +5,26 @@
 //   2. fetch each media URL via the import-from-tweet/media proxy
 //      (X CDN doesn't set CORS; the proxy is the path the real form
 //      uses too)
-//   3. POST /requests multipart: title (from tweet text), source_url
-//      (canonical tweet URL), tags, files (the downloaded media)
+//   3. POST /events/requests multipart: title (from tweet text),
+//      source_url (canonical tweet URL), source_posted_at, the
+//      classification ids, and the one source file the row is born with
 //
 // Idempotent: deletes the request author's and the recording viewer's
 // prior "seeded request" rows before re-seeding so re-runs converge to
 // the same state.
+//
+// Every route here lives under `/events`: a request is a `requested`
+// event, not a resource of its own. `check-routes.sh` fails the build if
+// a `/geolocations` or top-level `/requests` call comes back.
 
 const { Blob } = require("node:buffer");
 
 const API = "http://localhost:8000/api/v1";
+
+// The list endpoints cap a page at 100 rows however large `limit` is, so
+// the wipe helpers below re-list after each pass instead of trusting one
+// page to hold everything.
+const PAGE_LIMIT = 100;
 
 // Requests are seeded from the same analyst's tweets — the framing in
 // the promo is "this analyst's requests", a community-of-one demo.
@@ -28,6 +38,13 @@ const TWEETS = [
   "https://x.com/geo27752/status/2059262323152286110",
   "https://x.com/geo27752/status/2059022802951311853",
 ];
+
+// Classification the seeded requests carry. `CONFLICT_NAME` is a row of
+// the conflicts referential, `CAPTURE_SOURCE_NAME` a curated tag; the
+// recording picks the same two on the submit form, so change them
+// together with the constants at the top of `record-submit.js`.
+const CONFLICT_NAME = "Gaza war";
+const CAPTURE_SOURCE_NAME = "Drone";
 
 async function mintAuth(email, password) {
   const res = await fetch(`${API}/auth/login`, {
@@ -52,7 +69,7 @@ async function mintAuth(email, password) {
 }
 
 async function importTweet(auth, url) {
-  const res = await fetch(`${API}/geolocations/import-from-tweet`, {
+  const res = await fetch(`${API}/events/import-from-tweet`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -66,7 +83,7 @@ async function importTweet(auth, url) {
 }
 
 async function fetchMediaViaProxy(auth, remoteUrl) {
-  const proxyUrl = `${API}/geolocations/import-from-tweet/media?u=${encodeURIComponent(remoteUrl)}`;
+  const proxyUrl = `${API}/events/import-from-tweet/media?u=${encodeURIComponent(remoteUrl)}`;
   const res = await fetch(proxyUrl, { headers: { cookie: auth.cookieHeader } });
   if (!res.ok) throw new Error(`proxy ${remoteUrl}: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
@@ -104,44 +121,59 @@ function titleFromTweetText(text, fallback) {
   return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut) + "…";
 }
 
-async function getTagIds(auth, names) {
-  const tags = await fetch(`${API}/tags?curated=true`, {
+// Classification is two referentials, not one tag list: conflicts live in
+// `/conflicts`, capture sources are the curated rows of `/tags`. Both
+// lookups warn loudly on a miss — silently dropping one would post
+// requests with the wrong classification, and the recording's submit flow
+// clicks the same names on the form and would miss too.
+function warnMissing(kind, missing) {
+  if (!missing.length) return;
+  console.warn(
+    `  WARN: ${kind} not found, skipping: ${missing.join(", ")} ` +
+      `(make sure 'make seed' has run; if the referential was renamed, ` +
+      `update the names at the top of seed-requests.js)`
+  );
+}
+
+async function resolveIds(auth, path, names, kind) {
+  const rows = await fetch(`${API}${path}`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
-  const byName = new Map(tags.map((t) => [t.name, t.id]));
-  // Warn loudly when a requested tag is missing — silently dropping it
-  // would let requests post with the wrong (or empty) tag set, and the
-  // recording's later submit flow would then click chips by the same
-  // names and miss. Better to surface the rotation up front so the
-  // operator either fixes the tag names here or the seeder for the
-  // curated taxonomy.
-  const missing = names.filter((n) => !byName.has(n));
-  if (missing.length) {
-    console.warn(
-      `  WARN: curated tags not found, skipping: ${missing.join(", ")} ` +
-        `(make sure 'make seed' has run; if the curated taxonomy was ` +
-        `renamed, update the tag names in seed-requests.js)`
-    );
-  }
+  const byName = new Map(rows.map((t) => [t.name, t.id]));
+  warnMissing(kind, names.filter((n) => !byName.has(n)));
   return names.map((n) => byName.get(n)).filter(Boolean);
 }
 
-async function createRequest(auth, { title, sourceUrl, tagIds, mediaFiles }) {
+const getCuratedTagIds = (auth, names) =>
+  resolveIds(auth, "/tags?curated=true", names, "curated tags");
+
+const getConflictIds = (auth, names) =>
+  resolveIds(auth, "/conflicts", names, "conflicts");
+
+async function createRequest(
+  auth,
+  { title, sourceUrl, sourcePostedAt, tagIds, conflictIds, mediaFile }
+) {
   const fd = new FormData();
   fd.append("title", title);
   fd.append("source_url", sourceUrl);
+  // Required: a post always has an instant, and the row carries it from
+  // birth so a fulfiller inherits it.
+  fd.append("source_posted_at", sourcePostedAt);
   if (tagIds.length) fd.append("tag_ids", JSON.stringify(tagIds));
-  for (let i = 0; i < mediaFiles.length; i++) {
-    const { buf, type } = mediaFiles[i];
-    // Pick a filename + extension Playwright/the server will both accept.
-    const ext =
-      type.startsWith("video/") ? "mp4"
-      : type === "image/jpeg" ? "jpg"
-      : type === "image/png" ? "png"
-      : "bin";
-    fd.append("files", new Blob([buf], { type }), `media-${i}.${ext}`);
-  }
-  const res = await fetch(`${API}/requests`, {
+  if (conflictIds.length) fd.append("conflict_ids", JSON.stringify(conflictIds));
+  // One source file per event (`file`, singular): the platform models a
+  // request as an unfinished geolocation, so the evidence the poster has
+  // sits on the row from the start.
+  const { buf, type } = mediaFile;
+  // Pick a filename + extension Playwright/the server will both accept.
+  const ext =
+    type.startsWith("video/") ? "mp4"
+    : type === "image/jpeg" ? "jpg"
+    : type === "image/png" ? "png"
+    : "bin";
+  fd.append("file", new Blob([buf], { type }), `media.${ext}`);
+  const res = await fetch(`${API}/events/requests`, {
     method: "POST",
     headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
     body: fd,
@@ -150,70 +182,66 @@ async function createRequest(auth, { title, sourceUrl, tagIds, mediaFiles }) {
   return res.json();
 }
 
-// Cleanup helpers. The public `DELETE /requests/{id}` and
-// `DELETE /geolocations/{id}` enforce author-only access (admins can
-// not delete other users' rows through the public endpoints), so
-// per-user wipes still need that user's own auth. Only the
+// Cleanup helpers. The public `DELETE /events/{id}` enforces author-only
+// access (admins can not delete other users' rows through the public
+// endpoint), so per-user wipes still need that user's own auth. Only the
 // cross-author tweet-duplicate wipe routes through the admin-only
-// `DELETE /admin/geolocations/{id}`, which bypasses `ensure_author`.
+// `DELETE /admin/events/{id}`, which bypasses `ensure_author`.
 
-async function wipeUserRequests(auth) {
-  const me = await fetch(`${API}/auth/me`, {
-    headers: { cookie: auth.cookieHeader },
-  }).then((r) => r.json());
-  const all = await fetch(`${API}/requests`, {
-    headers: { cookie: auth.cookieHeader },
-  }).then((r) => r.json());
-  const mine = all.filter(
-    (b) => b.author?.id === me.id || b.author?.username === me.username
-  );
-  for (const b of mine) {
-    const res = await fetch(`${API}/requests/${b.id}`, {
-      method: "DELETE",
-      headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
-    });
-    if (!res.ok && res.status !== 409) {
-      console.warn(`  skip ${b.id}: ${res.status}`);
-    }
-  }
-  if (mine.length) {
-    console.log(`✓ wiped ${mine.length} prior request/requests for ${me.username}`);
-  }
-}
-
-async function wipeUserGeolocations(auth) {
-  const me = await fetch(`${API}/auth/me`, {
-    headers: { cookie: auth.cookieHeader },
-  }).then((r) => r.json());
-  const list = await fetch(
-    `${API}/geolocations?author=${encodeURIComponent(me.username)}&limit=200`,
+// One page of a lifecycle view, author-filtered server-side. `view`
+// selects the queue: `requested` is the open-call board (ex `/requests`),
+// `located` the catalog. A page holds at most 100 rows, which is why the
+// wipes below loop rather than read a single page.
+async function listMine(auth, username, view) {
+  const res = await fetch(
+    `${API}/events?view=${view}&author=${encodeURIComponent(username)}` +
+      `&limit=${PAGE_LIMIT}`,
     { headers: { cookie: auth.cookieHeader } }
-  ).then((r) => r.json());
-  const items = Array.isArray(list) ? list : list.items || [];
-  for (const g of items) {
-    const res = await fetch(`${API}/geolocations/${g.id}`, {
-      method: "DELETE",
-      headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
-    });
-    if (!res.ok && res.status !== 409) {
-      console.warn(`  skip geoloc ${g.id}: ${res.status}`);
-    }
-  }
-  if (items.length) {
-    console.log(`✓ wiped ${items.length} prior geolocation(s) for ${me.username}`);
-  }
+  );
+  if (!res.ok) throw new Error(`list ${view} for ${username}: ${res.status}`);
+  return res.json();
 }
 
-// Wipe every geolocation that the recording's tweet would resolve to
-// as "possibly related" — same heuristic the submit form uses
-// (`/geolocations/possible-duplicates`). Routes through the
-// `DELETE /admin/geolocations/{id}` endpoint so cross-author rows
+// Delete every row of one view authored by the caller. Re-lists after each
+// page so a set larger than the 100-row cap drains fully; stops when a
+// pass deletes nothing so an undeletable row can't spin the loop.
+async function wipeUserView(auth, view, label) {
+  const me = await fetch(`${API}/auth/me`, {
+    headers: { cookie: auth.cookieHeader },
+  }).then((r) => r.json());
+  let total = 0;
+  for (;;) {
+    const page = await listMine(auth, me.username, view);
+    if (!page.length) break;
+    let deleted = 0;
+    for (const row of page) {
+      const res = await fetch(`${API}/events/${row.id}`, {
+        method: "DELETE",
+        headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
+      });
+      if (res.ok) deleted++;
+      else if (res.status !== 409) console.warn(`  skip ${row.id}: ${res.status}`);
+    }
+    total += deleted;
+    if (!deleted) break;
+  }
+  if (total) console.log(`✓ wiped ${total} prior ${label} for ${me.username}`);
+}
+
+const wipeUserRequests = (auth) => wipeUserView(auth, "requested", "request(s)");
+const wipeUserGeolocations = (auth) =>
+  wipeUserView(auth, "located", "geolocation(s)");
+
+// Wipe every event that the recording's tweet would resolve to as
+// "possibly related" — same heuristic the submit form uses
+// (`/events/possible-duplicates`). Routes through the
+// `DELETE /admin/events/{id}` endpoint so cross-author rows
 // (e.g. an old admin@vidit.app submission of the same tweet) actually
 // get cleaned up; the public DELETE would 403 on those and the wipe
 // would silently no-op, leaving the duplicate-warning card to fire on
 // every re-record.
 async function wipeTweetDuplicatesAs(adminAuth, tweetUrl) {
-  const parsed = await fetch(`${API}/geolocations/import-from-tweet`, {
+  const parsed = await fetch(`${API}/events/import-from-tweet`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -235,12 +263,12 @@ async function wipeTweetDuplicatesAs(adminAuth, tweetUrl) {
     return;
   }
   const dups = await fetch(
-    `${API}/geolocations/possible-duplicates?lat=${coord.lat}&lng=${coord.lng}&event_date=${date}`,
+    `${API}/events/possible-duplicates?lat=${coord.lat}&lng=${coord.lng}&event_date=${date}`,
     { headers: { cookie: adminAuth.cookieHeader } }
   ).then((r) => r.json());
   if (!dups.length) return;
   for (const g of dups) {
-    const res = await fetch(`${API}/admin/geolocations/${g.id}?hard=true`, {
+    const res = await fetch(`${API}/admin/events/${g.id}?hard=true`, {
       method: "DELETE",
       headers: {
         cookie: adminAuth.cookieHeader,
@@ -262,7 +290,7 @@ const RECORDING_TWEET_URL =
 
 (async () => {
   // Admin login handles the only wipe that needs cross-author reach:
-  // possible-duplicate geolocations near the recording's tweet, where
+  // possible-duplicate events near the recording's tweet, where
   // prior runs sometimes left rows authored by `admin@vidit.app`
   // itself. Per-user logins below handle each user's own rows via the
   // public DELETE (admin can't reach those without going through the
@@ -285,9 +313,12 @@ const RECORDING_TWEET_URL =
   await wipeUserGeolocations(recorder);
 
   const auth = author; // reuse the rest of this script unchanged
-  // Conflict + capture-source — every request needs both for the
-  // downstream geolocation. Israel Gaza + Drone fit the source material.
-  const tagIds = await getTagIds(auth, ["Israel Gaza", "Drone"]);
+  // Conflict + capture-source — neither is part of the request floor, but
+  // both are part of the downstream geolocation, and the cards read right
+  // with them set. They come from two referentials: the conflict from
+  // `/conflicts`, the capture source from the curated rows of `/tags`.
+  const conflictIds = await getConflictIds(auth, [CONFLICT_NAME]);
+  const tagIds = await getCuratedTagIds(auth, [CAPTURE_SOURCE_NAME]);
 
   for (const url of TWEETS) {
     console.log(`→ ${url}`);
@@ -296,46 +327,47 @@ const RECORDING_TWEET_URL =
     console.log(`  title: ${title.slice(0, 60)}${title.length > 60 ? "…" : ""}`);
     console.log(`  media: ${tweet.media?.length || 0}`);
 
-    // Prefer the tweet's VIDEOS for the request media — a request is the
-    // analyst's source footage that nobody's placed yet; the images
-    // attached to the tweet are usually the geolocator's annotated
-    // satellite stills, which contradict the "unplaced footage"
-    // premise. Fall back to all media only if no videos are present.
+    // One source file per event, so this picks a single attachment.
+    // Prefer the tweet's VIDEOS — a request is the analyst's source
+    // footage that nobody's placed yet; the images attached to the tweet
+    // are usually the geolocator's annotated satellite stills, which
+    // contradict the "unplaced footage" premise. Images stay as the
+    // fallback so a flaky video proxy doesn't drop the request entirely.
     const allMedia = tweet.media || [];
     const videos = allMedia.filter((m) => m.kind === "video");
-    const preferred = videos.length ? videos : allMedia;
-    const mediaFiles = [];
-    for (const m of preferred) {
+    const candidates = [...videos, ...allMedia.filter((m) => m.kind === "image")];
+    let mediaFile = null;
+    for (const m of candidates) {
       try {
-        const fetched = await fetchMediaViaProxy(auth, m.remote_url);
-        mediaFiles.push(fetched);
+        mediaFile = await fetchMediaViaProxy(auth, m.remote_url);
+        break;
       } catch (e) {
         console.warn(`  skip ${m.remote_url}: ${e.message}`);
       }
     }
-    // If video fetch failed and we have images on the same tweet, fall
-    // back to them rather than dropping the request entirely.
-    if (!mediaFiles.length && videos.length && allMedia.length > videos.length) {
-      console.warn("  video fetch failed; falling back to images");
-      for (const m of allMedia.filter((m) => m.kind === "image")) {
-        try {
-          const fetched = await fetchMediaViaProxy(auth, m.remote_url);
-          mediaFiles.push(fetched);
-        } catch (e) {
-          console.warn(`  skip ${m.remote_url}: ${e.message}`);
-        }
-      }
-    }
-    if (!mediaFiles.length) {
+    if (!mediaFile) {
       console.warn("  no media fetched, skipping request");
+      continue;
+    }
+    if (!mediaFile.type.startsWith("video/") && videos.length) {
+      console.warn("  video fetch failed; falling back to an image");
+    }
+
+    // The tweet's own post instant. The backend requires it: a source is a
+    // post, and a post always has a time.
+    const sourcePostedAt = tweet.source_posted_at || tweet.posted_at;
+    if (!sourcePostedAt) {
+      console.warn("  tweet carries no post instant, skipping request");
       continue;
     }
 
     const request = await createRequest(auth, {
       title,
       sourceUrl: tweet.original_tweet_url || url,
+      sourcePostedAt,
       tagIds,
-      mediaFiles,
+      conflictIds,
+      mediaFile,
     });
     console.log(`  ✓ ${request.id}`);
   }
@@ -346,14 +378,14 @@ const RECORDING_TWEET_URL =
   // recording then clicks "I'm working on this" on a *different*
   // request to demonstrate the action live.
   const helper = await mintAuth("analyst-helper@vidit.app", "analyst-helper");
-  const all = await fetch(`${API}/requests`, {
+  const all = await fetch(`${API}/events?view=requested&limit=${PAGE_LIMIT}`, {
     headers: { cookie: helper.cookieHeader },
   }).then((r) => r.json());
   // Pick the second-newest so the newest still reads as "fresh" (and
   // gets the recording's live click).
   if (all.length >= 2) {
     const target = all[1];
-    const res = await fetch(`${API}/requests/${target.id}/claim`, {
+    const res = await fetch(`${API}/events/${target.id}/investigate`, {
       method: "POST",
       headers: { cookie: helper.cookieHeader, "X-CSRF-Token": helper.csrf },
     });

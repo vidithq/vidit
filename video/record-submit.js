@@ -38,6 +38,24 @@ const TWEET_URL = "https://x.com/geo27752/status/2060086984513626223";
 //     footage), downloaded ahead of time from the analyst's tweet.
 const REQUEST_TWEET_URL = "https://x.com/geo27752/status/2053493295465078958";
 const REQUEST_SOURCE_URL = "https://t.me/intel_slava_z/14528";
+// Instant the request's source was posted. Required on every event, and
+// the request beat types it rather than importing it (the source is a
+// Telegram post, which the tweet importer never sees). `datetime-local`
+// shape, read as UTC.
+const REQUEST_SOURCE_POSTED_AT = "2026-05-21T14:30";
+
+// The submit form's tweet-import field. Scoped by placeholder because the
+// Source URL field further down the same form is an `input[type="url"]`
+// too, and a bare type selector would race the DOM order.
+const TWEET_URL_INPUT = 'input[placeholder^="https://x.com/handle/status"]';
+
+// Classification the recording picks on the form. The conflict comes from
+// the conflicts referential (a typeahead), the capture source from the
+// curated tags (chips). Kept in sync with the constants of the same name
+// in `seed-requests.js`, which classifies the seeded requests identically.
+const CONFLICT_NAME = "Gaza war";
+const CONFLICT_QUERY = "Gaza";
+const CAPTURE_SOURCE_NAME = "Drone";
 
 // Cache path is computed PER FETCHED URL — `prepareRequestUpload` may
 // fall back from `REQUEST_TWEET_URL` to a sibling tweet if the primary's
@@ -97,8 +115,29 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // medium glide). Returns the (x,y) we landed on so callers can chain
 // another move from the same point.
 async function glideAndClick(page, locator, { steps = 55, settle = 450 } = {}) {
-  const box = await locator.boundingBox();
+  let box = await locator.boundingBox();
   if (!box) throw new Error("locator not visible");
+  // `boundingBox` is viewport-relative, and the mouse only reaches what is
+  // on screen. The submit form is one long page now, so a target below the
+  // fold gets a human-paced scroll first rather than a click into empty
+  // space. Already-visible targets are untouched, so the scripted scroll
+  // beats keep their own pacing.
+  const viewportHeight = page.viewportSize().height;
+  if (box.y < 0 || box.y + box.height > viewportHeight) {
+    await slowScrollToY(
+      page,
+      Math.max(
+        0,
+        (await page.evaluate(() => window.scrollY)) +
+          box.y -
+          viewportHeight / 2 +
+          box.height / 2
+      ),
+      900
+    );
+    box = await locator.boundingBox();
+    if (!box) throw new Error("locator not visible after scroll");
+  }
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await page.mouse.move(x, y, { steps });
@@ -253,7 +292,7 @@ async function prepareRequestUpload(auth) {
       return cachePath;
     }
     try {
-      const imp = await fetch(`${API}/geolocations/import-from-tweet`, {
+      const imp = await fetch(`${API}/events/import-from-tweet`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -265,7 +304,7 @@ async function prepareRequestUpload(auth) {
       const video = (imp.media || []).find((m) => m.kind === "video");
       if (!video) continue;
       const proxyUrl =
-        `${API}/geolocations/import-from-tweet/media?u=` +
+        `${API}/events/import-from-tweet/media?u=` +
         encodeURIComponent(video.remote_url);
       const res = await fetch(proxyUrl, {
         headers: { cookie: auth.cookieHeader },
@@ -491,12 +530,18 @@ async function prepareRequestUpload(auth) {
   await glideAndClick(page, expandBtn, { steps: 45, settle: 400 });
   await wait(900); // expand animation + labels fade in
 
-  console.log("→ sidebar tour (Requests → Timeline)");
-  for (const sel of [
-    'a[href="/requests"]',
-    'a[href="/timeline"]',
-  ]) {
-    const box = await page.locator(sel).first().boundingBox();
+  // Requests (the board) then Search (the other lens on the catalogue).
+  // Timeline is not on the rail. A rail entry that goes away is a skipped
+  // hover, not a failed take: `count()` first, because `boundingBox()` on
+  // an absent locator burns the full timeout before it throws.
+  console.log("→ sidebar tour (Requests → Search)");
+  for (const sel of ['a[href="/requests"]', 'a[href="/search"]']) {
+    const nav = page.locator(sel).first();
+    if (!(await nav.count())) {
+      console.warn(`  sidebar tour: ${sel} is not on the rail, skipping`);
+      continue;
+    }
+    const box = await nav.boundingBox();
     if (box) {
       await page.mouse.move(
         box.x + box.width / 2,
@@ -507,10 +552,10 @@ async function prepareRequestUpload(auth) {
     }
   }
 
-  console.log("→ click Submit (+) → /geolocations/new");
-  const submitNav = page.locator('a[href="/geolocations/new"]').first();
+  console.log("→ click Submit (+) → /submit");
+  const submitNav = page.locator('a[href="/submit"]').first();
   await glideAndClick(page, submitNav, { steps: 45, settle: 400 });
-  await page.waitForSelector('input[type="url"]', { timeout: 10000 });
+  await page.waitForSelector("#title", { timeout: 10000 });
   await wait(700);
 
   console.log("→ collapse sidebar (back to icons after the tour)");
@@ -520,8 +565,21 @@ async function prepareRequestUpload(auth) {
   await glideAndClick(page, collapseBtn, { steps: 50, settle: 400 });
   await wait(900); // collapse animation finishes
 
+  // The submit page offers three entry paths as a segmented control
+  // (Single / From an X post / Bulk import) and opens on Single. The
+  // tweet-import banner belongs to the X-post path, so pick it first;
+  // the banner then stays rendered for the rest of the form because it
+  // carries the import's provenance.
+  console.log("→ glide → click 'From an X post' entry");
+  const xPostTab = page
+    .getByRole("button", { name: /from an x post/i })
+    .first();
+  await glideAndClick(page, xPostTab, { steps: 45, settle: 400 });
+  await page.waitForSelector(TWEET_URL_INPUT, { timeout: 10000 });
+  await wait(700);
+
   console.log("→ glide → click URL input");
-  const urlInput = page.locator('input[type="url"]').first();
+  const urlInput = page.locator(TWEET_URL_INPUT).first();
   await glideAndClick(page, urlInput, { steps: 55, settle: 400 });
   await wait(450);
 
@@ -544,26 +602,42 @@ async function prepareRequestUpload(auth) {
   await wait(2500); // media thumbnails render
   await wait(900); // longer beat to read the prefilled form
 
-  console.log("→ scroll to tags (slow, human-paced)");
-  // Find the Tags header's id/selector dynamically — there's no stable
-  // hook, so locate by heading text and synthesise an inline data-attr
-  // we can target.
+  console.log("→ scroll to Classification (slow, human-paced)");
+  // Find the Classification header's id/selector dynamically — there's no
+  // stable hook, so locate by heading text and synthesise an inline
+  // data-attr we can target.
   await page.evaluate(() => {
     const headers = Array.from(document.querySelectorAll("h2,h3"));
-    const tags = headers.find((h) => /tags/i.test(h.textContent || ""));
-    if (tags) tags.setAttribute("data-promo-anchor", "tags");
+    const classification = headers.find((h) =>
+      /classification/i.test(h.textContent || "")
+    );
+    if (classification) {
+      classification.setAttribute("data-promo-anchor", "classification");
+    }
   });
-  await slowScrollToSelector(page, '[data-promo-anchor="tags"]', 2200);
+  await slowScrollToSelector(page, '[data-promo-anchor="classification"]', 2200);
   await wait(600);
 
-  console.log("→ glide → click curated tag chips");
-  for (const name of ["Israel Gaza", "Drone"]) {
-    const chip = page
-      .getByRole("button", { name: new RegExp(`^${name}$`, "i") })
-      .first();
-    await glideAndClick(page, chip, { steps: 38, settle: 320 });
-    await wait(400);
-  }
+  // Conflict is a typeahead over the ~800-row referential, not a chip
+  // list: type enough to narrow, then click the result pill. Only the
+  // major ongoing conflicts show on an empty query, so the search is what
+  // surfaces the one this footage belongs to.
+  console.log("→ type conflict query → click the result pill");
+  const conflictSearch = page.getByLabel(/search conflicts/i).first();
+  await glideAndClick(page, conflictSearch, { steps: 38, settle: 320 });
+  await conflictSearch.type(CONFLICT_QUERY, { delay: 70 });
+  await wait(700);
+  const conflictPill = page
+    .getByRole("button", { name: new RegExp(`^${CONFLICT_NAME}`, "i") })
+    .first();
+  await glideAndClick(page, conflictPill, { steps: 38, settle: 320 });
+  await wait(600);
+
+  console.log("→ glide → click the capture-source chip");
+  const captureChip = page
+    .getByRole("button", { name: new RegExp(`^${CAPTURE_SOURCE_NAME}$`, "i") })
+    .first();
+  await glideAndClick(page, captureChip, { steps: 38, settle: 320 });
   await wait(500);
 
   console.log("→ type free tag → click Add");
@@ -654,14 +728,14 @@ async function prepareRequestUpload(auth) {
   await slowScrollToBottom(page, 2400);
   await wait(700);
 
-  console.log("→ glide → click Submit geolocation");
+  console.log("→ glide → click Publish geolocation");
   const submitBtn = page
-    .getByRole("button", { name: /^submit geolocation/i })
+    .getByRole("button", { name: /^publish geolocation/i })
     .first();
   await glideAndClick(page, submitBtn, { steps: 55, settle: 450 });
-  // The page redirects to /geolocations/{id} on success — capture the
+  // The page redirects to /events/{id} on success — capture the
   // transition so the cut is *the page itself navigating*, not an edit.
-  await page.waitForURL(/\/geolocations\/[0-9a-f-]+(?:$|\?)/i, {
+  await page.waitForURL(/\/events\/[0-9a-f-]+(?:$|\?)/i, {
     timeout: 30000,
   });
   // Let the detail page render (map, fields, media thumbnails).
@@ -760,11 +834,15 @@ async function prepareRequestUpload(auth) {
   await glideAndClick(page, backBtn, { steps: 45, settle: 400 });
   await page.waitForURL(/\/requests(\?|$)/i, { timeout: 10000 });
   await wait(900);
+  // "Post request" routes through the same unified /submit form the
+  // geolocation used: a request is an unfinished geolocation, so there is
+  // one form and two publish actions, not two forms.
   const postBtn = page
     .getByRole("link", { name: /^post request$/i })
     .first();
   await glideAndClick(page, postBtn, { steps: 45, settle: 400 });
-  await page.waitForURL(/\/requests\/new/i, { timeout: 10000 });
+  await page.waitForURL(/\/submit(\?|$)/i, { timeout: 10000 });
+  await page.waitForSelector("#title", { timeout: 10000 });
   await wait(900);
 
   console.log("→ fill request form (type title, paste source URL, attach media)");
@@ -778,31 +856,21 @@ async function prepareRequestUpload(auth) {
   );
   await wait(900);
 
-  // Source URL — the second deliberate paste in the promo (the first
-  // was the tweet URL on the geolocation submit form). Slower glide,
-  // longer dwell before AND after the paste, so the viewer sees the
-  // cursor land on the field, then sees the full URL appear at once.
-  const srcInput = page.locator("#source_url").first();
-  await glideAndClick(page, srcInput, { steps: 50, settle: 500 });
-  await wait(350); // cursor visibly on the field before the paste
-  // Telegram link — the realistic shape of a "source I can't place"
-  // that ends up posted as a request (footage from a Telegram channel
-  // rather than a tweet the analyst already has context on).
-  await srcInput.fill(REQUEST_SOURCE_URL);
-  await wait(1400); // URL stays on screen for the viewer to read it
-
+  // Source media sits directly under the title on the unified form, so
+  // the attachment is the next beat, before the details block below it.
   if (requestUploadPath && fs.existsSync(requestUploadPath)) {
-    // Glide the cursor to the "Choose Files" button + fire a synthetic
+    // Glide the cursor to the "Add media" drop zone + fire a synthetic
     // mousedown for the click ripple, WITHOUT actually clicking the
     // native file input (that would open a real file-chooser dialog
     // Playwright can't dismiss headlessly). Then setInputFiles
     // attaches the cached video — the preview thumbnail appears
     // moments later, reading as "the user picked a file".
-    const fileBtn = page.locator("#files").first();
-    const fileBox = await fileBtn.boundingBox();
-    if (fileBox) {
-      const fx = fileBox.x + 80; // hit the "Choose Files" label, not the input itself
-      const fy = fileBox.y + fileBox.height / 2;
+    const dropzone = page.locator("label", { hasText: /^Add media/ }).first();
+    await slowScrollToSelector(page, "#source_url", 1200);
+    const dropBox = await dropzone.boundingBox();
+    if (dropBox) {
+      const fx = dropBox.x + dropBox.width / 2;
+      const fy = dropBox.y + dropBox.height / 2;
       await page.mouse.move(fx, fy, { steps: 50 });
       await wait(400);
       // Synthetic mousedown → triggers the overlay's ripple animation
@@ -821,14 +889,36 @@ async function prepareRequestUpload(auth) {
       );
       await wait(450);
     }
-    await fileBtn.setInputFiles(requestUploadPath);
+    // The input is the hidden one inside the drop-zone label; Playwright
+    // sets files on it regardless of visibility.
+    await dropzone.locator('input[type="file"]').setInputFiles(requestUploadPath);
     await wait(1400); // preview thumbnail renders
   }
 
-  console.log("→ glide → click Post the request");
+  // When the source posted its media. Required on every event, so the
+  // request carries it from birth and a fulfiller inherits it.
+  console.log("→ fill Source posted (UTC)");
+  const postedAtInput = page.locator("#source_posted_at").first();
+  await glideAndClick(page, postedAtInput, { steps: 45, settle: 400 });
+  await postedAtInput.fill(REQUEST_SOURCE_POSTED_AT);
+  await wait(900);
+
+  // Source URL — the second deliberate paste in the promo (the first
+  // was the tweet URL on the geolocation submit form). Slower glide,
+  // longer dwell before AND after the paste, so the viewer sees the
+  // cursor land on the field, then sees the full URL appear at once.
+  const srcInput = page.locator("#source_url").first();
+  await glideAndClick(page, srcInput, { steps: 50, settle: 500 });
+  await wait(350); // cursor visibly on the field before the paste
+  // Telegram link — the realistic shape of a "source I can't place"
+  // that ends up posted as a request (footage from a Telegram channel
+  // rather than a tweet the analyst already has context on).
+  await srcInput.fill(REQUEST_SOURCE_URL);
+  await wait(1400); // URL stays on screen for the viewer to read it
+
+  console.log("→ glide → click Publish request");
   const submitRequestBtn = page
-    .locator('button[type="submit"]')
-    .filter({ hasText: /post request/i })
+    .getByRole("button", { name: /^publish request$/i })
     .first();
   // Slow human scroll to the submit button instead of the snappy
   // scrollIntoViewIfNeeded (matches the rest of the recording).

@@ -66,7 +66,8 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 | Brand colours / wordmark / tagline | `src/components/Intro.tsx`, `Outro.tsx`, `Background.tsx`, `fonts.ts` |
 | Tweets used to seed the request list | `TWEETS` at top of `seed-requests.js` |
 | Tweet imported in the recording's geolocation submit | `TWEET_URL` at top of `record-submit.js` |
-| Request form's source URL + uploaded video source | `REQUEST_SOURCE_URL` + `REQUEST_TWEET_URL` in `record-submit.js` |
+| Request form's source URL + uploaded video source | `REQUEST_SOURCE_URL` + `REQUEST_TWEET_URL` + `REQUEST_SOURCE_POSTED_AT` in `record-submit.js` |
+| Conflict + capture source both scripts classify with | `CONFLICT_NAME` / `CAPTURE_SOURCE_NAME` at the top of `seed-requests.js` and `record-submit.js` (keep them equal) |
 | Cursor speed / scroll cadence | `glideAndClick` defaults + `slowScrollToY` durations in `record-submit.js` |
 | Faked browser chrome (URL bar, traffic lights) | `src/components/VideoChrome.tsx` |
 
@@ -75,18 +76,27 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 1. **`seed-requests.js`** logs in as `demo-analyst`, wipes that user's old
    requests, then imports a curated list of the real analyst's tweets,
    downloads their video media via the backend's tweet proxy, and posts
-   them as requests. It then logs in as `analyst-helper` and claims one
-   so the list shows "1 working" social proof. Idempotent.
+   them as requests (`POST /events/requests`, one source file each). It
+   then logs in as `analyst-helper` and claims one
+   (`POST /events/{id}/investigate`) so the list shows "1 working" social
+   proof. Idempotent.
 
 2. **`record-submit.js`** logs in as `analyst`, opens Chrome headlessly
    with an injected DOM cursor overlay (the OS cursor isn't captured by
    `page.screenshot()`, so we render our own SVG cursor), and drives the
-   page through the full flow: map cold open → sidebar tour → submit
-   geolocation from a tweet → "I'm working on this" → post a new request
-   from a Telegram link → publish. A polling loop calls
-   `page.screenshot()` at 30 fps in parallel and writes JPEG frames to
-   disk. `ffmpeg` muxes them into `out/recording-submit.mp4` at
-   2560×1440.
+   page through the full flow: map cold open → sidebar tour → submit a
+   geolocation from a tweet on `/submit` → "I'm working on this" → post a
+   new request from a Telegram link on the same form → publish. A polling
+   loop calls `page.screenshot()` at 60 fps in parallel and writes JPEG
+   frames to disk. `ffmpeg` muxes them into `out/recording-submit.mp4` at
+   2560×1440, at the fps the grabber actually sustained.
+
+   One form serves both publishes: `/submit` opens on the Single entry
+   path, the recording picks *From an X post* to reveal the tweet-import
+   banner, and the two actions at the foot of the form are *Publish
+   geolocation* and *Publish request*. Classification is two referentials,
+   so the recording searches the conflict in its typeahead and clicks the
+   capture source among the curated chips.
 
 3. **Remotion** composes intro / outro / captions around the recording
    (loaded via `<OffthreadVideo>`) and renders the final MP4. All the
@@ -94,7 +104,7 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 
 ## Known brittleness
 
-- **The backend's `/geolocations/import-from-tweet` endpoint depends on
+- **The backend's `/events/import-from-tweet` endpoint depends on
   live X scraping.** If X changes its HTML, the seeding falls back to
   less-rich media (or to an image instead of the source video). The
   `seed-requests.js` log lines call out when this happens (`video fetch
@@ -112,6 +122,13 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 - **The pipeline assumes the local dev stack is running.** Backend at
   `:8000` and frontend at `:3000`. No remote/headless mode — Playwright
   drives the real Next.js frontend.
+- **A route rename anywhere else in the repo breaks the scripts.** They
+  call the live API and click real frontend paths, and no test suite
+  covers them, so a rename lands silently and every call 404s at the next
+  render. `video/check-routes.sh` greps both scripts for the spellings
+  that have already gone stale once; it runs in `make hygiene` and in
+  CI's hygiene job. Selectors are beyond a grep's reach, so a form
+  restructure still needs a capture run to catch.
 - **User setup.** If you skip `mock_demo_user.py`, the recording's
   login (`analyst@vidit.app`) fails outright. Even if you create just
   `analyst` and skip the rest, requests get posted by `analyst` itself
