@@ -9,6 +9,7 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { CoordinateActions } from "@/components/event/CoordinateActions";
 import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
+import { ReportEventPanel } from "@/components/event/ReportEventPanel";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -105,6 +106,10 @@ export default function EventPage() {
             </div>
           )}
         </EventDetailBody>
+
+        {/* Last on the page: reporting is what a reader reaches for after
+            reading the claim, not before. */}
+        <ReportEventPanel eventId={geo.id} />
     </PageShell>
   );
 }

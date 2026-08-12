@@ -17,6 +17,7 @@ import { loginNext } from "@/lib/navigation";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
+import { ReportEventPanel } from "@/components/event/ReportEventPanel";
 import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -233,6 +234,10 @@ export default function RequestDetailPage() {
             </Button>
           </div>
         )}
+
+        {/* A request carries footage too, so it is reportable on the same
+            terms as a located event. */}
+        <ReportEventPanel eventId={request.id} />
     </PageShell>
   );
 }

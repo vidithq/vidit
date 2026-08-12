@@ -105,6 +105,49 @@ export function purgeDetectedEvents(
   );
 }
 
+// ── Moderation ────────────────────────────────────────────────────────
+
+/** One page of the report queue: open reports first, newest first within each
+ *  group. Offset-paged (not cursor-paged) because that leading open/resolved
+ *  flag is not a column a keyset cursor can walk. */
+export type ContentReportList = components["schemas"]["ContentReportList"];
+
+/** The three verdicts that close a report. A report is resolved once: a second
+ *  verdict is a 409. */
+export type ContentReportResolution =
+  components["schemas"]["ContentReportUpdate"]["resolution"];
+
+export function reportsPath(page: number, perPage: number): string {
+  return `/admin/reports?page=${page}&per_page=${perPage}`;
+}
+
+export function resolveReport(
+  reportId: string,
+  resolution: ContentReportResolution
+): Promise<components["schemas"]["ContentReportRead"]> {
+  return apiFetch<components["schemas"]["ContentReportRead"]>(
+    `/admin/reports/${reportId}/resolve`,
+    { method: "POST", body: JSON.stringify({ resolution }) }
+  );
+}
+
+/** The moderation state of one event after the PATCH. `hidden_at` rather than
+ *  a boolean, so the response also says when the takedown landed. */
+export type AdminEventModeration =
+  components["schemas"]["AdminEventModerationRead"];
+
+/** Move either moderation axis directly, with no report behind it, and the one
+ *  verb that undoes a takedown. Omitting an axis leaves it exactly as it is. */
+export function setEventModeration(
+  id: string,
+  body: components["schemas"]["AdminEventModerationUpdate"]
+): Promise<AdminEventModeration> {
+  return apiFetch<AdminEventModeration>(`/admin/events/${id}/moderation`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 // ── Demo data ─────────────────────────────────────────────────────────
 
 export interface SeedDemoResponse {

@@ -614,6 +614,39 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
+/** The five buckets a report picks from, and the body of the call. Aliased
+ *  from the generated spec rather than restated, so a backend rename fails
+ *  `tsc` instead of drifting. */
+export type ContentReportReason =
+  components["schemas"]["ContentReportCreate"]["reason"];
+
+/** One report as the admin queue reads it: the bucket, the reporter's own
+ *  words, and the verdict once one lands (`resolved_at === null` is the open
+ *  test on the wire). */
+export type ContentReport = components["schemas"]["ContentReportRead"];
+
+/** How long the reporter's own words may run. Mirrors
+ *  `schemas/report.DETAILS_MAX_LENGTH`: the form stops at the cap instead of
+ *  letting the server 422 a report someone just typed out. */
+export const REPORT_DETAILS_MAX_LEN = 2000;
+
+/**
+ * Report an event: `POST /events/{id}/report`. Open to anyone, signed in or
+ * not: the people who most need to flag illegal or mislabelled footage are the
+ * least likely to hold an account here. `apiFetch` omits the CSRF header when
+ * no session cookie is present, so the same call works logged out; the backend
+ * caps it per IP.
+ */
+export function reportEvent(
+  id: string,
+  body: components["schemas"]["ContentReportCreate"]
+): Promise<ContentReport> {
+  return apiFetch<ContentReport>(`/events/${id}/report`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** Caller joins the "I'm working on this" set. Idempotent: re-signalling
  *  is a 204 no-op, not an error. `POST /events/{id}/investigate`. */
 export function investigateEvent(id: string): Promise<void> {
