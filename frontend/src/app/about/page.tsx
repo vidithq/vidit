@@ -11,6 +11,7 @@ import {
   Compass,
   Crosshair,
   Bot,
+  FileArchive,
   type LucideIcon,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
@@ -109,8 +110,14 @@ const GUIDES = [
   {
     icon: Bot,
     label: "Bot guide",
-    value: "Import by tagging @ViditBot on X",
+    value: "Import by tagging @ViditBot",
     href: "/bot",
+  },
+  {
+    icon: FileArchive,
+    label: "Archive guide",
+    value: "Import your X archive",
+    href: "/archive",
   },
 ];
 

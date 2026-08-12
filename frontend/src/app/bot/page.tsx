@@ -1,33 +1,32 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import {
-  AtSign,
-  Reply,
-  ShieldCheck,
-  ClipboardCheck,
-  Bot,
-  Play,
-  ImageIcon,
-  X,
-} from "lucide-react";
+import { AtSign, Reply, History, X, type LucideIcon } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { Pill } from "@/components/ui/Pill";
-import { Dot } from "@/components/ui/Dot";
-import { PageFrame } from "@/components/ui/PageFrame";
+import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import {
+  MOCK_ANALYST,
+  MOCK_BOT,
+  MockPost,
+  MockPostLink,
+} from "@/components/ui/MockPost";
 
 // Public guide for the @ViditBot mention format, reachable without an
-// account (see `PUBLIC_PREFIXES` in `proxy.ts`) and from the sidebar's Bot
-// entry. This is the page the bot's bio and pinned post point to, and the
-// destination behind the failure reply's "Guide in bio": the reply itself
-// is linkless by contract, so the full lesson lives here. Server component
-// for SEO, composed from the same primitives and section/card markup as
-// the landing page; the mock X posts mirror the promo video's BotBeat
-// composition (video/src/components/BotBeat.tsx).
+// account (see `PUBLIC_PREFIXES` in `proxy.ts`) and from the about page's
+// Guides section. This is the page the bot's bio and pinned post point to,
+// and the destination behind the failure reply's "Guide in bio": the reply
+// itself is linkless by contract, so the full lesson lives here. Server
+// component for SEO, on the same PageShell + Card scaffolding as the other
+// guides (`/guide`, `/methodology`, `/archive`).
 
-const TITLE = "Tag @ViditBot: import a geolocation from one post";
+// One title, used for the heading, the browser tab and the share card: this
+// page is linked from the bot's own X bio and from the about page's Guides
+// section, and what a reader clicks is what they should land on.
+const TITLE = "Import by tagging @ViditBot";
+const SECTION = "text-sm font-medium text-neutral-200";
 const DESCRIPTION =
-  "Tag @ViditBot on a geolocation post on X and it lands on Vidit as a structured draft: coordinates, source, media, and proof note, ready to review and publish.";
+  "Tag @ViditBot on a geolocation post on X. The bot reads the post and creates a draft on Vidit with its coordinates, source, media, and proof note.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -59,12 +58,12 @@ const LINES: { step: string; label: string; body: string }[] = [
   {
     step: "2",
     label: "Coordinates",
-    body: "One decimal pair alone on its line: 48.123456, 37.654321. Signs and degree symbols are fine; DMS is not.",
+    body: "One decimal pair alone on its line, for example 48.123456, 37.654321. Signs and degree symbols are accepted. DMS is not.",
   },
   {
     step: "3",
     label: "Source",
-    body: "The footage link alone on its line, or quote the source post. Never your own post.",
+    body: "The footage link alone on its line, or a quote of the source post. A link to your own post is not accepted.",
   },
 ];
 
@@ -73,19 +72,19 @@ const LINES: { step: string; label: string; body: string }[] = [
 const MISTAKES: { label: string; body: string }[] = [
   {
     label: "Tagging the first post when relaying",
-    body: "The tag goes on the reply that carries the footage. Tag the first post instead and it imports without the footage, and a later tag on the reply is ignored as already imported.",
+    body: "The tag goes on the reply that carries the footage. Tag the first post instead and it imports without the footage. A later tag on the reply is ignored, because the geolocation is already imported.",
   },
   {
     label: "Two coordinate lines",
-    body: "One post, one pair. Two coordinate-only lines are ambiguous: nothing imports.",
+    body: "A post must carry exactly one coordinate pair. Two coordinate-only lines are ambiguous and nothing imports.",
   },
   {
     label: "Two source links",
-    body: "Two links each alone on a line, or several links with none alone on its line: nothing imports. Exactly one source, alone on its line.",
+    body: "Nothing imports when two links each sit alone on a line, or when several links appear and none sits alone on a line. Put exactly one source link alone on its line.",
   },
   {
     label: "Sourcing your own post",
-    body: "A link back to your own post is a cross-reference, never a source. Link the original footage post.",
+    body: "A link to your own post is a cross-reference, not a source. Link the original footage post instead.",
   },
   {
     label: "Coordinates inside a sentence",
@@ -93,319 +92,230 @@ const MISTAKES: { label: string; body: string }[] = [
   },
   {
     label: "Tagging under someone else’s post",
-    body: "A relay reply must answer your own post. Tags under anyone else’s import nothing.",
+    body: "A relay reply must answer your own post. A tag under another account’s post imports nothing.",
   },
 ];
 
-// A mock X post, the same composition the promo video's BotBeat renders:
-// X-dark card, avatar, name row, body with link-blue accents, optional
-// media placeholder. Page-local content markup, not a product primitive.
-function MockPost({
-  name,
-  handle,
-  avatar,
-  bot = false,
-  replyingTo,
-  media,
+// One tagging case as a full-width row: the explanation beside its mock posts
+// from `sm` up, stacked on a phone. A row rather than a column in a three-up
+// grid, because a mock post squeezed into a third of the page column wraps its
+// links and its byline into noise.
+function TagCase({
+  icon: Icon,
+  title,
+  body,
   children,
 }: {
-  name: string;
-  handle: string;
-  avatar: string;
-  bot?: boolean;
-  replyingTo?: string;
-  media?: { kind: "video" | "image"; label: string };
+  icon: LucideIcon;
+  title: string;
+  body: string;
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-black p-4 text-left">
-      <div className="flex items-center gap-2.5">
-        <span
-          className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${avatar}`}
-        >
-          {bot ? <Bot size={20} /> : name.slice(0, 1)}
-        </span>
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-[15px] font-bold text-neutral-100">
-            {name}
-          </p>
-          <p className="truncate text-[13px] text-neutral-500">
-            {handle}
-            {replyingTo && (
-              <>
-                {" "}
-                · replying to <span className="text-sky-500">{replyingTo}</span>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-      <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100">
-        {children}
-      </div>
-      {media && (
-        <div className="mt-3 flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
-          <span className="flex flex-col items-center gap-2 text-neutral-500">
-            <span className="flex size-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
-              {media.kind === "video" ? (
-                <Play size={16} />
-              ) : (
-                <ImageIcon size={16} />
-              )}
-            </span>
-            <span className="text-[11px]">{media.label}</span>
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+      <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
+        <div>
+          <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
+            <Icon size={17} />
           </span>
+          <h3 className="mt-4 text-sm font-medium text-neutral-100">{title}</h3>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
+            {body}
+          </p>
         </div>
-      )}
+        <div className="space-y-3">{children}</div>
+      </div>
     </div>
   );
 }
 
-// Link-blue span for the mock bodies (X's anchor color, display only).
-function BodyLink({ children }: { children: ReactNode }) {
-  return <span className="text-sky-500">{children}</span>;
-}
-
 export default function BotGuidePage() {
   return (
-    <main className="bg-neutral-950 text-neutral-100">
-      <PageFrame>
-        <section className="pt-16 pb-12 text-center">
-          <Pill tone="accent" className="gap-2 tracking-tight">
-            <Dot />
-            <span>@ViditBot · import by tagging</span>
-          </Pill>
-          <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
-            Tag the bot, keep the geolocation
-          </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
-            Tag @ViditBot on a geolocation post on X and it lands on{" "}
-            <Link href="/" className={TEXT_LINK}>
-              Vidit
-            </Link>{" "}
-            as a structured draft: coordinates, source, media, and proof note,
-            ready to review and publish. No re-entry, no leaving your feed.
-          </p>
-        </section>
+    <PageShell title={TITLE} back backFallback="/about">
+      <Card as="section">
+        <p className="text-sm text-neutral-300 leading-relaxed">
+          Tag @ViditBot on a geolocation post on X. The bot reads the post and
+          creates a draft on{" "}
+          <Link href="/" className={TEXT_LINK}>
+            Vidit
+          </Link>{" "}
+          with its coordinates, source, media, and proof note. You do not leave
+          your feed and you retype nothing.
+        </p>
+      </Card>
 
-        <section className="pb-16">
-          <div className="text-center">
-            <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-              The three lines
-            </h2>
-          </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            {LINES.map(({ step, label, body }) => (
-              <div
-                key={step}
-                className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
-              >
-                <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 font-mono text-sm text-orange-400">
-                  {step}
-                </span>
-                <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                  {label}
-                </h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                  {body}
-                </p>
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-center text-[13px] leading-relaxed text-neutral-400">
-            Anything else you write in the post is kept as the draft&apos;s
-            proof note. Prefer explicit prefixes? Marking the lines{" "}
-            <span className="font-mono text-neutral-300">C: coordinates</span>{" "}
-            and <span className="font-mono text-neutral-300">S: source</span>{" "}
-            works too.{" "}
-            <span className="font-mono text-neutral-300">T: title</span> is
-            optional: leave it out and the first other line that is not just a
-            link becomes the title, but an empty{" "}
-            <span className="font-mono text-neutral-300">T:</span> line is
-            refused.
-          </p>
-        </section>
-
-        <section className="pb-16">
-          <div className="text-center">
-            <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-              Two ways to tag
-            </h2>
-          </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <AtSign size={17} />
+      <Card as="section">
+        <h2 className={SECTION}>The three lines</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {LINES.map(({ step, label, body }) => (
+            <div
+              key={step}
+              className="rounded-lg border border-neutral-800 bg-neutral-900 p-4"
+            >
+              <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 font-mono text-sm text-orange-400">
+                {step}
               </span>
               <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Inline: the source is on X or Telegram
+                {label}
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                One post carrying the tag and the three lines. When the source
-                is an X post or a public Telegram post, Vidit fetches the
-                footage and its post date for you. Quoting the source post works
-                too. Attach your annotated screenshots: they land as proof.
+                {body}
               </p>
-              <div className="mt-4">
-                <MockPost
-                  name="GEOIMINT"
-                  handle="@GEOIMINT"
-                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                  media={{
-                    kind: "image",
-                    label: "your annotated screenshots (proof)",
-                  }}
-                >
-                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
-                  <BodyLink>x.com/warfootage/status/17…</BodyLink>
-                  {"\nSmoke plume matches the skyline.\n"}
-                  <BodyLink>@viditbot</BodyLink>
-                </MockPost>
-              </div>
             </div>
+          ))}
+        </div>
+        <p className="text-[13px] leading-relaxed text-neutral-400">
+          Every other line becomes the draft&apos;s proof note. You can also
+          mark the lines explicitly with{" "}
+          <span className="font-mono text-neutral-300">C: coordinates</span> and{" "}
+          <span className="font-mono text-neutral-300">S: source</span>.{" "}
+          <span className="font-mono text-neutral-300">T: title</span> is
+          optional. Without it, the first line that is not a bare link becomes
+          the title. An empty{" "}
+          <span className="font-mono text-neutral-300">T:</span> line is
+          refused.
+        </p>
+      </Card>
 
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <Reply size={17} />
+      <Card as="section">
+        <h2 className={SECTION}>Three ways to tag</h2>
+        <div className="space-y-3">
+          <TagCase
+            icon={AtSign}
+            title="Inline mention"
+            body="One post carries the tag and the three lines. Vidit fetches the footage and post date from an X post, a public Telegram post, or a quote of the source post. It stores a source on any other platform as a link, so a video you attach becomes the footage and photos become proof."
+          >
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "image",
+                label: "your annotated screenshots (proof)",
+              }}
+            >
+              {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
+              <MockPostLink>x.com/warfootage/status/1783</MockPostLink>
+              {"\nSmoke plume matches the skyline.\n"}
+              <MockPostLink>@viditbot</MockPostLink>
+            </MockPost>
+          </TagCase>
+
+          <TagCase
+            icon={Reply}
+            title="Footage relay"
+            body="A re-upload you attach to the reply becomes the footage, including where Vidit could fetch the source. Post the title and coordinates, then tag the bot in a direct reply that carries the footage alone. The source link can sit on either post."
+          >
+            <MockPost {...MOCK_ANALYST}>
+              {
+                "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
+              }
+            </MockPost>
+            <div className="pl-6">
+              <MockPost
+                {...MOCK_ANALYST}
+                replyingTo={MOCK_ANALYST.handle}
+                media={{
+                  kind: "video",
+                  label: "the re-uploaded footage (source)",
+                }}
+              >
+                <MockPostLink>tiktok.com/@warfootage/video/7</MockPostLink>
+                {"\n"}
+                <MockPostLink>@viditbot</MockPostLink>
+              </MockPost>
+            </div>
+          </TagCase>
+
+          <TagCase
+            icon={History}
+            title="Retroactive import"
+            body="Reply to any of your own posts and tag the bot. The reply needs nothing else. The post you reply to must carry the format, because Vidit reads that post. Only direct replies work, and re-tagging creates no duplicate."
+          >
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "image",
+                label: "your annotated screenshots (proof)",
+              }}
+            >
+              {"Bridge span dropped overnight\n49.842900, 24.031100\n"}
+              <MockPostLink>x.com/warfootage/status/1206</MockPostLink>
+              {"\nGeolocated it back in March."}
+            </MockPost>
+            <div className="pl-6">
+              <MockPost {...MOCK_ANALYST} replyingTo={MOCK_ANALYST.handle}>
+                <MockPostLink>@viditbot</MockPostLink>
+              </MockPost>
+            </div>
+          </TagCase>
+        </div>
+      </Card>
+
+      <Card as="section">
+        <h2 className={SECTION}>What not to do</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {MISTAKES.map(({ label, body }) => (
+            <div
+              key={label}
+              className="rounded-lg border border-neutral-800 bg-neutral-900 p-4"
+            >
+              <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 text-red-400">
+                <X size={17} />
               </span>
               <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Relay: the source is anywhere else
+                {label}
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                TikTok, Instagram, a news article: Vidit cannot fetch footage
-                from those, so relay it yourself. Post the title and
-                coordinates, then tag the bot in a direct reply to your own
-                post, carrying the source link and the re-uploaded footage
-                attached alone (one attachment lands as the source; annotations
-                belong on the first post). The source link can sit on either
-                post.
+                {body}
               </p>
-              <div className="mt-4 space-y-3">
-                <MockPost
-                  name="GEOIMINT"
-                  handle="@GEOIMINT"
-                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                  media={{
-                    kind: "image",
-                    label: "your annotated screenshots (proof)",
-                  }}
-                >
-                  {
-                    "Strike on the vehicle depot\n48.123456, 37.654321\nSmoke plume matches the skyline."
-                  }
-                </MockPost>
-                <div className="pl-6">
-                  <MockPost
-                    name="GEOIMINT"
-                    handle="@GEOIMINT"
-                    avatar="bg-gradient-to-br from-orange-500 to-red-600"
-                    replyingTo="@GEOIMINT"
-                    media={{
-                      kind: "video",
-                      label: "the re-uploaded footage (source)",
-                    }}
-                  >
-                    <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
-                    {"\n"}
-                    <BodyLink>@viditbot</BodyLink>
-                  </MockPost>
-                </div>
-              </div>
             </div>
-          </div>
-        </section>
+          ))}
+        </div>
+      </Card>
 
-        <section className="pb-16">
-          <div className="text-center">
-            <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-              What not to do
-            </h2>
-          </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {MISTAKES.map(({ label, body }) => (
-              <div
-                key={label}
-                className="rounded-lg border border-neutral-800 bg-neutral-900 p-5"
-              >
-                <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 text-red-400">
-                  <X size={17} />
-                </span>
-                <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                  {label}
-                </h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                  {body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+      <Card as="section">
+        <h2 className={SECTION}>What happens next</h2>
+        <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
+          <li>
+            The bot answers in-thread with your draft&apos;s reference, and
+            flags a possible duplicate when the media is already on Vidit.
+          </li>
+          <li>
+            The draft appears on the map immediately, labeled as a machine draft
+            and attributed to your account, and it waits in your detections
+            queue. Review it, correct the event date, then publish it as a
+            geolocation. Rejecting it removes it.
+          </li>
+          <li>
+            If the post does not conform, the bot replies with the reason. This
+            guide covers the full format.
+          </li>
+        </ul>
+        <div className="sm:max-w-md">
+          <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
+            {
+              "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile"
+            }
+          </MockPost>
+        </div>
+      </Card>
 
-        <section className="pb-16">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <ClipboardCheck size={17} />
-              </span>
-              <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                What happens next
-              </h3>
-              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
-                <li>
-                  The bot answers in-thread with your draft&apos;s reference,
-                  and flags a possible duplicate when the media is already on
-                  Vidit.
-                </li>
-                <li>
-                  The draft waits in your profile&apos;s detections queue.
-                  Review it, fix the event date (the post date is only a proxy),
-                  then publish.
-                </li>
-                <li>
-                  If the shape is incomplete, the bot replies with the one thing
-                  that broke; the full format lives in this guide.
-                </li>
-              </ul>
-              <div className="mt-4">
-                <MockPost
-                  name="Vidit"
-                  handle="@viditbot"
-                  avatar="bg-gradient-to-br from-orange-500 to-amber-500"
-                  bot
-                  replyingTo="@GEOIMINT"
-                >
-                  {
-                    "✅ 1 geolocation draft saved · ref 94183d44\nReview it from your profile"
-                  }
-                </MockPost>
-              </div>
-            </div>
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
-                <ShieldCheck size={17} />
-              </span>
-              <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Ground rules
-              </h3>
-              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
-                <li>
-                  The bot only imports for X handles linked to a Vidit account.
-                  Not linked yet? It stays silent: nothing is created in your
-                  name.
-                </li>
-                <li>
-                  One draft per post: tagging the same geolocation again
-                  collapses onto the first import.
-                </li>
-                <li>
-                  The bot reads public posts only: tags from a protected account
-                  cannot import.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-      </PageFrame>
-    </main>
+      <Card as="section">
+        <h2 className={SECTION}>Ground rules</h2>
+        <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-neutral-400">
+          <li>
+            The bot imports only for X handles linked to a Vidit account. It
+            stays silent for any other handle and creates nothing.
+          </li>
+          <li>
+            Each post produces one draft. Tagging the same geolocation again
+            reuses the first import.
+          </li>
+          <li>
+            The bot reads public posts only. A tag from a protected account
+            imports nothing.
+          </li>
+        </ul>
+      </Card>
+    </PageShell>
   );
 }

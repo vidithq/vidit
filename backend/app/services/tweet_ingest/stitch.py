@@ -23,8 +23,9 @@ def stitch(records: list[TweetRecord]) -> list[list[TweetRecord]]:
     ``in_reply_to_status_id`` matches a record's ``tweet_id`` *present in the
     batch* — an edge pointing outside the batch is ignored, so a reply to a
     third party's tweet doesn't pull in a stranger). Each thread is ordered by
-    ``created_at`` ascending, so the head (the earliest, media-carrying tweet)
-    is first. Threads keep first-appearance order for determinism.
+    ``created_at`` ascending, then by tweet id (:func:`_chronological`), so the
+    head (the earliest, media-carrying tweet) is first. Threads keep
+    first-appearance order for determinism.
     """
     if not records:
         return []
@@ -55,15 +56,23 @@ def stitch(records: list[TweetRecord]) -> list[list[TweetRecord]]:
     return [sorted(members, key=_chronological) for members in groups.values()]
 
 
-def _chronological(record: TweetRecord) -> str:
+def _chronological(record: TweetRecord) -> tuple[str, int, int]:
     """Sort key for ordering a thread head-first.
 
     ISO 8601 timestamps sort lexicographically by time. A missing ("") or
     non-ISO ``created_at`` (an adapter that couldn't normalise the upstream
-    format) is pushed *last* so it can't hijack the head — ``detect`` anchors
+    format) is pushed *last* so it can't hijack the head: ``detect`` anchors
     the thread's provenance + event date on ``thread[0]``.
+
+    An archive stores ``created_at`` at second precision, so a reply posted in
+    the same second as its parent ties on the timestamp, and ``tweets.js`` lists
+    newest first, which would hand the head slot to the reply. The tie breaks on
+    the tweet id ascending: snowflake ids are chronological at millisecond
+    precision, so the lower id is the earlier post. A non-digit id (no upstream
+    writes one, the archive path rejects them outright) carries no order, so it
+    sorts after every digit id and keeps batch order among its peers.
     """
     created_at = record.created_at
-    if created_at and created_at[0].isdigit():
-        return created_at
-    return "￿"
+    when = created_at if created_at and created_at[0].isdigit() else "￿"
+    tweet_id = record.tweet_id
+    return (when, 0, int(tweet_id)) if tweet_id.isdigit() else (when, 1, 0)

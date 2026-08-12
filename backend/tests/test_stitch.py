@@ -71,6 +71,32 @@ def test_malformed_timestamp_does_not_hijack_the_head():
     assert threads[0][0].tweet_id == "1"
 
 
+def test_same_second_reply_does_not_win_the_head_slot():
+    # An archive stores created_at at second precision, and tweets.js lists
+    # newest first, so a reply posted in the same second as its parent used to
+    # keep batch order and hijack the head. The lower snowflake id is the head.
+    records = [
+        _rec("2009264626035216536", "2026-01-08T14:03:11", reply_to="2009264622755283310"),
+        _rec("2009264622755283310", "2026-01-08T14:03:11"),
+    ]
+    threads = stitch(records)
+    assert [r.tweet_id for r in threads[0]] == [
+        "2009264622755283310",
+        "2009264626035216536",
+    ]
+
+
+def test_non_digit_tweet_id_sorts_after_its_peers_without_crashing():
+    # No upstream writes one (the archive reader rejects them outright), but the
+    # key must degrade rather than raise on a non-numeric id.
+    records = [
+        _rec("abc", "2025-11-12T10:00:00Z"),
+        _rec("7", "2025-11-12T10:00:00Z", reply_to="abc"),
+    ]
+    threads = stitch(records)
+    assert [r.tweet_id for r in threads[0]] == ["7", "abc"]
+
+
 def test_first_appearance_order_of_threads_is_stable():
     records = [
         _rec("1", "2025-11-12T10:00:00Z"),

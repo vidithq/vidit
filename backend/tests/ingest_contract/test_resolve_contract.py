@@ -143,18 +143,23 @@ _TG_URL = "https://t.me/somechannel/12345"
 
 
 def _telegram_record(
-    telegram: TelegramFootage | None, *, extra_links: list[SourceLink] | None = None
+    telegram: TelegramFootage | None,
+    *,
+    extra_links: list[SourceLink] | None = None,
+    designated: bool = True,
 ) -> TweetRecord:
     """A geoloc tweet linking a t.me post, with an optional chased footage.
 
     One OP photo (annotation) and a Telegram footage link. ``telegram`` is the
     chased embed (or ``None`` for the no-chase path); ``extra_links`` adds more
-    footage links to exercise the ambiguity rule.
+    footage links to exercise the ambiguity rule; ``designated`` writes the link
+    on a ``Source:`` line, the explicit designation that outranks that rule.
     """
+    reference = f"Source: {_TG_URL}" if designated else f"Footage doing the rounds: {_TG_URL}"
     return TweetRecord(
         tweet_id="8400000000000000001",
         handle="osint_stork",
-        text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nSource: {_TG_URL}",
+        text=f"Geolocated 44.612300, 33.522100 airfield perimeter\n{reference}",
         created_at="2026-03-04T13:20:00+00:00",
         permalink="https://x.com/osint_stork/status/8400000000000000001",
         media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "image/jpeg", "op")],
@@ -200,12 +205,13 @@ def test_unchased_telegram_link_is_link_only() -> None:
 
 
 def test_ambiguous_footage_links_ignore_chased_telegram() -> None:
-    """A second footage link makes the source ambiguous; even a chased Telegram
-    footage is dropped and the source stays empty for review."""
+    """Two footage links and no designation make the source ambiguous; even a
+    chased Telegram footage is dropped and the source stays empty for review."""
     footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
     record = _telegram_record(
         footage,
         extra_links=[SourceLink("https://www.youtube.com/watch?v=FAKEVIDEO01", "youtube")],
+        designated=False,
     )
     resolved = resolve_thread([record])
     assert resolved is not None
@@ -218,6 +224,22 @@ def test_ambiguous_footage_links_ignore_chased_telegram() -> None:
         _TG_URL,
         "https://www.youtube.com/watch?v=FAKEVIDEO01",
     ]
+
+
+def test_designation_settles_what_would_be_an_ambiguity() -> None:
+    """The same two footage links, with the Telegram post written on a
+    ``Source:`` line: the explicit designation takes the slot (chased date
+    included) and the other candidate lands as a mirror."""
+    footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
+    record = _telegram_record(
+        footage,
+        extra_links=[SourceLink("https://www.youtube.com/watch?v=FAKEVIDEO01", "youtube")],
+    )
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == _TG_URL
+    assert resolved.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    assert resolved.secondary_source_urls == ["https://www.youtube.com/watch?v=FAKEVIDEO01"]
 
 
 def test_second_footage_link_becomes_a_secondary_source() -> None:

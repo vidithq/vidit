@@ -166,19 +166,18 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert _media_roles(db, ref) == {"proof": 2}
     assert _proof_image_count(ref) == 2
 
-    # self_video: the only proof media is a video. A proof video is never
-    # referenced by the proof doc (only images are injected), so it is skipped at
-    # persistence and the row lands media-less rather than orphaning the bytes.
+    # self_video: the tweet's only media is a video and nothing else declared a
+    # source, so it fills the source slot. The proof doc stays image-only, hence
+    # empty, and the video survives as evidence instead of being dropped.
     [sv] = _rows_for(db, owner, "self_video_no_signal")
-    assert _media_roles(db, sv) == {}
+    assert _media_roles(db, sv) == {"source": 1}
     assert _proof_image_count(sv) == 0
 
-    # self_thread: head video + reply photo, both proof; the video is skipped
-    # (only images enter the proof doc), so one proof image row survives and is
-    # injected.
+    # self_thread: head video + reply photo. The video takes the empty source
+    # slot; the photo stays proof and is injected into the proof doc.
     [st] = _rows_for(db, owner, "self_thread")
-    assert _media_roles(db, st) == {"proof": 1}
-    assert _media_types(db, st) == {"image"}
+    assert _media_roles(db, st) == {"source": 1, "proof": 1}
+    assert _media_types(db, st) == {"video", "image"}
     assert _proof_image_count(st) == 1
 
     # mention_prefix: 1 proof image.

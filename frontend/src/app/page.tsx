@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Globe, AtSign, Import, Crosshair, Archive, Code, Play } from "lucide-react";
+import {
+  Globe,
+  AtSign,
+  Import,
+  Crosshair,
+  Archive,
+  Code,
+  Play,
+} from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
@@ -68,7 +76,7 @@ const FEATURES: {
   {
     icon: Import,
     title: "Your history, imported in one step",
-    body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and publish. No manual re-entry.",
+    body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and vouch for. No manual re-entry.",
   },
   {
     icon: AtSign,

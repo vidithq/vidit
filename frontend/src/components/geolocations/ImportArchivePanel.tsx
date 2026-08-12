@@ -2,16 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  Clock,
-  Download,
-  ExternalLink,
-  FileArchive,
-  Scissors,
-  Settings,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
+import { ExternalLink, FileArchive, ShieldCheck, Upload } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -26,6 +17,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
 import { MAX_UPLOAD_LABEL, stripArchive } from "@/lib/archive";
+import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 import {
   ImportPollLost,
   awaitImportJob,
@@ -34,11 +26,6 @@ import {
   uploadArchive,
 } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
-
-/** X's official walkthrough for requesting the data archive. */
-const X_ARCHIVE_HELP =
-  "https://help.x.com/en/managing-your-account/how-to-download-your-x-archive";
-
 
 /** The one byte rendering on this panel (the picked file's size, the upload
  *  counter): bytes below 1 KB, then KB, then real megabytes with one decimal
@@ -53,28 +40,7 @@ function formatBytes(n: number): string {
 }
 
 const STEPS: NumberedStep[] = [
-  {
-    icon: Settings,
-    title: "Request your archive on X",
-    body: 'On X: Settings → "Your account" → "Download an archive of your data".',
-  },
-  {
-    icon: Clock,
-    title: "Wait for X to build it",
-    body:
-      "Confirm your password. X prepares the file and notifies you when it's ready (often minutes, up to 24h).",
-  },
-  {
-    icon: Download,
-    title: "Download the .zip",
-    body: "Open the link from X's email or in-app banner and save the zip to your device.",
-  },
-  {
-    icon: Scissors,
-    title: "Trim it to your posts (recommended)",
-    body:
-      "Open the archive and keep only your tweets.js and tweets_media folder (inside the data folder); delete the rest, then re-zip. We strip it automatically too, this is for full control.",
-  },
+  ...ARCHIVE_EXPORT_STEPS,
   {
     icon: Upload,
     title: "Upload it here",
@@ -258,6 +224,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
             <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
             Even if you skip the trim, your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
           </span>
+          <Link href="/archive" className={TEXT_LINK}>
+            Archive guide
+          </Link>
           <a
             href={X_ARCHIVE_HELP}
             target="_blank"

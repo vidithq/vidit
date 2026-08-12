@@ -37,6 +37,12 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { ActivityBars } from "@/components/ui/ActivityBars";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
+import {
+  MOCK_ANALYST,
+  MOCK_BOT,
+  MockPost,
+  MockPostLink,
+} from "@/components/ui/MockPost";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
@@ -775,6 +781,37 @@ export default function PalettePage() {
                     },
                   ]}
                 />
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/bot teaches what to write, /archive maps an exported post to the draft it becomes). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
+            <div className="w-full max-w-sm space-y-3">
+              <Variant label="a post with an attachment">
+                <MockPost
+                  {...MOCK_ANALYST}
+                  media={{ kind: "image", label: "an attached photo" }}
+                >
+                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
+                  <MockPostLink>x.com/warfootage/status/1783</MockPostLink>
+                </MockPost>
+              </Variant>
+              <Variant label="a post quoting the footage it geolocates">
+                <MockPost
+                  {...MOCK_ANALYST}
+                  quoted={{
+                    handle: "@warfootage",
+                    text: "Footage near 49.842900, 24.031100 by the bridge",
+                    media: { kind: "video", label: "the quoted video" },
+                  }}
+                >
+                  {"Geolocated this one."}
+                </MockPost>
+              </Variant>
+              <Variant label="the bot answering in-thread">
+                <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
+                  {"✅ 1 geolocation draft saved · ref 94183d44"}
+                </MockPost>
               </Variant>
             </div>
           </Item>
