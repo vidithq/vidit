@@ -45,6 +45,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
+| POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Owner withdraws a request or rejects a detection (→ `closed`) |
 | POST | `/events/{id}/investigate` | 🔒 | "I'm working on this" (idempotent, multi-analyst) |
 | DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
@@ -81,6 +82,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
+| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
 
 ---
 
@@ -113,6 +115,7 @@ Every limit on this page is behaviorally pinned (N requests answer, N+1 returns 
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
 | `POST /events/{id}/geolocate` | 30/min |
+| `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -127,7 +130,7 @@ Every limit on this page is behaviorally pinned (N requests answer, N+1 returns 
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
-| `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` | 30/hour |
+| `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
 
@@ -898,6 +901,67 @@ Give an event a vouched location: transitions `requested` | `detected` → `geol
 
 ---
 
+### `POST /events/batch-complete` 🔒
+
+Publish a selection of your own `detected` drafts in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine draft already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
+
+Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a `detected` draft; the rest of the selection still publishes. Publishing a row credits the caller in `event_geolocators` and queues its links for archival, exactly as a single geolocate does.
+
+Owner-only: every targeted draft must belong to the caller. There is no fulfil-someone-else's-row path here, unlike `requested` events.
+
+**Request body:**
+```json
+{
+  "conflict_ids": ["3f1c…"],
+  "rows": [
+    { "event_id": "9a2b…", "capture_source_tag_id": "77de…" },
+    { "event_id": "5c04…", "capture_source_tag_id": "9b31…" }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the drafts held |
+| `rows` | object[] | 1-100 drafts, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row the caller owns; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
+
+**Response 200:** verdicts in the order the rows were submitted.
+```json
+{
+  "published": 1,
+  "failed": 1,
+  "rows": [
+    { "event_id": "9a2b…", "published": true, "code": null, "message": null },
+    { "event_id": "5c04…", "published": false, "code": "proof_image_required",
+      "message": "At least one proof image is required" }
+  ]
+}
+```
+
+A `200` does **not** mean everything published; read `published` / `failed`. A failed row's `code`:
+
+| `code` | Case |
+|--------|------|
+| `source_url_required` | The draft carries no source URL |
+| `coordinates_required` | The import found no location in the thread, so the draft carries no point |
+| `media_required` | The draft carries no `source` media row |
+| `proof_image_required` | The stored proof body holds no image (the imported thread carried no annotation media) |
+| `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or is not a `capture_source` tag |
+| `invalid_state` | The row is no longer `detected` |
+| `event_not_found` | Hard-deleted, or soft-deleted by an admin |
+| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the draft is untouched, so the row is retriable as-is |
+
+The first six are the same stable codes the single-row geolocate answers with, and they are checked in the order above.
+
+**Errors** (whole-call, evaluated before any row publishes):
+| Code | Case |
+|------|------|
+| 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
+| 403 | A targeted draft belongs to another analyst; nothing is published |
+| 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
+
+---
+
 ### `POST /events/{id}/close` 🔒
 
 Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the status badge and the requested-view routing). A closed `detected` row is re-importable if the same tweet is later re-detected. Distinct from `DELETE`, which removes the row for good.
@@ -1327,7 +1391,7 @@ Activity feed of geolocations submitted by analysts the current user follows, ne
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>17 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
+<summary>18 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1632,6 +1696,15 @@ Queue Wayback archival for every live event that has no [`source_archives`](data
 **Response 200:**
 ```json
 { "events_scanned": 412, "links_enqueued": 173 }
+```
+
+### `POST /admin/maintenance/send-completion-digests` 🛡️
+
+Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+
+**Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
+```json
+{ "analysts_notified": 4, "drafts_pending": 137, "digest_send_failures": 0 }
 ```
 
 </details>

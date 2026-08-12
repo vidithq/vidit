@@ -160,16 +160,22 @@ export function TagPicker({
 // under it.
 const CONFLICTS_PREVIEW = 30;
 
-// Multi-select typeahead over the conflicts referential, filtering client-side
-// (the full list is fetched once, so no debounce is needed). With the input
-// empty only the major-tier ongoing conflicts show, with the "Other" escape
-// row pinned last; a hint counts the rest of the searchable set. Searching
-// covers all ongoing conflicts, and the "Include ended conflicts" switch
-// extends it to ended ones. Results sort by tier then name (see
-// `sortConflicts`). Selected conflicts render as accent pills above the input,
-// deselectable, and drop out of the result list. Private to the TagPicker,
-// its only consumer.
-function ConflictTypeahead({
+/**
+ * Multi-select typeahead over the conflicts referential, filtering client-side
+ * (the full list is fetched once, so no debounce is needed). With the input
+ * empty only the major-tier ongoing conflicts show, with the "Other" escape
+ * row pinned last; a hint counts the rest of the searchable set. Searching
+ * covers all ongoing conflicts, and the "Include ended conflicts" switch
+ * extends it to ended ones. Results sort by tier then name (see
+ * `sortConflicts`). Selected conflicts render as accent pills above the input,
+ * deselectable, and drop out of the result list.
+ *
+ * Exported for the surfaces that pick conflicts WITHOUT the rest of the
+ * classification card: the detections batch completion sets one conflict for a
+ * whole selection. Everything picking conflicts alongside tags takes
+ * `<TagPicker>` instead.
+ */
+export function ConflictTypeahead({
   conflicts,
   selectedIds,
   setSelectedIds,

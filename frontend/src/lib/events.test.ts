@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ArchiveUploadError,
+  batchCompletionBlockers,
   missingEventFields,
   missingEventRequestFields,
   submitReadiness,
@@ -141,6 +142,65 @@ describe("submitReadiness", () => {
       "Source media",
       "Conflict",
       "Capture source tag",
+    ]);
+  });
+});
+
+describe("batchCompletionBlockers", () => {
+  // A draft as the import leaves it: coordinates, a source, its footage, and a
+  // proof body carrying the annotation image. Only the capture source is
+  // missing, and the batch supplies that.
+  const importedDraft = {
+    event_coords: { lat: 48.5, lng: 37.8 },
+    source_url: "https://x.com/a/status/1",
+    proof: {
+      type: "doc",
+      content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
+    },
+    media: [{ role: "source" as const }],
+  };
+
+  it("clears a draft the import filled", () => {
+    expect(batchCompletionBlockers(importedDraft)).toEqual([]);
+  });
+
+  it("flags the row whose thread carried no annotation image", () => {
+    expect(
+      batchCompletionBlockers({
+        ...importedDraft,
+        proof: { type: "doc", content: [{ type: "paragraph" }] },
+      })
+    ).toEqual(["Proof image"]);
+  });
+
+  it("counts only source media, never a proof image, as the footage", () => {
+    // The floor wants the footage the geolocation is OF. An import whose
+    // annotation images landed but whose source video did not carries media
+    // rows and still misses it.
+    expect(
+      batchCompletionBlockers({
+        ...importedDraft,
+        media: [{ role: "proof" as const }],
+      })
+    ).toEqual(["Source media"]);
+  });
+
+  it("lists every miss at once, in floor order", () => {
+    expect(
+      batchCompletionBlockers({
+        event_coords: null,
+        source_url: null,
+        proof: null,
+        media: [],
+      })
+    ).toEqual(["Source URL", "Coordinates", "Source media", "Proof image"]);
+  });
+
+  it("ignores what a batch never writes (title, source post time)", () => {
+    // The batch posts no fields, so those requirements belong to the submit
+    // form, not here: a draft missing them still publishes.
+    expect(batchCompletionBlockers({ ...importedDraft, source_url: "  " })).toEqual([
+      "Source URL",
     ]);
   });
 });
