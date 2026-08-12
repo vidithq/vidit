@@ -21,6 +21,10 @@ const CSRF_COOKIE = "vidit_csrf";
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
+  // The archive-import guide: what the importer reads out of an X export and
+  // what it never touches, read by analysts weighing the upload before they
+  // have a session.
+  "/archive",
   // The bot format guide: the destination behind the bot's bio and pinned
   // post, read by analysts with no Vidit session yet.
   "/bot",

@@ -238,13 +238,15 @@ export default function BotGuidePage() {
                 <AtSign size={17} />
               </span>
               <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Inline: the source is on X or Telegram
+                Inline: one post carries everything
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
                 One post carrying the tag and the three lines. When the source
                 is an X post or a public Telegram post, Vidit fetches the
                 footage and its post date for you. Quoting the source post works
-                too. Attach your annotated screenshots: they land as proof.
+                too. Any other platform is kept as a source link, and a video
+                you attach becomes the draft&apos;s footage. Attach your
+                annotated screenshots as well: photos always land as proof.
               </p>
               <div className="mt-4">
                 <MockPost
@@ -269,13 +271,13 @@ export default function BotGuidePage() {
                 <Reply size={17} />
               </span>
               <h3 className="mt-4 text-sm font-medium text-neutral-100">
-                Relay: the source is anywhere else
+                Relay: the footage rides a second post
               </h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-                TikTok, Instagram, a news article: Vidit cannot fetch footage
-                from those, so relay it yourself. Post the title and
-                coordinates, then tag the bot in a direct reply to your own
-                post, carrying the source link and the re-uploaded footage
+                You already posted the geolocation, or you want your own
+                re-upload to be the footage even where Vidit could fetch the
+                source. Post the title and coordinates, then tag the bot in a
+                direct reply to your own post, carrying the re-uploaded footage
                 attached alone (one attachment lands as the source; annotations
                 belong on the first post). The source link can sit on either
                 post.

@@ -122,7 +122,11 @@ const STEPS: NumberedStep[] = [
           <li>
             Your X archive: upload the official export and every geolocation you
             already published is backfilled as drafts you review and publish, no
-            manual re-entry.
+            manual re-entry (the{" "}
+            <Link href="/archive" className={TEXT_LINK}>
+              archive guide
+            </Link>{" "}
+            covers what is read and what is never touched).
           </li>
           <li>
             The bot: tag @ViditBot under a geolocation post on X and it lands

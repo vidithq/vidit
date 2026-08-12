@@ -90,7 +90,8 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
       p === "/about" ||
       p === "/guide" ||
       p === "/methodology" ||
-      p === "/bot",
+      p === "/bot" ||
+      p === "/archive",
   },
 ];
 
