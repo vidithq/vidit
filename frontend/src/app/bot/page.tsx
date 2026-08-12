@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   AtSign,
   Reply,
+  History,
   ShieldCheck,
   ClipboardCheck,
   Bot,
@@ -229,10 +230,10 @@ export default function BotGuidePage() {
         <section className="pb-16">
           <div className="text-center">
             <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-              Two ways to tag
+              Three ways to tag
             </h2>
           </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
               <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
                 <AtSign size={17} />
@@ -309,6 +310,43 @@ export default function BotGuidePage() {
                   >
                     <BodyLink>tiktok.com/@warfootage/video/7…</BodyLink>
                     {"\n"}
+                    <BodyLink>@viditbot</BodyLink>
+                  </MockPost>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+              <span className="size-9 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-orange-400">
+                <History size={17} />
+              </span>
+              <h3 className="mt-4 text-sm font-medium text-neutral-100">
+                Retro: a post you already published
+              </h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
+                Reply to your own post, whatever its age, and tag the bot: the
+                reply needs nothing else. The bot reads the post you replied to,
+                so that post carries the format itself and the reply only points
+                at it. Your own post only, and a direct reply, one hop deep.
+                Re-tagging changes nothing: the draft anchors on the post.
+              </p>
+              <div className="mt-4 space-y-3">
+                <MockPost
+                  name="GEOIMINT"
+                  handle="@GEOIMINT"
+                  avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                >
+                  {"Bridge span dropped overnight\n49.842900, 24.031100\n"}
+                  <BodyLink>x.com/warfootage/status/44…</BodyLink>
+                  {"\nPosted back in March."}
+                </MockPost>
+                <div className="pl-6">
+                  <MockPost
+                    name="GEOIMINT"
+                    handle="@GEOIMINT"
+                    avatar="bg-gradient-to-br from-orange-500 to-red-600"
+                    replyingTo="@GEOIMINT"
+                  >
                     <BodyLink>@viditbot</BodyLink>
                   </MockPost>
                 </div>

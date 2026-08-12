@@ -40,7 +40,7 @@ The source requirement applies at promotion to `geolocated`. `services/events.ge
 
 ## Bot format
 
-The bot reads its own mentions. It accepts one strict structure, in two spellings: a title, one decimal coordinate pair, a source designation, and remaining lines that become the proof. Delivery works two ways: **inline**, where the tagged tweet carries the structure, or by **relay**, where the tag sits in the analyst's direct reply to their own structured tweet, and the reply carries the footage (see below).
+The bot reads its own mentions. It accepts one strict structure, in two spellings: a title, one decimal coordinate pair, a source designation, and remaining lines that become the proof. Delivery works two ways: **inline**, where the tagged tweet carries the structure, or by **relay**, where the tag sits in the analyst's direct reply to their own structured tweet. A relay reply that carries footage relays it into the source slot. A media-less relay reply imports the parent exactly as an inline mention would, which is how a tweet published earlier is imported retroactively. Both cases run through the one relay mapper described below.
 
 **Bare spelling (primary).** This spelling uses no prefixes; the shape carries the fields (`_bare_fields` in [`detect.py`](../backend/app/services/tweet_ingest/detect.py)):
 
