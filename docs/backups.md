@@ -14,7 +14,7 @@ The cron container's `pg_dump` is pinned to PG 16 to match the production server
 
 The service writes through a dedicated IAM user `<backup-iam-user>` whose only S3 permissions are `PutObject` / `AbortMultipartUpload` / `ListMultipartUploadParts` on `<backup-bucket>/*`, no `Get`, no `Delete`.
 
-Railway reads the cron schedule from [`docker/backup/railway.json`](../docker/backup/railway.json) only when the `backend-backup` service's config-as-code path points at it; the dashboard's schedule field must not carry a stale value.
+The `backend-backup` service has Root Directory `docker/backup`, so Railway discovers [`docker/backup/railway.json`](../docker/backup/railway.json) on deploy and its `cronSchedule` wins over the dashboard field. The service deploys through the [`deploy` workflow](../.github/workflows/deploy.yml) like every other backend service; redeploying a cron service also runs it once, so every backend deploy takes a fresh dump as a side effect.
 
 ### Required env vars on the `backend-backup` service
 
@@ -114,7 +114,7 @@ The release ritual around a deploy that ships a migration. Migrations run as a R
 
 Two constraints shape how this works (see [`engineering.md`](engineering.md) → *Deployment* and *Particularities*): prod DB **public networking is off**; and the backend container ships only `libpq5`, **not** the `pg_dump` / `pg_restore` client binaries (those live in the `backend-backup` cron image, `postgres:16`).
 
-**1. Snapshot before deploying.** Don't wait for the next scheduled run; trigger the `backend-backup` service on demand:
+**1. Snapshot before deploying.** Don't wait for the next scheduled run, and don't count the dump a deploy itself triggers as the pre-migration snapshot (the matrix jobs run in parallel, so nothing orders it before the migration). Trigger the `backend-backup` service on demand first:
 
 ```
 Railway dashboard → project `vidit` → service `backend-backup` → Deployments → Redeploy
