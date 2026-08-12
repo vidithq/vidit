@@ -245,8 +245,10 @@ def test_list_honours_limit(db, author):
     assert len(response.json()) <= 2
 
 
-def test_list_rejects_out_of_range_limit(author):
-    for bad in ("0", "9999", "-1"):
+def test_list_rejects_unusable_limit(author):
+    """Below 1 and non-numeric are malformed (422); over the cap is not, it is
+    clamped to the cap (see ``test_pagination``)."""
+    for bad in ("0", "-1", "abc"):
         response = client.get(f"{_LIST}&limit={bad}")
         assert response.status_code == 422, f"expected 422 for limit={bad!r}"
 

@@ -303,9 +303,15 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     record_user(author_b)
     record_user(stranger)
 
+    # A and B carry opposed orderings on the two candidate keys: A's event date
+    # is the older one, its submission the newer. So the assertion below reads
+    # the contract (newest submission first) rather than agreeing with both
+    # keys by accident, which is what equal insertion order would give.
     geo_a = _make_geo(db, author=author_a, title="A", event=date(2026, 5, 10))
     geo_b = _make_geo(db, author=author_b, title="B", event=date(2026, 5, 11))
     geo_stranger = _make_geo(db, author=stranger, title="Stranger", event=date(2026, 5, 12))
+    geo_b.created_at = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
+    geo_a.created_at = datetime(2026, 5, 20, 10, 0, tzinfo=UTC)
     record_geo(geo_a)
     record_geo(geo_b)
     record_geo(geo_stranger)
@@ -328,8 +334,9 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     titles = [item["title"] for item in body["items"]]
     assert "A" in titles and "B" in titles
     assert "Stranger" not in titles
-    # Newest event date first.
-    assert titles.index("B") < titles.index("A")
+    # Newest submission first: A was submitted after B, though B's event date
+    # is the later one. Ordering by event date would put B first.
+    assert titles.index("A") < titles.index("B")
     assert body["total"] == 2
     # Coordinates are inline (no N+1 follow-up fetch required).
     for item in body["items"]:
@@ -390,6 +397,56 @@ def test_timeline_paginates(db, cleanup):
     assert len(page2["items"]) == 2
     # No overlap between page 1 and page 2.
     assert {it["id"] for it in page1["items"]} & {it["id"] for it in page2["items"]} == set()
+
+
+def test_timeline_cursor_walks_the_whole_feed(db, cleanup):
+    """``Link: rel="next"`` walks the feed to exhaustion, once each."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    author = _make_user(db, suffix="author")
+    record_user(viewer)
+    record_user(author)
+
+    created = set()
+    for i in range(5):
+        geo = _make_geo(db, author=author, title=f"G{i}", event=date(2026, 5, i + 1))
+        record_geo(geo)
+        created.add(str(geo.id))
+    db.add(Follow(follower_id=viewer.id, followed_id=author.id))
+    db.commit()
+
+    headers = login_as(client, viewer)
+    walked: list[str] = []
+    path: str | None = "/api/v1/timeline?per_page=2"
+    pages = 0
+    while path is not None:
+        response = client.get(path, headers=headers)
+        assert response.status_code == 200
+        walked.extend(item["id"] for item in response.json()["items"])
+        link = response.headers.get("Link")
+        path = link[1 : link.index(">")].replace("http://testserver", "") if link else None
+        pages += 1
+        assert pages <= 10, "cursor walk did not terminate"
+
+    assert pages == 3
+    assert len(walked) == len(set(walked)), "a row was served twice"
+    assert set(walked) == created
+
+
+def test_timeline_caps_per_page_and_rejects_garbage(db, cleanup):
+    """Over-asking is clamped to the cap; below 1 or non-numeric is a 422."""
+    record_user, _ = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    record_user(viewer)
+    headers = login_as(client, viewer)
+
+    capped = client.get("/api/v1/timeline?per_page=500", headers=headers)
+    assert capped.status_code == 200
+    assert capped.json()["per_page"] == 100
+
+    for query in ("per_page=0", "page=0", "page=abc", "cursor=garbage"):
+        response = client.get(f"/api/v1/timeline?{query}", headers=headers)
+        assert response.status_code == 422, f"expected 422 for {query!r}"
 
 
 # ── GET /users/{username} — follower counters + is_following ─────────────

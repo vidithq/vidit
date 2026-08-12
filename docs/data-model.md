@@ -389,6 +389,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `ix_events_live` on `(created_at) WHERE deleted_at IS NULL`, partial; every public read filters `deleted_at IS NULL`; the partial keeps the index tight.
 - `ix_events_demo` on `(id) WHERE is_demo = true`, partial; the demo-wipe sweep runs `WHERE is_demo = true` and otherwise full-scans
 - `ix_events_status_created_at` on `(status, created_at)`, the requested-view (ex-request) list, the map, and the detection queue all filter on `status` newest-first
+- `ix_events_created_at_id` on `(created_at, id)`, backs the keyset the capped list endpoints page on: `GET /events`, `GET /events/detections` and `GET /timeline` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair (see [`api.md`](api.md#pagination))
 - `ix_events_detected_from_url` on `(detected_from_url) WHERE detected_from_url IS NOT NULL`, partial; backs the assemble idempotency look-up (one per detection during a backfill); human rows are always NULL
 - `ix_events_search_fts` GIN on `to_tsvector('simple', coalesce(title, ''))`, backs `GET /search` (both the located and requested views run through it). `simple` config (not `english`) keeps matching predictable for the closed beta corpus of place names and analyst handles; soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, see migration `o1j3k5l7m9n1` for the rationale (Postgres' simple parser tokenizes URLs as host/path units).
 

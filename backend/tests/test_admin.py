@@ -252,6 +252,35 @@ def test_list_invite_codes_includes_status(admin_user):
     assert matching[0]["status"] == "active"
 
 
+def test_list_invite_codes_pages_on_a_cursor(admin_user):
+    """The append-only invite table is read a bounded page at a time."""
+    headers = login_as(client, admin_user)
+    created = set()
+    for _ in range(3):
+        created.add(
+            client.post("/api/v1/admin/invite-codes", json={}, headers=headers).json()["id"]
+        )
+
+    first = client.get("/api/v1/admin/invite-codes?limit=2", headers=headers)
+    assert first.status_code == 200
+    assert len(first.json()) == 2
+    link = first.headers["Link"]
+    assert link.endswith('; rel="next"')
+
+    second = client.get(link[1 : link.index(">")].replace("http://testserver", ""), headers=headers)
+    assert second.status_code == 200
+    walked = [row["id"] for row in first.json()] + [row["id"] for row in second.json()]
+    assert len(walked) == len(set(walked)), "a row was served twice"
+    assert created <= set(walked)
+
+
+def test_list_invite_codes_rejects_garbage_paging(admin_user):
+    headers = login_as(client, admin_user)
+    for query in ("limit=0", "limit=abc", "cursor=garbage"):
+        response = client.get(f"/api/v1/admin/invite-codes?{query}", headers=headers)
+        assert response.status_code == 422, f"expected 422 for {query!r}"
+
+
 def test_revoke_invite_code_marks_revoked(admin_user):
     create_response = client.post(
         "/api/v1/admin/invite-codes",

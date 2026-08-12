@@ -92,10 +92,14 @@ export interface EventListParams {
   tag?: string;
   author?: string;
   limit?: number;
+  /** Cursor of the next page, from a `Link: rel="next"` header. */
+  cursor?: string | null;
 }
 
 /** Build the `GET /events` query string for one lifecycle view. Defaults to
- *  `view=located`; the requested queue passes `view=requested`. */
+ *  `view=located`; the requested queue passes `view=requested`. The response
+ *  is capped at 100 rows whatever `limit` asks for, so reading further means
+ *  passing the `cursor` the previous page's `Link` header carried. */
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
@@ -103,6 +107,7 @@ export function eventListPath(params: EventListParams = {}): string {
   if (params.tag) search.set("tag", params.tag);
   if (params.author) search.set("author", params.author);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.cursor) search.set("cursor", params.cursor);
   const qs = search.toString();
   return `/events${qs ? `?${qs}` : ""}`;
 }
