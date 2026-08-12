@@ -12,8 +12,9 @@ analyst promotes with ``geolocate``) loses nothing by that; a machine
 ``detected`` draft is unpublished working state, so its links are not
 submitted until it is published, and the promotion enqueues them then.
 
-Which links: the event's ``source_url`` plus every ``http(s)`` href carried by
-a link mark in the proof body's Tiptap document. One
+Which links: the event's ``source_url``, its secondary source links (the
+analyst-submitted mirrors in ``event_source_links``), and every ``http(s)``
+href carried by a link mark in the proof body's Tiptap document. One
 :class:`~app.models.source_archive.SourceArchive` row per link, unique on
 ``(event_id, original_url)``, so every enqueue path (create, the geolocate
 promotion, an edit that adds a citation, the catalog backfill) is safe to run
@@ -45,12 +46,19 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import or_, tuple_
+from sqlalchemy import and_, exists, or_, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.event import SOURCE_URL_MAX_LENGTH, Event
+from app.models.event import (
+    SOURCE_URL_MAX_LENGTH,
+    STATUS_CLOSED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Event,
+    EventSourceLink,
+)
 from app.models.source_archive import (
     SourceArchive,
     SourceArchiveOrigin,
@@ -126,15 +134,21 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     """Every archivable link on an event, ``source_url`` first, deduped.
 
     The proof body's hrefs come from :func:`sanitize.extract_link_hrefs`, so
-    the Tiptap walk has one home. A link that appears both as the source and
-    inside the proof is kept once, attributed to the source (the stronger
-    provenance).
+    the Tiptap walk has one home. Duplicates collapse to the first origin the
+    walk reaches: the declared source, then an analyst-submitted mirror, then a
+    proof citation. That is the strongest provenance the event carries for the
+    URL *at this call*; the stored row keeps whatever origin the first enqueue
+    wrote, since :func:`_insert_links` conflicts on ``(event_id,
+    original_url)`` and does nothing. A link cited in the proof before it was
+    declared as the source therefore stays ``proof_link``.
     """
-    return _collect_links(event.source_url, event.proof)
+    return _collect_links(event.source_url, event.proof, [link.url for link in event.source_links])
 
 
-def _collect_links(source_url: str | None, proof: Any) -> list[tuple[str, SourceArchiveOrigin]]:
-    """:func:`collect_links` over the two columns it reads.
+def _collect_links(
+    source_url: str | None, proof: Any, secondary_urls: list[str]
+) -> list[tuple[str, SourceArchiveOrigin]]:
+    """:func:`collect_links` over the three sources it reads.
 
     Split out so the backfill can walk lightweight column tuples instead of
     hydrating ORM rows it would only re-expire on the next commit.
@@ -150,9 +164,32 @@ def _collect_links(source_url: str | None, proof: Any) -> list[tuple[str, Source
 
     if source_url:
         add(source_url, "source_url")
+    for url in secondary_urls:
+        add(url, "secondary_source")
     for href in extract_link_hrefs(proof):
         add(href, "proof_link")
     return links
+
+
+def _secondary_links_for(db: Session, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+    """One backfill chunk's secondary source links, keyed by event, in order.
+
+    One query for the whole chunk: hydrating each event's ``source_links``
+    relationship instead would cost a round trip per event, and the chunk is
+    deliberately column tuples rather than ORM rows.
+    """
+    if not event_ids:
+        return {}
+    by_event: dict[uuid.UUID, list[str]] = {}
+    rows = (
+        db.query(EventSourceLink.event_id, EventSourceLink.url)
+        .filter(EventSourceLink.event_id.in_(event_ids))
+        .order_by(EventSourceLink.event_id, EventSourceLink.position)
+        .all()
+    )
+    for event_id, url in rows:
+        by_event.setdefault(event_id, []).append(url)
+    return by_event
 
 
 def _insert_links(db: Session, rows: list[dict]) -> int:
@@ -230,23 +267,68 @@ def enqueue_event_best_effort(db: Session, event: Event) -> None:
 _BACKFILL_CHUNK = 200
 
 
+# The published set, which is the set the write paths enqueue: a direct
+# ``geolocated`` create, a public ``requested`` row, a draft promoted with
+# ``geolocate``, and a ``closed`` row that was a request before it was
+# withdrawn. Save Page Now is public and timestamped, so a machine ``detected``
+# draft (and a rejected one, ``closed`` off ``detected``) stays out until it is
+# published; the promotion enqueues its links then. Written as the set to
+# include rather than as "not detected", so a status added later has to be
+# ruled in deliberately instead of leaking a draft's links to a public archive.
+_PUBLISHED = or_(
+    Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED)),
+    and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_REQUESTED),
+)
+
+# An event whose ``source_url`` has no queue row of its own.
+_SOURCE_URL_UNQUEUED = and_(
+    Event.source_url.isnot(None),
+    ~exists().where(
+        SourceArchive.event_id == Event.id,
+        SourceArchive.original_url == Event.source_url,
+    ),
+)
+
+# An event carrying at least one secondary source link with no queue row.
+_SECONDARY_LINK_UNQUEUED = exists().where(
+    EventSourceLink.event_id == Event.id,
+    ~exists().where(
+        SourceArchive.event_id == EventSourceLink.event_id,
+        SourceArchive.original_url == EventSourceLink.url,
+    ),
+)
+
+
 def _backfill_chunk(
     db: Session, after: tuple[datetime, uuid.UUID] | None, size: int
 ) -> list[tuple[uuid.UUID, str | None, Any, datetime]]:
-    """One page of events that carry no archival rows at all, oldest first.
+    """One page of published events with a link the queue does not hold yet.
 
-    ``NOT EXISTS`` is what makes the sweep converge: an event enqueued by a
-    previous click or by its own write path drops out of the scan, so a second
-    click covers the next page instead of re-reading the same head of the
-    catalog. Demo rows are excluded outright (their sentinel source resolves
-    nowhere and a capture attempt would spend real Wayback budget), and the
-    keyset cursor is ``(created_at, id)`` so an event that yields no links
-    still advances the walk.
+    Three ways to qualify: no archival rows at all, a ``source_url`` with no
+    row of its own, or a secondary source link with no row of its own. The
+    first alone would miss an event that gained a mirror after its source was
+    already queued, since that event does carry rows; the per-link ``NOT
+    EXISTS`` clauses are what reach it.
+
+    Proof hrefs qualify an event only through the no-rows-at-all clause: the
+    Tiptap walk lives in :func:`sanitize.extract_link_hrefs` and restating it
+    as a SQL predicate would give it a second home. A citation added to an
+    already-queued event is covered by the edit write path, which re-enqueues
+    the whole event.
+
+    ``NOT EXISTS`` is also what makes the sweep converge: an event whose links
+    are all queued drops out of the scan, so a second click covers the next
+    page instead of re-reading the same head of the catalog. Demo rows are
+    excluded outright (their sentinel source resolves nowhere and a capture
+    attempt would spend real Wayback budget), and the keyset cursor is
+    ``(created_at, id)`` so an event that yields no links still advances the
+    walk.
     """
     query = db.query(Event.id, Event.source_url, Event.proof, Event.created_at).filter(
         Event.deleted_at.is_(None),
         Event.is_demo.is_(False),
-        ~Event.archives.any(),
+        _PUBLISHED,
+        or_(~Event.archives.any(), _SOURCE_URL_UNQUEUED, _SECONDARY_LINK_UNQUEUED),
     )
     if after is not None:
         query = query.filter(tuple_(Event.created_at, Event.id) > after)
@@ -254,15 +336,19 @@ def _backfill_chunk(
 
 
 def enqueue_catalog(db: Session, *, limit: int | None = None) -> dict[str, int]:
-    """Enqueue archival for live events that carry no archival rows.
+    """Enqueue archival for live published events with an unqueued link.
 
     The backfill over the existing catalog, exposed as an admin Maintenance
-    action. Walks live non-demo events oldest first (the ones whose sources
-    have had the longest to die), enqueues whatever they carry, and returns the
-    counts. No HTTP happens here: the rows are queue entries the worker drains
-    at its own paced rate. ``limit`` caps one click's scan, and because an
-    enqueued event leaves the scan, the next click continues past it rather
-    than re-reading the same page.
+    action. Walks live non-demo published events oldest first (the ones whose
+    sources have had the longest to die), enqueues whatever they carry, and
+    returns the counts. No HTTP happens here: the rows are queue entries the
+    worker drains at its own paced rate. ``limit`` caps one click's scan, and
+    because a fully queued event leaves the scan, the next click continues past
+    it rather than re-reading the same page.
+
+    An event selected for one unqueued link has all of its links collected, not
+    just that one: ``ON CONFLICT DO NOTHING`` makes the already-queued ones
+    free, and it is what lets a proof citation ride along.
     """
     events_scanned = 0
     links_enqueued = 0
@@ -272,12 +358,18 @@ def enqueue_catalog(db: Session, *, limit: int | None = None) -> dict[str, int]:
         chunk = _backfill_chunk(db, after, size)
         if not chunk:
             break
+        secondary = _secondary_links_for(db, [row[0] for row in chunk])
         rows: list[dict] = []
         for event_id, source_url, proof, created_at in chunk:
             events_scanned += 1
             after = (created_at, event_id)
             try:
-                rows.extend(_queue_rows(event_id, _collect_links(source_url, proof)))
+                rows.extend(
+                    _queue_rows(
+                        event_id,
+                        _collect_links(source_url, proof, secondary.get(event_id, [])),
+                    )
+                )
             except Exception:  # noqa: BLE001
                 # One unreadable proof body (a stored doc nested past what the
                 # walk can recurse) is a row to skip, not the end of the sweep.

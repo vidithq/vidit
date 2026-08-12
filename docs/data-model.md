@@ -616,14 +616,14 @@ The durable queue behind `POST /events/import-archive`: the endpoint stages the 
 
 ### `source_archives`
 
-One row per link carried by an event: its `source_url` plus every `http(s)` href in the proof body's Tiptap document. The row is both the archival job and its result, so a link never travels between a queue table and a read table. The write paths insert `queued` rows; the worker claims them with `FOR UPDATE SKIP LOCKED` and stamps `archived_url` in place. See [`ingestion.md`](ingestion.md#source-archival) for the pipeline and retry semantics.
+One row per link carried by an event: its `source_url`, its [`event_source_links`](#event_source_links) mirrors, and every `http(s)` href in the proof body's Tiptap document. The row is both the archival job and its result, so a link never travels between a queue table and a read table. The write paths insert `queued` rows; the worker claims them with `FOR UPDATE SKIP LOCKED` and stamps `archived_url` in place. See [`ingestion.md`](ingestion.md#source-archival) for the pipeline and retry semantics.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
 | `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event; never normalised, since it is half the row's identity and what the read surface matches `events.source_url` against. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source) or `'proof_link'` (an href inside the proof body). A link that is both is stored once as `source_url`. |
+| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), or `'proof_link'` (an href inside the proof body). A link reachable from several of them is stored once, under the first of that list it appeared in when the row was created; the insert conflicts on `(event_id, original_url)` and does nothing afterwards, so a later enqueue never rewrites the origin. |
 | `status` | `VARCHAR(10)` | NOT NULL, `ck_source_archives_status_valid`: `'queued'` → `'running'` → `'done'` \| `'failed'`. A failed attempt returns to `queued` behind a backoff; a `running` row past the stale window is reclaimable. |
 | `archived_url` | `TEXT` | nullable. The archived copy. `ck_source_archives_done_url` ties it to `status='done'` in both directions, so a non-NULL value is always a usable capture. |
 | `provider` | `VARCHAR(20)` | nullable. `'wayback'` or `'archive_today'`, set with `archived_url`. |
