@@ -1132,7 +1132,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several with the names on the badge's title.">
+          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several. Hover any badge: every state carries title text saying what it means, which pieces are missing in full, and what to do next.">
             <div className="w-full max-w-xl space-y-2">
               <DetectionQueueRow draft={MOCK_DRAFT_READY} />
               <DetectionQueueRow draft={MOCK_DRAFT_ONE_MISSING} />

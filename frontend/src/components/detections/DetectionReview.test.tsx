@@ -130,6 +130,20 @@ describe("DetectionReview", () => {
     expect(screen.queryByDisplayValue("Second draft")).not.toBeInTheDocument();
   });
 
+  it("heads the session with the shortcut legend, above the draft", () => {
+    renderReview([draftFixture()]);
+    const legend = screen.getByText("publish");
+    expect(legend).toBeInTheDocument();
+    expect(screen.getByText("skip")).toBeInTheDocument();
+    expect(screen.getByText("reject")).toBeInTheDocument();
+    // Above the draft body, so it is on screen without a scroll: a shortcut
+    // parked under the fold is one nobody learns.
+    expect(
+      legend.compareDocumentPosition(titleField()) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("publishes through the single-row geolocate transition and advances", async () => {
     renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
     pickConflictAndCaptureSource();

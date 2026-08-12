@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ReviewDraft } from "@/components/detections/ReviewDraft";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Pill } from "@/components/ui/Pill";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Conflict, EventDetail, Tag } from "@/types";
@@ -96,11 +97,22 @@ export function DetectionReview({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className={LABEL_TEXT}>
-          Draft {index + 1} of {drafts.length}
-          {total > drafts.length && ` · ${total} in the queue`}
-        </span>
+      {/* The session's header: where you are, what the keys do, and the way
+          out. The legend sits here rather than beside the actions it drives,
+          so it is on screen from the first draft without a scroll, which is
+          the only way a shortcut gets learned. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className={LABEL_TEXT}>
+            Draft {index + 1} of {drafts.length}
+            {total > drafts.length && ` · ${total} in the queue`}
+          </span>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-neutral-500">
+            <Shortcut keyLabel="Enter">publish</Shortcut>
+            <Shortcut keyLabel="S">skip</Shortcut>
+            <Shortcut keyLabel="X">reject</Shortcut>
+          </span>
+        </div>
         <Link href={queueHref} className={`text-xs ${TEXT_LINK}`}>
           Back to the queue
         </Link>
@@ -121,5 +133,22 @@ export function DetectionReview({
         onAdvance={() => setIndex((i) => i + 1)}
       />
     </div>
+  );
+}
+
+/** One entry of the shortcut legend: the key as a `<Pill>` (the badge family
+ *  already owns that shape) plus what it does. */
+function Shortcut({
+  keyLabel,
+  children,
+}: {
+  keyLabel: string;
+  children: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Pill tone="neutral">{keyLabel}</Pill>
+      {children}
+    </span>
   );
 }

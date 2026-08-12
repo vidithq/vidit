@@ -63,8 +63,15 @@ describe("DetectionQueueRow", () => {
   it("badges a draft carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow draft={draftFixture()} />);
     // "Ready to review", never a bare "Ready": the draft still needs the
-    // conflict and the capture source, which a review supplies.
-    expect(screen.getByText("Ready to review")).toBeInTheDocument();
+    // conflict and the capture source, which a review supplies. The hover text
+    // says the same thing at length, on the badge itself so the pointer lands
+    // on the element carrying it.
+    const badge = screen.getByText("Ready to review");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute(
+      "title",
+      expect.stringContaining("conflict and the capture source")
+    );
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
@@ -76,14 +83,19 @@ describe("DetectionQueueRow", () => {
     );
   });
 
-  it("names the one piece a draft is missing", () => {
+  it("names the one piece a draft is missing, and what to do about it", () => {
     render(
       <DetectionQueueRow
         draft={draftFixture({ proof: { type: "doc", content: [{ type: "paragraph" }] } })}
       />
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
-    expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
+    // A named badge still earns hover text: the name alone doesn't say that a
+    // review can't fill it in.
+    expect(screen.getByText("Missing: Proof image")).toHaveAttribute(
+      "title",
+      "Still missing: Proof image. A review can't supply it, so open the draft on the full form to fill it in."
+    );
   });
 
   it("collapses several missing pieces to a count, with the list on the badge", () => {
@@ -99,7 +111,7 @@ describe("DetectionQueueRow", () => {
     // rather than growing the badge to three lines.
     expect(screen.getByText("Missing: 2 pieces")).toHaveAttribute(
       "title",
-      "Source media, Proof image"
+      "Still missing: Source media, Proof image. A review can't supply them, so open the draft on the full form to fill it in."
     );
   });
 

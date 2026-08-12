@@ -13,7 +13,6 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Input, Select } from "@/components/ui/Input";
 import { MediaGallery } from "@/components/ui/MediaGallery";
-import { Pill } from "@/components/ui/Pill";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -372,12 +371,6 @@ export function ReviewDraft({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-neutral-500">
-        <Shortcut keyLabel="Enter">publish</Shortcut>
-        <Shortcut keyLabel="S">skip</Shortcut>
-        <Shortcut keyLabel="X">reject</Shortcut>
-      </div>
-
       {disposing && (
         <div className="border-t border-neutral-800 pt-4">
           <CloseEventForm
@@ -393,22 +386,5 @@ export function ReviewDraft({
         </div>
       )}
     </div>
-  );
-}
-
-/** One entry of the shortcut legend: the key as a `<Pill>` (the badge family
- *  already owns that shape) plus what it does. */
-function Shortcut({
-  keyLabel,
-  children,
-}: {
-  keyLabel: string;
-  children: string;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Pill tone="neutral">{keyLabel}</Pill>
-      {children}
-    </span>
   );
 }

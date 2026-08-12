@@ -22,6 +22,20 @@ function missingLabel(blockers: string[]): string {
     : `Missing: ${blockers.length} pieces`;
 }
 
+/** The hover text behind the missing badge: the names in full, whether or not
+ *  the badge collapsed them, plus what the analyst is meant to do about it. A
+ *  count on its own says how bad it is without saying what it is. */
+function missingTitle(blockers: string[]): string {
+  const them = blockers.length === 1 ? "it" : "them";
+  return `Still missing: ${blockers.join(", ")}. A review can't supply ${them}, so open the draft on the full form to fill it in.`;
+}
+
+/** The hover text behind the ready badge. The word "ready" invites the reading
+ *  that the draft is finished, so the title says outright what is done and what
+ *  is still owed. */
+const READY_TITLE =
+  "The import found every piece of evidence this draft needs. Reviewing it adds the conflict and the capture source, then publishes it.";
+
 /**
  * One row of the Detections queue: a thumbnail, the title, the event date, the
  * source host, and one state badge. Deliberately denser and quieter than
@@ -36,7 +50,8 @@ function missingLabel(blockers: string[]): string {
  * and the draft is waiting on the judgment a review supplies (the conflict and
  * the capture source), never that the draft is finished. It carries the softer
  * outline tone for that reason, so it cannot be read as a published or
- * complete state.
+ * complete state, and both states carry hover text spelling out what the badge
+ * means and what to do next.
  */
 export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
   const blockers = batchCompletionBlockers(draft);
@@ -74,10 +89,19 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
             />
           </div>
         </div>
+        {/* `relative z-20` lifts the badge over the stretched link, the same
+            way `EntityCard` lifts its byline and its source label. Without it
+            the element under the pointer is the link covering the whole row,
+            which carries no title of its own and does not lend the badge's, so
+            the hover text never appears (the `ArchivedCopies` failure, by a
+            different route: there a glyph covered the titled element, here the
+            click target does). Verified with `elementFromPoint` over all three
+            badge states in Chrome. The cost is that the badge itself no longer
+            navigates; the rest of the row still does. */}
         <Pill
           tone={ready ? "secondary" : "neutral"}
-          title={ready ? undefined : blockers.join(", ")}
-          className="self-start"
+          title={ready ? READY_TITLE : missingTitle(blockers)}
+          className="relative z-20 self-start"
         >
           {ready ? "Ready to review" : missingLabel(blockers)}
         </Pill>
