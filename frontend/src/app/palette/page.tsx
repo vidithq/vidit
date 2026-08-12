@@ -481,7 +481,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track; title on an option is hover text on that option's button, for a one-word label that needs a sentence (the detections queue filter).">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter. tone=danger paints a destructive option's active state red; fullWidth stretches the track. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Demo mode"
@@ -623,10 +623,25 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<FieldHelp>" usage="Help ? on labels/sections">
-            <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordinates <FieldHelp concept="coordinates" />
-            </span>
+          <Item
+            name="<FieldHelp>"
+            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). `text` overrides that sentence for an instance whose content is per-row data (the detections queue names the pieces one draft is missing); the concept still owns the accessible label."
+          >
+            <Variant label="from the registry">
+              <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
+                Coordinates <FieldHelp concept="coordinates" />
+              </span>
+            </Variant>
+            <Variant label="instance text over the concept's own">
+              <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
+                <Pill tone="neutral">Missing: 2 pieces</Pill>
+                <FieldHelp
+                  concept="detection_missing"
+                  text="Still missing: Source media, Proof image. A review can't supply them, so open the draft on the full form to fill it in."
+                  size={12}
+                />
+              </span>
+            </Variant>
           </Item>
 
           <Item name="<TagPicker>" usage="Conflict typeahead (ongoing by default, ended behind the switch) + curated/free tag selection (Pill chips + inline free-tag creation); submit / edit">
@@ -687,7 +702,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row), so a caller hands it the payload field with no guard of its own; pendingPublication is the exception, the draft variant a caller sets from the event's status, since a draft's links are queued only when it is published. Every glyph looks alike across the page, so both the hover title and the accessible name carry the state, and the name also carries the target: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row), so a caller hands it the payload field with no guard of its own; pendingPublication is the exception, the draft variant a caller sets from the event's status, since a draft's links are queued only when it is published. The pair closes on a <FieldHelp> `?` (archived_copies) explaining what the two icons are; help={false} drops it where a caller renders a list of pairs and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="captured at both providers (primary source)">
               <span className="text-sm text-neutral-300">

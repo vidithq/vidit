@@ -16,18 +16,11 @@ import { ACCENT_SURFACE } from "./styles";
  *
  * `tone: "danger"` on an option paints its active state red instead of the
  * accent, for a destructive mode (hard delete).
- *
- * `title` on an option lands on that option's own button, so a one-word label
- * ("Ready") can carry the sentence it stands for. The button is the topmost
- * element over its own box, so the pointer reaches the title with nothing to
- * lift it over.
  */
 export interface SegmentedControlOption<T extends string> {
   value: T;
   label: ReactNode;
   tone?: "accent" | "danger";
-  /** Hover text for this option alone. */
-  title?: string;
 }
 
 export function SegmentedControl<T extends string>({
@@ -60,7 +53,6 @@ export function SegmentedControl<T extends string>({
             key={opt.value}
             type="button"
             aria-pressed={active}
-            title={opt.title}
             // Re-clicking the active option is a no-op: don't re-fire onChange
             // (a caller's handler may have side effects, e.g. disarming a
             // two-click confirm).

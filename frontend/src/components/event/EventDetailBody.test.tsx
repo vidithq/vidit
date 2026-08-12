@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { EventDetailBody } from "./EventDetailBody";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { EventDetail } from "@/types";
 
@@ -467,8 +468,6 @@ describe("EventDetailBody", () => {
       />
     );
     // Both providers gave up for good: the pair still renders, and says so.
-    const failed = screen.getAllByTitle("Archiving failed, no copy available");
-    expect(failed).toHaveLength(2);
     expect(
       screen.getByRole("img", {
         name: "the source: archiving failed, no Wayback Machine copy",
@@ -517,6 +516,12 @@ describe("EventDetailBody", () => {
     // Same new-tab affordance as the primary Source row.
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+    // One `?` for the whole expanded list, hoisted off the mirrors: ten mirrors
+    // must not carry ten copies of the same sentence. The Source row's own pair
+    // keeps its own, one per group.
+    expect(
+      screen.getAllByRole("button", { name: FIELD_HELP.archived_copies.label })
+    ).toHaveLength(1);
   });
 
   it("keeps each mirror's archival record on its own mirror", () => {
@@ -657,7 +662,9 @@ describe("EventDetailBody", () => {
     // A draft carries no queue row at all, so nothing in the payload could say
     // this: the state is read off the status. Source, mirror and provenance
     // rows each get the pair.
-    expect(screen.getAllByTitle("Archived when published")).toHaveLength(6);
+    expect(
+      screen.getAllByRole("img", { name: /archived when published/ })
+    ).toHaveLength(6);
     expect(
       screen.getByRole("img", {
         name: "archive.today copy of the post it was detected from: archived when published",
@@ -679,7 +686,9 @@ describe("EventDetailBody", () => {
       />
     );
     // There is no link to archive, so the promise would be about nothing.
-    expect(screen.queryAllByTitle("Archived when published")).toHaveLength(0);
+    expect(
+      screen.queryAllByRole("img", { name: /archived when published/ })
+    ).toHaveLength(0);
   });
 
   it("names two mirrors sharing a host apart, and the primary apart from both", () => {

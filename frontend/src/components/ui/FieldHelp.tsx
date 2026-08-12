@@ -20,17 +20,26 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
  * both come from the one registry in `lib/fieldHelp.ts`, so the same concept
  * reads identically everywhere it appears and never drifts between them.
  *
- * Neutral, not orange: it's meta help, not a content action — orange stays
+ * `text` overrides the registry's sentence for one instance whose content is
+ * per-row data rather than a fixed concept (the detections queue names the
+ * pieces *this* draft is missing). The concept still owns the accessible label,
+ * so every instance announces the same question and the affordance stays one.
+ *
+ * Neutral, not orange: it's meta help, not a content action, and orange stays
  * reserved for primary affordances.
  */
 export function FieldHelp({
   concept,
+  text,
   size = 13,
 }: {
   concept: Concept;
+  /** Instance-specific explanation, in place of the concept's own. */
+  text?: string;
   size?: number;
 }) {
-  const { text, label } = FIELD_HELP[concept];
+  const { text: registryText, label } = FIELD_HELP[concept];
+  const body = text ?? registryText;
   const { open, pinned, wrapperProps, anchorProps, popoverProps } =
     usePinnedPopover();
   const tooltipId = useId();
@@ -70,7 +79,7 @@ export function FieldHelp({
             id={tooltipId}
             className="z-[2000] w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg"
           >
-            {text}
+            {body}
           </span>,
           document.body
         )}

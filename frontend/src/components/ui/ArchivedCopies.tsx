@@ -1,6 +1,7 @@
 import { Archive, History } from "lucide-react";
 
 import type { ArchivedCopies as ArchivedCopiesPayload } from "@/types";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 interface ArchivedCopiesProps {
@@ -24,6 +25,10 @@ interface ArchivedCopiesProps {
    *  the event's status; it is never inferred from payload the queue did not
    *  write. */
   pendingPublication?: boolean;
+  /** Set false where a caller renders several pairs in one list and hoists the
+   *  `?` to the section instead, so the explanation appears once rather than on
+   *  every row (the Secondary sources list). */
+  help?: boolean;
 }
 
 /**
@@ -37,7 +42,7 @@ type CopyState = "captured" | "missing" | "failed" | "pending" | "unpublished";
 
 interface ProviderSpec {
   key: "wayback" | "archive_today";
-  /** The service's name, as it is announced and shown in the tooltip. */
+  /** The service's name, as it is announced. */
   label: string;
   Glyph: typeof History;
 }
@@ -47,33 +52,12 @@ interface ProviderSpec {
  * than the services' own marks: a logo is a trademark, and a clock-with-arrow
  * for the Wayback Machine's history replay against a box for archive.today's
  * snapshot tells them apart on their own. The name is what carries the
- * identity, in the tooltip and the accessible name.
+ * identity, in the accessible name.
  */
 const PROVIDERS: readonly ProviderSpec[] = [
   { key: "wayback", label: "Wayback Machine", Glyph: History },
   { key: "archive_today", label: "archive.today", Glyph: Archive },
 ];
-
-/**
- * Takes the glyph out of hit testing, so the pointer lands on the `title`
- * carrier instead.
- *
- * The wrapper is exactly the size of the 13px glyph: no padding, no text, so
- * every hoverable pixel of it sits over the SVG. A browser resolves a tooltip
- * from the element under the pointer, and the element under the pointer was the
- * SVG's `path`, which carries no title of its own and does not lend the
- * wrapper's. The result was an icon with no hover text at all, on every state,
- * for a sighted reader. Making the glyph transparent to pointer events puts the
- * `a` / `span` under the pointer, which is where the title is, and is how the
- * rest of the product behaves: every other titled icon control (the lightbox
- * controls, `Pill`) has padding or text of its own, so its hit area was never
- * only the glyph.
- *
- * Clicking a captured copy still works: a transparent child does not stop its
- * parent from being hit, so the link takes the click and the cursor stays a
- * pointer.
- */
-const GLYPH_HIT_THROUGH = "pointer-events-none";
 
 /**
  * The archived copies beside an outbound source link: one icon per archiving
@@ -88,9 +72,10 @@ const GLYPH_HIT_THROUGH = "pointer-events-none";
  * name once both services have given up for good, and with an "archived when
  * published" name on a draft, whose links are queued at publication.
  *
- * Every glyph carries a `title` as well as its accessible name, so a sighted
- * reader gets the same fact on hover that a screen reader is given: the icons
- * are small marks with no label beside them.
+ * The glyphs are small marks with no label beside them, so the pair closes on
+ * a `?`: each icon's accessible name carries its own state for a screen
+ * reader, and the `archived_copies` concept explains the pair to a sighted one.
+ * One `?` per group, never one per icon.
  *
  * One component for the primary source, the provenance link and every
  * secondary mirror, so the same fact cannot grow two affordances.
@@ -99,6 +84,7 @@ export function ArchivedCopies({
   copies,
   describes,
   pendingPublication = false,
+  help = true,
 }: ArchivedCopiesProps) {
   if (!copies && !pendingPublication) return null;
   return (
@@ -117,26 +103,20 @@ export function ArchivedCopies({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              title={`${label} copy`}
               aria-label={name}
               className={`${TEXT_LINK} inline-flex`}
             >
-              <Glyph size={13} aria-hidden className={GLYPH_HIT_THROUGH} />
+              <Glyph size={13} aria-hidden />
             </a>
           );
         }
         return (
-          <span
-            key={key}
-            role="img"
-            title={tooltip(label, state)}
-            aria-label={name}
-            className="inline-flex text-neutral-600"
-          >
-            <Glyph size={13} aria-hidden className={GLYPH_HIT_THROUGH} />
+          <span key={key} role="img" aria-label={name} className="inline-flex text-neutral-600">
+            <Glyph size={13} aria-hidden />
           </span>
         );
       })}
+      {help && <FieldHelp concept="archived_copies" size={12} />}
     </span>
   );
 }
@@ -167,24 +147,6 @@ function accessibleName(label: string, describes: string, state: CopyState): str
       return `${label} copy of ${describes}: archiving in progress`;
     case "unpublished":
       return `${label} copy of ${describes}: archived when published`;
-  }
-}
-
-/**
- * The hover text, which says the same thing the accessible name does, minus
- * the target: the pointer is already on the icon, so what it points at is not
- * in question, and repeating it makes four near-identical tooltips on one row.
- */
-function tooltip(label: string, state: CopyState): string {
-  switch (state) {
-    case "failed":
-      return "Archiving failed, no copy available";
-    case "missing":
-      return `No ${label} copy was captured`;
-    case "unpublished":
-      return "Archived when published";
-    default:
-      return "Archiving in progress";
   }
 }
 

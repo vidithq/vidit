@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { MediaThumb } from "@/components/ui/EntityCard";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
@@ -12,9 +13,9 @@ import type { EventDetail } from "@/types";
  * The badge text for a draft still short of the evidence floor. One missing
  * piece is named, since that is the common case and the name is what tells the
  * analyst whether it is worth opening. Several collapse to a count: three names
- * joined into one badge outgrew the row, and the full list rides along in the
- * `title` for a pointer, with the review flow and the edit form both naming
- * them in place.
+ * joined into one badge outgrew the row, and the `?` beside the badge names
+ * them in full, with the review flow and the edit form both naming them in
+ * place.
  */
 function missingLabel(blockers: string[]): string {
   return blockers.length === 1
@@ -22,19 +23,15 @@ function missingLabel(blockers: string[]): string {
     : `Missing: ${blockers.length} pieces`;
 }
 
-/** The hover text behind the missing badge: the names in full, whether or not
- *  the badge collapsed them, plus what the analyst is meant to do about it. A
- *  count on its own says how bad it is without saying what it is. */
-function missingTitle(blockers: string[]): string {
+/** What the `?` beside the missing badge says: the names in full, whether or
+ *  not the badge collapsed them, plus what the analyst is meant to do about it.
+ *  A count on its own says how bad it is without saying what it is. This is the
+ *  one place a `FieldHelp` takes instance text, the pieces being this row's
+ *  data rather than a concept. */
+function missingText(blockers: string[]): string {
   const them = blockers.length === 1 ? "it" : "them";
   return `Still missing: ${blockers.join(", ")}. A review can't supply ${them}, so open the draft on the full form to fill it in.`;
 }
-
-/** The hover text behind the ready badge. The word "ready" invites the reading
- *  that the draft is finished, so the title says outright what is done and what
- *  is still owed. */
-const READY_TITLE =
-  "The import found every piece of evidence this draft needs. Reviewing it adds the conflict and the capture source, then publishes it.";
 
 /**
  * One row of the Detections queue: a thumbnail, the title, the event date, the
@@ -50,8 +47,9 @@ const READY_TITLE =
  * and the draft is waiting on the judgment a review supplies (the conflict and
  * the capture source), never that the draft is finished. It carries the softer
  * outline tone for that reason, so it cannot be read as a published or
- * complete state, and both states carry hover text spelling out what the badge
- * means and what to do next.
+ * complete state. What the two states mean is the queue filter's `?`, one for
+ * the page; the incomplete badge carries a `?` of its own, since which pieces
+ * are missing is this row's own data.
  */
 export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
   const blockers = batchCompletionBlockers(draft);
@@ -89,22 +87,23 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
             />
           </div>
         </div>
-        {/* `relative z-20` lifts the badge over the stretched link, the same
-            way `EntityCard` lifts its byline and its source label. Without it
-            the element under the pointer is the link covering the whole row,
-            which carries no title of its own and does not lend the badge's, so
-            the hover text never appears (the `ArchivedCopies` failure, by a
-            different route: there a glyph covered the titled element, here the
-            click target does). Verified with `elementFromPoint` over all three
-            badge states in Chrome. The cost is that the badge itself no longer
-            navigates; the rest of the row still does. */}
-        <Pill
-          tone={ready ? "secondary" : "neutral"}
-          title={ready ? READY_TITLE : missingTitle(blockers)}
-          className="relative z-20 self-start"
-        >
-          {ready ? "Ready to review" : missingLabel(blockers)}
-        </Pill>
+        {/* `relative z-20` lifts the badge and its `?` over the stretched link,
+            the same way `EntityCard` lifts its byline and its source label:
+            without it the link covering the whole row takes the pointer, and
+            the `?` would neither hover nor click. The cost is that the badge
+            itself no longer navigates; the rest of the row still does, and the
+            `?` swallows its own click rather than opening the draft. */}
+        <span className="relative z-20 flex items-center gap-1 self-start">
+          <Pill tone={ready ? "secondary" : "neutral"}>
+            {ready ? "Ready to review" : missingLabel(blockers)}
+          </Pill>
+          {/* Only on the incomplete badge: what "Ready to review" means is the
+              filter's concept, one `?` for the whole page, rather than the same
+              sentence repeated on every ready row. */}
+          {!ready && (
+            <FieldHelp concept="detection_missing" text={missingText(blockers)} size={12} />
+          )}
+        </span>
       </div>
     </div>
   );

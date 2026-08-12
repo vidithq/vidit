@@ -1,5 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ username: "ana" }),
@@ -70,7 +72,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 describe("DetectionsPage queue filter", () => {
-  it("says what each one-word filter selects, on the option's own button", () => {
+  it("explains the one-word options behind the `?` beside the bar", () => {
     useApiResource.mockReturnValue({
       data: { items: [draftFixture()], total: 1, page: 1, per_page: 20 },
       error: null,
@@ -78,20 +80,19 @@ describe("DetectionsPage queue filter", () => {
 
     render(<DetectionsPage />);
 
-    // The label is one word in every case, so the sentence rides on the button
-    // the pointer lands on. "Ready" repeats the row badge's promise: evidence
-    // complete, judgment still owed.
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
-      "title",
-      "Every draft on this page, ready or not."
-    );
-    expect(screen.getByRole("button", { name: "Ready" })).toHaveAttribute(
-      "title",
-      expect.stringContaining("conflict and the capture source")
-    );
-    expect(screen.getByRole("button", { name: "Incomplete" })).toHaveAttribute(
-      "title",
-      expect.stringContaining("open one on the full form")
-    );
+    // The labels are one word each and none of them says what it selects, so
+    // the sentence hangs from the house `?`, once for the bar. It repeats the
+    // row badge's promise: evidence complete, judgment still owed.
+    const help = screen.getByRole("button", {
+      name: FIELD_HELP.detection_queue_filter.label,
+    });
+    fireEvent.focus(help);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent("conflict and the capture source");
+    expect(tooltip).toHaveTextContent("the full edit form");
+    // The options themselves carry no native hover text: Vidit never uses it.
+    for (const label of ["All", "Ready", "Incomplete"]) {
+      expect(screen.getByRole("button", { name: label })).not.toHaveAttribute("title");
+    }
   });
 });

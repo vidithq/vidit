@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -23,24 +24,10 @@ import {
  *  screen: readiness is computed from the payload, not asked of the server. */
 type QueueFilter = "all" | "ready" | "incomplete";
 
-/** One-word labels for three states an analyst has no way to tell apart from
- *  the words alone, so each option carries the sentence it stands for. The
- *  wording matches the row badges: "Ready" is about evidence, never about the
- *  draft being finished. */
-const FILTERS: { value: QueueFilter; label: string; title: string }[] = [
-  { value: "all", label: "All", title: "Every draft on this page, ready or not." },
-  {
-    value: "ready",
-    label: "Ready",
-    title:
-      "Drafts the import left with every piece of evidence they need. A review pass adds the conflict and the capture source, then publishes them.",
-  },
-  {
-    value: "incomplete",
-    label: "Incomplete",
-    title:
-      "Drafts the import left short of the evidence floor. A review can't supply what's missing, so open one on the full form to fill it in.",
-  },
+const FILTERS: { value: QueueFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "ready", label: "Ready" },
+  { value: "incomplete", label: "Incomplete" },
 ];
 
 export default function DetectionsPage() {
@@ -105,12 +92,18 @@ export default function DetectionsPage() {
     listBody = (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SegmentedControl
-            options={FILTERS}
-            value={filter}
-            onChange={setFilter}
-            aria-label="Filter the queue"
-          />
+          {/* The three labels are one word each, so the `?` beside the bar
+              carries what Ready and Incomplete stand for, the same affordance
+              every other explanation on the app hangs from. */}
+          <span className="inline-flex items-center gap-1.5">
+            <SegmentedControl
+              options={FILTERS}
+              value={filter}
+              onChange={setFilter}
+              aria-label="Filter the queue"
+            />
+            <FieldHelp concept="detection_queue_filter" />
+          </span>
           <span className="text-xs text-neutral-500">
             {rows.length} of {data.items.length} on this page
           </span>

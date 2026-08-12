@@ -20,6 +20,7 @@ import {
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -357,24 +358,29 @@ function SecondarySourcesRow({
       align="start"
     >
       <div className="flex flex-col items-end gap-1 ml-4">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
-        >
-          {open ? (
-            <>
-              Hide
-              <ChevronUp size={12} />
-            </>
-          ) : (
-            <>
-              {urls.length} more source{urls.length === 1 ? "" : "s"}
-              <ChevronDown size={12} />
-            </>
-          )}
-        </button>
+        <span className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
+          >
+            {open ? (
+              <>
+                Hide
+                <ChevronUp size={12} />
+              </>
+            ) : (
+              <>
+                {urls.length} more source{urls.length === 1 ? "" : "s"}
+                <ChevronDown size={12} />
+              </>
+            )}
+          </button>
+          {/* One `?` for the whole expanded list, not one per mirror: ten
+              mirrors would otherwise carry ten copies of the same sentence. */}
+          {open && <FieldHelp concept="archived_copies" size={12} />}
+        </span>
         {open &&
           urls.map((url, index) => (
             // Index key: two mirrors may repeat a URL, and the archival record
@@ -397,6 +403,7 @@ function SecondarySourcesRow({
                   copies={archived[index] ?? null}
                   describes={mirrorDescription(safeHostname(url), index, urls.length)}
                   pendingPublication={pendingPublication}
+                  help={false}
                 />
               )}
             </span>

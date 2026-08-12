@@ -2,60 +2,64 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ArchivedCopies, PRIMARY_SOURCE_DESCRIPTION } from "./ArchivedCopies";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 
 /**
  * The states one link's icon pair can be in, read at the component rather than
- * through a detail page: the pair is the whole affordance, and the hover title
- * is the only thing a sighted reader gets for a glyph with no label beside it.
+ * through a detail page: the pair is the whole affordance, each glyph named for
+ * its own state, and one `?` beside them for what the pair is.
  */
 describe("ArchivedCopies", () => {
   const WAYBACK = "https://web.archive.org/web/2026/t.me/channel/1";
   const ARCHIVE_TODAY = "https://archive.ph/abcde/t.me/channel/1";
 
-  it("titles a captured copy with the service that holds it", () => {
+  it("links a captured copy, named for the service that holds it", () => {
     render(
       <ArchivedCopies
         copies={{ wayback: WAYBACK, archive_today: ARCHIVE_TODAY, unavailable: false }}
         describes={PRIMARY_SOURCE_DESCRIPTION}
       />
     );
-    expect(screen.getByTitle("Wayback Machine copy")).toHaveAttribute("href", WAYBACK);
-    expect(screen.getByTitle("archive.today copy")).toHaveAttribute(
-      "href",
-      ARCHIVE_TODAY
-    );
+    expect(
+      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
+    ).toHaveAttribute("href", WAYBACK);
+    expect(
+      screen.getByRole("link", { name: "archive.today copy of the source" })
+    ).toHaveAttribute("href", ARCHIVE_TODAY);
   });
 
-  it("titles both glyphs as in progress while the queue is still trying", () => {
+  it("names both glyphs as in progress while the queue is still trying", () => {
     render(
       <ArchivedCopies
         copies={{ wayback: null, archive_today: null, unavailable: false }}
         describes={PRIMARY_SOURCE_DESCRIPTION}
       />
     );
-    expect(screen.getAllByTitle("Archiving in progress")).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: /archiving in progress/ })).toHaveLength(2);
   });
 
-  it("titles both glyphs as failed once no copy is coming", () => {
+  it("names both glyphs as failed once no copy is coming", () => {
     render(
       <ArchivedCopies
         copies={{ wayback: null, archive_today: null, unavailable: true }}
         describes={PRIMARY_SOURCE_DESCRIPTION}
       />
     );
-    expect(screen.getAllByTitle("Archiving failed, no copy available")).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: /archiving failed/ })).toHaveLength(2);
   });
 
-  it("titles the settled side of a one-provider capture for that service", () => {
+  it("names the settled side of a one-provider capture for that service", () => {
     // One copy finishes the job, so the empty side is settled rather than
-    // pending, and its title says which service never captured it.
+    // pending, and its name says which service never captured it.
     render(
       <ArchivedCopies
         copies={{ wayback: WAYBACK, archive_today: null, unavailable: false }}
         describes={PRIMARY_SOURCE_DESCRIPTION}
       />
     );
-    expect(screen.getByTitle("No archive.today copy was captured")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "No archive.today copy of the source" })
+    ).toBeInTheDocument();
   });
 
   it("renders the draft pair from the flag, with no record to read", () => {
@@ -68,7 +72,6 @@ describe("ArchivedCopies", () => {
         pendingPublication
       />
     );
-    expect(screen.getAllByTitle("Archived when published")).toHaveLength(2);
     expect(
       screen.getByRole("img", {
         name: "Wayback Machine copy of the source: archived when published",
@@ -91,35 +94,36 @@ describe("ArchivedCopies", () => {
         pendingPublication
       />
     );
-    expect(screen.getByTitle("Wayback Machine copy")).toBeInTheDocument();
-    expect(screen.queryByTitle("Archived when published")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: /archived when published/ })
+    ).not.toBeInTheDocument();
   });
 
-  it("leaves the pointer on the titled element in every state", () => {
-    // The wrapper is exactly the glyph's size, so if the glyph took the
-    // pointer, the element under it would be an SVG node carrying no title and
-    // the hover text would never appear, which is how every state lost its
-    // tooltip in a real browser while the attribute sat in the markup.
-    const states = [
-      { copies: { wayback: WAYBACK, archive_today: ARCHIVE_TODAY, unavailable: false } },
-      { copies: { wayback: WAYBACK, archive_today: null, unavailable: false } },
-      { copies: { wayback: null, archive_today: null, unavailable: false } },
-      { copies: { wayback: null, archive_today: null, unavailable: true } },
-      { copies: null, pendingPublication: true },
-    ];
-    for (const state of states) {
-      const { container, unmount } = render(
-        <ArchivedCopies describes={PRIMARY_SOURCE_DESCRIPTION} {...state} />
-      );
-      const carriers = container.querySelectorAll("[title]");
-      expect(carriers).toHaveLength(2);
-      for (const carrier of carriers) {
-        expect(carrier.getAttribute("title")).toBeTruthy();
-        const glyph = carrier.querySelector("svg");
-        expect(glyph).toHaveClass("pointer-events-none");
-      }
-      unmount();
-    }
+  it("closes the pair with one `?`, never one per icon", () => {
+    // The glyphs carry no label beside them, so the house help affordance
+    // explains the pair. It is the pair's, not each icon's: a caller rendering
+    // a list of pairs hoists it to the section with `help={false}`.
+    const { rerender } = render(
+      <ArchivedCopies
+        copies={{ wayback: WAYBACK, archive_today: ARCHIVE_TODAY, unavailable: false }}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+      />
+    );
+    const help = screen.getByRole("button", {
+      name: FIELD_HELP.archived_copies.label,
+    });
+    expect(help).toBeInTheDocument();
+    rerender(
+      <ArchivedCopies
+        copies={{ wayback: WAYBACK, archive_today: ARCHIVE_TODAY, unavailable: false }}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+        help={false}
+      />
+    );
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("renders nothing for an untracked link on a published event", () => {

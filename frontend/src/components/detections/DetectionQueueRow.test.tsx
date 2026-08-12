@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DetectionQueueRow } from "./DetectionQueueRow";
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { EventDetail } from "@/types";
 
 function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
@@ -63,16 +64,12 @@ describe("DetectionQueueRow", () => {
   it("badges a draft carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow draft={draftFixture()} />);
     // "Ready to review", never a bare "Ready": the draft still needs the
-    // conflict and the capture source, which a review supplies. The hover text
-    // says the same thing at length, on the badge itself so the pointer lands
-    // on the element carrying it.
-    const badge = screen.getByText("Ready to review");
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveAttribute(
-      "title",
-      expect.stringContaining("conflict and the capture source")
-    );
+    // conflict and the capture source, which a review supplies. What the state
+    // means is the queue filter's own `?`, so a ready row carries the label and
+    // nothing else.
+    expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
@@ -90,15 +87,18 @@ describe("DetectionQueueRow", () => {
       />
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
-    // A named badge still earns hover text: the name alone doesn't say that a
-    // review can't fill it in.
-    expect(screen.getByText("Missing: Proof image")).toHaveAttribute(
-      "title",
+    expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
+    // A named badge still earns a `?`: the name alone doesn't say that a review
+    // can't fill it in.
+    fireEvent.focus(
+      screen.getByRole("button", { name: FIELD_HELP.detection_missing.label })
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
       "Still missing: Proof image. A review can't supply it, so open the draft on the full form to fill it in."
     );
   });
 
-  it("collapses several missing pieces to a count, with the list on the badge", () => {
+  it("collapses several missing pieces to a count, with the list behind the `?`", () => {
     render(
       <DetectionQueueRow
         draft={draftFixture({
@@ -107,10 +107,13 @@ describe("DetectionQueueRow", () => {
         })}
       />
     );
-    // The row stays dense whatever the import missed; the names ride along
-    // rather than growing the badge to three lines.
-    expect(screen.getByText("Missing: 2 pieces")).toHaveAttribute(
-      "title",
+    // The row stays dense whatever the import missed; the names sit behind the
+    // `?` rather than growing the badge to three lines.
+    expect(screen.getByText("Missing: 2 pieces")).toBeInTheDocument();
+    fireEvent.focus(
+      screen.getByRole("button", { name: FIELD_HELP.detection_missing.label })
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
       "Still missing: Source media, Proof image. A review can't supply them, so open the draft on the full form to fill it in."
     );
   });
