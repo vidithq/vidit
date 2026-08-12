@@ -106,29 +106,51 @@ logger = logging.getLogger(__name__)
 REPLY_MAX_WEIGHTED_LEN = 280
 
 
-def reply_weighted_len(text: str) -> int:
-    """Upper bound on X's weighted character count for a composed reply.
+# The code-point ranges X weighs as 1; everything else weighs 2 (CJK, emoji
+# and the symbol block the composer glyphs ✅ ❌ ⚠ live in).
+_WEIGHT_ONE_RANGES = ((0x0000, 0x10FF), (0x2000, 0x200D), (0x2010, 0x201F), (0x2032, 0x2037))
 
-    X weighs everything above U+2000 as 2, which covers the composer glyphs
-    (✅ ❌ ⚠) and overcounts nothing the replies use today. Stricter than the
-    Python code-point count, so a text that passes here passes at X.
+
+def _char_weight(ch: str) -> int:
+    code = ord(ch)
+    return 1 if any(lo <= code <= hi for lo, hi in _WEIGHT_ONE_RANGES) else 2
+
+
+def reply_weighted_len(text: str) -> int:
+    """X's weighted character count for a composed reply.
+
+    Weight 1 for code points in U+0000..U+10FF, U+2000..U+200D,
+    U+2010..U+201F and U+2032..U+2037; weight 2 for everything else.
     """
-    return sum(2 if ord(ch) > 0x2000 else 1 for ch in text)
+    return sum(_char_weight(ch) for ch in text)
 
 
 def _within_reply_cap(text: str) -> str:
-    """Check a composed reply against the cap, then hand it back.
+    """Return a composed reply, truncated to the cap if it outgrew it.
 
     Every input is one of this module's own literals (the diagnosis table,
     the warning lines, a truncated ref), so an over-long reply means a code
-    change slipped past the length tests, not user input. Fail here rather
-    than burn a billed create call on a 403.
+    change slipped past the length tests, not user input. The tests are the
+    gate; this is the backstop that keeps a billed create call off X's
+    over-length 403, and the warning is what names the composer to shorten.
     """
-    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN, (
-        f"Composed reply weighs {reply_weighted_len(text)}, "
-        f"cap is {REPLY_MAX_WEIGHTED_LEN}: {text!r}"
+    weighted = reply_weighted_len(text)
+    if weighted <= REPLY_MAX_WEIGHTED_LEN:
+        return text
+    logger.warning(
+        "Composed reply weighs %d, cap is %d; truncating: %r",
+        weighted,
+        REPLY_MAX_WEIGHTED_LEN,
+        text,
     )
-    return text
+    kept: list[str] = []
+    spent = 0
+    for ch in text:
+        spent += _char_weight(ch)
+        if spent > REPLY_MAX_WEIGHTED_LEN:
+            break
+        kept.append(ch)
+    return "".join(kept)
 
 
 # Billed-spend ceilings on the write side. The mention surface is public: any

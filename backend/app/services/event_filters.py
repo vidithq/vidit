@@ -48,14 +48,19 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
 
     A full ISO-8601 datetime is tolerated and truncated to its date: a saved
     URL or an older client may send ``2026-05-01T12:00:00Z``, and 422-ing a
-    URL that used to work buys nothing. 3.11+ ``date.fromisoformat`` accepts
-    a trailing time component on its own; the ``[:10]`` makes the date-only
-    intent explicit.
+    URL that used to work buys nothing. ``date.fromisoformat`` rejects a
+    trailing time component, so the ``[:10]`` is what implements that
+    tolerance, and it is limited to a ``T`` or space separated tail:
+    ``2026-05-01junk`` and ``2026-05-0199`` still 422 rather than parsing as
+    2026-05-01.
     """
     if not raw:
         return None
+    # Anything glued to the date without an ISO separator is garbage, so parse
+    # the whole string and let it fail; only a separated tail gets truncated.
+    candidate = raw[:10] if len(raw) > 10 and raw[10] in "T " else raw
     try:
-        return date.fromisoformat(raw[:10])
+        return date.fromisoformat(candidate)
     except ValueError as exc:
         raise HTTPException(
             status_code=422, detail=f"{field} must be an ISO-8601 date (YYYY-MM-DD)"

@@ -636,7 +636,6 @@ export default function PalettePage() {
           </Item>
 
           <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
-
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>

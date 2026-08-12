@@ -737,7 +737,7 @@ def seed_demo(db: Session, *, count: int) -> dict[str, int]:
 
     Idempotent on the demo authors (created once, reused). Commits in
     batches of `SEED_BATCH_SIZE` so memory + the SQLAlchemy identity map
-    stay bounded on large seeds (e.g. 50 000) — earlier geos are flushed
+    stay bounded on large seeds (e.g. 50 000): earlier geos are flushed
     and detached as we move on. A mid-batch failure leaves earlier batches
     in the DB; the wipe button gives a clean redo.
     """

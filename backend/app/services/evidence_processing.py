@@ -95,8 +95,9 @@ def _guarded_open(data: bytes) -> Iterator[Image.Image]:
       img.info``, since the latter misses ``mode == "PA"`` (palette + alpha
       plane) and would flatten alpha to opaque.
 
-    The yielded image is a fresh local, so ``img`` stays an ``ImageFile``
-    for the ``with`` block's ``__exit__``.
+    A palette source yields the converted copy; every other mode yields the
+    opened ``ImageFile`` itself, which the ``with`` block closes on exit
+    either way.
     """
     # Fresh BytesIO so ``img.load()`` can fully detach from the buffer;
     # otherwise PIL holds a reference to the source bytes for lazy decode.

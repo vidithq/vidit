@@ -797,8 +797,11 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert "No footage stored from the source" in text
     assert "source's post date" in text
     assert "already exists" in text
-    assert "Review it from your profile" in text
     assert "http" not in text and "vidit.app" not in text
+    # The composer's own footer, still intact: ``_within_reply_cap`` truncates
+    # an over-long reply, so the cap assertion below only means something
+    # paired with proof that nothing was clipped.
+    assert text.endswith("Review it from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     # No warning on a clean draft (footage stored, date known, media unseen).
     clean = compose_reply(
@@ -812,9 +815,9 @@ def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
     assert text.startswith("❌ Nothing saved\n")
     # No diagnosis to point at: the one-line format summary, no recited shape.
     assert "@vidithq" in text
-    assert "Guide in bio" in text
-    assert "(m57995)" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
+    # Footer intact (nothing clipped by the cap backstop), then the cap.
+    assert text.endswith("Guide in bio (m57995)")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
 
@@ -830,6 +833,8 @@ def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
         assert warning == f"⚠ {diag}"
         assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
+        # The intact footer above is what keeps this cap check honest: a
+        # reply that outgrew the cap comes back truncated, not over-long.
         assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     assert compose_failure_reply("no_such_reason", mention_id="1").startswith("❌ Nothing saved\n")
 

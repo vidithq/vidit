@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import { filterPointsByStatus } from "@/types";
@@ -66,6 +66,27 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
 
   const onPatch: EventFilterPatch = (patch) =>
     setFilters((v) => ({ ...v, ...patch }));
+
+  // Stable identities: the scrubber's play interval re-subscribes whenever
+  // its `setEnd` changes, so a fresh closure per render would restart the
+  // timer on every tick and stall the sweep. `setDateWindows` is a state
+  // setter, so these are built once.
+  const setEventFrom = useCallback(
+    (v: string) => setDateWindows((d) => ({ ...d, eventFrom: v })),
+    [setDateWindows]
+  );
+  const setEventTo = useCallback(
+    (v: string) => setDateWindows((d) => ({ ...d, eventTo: v })),
+    [setDateWindows]
+  );
+  const setAddedFrom = useCallback(
+    (v: string) => setDateWindows((d) => ({ ...d, addedFrom: v })),
+    [setDateWindows]
+  );
+  const setAddedTo = useCallback(
+    (v: string) => setDateWindows((d) => ({ ...d, addedTo: v })),
+    [setDateWindows]
+  );
 
   const clearEventWindow = () => {
     setDateWindows((d) => ({ ...d, eventFrom: "", eventTo: "" }));
@@ -160,9 +181,9 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                     dateIndex={3}
                     label="Event date"
                     start={dateWindows.eventFrom}
-                    setStart={(v) => setDateWindows((d) => ({ ...d, eventFrom: v }))}
+                    setStart={setEventFrom}
                     end={dateWindows.eventTo}
-                    setEnd={(v) => setDateWindows((d) => ({ ...d, eventTo: v }))}
+                    setEnd={setEventTo}
                     playing={eventPlaying}
                     setPlaying={setEventPlaying}
                   />
@@ -179,9 +200,9 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                     dateIndex={4}
                     label="Added"
                     start={dateWindows.addedFrom}
-                    setStart={(v) => setDateWindows((d) => ({ ...d, addedFrom: v }))}
+                    setStart={setAddedFrom}
                     end={dateWindows.addedTo}
-                    setEnd={(v) => setDateWindows((d) => ({ ...d, addedTo: v }))}
+                    setEnd={setAddedTo}
                     playing={addedPlaying}
                     setPlaying={setAddedPlaying}
                   />
