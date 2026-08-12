@@ -16,6 +16,8 @@ const baseProps = {
   setEventTime: () => {},
   sourcePostedAt: "",
   setSourcePostedAt: () => {},
+  isGraphic: false,
+  setIsGraphic: () => {},
   sourceUrlLocked: false,
 };
 

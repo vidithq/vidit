@@ -184,6 +184,9 @@ export interface EventEditInput {
   /** Replaces the conflict set wholesale (the conflicts referential, separate
    *  from tags). */
   conflict_ids: string[];
+  /** The author's declaration that the footage shows death, injury or human
+   *  remains. Blurs the media behind an age confirmation for readers. */
+  is_graphic?: boolean;
   /** Ids of existing media to drop. */
   remove_media_ids: string[];
   /** New source media to upload. */
@@ -213,9 +216,13 @@ function appendSharedEventFields(
     event_time?: string;
     tag_ids?: string[];
     conflict_ids?: string[];
+    is_graphic?: boolean;
   }
 ): void {
   fd.append("title", input.title);
+  // Always sent, never conditional: the geolocate path posts the whole state,
+  // so an omitted field would clear a flag the draft already carried.
+  fd.append("is_graphic", String(input.is_graphic ?? false));
   fd.append("source_url", input.source_url);
   // One append per link: the backend reads `secondary_source_urls` as a
   // repeated form field, not a JSON blob (unlike the id lists below, whose
@@ -331,6 +338,8 @@ export interface EventRequestInput {
   event_time?: string;
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
   source_posted_at: string;
+  /** Same author declaration a geolocation carries (see `EventEditInput`). */
+  is_graphic?: boolean;
   tag_ids?: string[];
   conflict_ids?: string[];
   files: File[];

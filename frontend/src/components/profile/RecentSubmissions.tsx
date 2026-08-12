@@ -68,6 +68,7 @@ export function RecentSubmissions({
               title={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
+              isGraphic={entry.is_graphic}
               date={entry.event_date ?? undefined}
               coords={entry.event_coords}
               tags={entry.tags}

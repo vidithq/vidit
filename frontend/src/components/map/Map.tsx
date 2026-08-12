@@ -481,7 +481,11 @@ function PinPreviewCard({
               </p>
               <StatusBadge status={entry.status} />
             </div>
-            <MediaThumb media={media} className="w-full" />
+            <MediaThumb
+              media={media}
+              isGraphic={entry.is_graphic}
+              className="w-full"
+            />
             <p className="text-[11px] text-neutral-500">
               {entry.event_date && <>{formatDate(entry.event_date)} </>}
               <AuthorByline author={entry.owner} size="xs" />

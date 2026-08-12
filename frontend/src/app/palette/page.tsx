@@ -52,6 +52,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Dot } from "@/components/ui/Dot";
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
@@ -143,6 +144,7 @@ const MOCK_DETAIL: EventDetail = {
   archived_source: null,
   event_date: "2026-05-09",
   is_demo: true,
+  is_graphic: false,
   status: "geolocated",
   close_reason: null,
   before_closed_status: null,
@@ -715,6 +717,26 @@ export default function PalettePage() {
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
+          </Item>
+
+          <Item
+            name="<GraphicContentGate>"
+            usage="The age gate over media an author flagged as graphic (events.is_graphic). Wraps the media it covers: the children render blurred, inert and aria-hidden behind an interstitial that names what is underneath and asks the reader to confirm they are 18 or older. One confirmation reveals every gated instance for the rest of the browser session (a sessionStorage key plus the primitive's own subscriber set, since sessionStorage fires no storage event in the tab that wrote it). variant=full on the detail surfaces (MediaGallery on the event page and the map side panel, a proof body's inline images), variant=compact on the fixed-ratio card slots (MediaThumb on every catalogue card and the map pin preview), where the whole tile becomes the one labelled control. Painted from WARNING_CALLOUT, the heads-up register, and the confirm is a <Button>. Confirming in this demo reveals it everywhere else on the page too, which is the behaviour, not a demo artefact: reload to see the covered state again."
+          >
+            <Variant label="full (detail surfaces)">
+              <div className="w-full max-w-sm">
+                <GraphicContentGate>
+                  <div className="h-40 rounded-lg border border-neutral-700 bg-neutral-800" />
+                </GraphicContentGate>
+              </div>
+            </Variant>
+            <Variant label="compact (card media slot)">
+              <div className="relative w-28 aspect-video overflow-hidden rounded-md bg-neutral-800">
+                <GraphicContentGate variant="compact">
+                  <div className="h-full w-full bg-neutral-700" />
+                </GraphicContentGate>
+              </div>
+            </Variant>
           </Item>
 
           <Item name="<VideoPlayer>" usage="The one video player: media-chrome's web components around a native <video>, mounted by MediaGallery's video tiles and by MediaLightboxBody, so playback chrome is identical on every surface and in every browser (the controls are custom elements, so they owe nothing to the React version). The bar holds exactly play, scrub, time, mute, volume, download and one big-view control, and nothing else (no casting, PiP, speed or captions); it fades out after two undisturbed seconds of playback and returns on pointer move, hover or focus. Big view is per context: a tile gets an expand control opening the shared lightbox, the lightbox itself gets real fullscreen. The download is MediaDownloadButton, since a plain <a download> is ignored cross-origin. Fills its container and letterboxes, so a portrait clip keeps its shape, and posters its first frame through the #t=0.1 media fragment. The skin is CSS variables set on the controller (neutral-100 glyphs, transparent controls on a translucent dark bar), so nothing reaches inside a shadow root and nothing fights Tailwind. A source the browser refuses swaps to TileNotice, keeping a download beside it so an undecodable original stays saveable, and that notice is what this demo shows unless NEXT_PUBLIC_DEMO_VIDEO_URL points at a real .mp4 (no sample ships with the repo).">

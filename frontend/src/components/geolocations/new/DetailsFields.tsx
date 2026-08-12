@@ -6,6 +6,7 @@ import { LinkListInput } from "@/components/ui/LinkListInput";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { Switch } from "@/components/ui/Switch";
 import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 
@@ -27,6 +28,10 @@ interface DetailsFieldsProps {
    *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;
+  /** The author's graphic-content declaration. Never required: an unflagged
+   *  event is a complete form. */
+  isGraphic: boolean;
+  setIsGraphic: (v: boolean) => void;
   /** Render the source URL read-only — it's inherited from the request on a
    *  fulfilment (shows a "from request" hint). The detection edit form leaves it
    *  editable (`false`). */
@@ -55,6 +60,8 @@ export function DetailsFields({
   setEventTime,
   sourcePostedAt,
   setSourcePostedAt,
+  isGraphic,
+  setIsGraphic,
   sourceUrlLocked,
   detectedFromUrl,
   sourcePostedAtInvalid = false,
@@ -146,6 +153,25 @@ export function DetailsFields({
           max={MAX_SECONDARY_SOURCE_LINKS}
           itemLabel="Secondary source"
           placeholder="https://x.com/user/status/12345"
+        />
+      </div>
+
+      {/* The graphic-content declaration. A `span` label plus the switch's own
+          accessible name, matching the secondary-sources block above: the
+          control is not a labelable field the browser can associate a
+          `<label>` with. */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <span className={FORM_LABEL}>Graphic content</span>
+          <p className="text-xs text-neutral-500">
+            Blurs media behind an age confirmation for viewers. Flag footage
+            showing death, injury or human remains.
+          </p>
+        </div>
+        <Switch
+          on={isGraphic}
+          onToggle={() => setIsGraphic(!isGraphic)}
+          aria-label="Graphic content"
         />
       </div>
 

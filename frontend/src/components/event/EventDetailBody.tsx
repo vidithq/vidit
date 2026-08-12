@@ -83,14 +83,19 @@ function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           title="Source media"
           concept="source_media"
         />
-        <MediaGallery media={geo.media} alt={geo.title} variant="panel" />
+        <MediaGallery
+          media={geo.media}
+          alt={geo.title}
+          variant="panel"
+          isGraphic={geo.is_graphic}
+        />
       </div>
     );
   }
   return (
     <div>
       <SectionEyebrow title="Source media" concept="source_media" />
-      <MediaGallery media={geo.media} alt={geo.title} />
+      <MediaGallery media={geo.media} alt={geo.title} isGraphic={geo.is_graphic} />
     </div>
   );
 }
@@ -391,7 +396,7 @@ function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   // and the map panel render through, so neither can regress alone.
   const body = geo.proof ? (
     <div className="text-sm text-neutral-300 leading-relaxed [overflow-wrap:anywhere]">
-      {renderProof(geo.proof)}
+      {renderProof(geo.proof, { gateImages: geo.is_graphic })}
     </div>
   ) : (
     <p className="text-sm text-neutral-500 italic">No proof provided</p>

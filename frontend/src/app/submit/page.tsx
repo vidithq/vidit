@@ -156,6 +156,9 @@ function SubmitForm() {
   // When the source posted the media: a datetime-local value (UTC). Required:
   // a post always has a time.
   const [sourcePostedAt, setSourcePostedAt] = useState("");
+  // The author's graphic-content declaration. Off by default: flagging is the
+  // deliberate act, and the backend column defaults to FALSE too.
+  const [isGraphic, setIsGraphic] = useState(false);
   const [proof, setProof] = useState<Record<string, unknown> | null>(null);
   // The proof body's inline images, held locally by the editor and uploaded as
   // `proof_files[]` at publish (nothing hits S3 while typing). Both publish
@@ -228,6 +231,7 @@ function SubmitForm() {
         // it instead of a blank editor. The form mounts only after the request
         // loads (Loading guard below), so the proof editor picks `proof` up as
         // its initial content.
+        setIsGraphic(b.is_graphic);
         setEventDate(b.event_date ?? "");
         setEventTime(b.event_time?.slice(0, 5) ?? "");
         setSourcePostedAt(toDatetimeLocalUTC(b.source_posted_at));
@@ -259,6 +263,7 @@ function SubmitForm() {
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
+        is_graphic: isGraphic,
         tag_ids: selectedTagIds,
         conflict_ids: selectedConflictIds,
         files,
@@ -293,6 +298,7 @@ function SubmitForm() {
           event_date: eventDate || undefined,
           event_time: eventTime || undefined,
           source_posted_at: sourcePostedAt,
+          is_graphic: isGraphic,
           proof,
           tag_ids: selectedTagIds,
           conflict_ids: selectedConflictIds,
@@ -311,6 +317,7 @@ function SubmitForm() {
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
+        is_graphic: isGraphic,
         proof,
         tag_ids: selectedTagIds,
         conflict_ids: selectedConflictIds,
@@ -587,6 +594,8 @@ function SubmitForm() {
           setEventTime={setEventTime}
           sourcePostedAt={sourcePostedAt}
           setSourcePostedAt={setSourcePostedAt}
+          isGraphic={isGraphic}
+          setIsGraphic={setIsGraphic}
           sourceUrlLocked={lockedFromRequest}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}

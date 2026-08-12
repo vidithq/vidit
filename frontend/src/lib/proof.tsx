@@ -110,7 +110,19 @@ function renderInline(content: TiptapNode[] | undefined): ReactNode {
   });
 }
 
-function renderBlock(node: TiptapNode, key: number): ReactNode {
+/** Render-time options the renderer only passes down, never inspects per node.
+ *  `gateImages` carries the event's `is_graphic` flag to the one leaf that
+ *  paints pixels, so a flagged event's proof imagery is covered by the same
+ *  age confirmation its source media is. */
+interface ProofRenderOptions {
+  gateImages?: boolean;
+}
+
+function renderBlock(
+  node: TiptapNode,
+  key: number,
+  options: ProofRenderOptions,
+): ReactNode {
   switch (node.type) {
     case "paragraph":
       return <p key={key}>{renderInline(node.content)}</p>;
@@ -144,13 +156,13 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
           key={key}
           className="border-l-2 border-neutral-700 pl-4 my-3 text-neutral-400"
         >
-          {(node.content ?? []).map((c, i) => renderBlock(c, i))}
+          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
         </blockquote>
       );
     case "bulletList":
       return (
         <ul key={key} className="list-disc pl-6 my-2 space-y-1">
-          {(node.content ?? []).map((c, i) => renderBlock(c, i))}
+          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
         </ul>
       );
     case "orderedList": {
@@ -161,14 +173,14 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
           start={start}
           className="list-decimal pl-6 my-2 space-y-1"
         >
-          {(node.content ?? []).map((c, i) => renderBlock(c, i))}
+          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
         </ol>
       );
     }
     case "listItem":
       return (
         <li key={key}>
-          {(node.content ?? []).map((c, i) => renderBlock(c, i))}
+          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
         </li>
       );
     case "codeBlock":
@@ -191,17 +203,28 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
       // the shared MediaLightbox, since a proof image is evidence and is only
       // auditable at full size. See ProofImage for why it is a client
       // component and why it stays a plain `<img>`.
-      return <ProofImage key={key} src={src} alt={alt} title={title} />;
+      return (
+        <ProofImage
+          key={key}
+          src={src}
+          alt={alt}
+          title={title}
+          isGraphic={options.gateImages}
+        />
+      );
     }
     default:
       return null;
   }
 }
 
-export function renderProof(proof: Record<string, unknown>): ReactNode {
+export function renderProof(
+  proof: Record<string, unknown>,
+  options: ProofRenderOptions = {},
+): ReactNode {
   const root = proof as TiptapNode;
   if (root.type === "doc" && Array.isArray(root.content)) {
-    return root.content.map((node, i) => renderBlock(node, i));
+    return root.content.map((node, i) => renderBlock(node, i, options));
   }
   return null;
 }

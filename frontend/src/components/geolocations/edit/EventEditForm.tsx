@@ -85,6 +85,10 @@ export function EventEditForm({
   const [sourcePostedAt, setSourcePostedAt] = useState(
     toDatetimeLocalUTC(geo.source_posted_at)
   );
+  // The graphic-content declaration the draft already carries, editable here.
+  // Submitting posts the whole state, so an untouched switch re-posts the same
+  // value rather than clearing it.
+  const [isGraphic, setIsGraphic] = useState(geo.is_graphic);
   const [proof, setProof] = useState<Record<string, unknown> | null>(geo.proof);
   // Inline proof images the editor holds locally; uploaded as `proof_files[]`
   // at submit. A detection's existing proof images are already stored URLs in
@@ -130,6 +134,7 @@ export function EventEditForm({
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
     source_posted_at: sourcePostedAt,
+    is_graphic: isGraphic,
     proof,
     tag_ids: selectedTagIds,
     conflict_ids: selectedConflictIds,
@@ -271,6 +276,8 @@ export function EventEditForm({
           setEventTime={setEventTime}
           sourcePostedAt={sourcePostedAt}
           setSourcePostedAt={setSourcePostedAt}
+          isGraphic={isGraphic}
+          setIsGraphic={setIsGraphic}
           sourceUrlLocked={false}
           detectedFromUrl={geo.detected_from_url}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
