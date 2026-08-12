@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Trash2 } from "lucide-react";
 
 import {
   createInviteCode,
-  listInviteCodes,
+  inviteCodesPath,
   revokeInviteCode,
   type AdminPurgeDetectedResponse,
   type InviteCode,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { useCursorList } from "@/hooks/useCursorList";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
@@ -176,7 +177,22 @@ function InviteCodeRow({
 }
 
 export function OnboardingPanel() {
-  const [codes, setCodes] = useState<InviteCode[] | null>(null);
+  // The invite table is capped and cursor-paged like every other list, so the
+  // console walks it with a Load more rather than reading it whole: asking for
+  // the whole table now silently returns its first 100 rows.
+  const buildPath = useCallback(
+    (cursor: string | null) => inviteCodesPath(cursor),
+    [],
+  );
+  const {
+    items: codes,
+    error: loadError,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+    reload,
+  } = useCursorList<InviteCode>(buildPath);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
     null,
@@ -185,9 +201,10 @@ export function OnboardingPanel() {
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
 
-  // The mint action owns the one error slot; the loader and revoke (which has
-  // no loading of its own — the row owns that) write to it via `setError`, so
-  // the panel keeps a single shared error.
+  // The mint action owns the one error slot, and revoke writes to it via
+  // `setError` (revoke has no loading state of its own, the row owns that), so
+  // the panel keeps a single shared error. The loader carries its own, shown
+  // in the same banner.
   const createMutation = useMutation(
     () =>
       createInviteCode({
@@ -198,26 +215,12 @@ export function OnboardingPanel() {
       fallback: "Failed to mint invite code",
       onSuccess: () => {
         setXHandle("");
-        refresh();
+        reload();
       },
     },
   );
   const { error, setError } = createMutation;
   const creating = createMutation.loading;
-
-  const refresh = async () => {
-    try {
-      const rows = await listInviteCodes();
-      setCodes(rows);
-      setError(null);
-    } catch (err) {
-      setError(errorMessage(err, "Failed to load invite codes"));
-    }
-  };
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,7 +230,9 @@ export function OnboardingPanel() {
   const onRevoke = async (id: string) => {
     try {
       await revokeInviteCode(id);
-      await refresh();
+      // A mint or a revoke changes what the first page holds, so the walk
+      // restarts rather than patching a row inside a page it may have left.
+      reload();
     } catch (err) {
       setError(errorMessage(err, "Failed to revoke invite code"));
     }
@@ -235,12 +240,12 @@ export function OnboardingPanel() {
 
   const onPurged = (response: AdminPurgeDetectedResponse) => {
     setLastPurge(response);
-    refresh();
+    reload();
   };
 
   // The card renders below the table (not as an expanded row) so it stays
   // put when the wide table scrolls horizontally.
-  const managed = codes?.find((c) => c.id === expandedId)?.redeemer ?? null;
+  const managed = codes.find((c) => c.id === expandedId)?.redeemer ?? null;
 
   return (
     <Card as="section">
@@ -296,7 +301,9 @@ export function OnboardingPanel() {
         </Button>
       </form>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {(error ?? loadError) && (
+        <div className={FORM_ERROR_BANNER}>{error ?? loadError}</div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -316,7 +323,7 @@ export function OnboardingPanel() {
             </tr>
           </thead>
           <tbody>
-            {codes === null ? (
+            {loading ? (
               <tr>
                 <td
                   colSpan={COLUMN_COUNT}
@@ -352,6 +359,14 @@ export function OnboardingPanel() {
         </table>
       </div>
 
+      {hasMore && (
+        <div className="flex justify-center">
+          <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        </div>
+      )}
+
       {managed && (
         <UserActionsCard
           // Keyed by user so form drafts and an armed danger confirm never
@@ -365,8 +380,8 @@ export function OnboardingPanel() {
             x_handle: managed.x_handle,
           }}
           detectedCount={managed.detected_count}
-          onUpdated={refresh}
-          onDeleted={refresh}
+          onUpdated={reload}
+          onDeleted={reload}
           onPurged={onPurged}
         />
       )}

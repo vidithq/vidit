@@ -1,4 +1,5 @@
 import { CSRF_HEADER, readCsrfToken } from "./auth";
+import { nextCursor } from "./pagination";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!API_URL) {
@@ -78,10 +79,13 @@ function parseApiError(body: unknown, status: number): ParsedDetail {
   return { message: `API error ${status}`, code: null };
 }
 
-export async function apiFetch<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
+/**
+ * The one request path: CSRF on unsafe methods, credentials, and the error
+ * envelope turned into an ``ApiError``. Returns the raw ``Response`` so a
+ * caller that needs a header (``apiFetchPage`` reads ``Link``) can have one
+ * without a second copy of this plumbing.
+ */
+async function send(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     ...(options?.headers as Record<string, string>),
   };
@@ -109,9 +113,38 @@ export async function apiFetch<T>(
     const parsed = parseApiError(body, res.status);
     throw new ApiError(parsed.message, res.status, parsed.code);
   }
+  return res;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const res = await send(path, options);
 
   if (res.status === 204) {
     return undefined as T;
   }
   return res.json();
+}
+
+/**
+ * One page of a capped list, plus the cursor that reaches the next one.
+ *
+ * Every list endpoint caps its response, so a surface that needs more rows
+ * than one page holds follows `nextCursor` (from the `Link: rel="next"`
+ * header) instead of asking for a bigger page. `nextCursor` is `null` on the
+ * last page.
+ */
+export async function apiFetchPage<T>(
+  path: string,
+  options?: RequestInit
+): Promise<{ items: T; nextCursor: string | null }> {
+  const res = await send(path, options);
+  return {
+    // Same 204 guard as `apiFetch`: a body-less response has nothing to parse
+    // and `res.json()` throws on it.
+    items: (res.status === 204 ? undefined : await res.json()) as T,
+    nextCursor: nextCursor(res.headers.get("Link")),
+  };
 }

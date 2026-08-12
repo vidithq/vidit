@@ -362,7 +362,8 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422 (used to silently 500 from Postgres `InvalidDatetimeFormat`). |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Same 422-on-malformed shape as the event-date filters. |
 | `author` | string | Exact, case-insensitive match on owner username ("this analyst's work"; pick real handles via [`GET /search/authors`](#get-searchauthors)). Whitelisted to `[A-Za-z0-9_-]{1,50}`, any other character returns 422. |
-| `limit` | int | Default 200, must be in [1, 200], 422 otherwise. |
+| `limit` | int | Rows per page, default 100. Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. A malformed value returns 422. See [Pagination](#pagination). |
 
 **Response 200:**
 ```json
@@ -397,6 +398,8 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
   }
 ]
 ```
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists. Ordering is `created_at DESC, id DESC`; see [Pagination](#pagination).
 
 `status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
 
@@ -801,8 +804,11 @@ The owner "Detections" queue: the caller's machine-`detected` events awaiting a 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -1130,6 +1136,8 @@ List tags. By default returns only tags referenced by at least one **live** geol
 | `category` | string | `capture_source` or `free` |
 | `curated` | bool | When `true`, return the full curated `capture_source` taxonomy **regardless of live usage**, ignoring the default usage filter. Conflicts are no longer tags; the full conflict list lives on [`GET /conflicts`](#get-conflicts). |
 
+Returned whole, not paged: the pickers and the filter panel hydrate this vocabulary and filter it client-side. Bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)).
+
 **Response 200:**
 ```json
 [
@@ -1174,7 +1182,7 @@ Create a tag. Only `free` tags are creatable; `capture_source` is server-managed
 
 ### `GET /conflicts`
 
-List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Rate-limited to 60/min/IP.
+List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Returned whole rather than paged, and bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)). Rate-limited to 60/min/IP.
 
 **Query params:**
 | Param | Type | Description |
@@ -1290,13 +1298,15 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 ### `GET /users/{username}/events`
 
-Geolocations for a given analyst.
+Geolocations for a given analyst, newest event date first, ties broken by `created_at DESC, id DESC`.
+
+Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
 
 **Response 200:**
 ```json
@@ -1356,13 +1366,16 @@ Unfollow another analyst. Idempotent. Unknown username returns 404 rather than n
 
 ### `GET /timeline` 🔒
 
-Activity feed of geolocations submitted by analysts the current user follows, ordered by event date descending.
+Activity feed of geolocations submitted by analysts the current user follows, newest submission first (`created_at DESC, id DESC`).
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `page` | int | Page number (default 1) |
-| `per_page` | int | Results per page (default 20, max 100) |
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** same `PaginatedEvents` shape as `GET /users/{username}/events`.
 
@@ -1451,7 +1464,17 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 
 ### `GET /admin/invite-codes` 🛡️
 
-List every invite code (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+
+Capped and cursor-paged like the catalog lists (the table is append-only, one row per invite ever issued).
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Rows per page, default 100. Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. |
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:**
 ```json
@@ -1724,7 +1747,21 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 
 ### Pagination
 
-Endpoints that return paginated lists use this shape:
+**Every list response is capped at 100 rows**, whatever `limit` / `per_page` asks for. Over-asking is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to a `(created_at, id)` pair). A cursor that decodes cleanly is honoured whether or not the server minted it: it names a position in an ordering, carries no authorisation, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
+
+**Reading past the first page** means following a cursor. A capped response whose next page holds at least one row carries a `Link` header:
+
+```
+Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
+```
+
+The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and is not a value callers need to construct.
+
+Cursor-paged: [`GET /events`](#get-events), `GET /events/detections`, `GET /timeline`, `GET /admin/invite-codes`. All four order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
+
+`page` / `per_page` still work on the endpoints that had them, and a `cursor` supersedes `page` when both arrive.
+
+Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
 {
   "items": [],
@@ -1734,7 +1771,15 @@ Endpoints that return paginated lists use this shape:
 }
 ```
 
-`GET /events` and `GET /events/points` are intentionally **unpaginated**. `/events` caps its result set with `?limit=` (200 max); `/events/points` bounds its own with the required `bbox`, so the requested box decides the payload size.
+`page` echoes what the caller sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at whatever `page` the request carried (`1` by default) on every page of the walk. Read `Link` for position, not `page`. `total` is the match count either way.
+
+Three kinds of list sit outside the cursor scheme:
+
+- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor. `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common.
+- [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
+- [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
+
+[`GET /events/points`](#get-eventspoints) returns no rows in the list sense and takes no cursor: it is bounded by the required `bbox`, so the requested area decides the payload size.
 
 ### Errors
 

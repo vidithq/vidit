@@ -1,7 +1,7 @@
 import uuid
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
@@ -30,6 +30,7 @@ from app.schemas.admin import (
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import seed as seed_service
+from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
 
 router = APIRouter()
 
@@ -90,10 +91,28 @@ def create_invite_code(
 
 @router.get("/invite-codes", response_model=list[AdminInviteCodeRead])
 def list_invite_codes(
+    request: Request,
+    response: Response,
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[AdminInviteCodeRead]:
-    return admin_service.serialize_invite_codes(db, admin_service.list_invite_codes(db))
+    """Invite codes, newest first, capped at 100 per page.
+
+    The table is append-only, so the admin console reads it a page at a time
+    through the ``Link: rel="next"`` cursor like every other list.
+    """
+    size = page_size(limit)
+    rows, has_next = admin_service.list_invite_codes(
+        db,
+        limit=size,
+        cursor=decode_cursor(cursor) if cursor is not None else None,
+    )
+    if has_next:
+        last = rows[-1]
+        response.headers["Link"] = next_link(request, last.created_at, last.id)
+    return admin_service.serialize_invite_codes(db, rows)
 
 
 @router.delete(

@@ -91,7 +91,9 @@ class EventCloseRequest(BaseModel):
 
 
 # Largest page ``GET /events/detections`` will serve, whatever ``per_page``
-# asks for (``routers/events/read.py`` clamps to it).
+# asks for. Kept equal to ``services/pagination.MAX_PAGE_SIZE`` (the clamp the
+# endpoint applies); stated here as a literal so schemas stay import-free of
+# the service layer.
 DETECTIONS_MAX_PER_PAGE = 100
 
 # How many drafts one batch completion may carry: a full page of the queue, so

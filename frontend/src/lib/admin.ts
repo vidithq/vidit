@@ -28,8 +28,14 @@ export interface CreateInviteCodeBody {
   x_handle?: string | null;
 }
 
-export function listInviteCodes(): Promise<InviteCode[]> {
-  return apiFetch<InviteCode[]>("/admin/invite-codes");
+/** `GET /admin/invite-codes` for one page of the table.
+ *
+ *  A path rather than a fetch: the response is capped like every other list,
+ *  so the console reads the append-only table through `useCursorList`, which
+ *  builds each request from the `Link: rel="next"` cursor of the page before.
+ */
+export function inviteCodesPath(cursor: string | null): string {
+  return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
 }
 
 export function createInviteCode(

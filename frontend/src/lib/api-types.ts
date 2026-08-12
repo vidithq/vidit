@@ -56,7 +56,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Invite Codes */
+        /**
+         * List Invite Codes
+         * @description Invite codes, newest first, capped at 100 per page.
+         *
+         *     The table is append-only, so the admin console reads it a page at a time
+         *     through the ``Link: rel="next"`` cursor like every other list.
+         */
         get: operations["list_invite_codes_api_v1_admin_invite_codes_get"];
         put?: never;
         /** Create Invite Code */
@@ -583,6 +589,14 @@ export interface paths {
          *     ``used=true`` flips to the map-filter view: only conflicts carried by at
          *     least one live event, so the filter UI never surfaces a chip that matches
          *     zero results. Mirrors the orphan filter on ``GET /tags``.
+         *
+         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
+         *     submit picker filters the whole referential client-side, so a page of it
+         *     would be a page of missing options. The daily sync's sanity band bounds
+         *     one parse pass, not the table: rows accumulate across passes (an ended
+         *     conflict is kept, and the Wikidata seed and operator rows add their own),
+         *     so the ceiling is what bounds the response. A response landing on it is
+         *     logged, since the payload carries no way to say it was cut.
          */
         get: operations["list_conflicts_api_v1_conflicts_get"];
         put?: never;
@@ -608,6 +622,12 @@ export interface paths {
          *     queue (ex ``/requests``), whose cards additionally carry the investigator
          *     aggregates (count + a small newest-first sample). Two-step "ids then full
          *     rows" shape so eager-loads can't inflate the LIMIT count.
+         *
+         *     Capped at 100 rows however large ``limit`` is; a caller reading past the
+         *     first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
+         *     is present exactly when a next page holds at least one row. Ordering is
+         *     ``created_at DESC, id DESC``, total by construction, so a walk cannot
+         *     duplicate or skip a row when rows land mid-walk.
          */
         get: operations["list_events_api_v1_events_get"];
         put?: never;
@@ -678,8 +698,14 @@ export interface paths {
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
          *     ``EventRead`` (media + tags) so the queue shows the evidence and the
          *     frontend computes submit-readiness (source media + a ``conflict`` + a
-         *     ``capture_source`` tag) with no per-row round-trip. Ordered by ``created_at``
-         *     desc: the latest import is the first thing to triage.
+         *     ``capture_source`` tag) with no per-row round-trip. Ordered by
+         *     ``created_at DESC, id DESC``: the latest import is the first thing to
+         *     triage.
+         *
+         *     Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
+         *     the supported one and is immune to rows landing mid-walk; ``page`` is the
+         *     offset path the queue's pager still uses, and a ``cursor`` supersedes it
+         *     when both arrive. Either way the page is capped at 100 rows.
          */
         get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
@@ -1104,6 +1130,14 @@ export interface paths {
          *     needs *every* option in this required bucket up front so the analyst can
          *     pick the right one even when they're first to tag it; the usage filter
          *     that's right for the map is wrong here.
+         *
+         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
+         *     pickers and the filter panel hydrate this vocabulary whole and filter it
+         *     client-side, so a page of it would be a page of missing options. The
+         *     ceiling is what keeps ``free``-category growth (the one user-writable
+         *     category) from turning this into an unbounded hydration, and a response
+         *     that lands on it is logged, since the payload carries no way to say it was
+         *     cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
@@ -1126,9 +1160,13 @@ export interface paths {
          * Get Timeline
          * @description Geolocations authored by accounts the current user follows.
          *
-         *     Empty when the user follows nobody — the frontend renders an empty-state
+         *     Empty when the user follows nobody: the frontend renders an empty-state
          *     instead of falling back to a global firehose, so the page stays a
          *     deliberate signal rather than a noisy default feed.
+         *
+         *     Newest submission first, capped at 100 rows per page. ``cursor`` (from the
+         *     ``Link: rel="next"`` header) is the supported way to read on; ``page`` is
+         *     the offset path the feed's pager still uses.
          */
         get: operations["get_timeline_api_v1_timeline_get"];
         put?: never;
@@ -1189,7 +1227,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get User Geolocations */
+        /**
+         * Get User Geolocations
+         * @description One analyst's events, newest event date first, capped at 100 per page.
+         *
+         *     Offset-paged rather than cursor-paged: the ordering the profile reads by
+         *     is ``event_date``, which is nullable and editable and so cannot key a
+         *     cursor, and one analyst's output is not the enumeration surface the
+         *     catalog list is. The pager's page is bounded either way.
+         */
         get: operations["get_user_geolocations_api_v1_users__username__events_get"];
         put?: never;
         post?: never;
@@ -2816,7 +2862,11 @@ export interface operations {
     };
     list_invite_codes_api_v1_admin_invite_codes_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: {
@@ -3689,6 +3739,8 @@ export interface operations {
                 submitted_to?: string | null;
                 author?: string | null;
                 limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -3791,6 +3843,8 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -4450,6 +4504,8 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;
