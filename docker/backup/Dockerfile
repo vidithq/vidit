@@ -12,6 +12,7 @@ FROM postgres:16-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
         awscli \
         ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backup.sh /usr/local/bin/backup.sh
