@@ -48,7 +48,7 @@ The target DB must have the same extensions installed as production. Today the d
 
 ## How you find out the cron failed
 
-A 403 on `PutObject` exits non-zero; Railway logs it on the `backend-backup` deployment view, and `restartPolicy` retries a failed run up to 3 times before the deployment shows failed on the dashboard. No alert on a missed daily dump today (Sentry catches runtime exceptions only). Discovery is manual:
+A 403 on `PutObject` exits non-zero; Railway logs it on the `backend-backup` deployment view and does not retry (`restartPolicyType: NEVER`): a failed run shows failed immediately, and the next scheduled run is the retry. No alert on a missed daily dump today (Sentry catches runtime exceptions only). Discovery is manual:
 
 1. **Daily after 00:00 UTC**, eyeball the bucket:
    ```bash
