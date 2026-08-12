@@ -26,14 +26,14 @@ import DemoVideo from "@/components/landing/DemoVideo";
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
-    "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
+    "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
   openGraph: {
     type: "website",
     url: "https://vidit.app",
     siteName: "Vidit",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
+      "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
     locale: "en_US",
   },
   twitter: {
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     creator: "@vidithq",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free.",
+      "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
   },
 };
 
@@ -141,17 +141,17 @@ export default function LandingPage() {
             The home for conflict geolocations
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
-            Vidit is where OSINT/GEOINT analysts publish, archive and share
-            geolocated events from armed conflicts.{" "}
+            Vidit is the{" "}
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
               className={TEXT_LINK}
             >
-              Open source
+              open source
             </a>{" "}
-            and free.
+            platform where OSINT/GEOINT analysts publish, archive and share
+            geolocated events from armed conflicts.
           </p>
           <HeroCtas />
         </section>
