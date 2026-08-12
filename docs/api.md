@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 
 ---
 
@@ -41,6 +41,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + assemble counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
+| POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
@@ -79,6 +80,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
+| GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
+| POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
+| PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
@@ -117,6 +121,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events/{id}/geolocate` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
+| `POST /events/{id}/report` | 10/hour (anonymous allowed; reporting has no per-account tier, only the per-IP one) |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
@@ -129,10 +134,11 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` | 60/hour |
 | `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
 
 ### Per-user read quota
 
@@ -374,6 +380,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "event_coords": { "lat": 48.123, "lng": 37.456 },
     "event_date": "2026-03-15",
     "is_demo": false,
+    "is_graphic": false,
     "status": "geolocated",
     "before_closed_status": null,
     "owner": {
@@ -401,7 +408,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists. Ordering is `created_at DESC, id DESC`; see [Pagination](#pagination).
 
-`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
+`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `is_graphic` is `true` when the author (or an admin, overriding the author) flagged the footage as showing death, injury or human remains; the frontend covers the card's `media` thumbnail behind [`GraphicContentGate`](design.md#components) when it is. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears in this list. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
 
@@ -674,6 +681,8 @@ One archive-import job. Owner only: someone else's job ID reads as 404, indistin
 
 Full detail for a single event, in any lifecycle state.
 
+A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-eventsidreport) as `hidden`) answers 404 for everyone but an admin. An admin still reads it, since judging the report that took it down means seeing what was taken down; the payload carries no `hidden_at` field, so a withheld event reads exactly like a live one on the wire. Soft-deleted events answer 404 for every caller, admins included.
+
 **Response 200:**
 ```json
 {
@@ -706,6 +715,7 @@ Full detail for a single event, in any lifecycle state.
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
   "is_demo": false,
+  "is_graphic": false,
   "status": "geolocated",
   "close_reason": null,
   "before_closed_status": null,
@@ -748,12 +758,49 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` (carried in the payload alongside `is_demo`, not shown separately above) is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | Event not found |
+| 404 | Event not found, soft-deleted, or withheld (`hidden_at` set) and you are not an admin |
+
+---
+
+### `POST /events/{id}/report` 🌐
+
+Report an event for moderation. Open to anonymous viewers: the people a piece of footage harms rarely hold an account here, so requiring one would close the door on the reports that matter most. A signed-in reporter is recorded on the row (`reporter_user_id`); an anonymous one leaves it `null`. The per-IP rate limit is the only abuse floor on this write.
+
+**Request body:**
+```json
+{
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card."
+}
+```
+
+`reason` is one of `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy`, `other`. `details` is optional free text, capped at 2000 characters.
+
+**Response 201:**
+```json
+{
+  "id": "uuid",
+  "event_id": "uuid",
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card.",
+  "reporter_user_id": null,
+  "created_at": "2026-08-12T09:14:00Z",
+  "resolved_at": null,
+  "resolution": null,
+  "resolved_by": null
+}
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `event_not_found`: unknown id, soft-deleted, or already withheld. All three answer the same way, so the response can't be used to probe which |
+| 429 | Rate-limited (10/hour/IP) |
 
 ---
 
@@ -1402,7 +1449,7 @@ Activity feed of geolocations submitted by analysts you follow, newest submissio
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>18 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
+<summary>21 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, content reports, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1616,6 +1663,88 @@ Link or clear the X handle the bot attributes mentions to; the interactive write
 **Response 422:** value outside the handle alphabet.
 
 **Response 404:** unknown or soft-deleted user id.
+
+### `GET /admin/reports` 🛡️
+
+The moderation queue: open reports first, then newest first within each group. Resolved reports stay in the list rather than dropping out of it: a report is never deleted, so the queue doubles as the record of what was reported and what was decided. Offset-paged, capped at 100 rows per page. No rate limit.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination). |
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "event_id": "uuid",
+      "reason": "graphic_not_flagged",
+      "details": "Shows a body at 0:14, no graphic-content warning on the card.",
+      "reporter_user_id": null,
+      "created_at": "2026-08-12T09:14:00Z",
+      "resolved_at": null,
+      "resolution": null,
+      "resolved_by": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+`resolved_at` / `resolution` / `resolved_by` are all `null` while a report is open and all set once it is resolved, so `resolved_at is null` is the open test on the wire too.
+
+### `POST /admin/reports/{id}/resolve` 🛡️
+
+Close one report with a verdict, applying it to the reported event. Reports are resolved once and never reopened: a second resolve is a conflict, not an overwrite. Audited via `admin_events` (`action = "report_resolved"`, `target` carrying `report_id` / `event_id` / `resolution`); a verdict that also changes the event appends the matching event action too (`event_marked_graphic` for `marked_graphic`, `event_hidden` for `hidden`), so the trail reads the same whether the change came from the queue or from the direct moderation endpoint below. Invalidates the `/events/points` cache when the verdict actually hides the event.
+
+**Request body:**
+```json
+{ "resolution": "hidden" }
+```
+
+`resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the event from every public read, stamping `hidden_at`), or `dismissed` (closes the report, event untouched).
+
+**Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution` / `resolved_by`).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `report_not_found`: unknown report id |
+| 409 | `report_already_resolved`: the report already carries a verdict |
+
+Rate-limited to 60/hour.
+
+### `PATCH /admin/events/{id}/moderation` 🛡️
+
+Set an event's moderation state directly, with no report behind it. The one verb that can also **undo** a takedown (resolving a report cannot). Both fields are optional and independent: `null` or omitted leaves that axis exactly as it is, and a value equal to what the row already holds writes nothing and appends no audit row, so re-sending the current state is not an administrative act. Audited via `admin_events` (`action = "event_marked_graphic"` / `"event_unmarked_graphic"` / `"event_hidden"` / `"event_unhidden"`, one row per axis that actually changed). Invalidates the `/events/points` cache when `hidden` actually changes.
+
+**Request body:**
+```json
+{ "is_graphic": null, "hidden": true }
+```
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "is_graphic": false,
+  "hidden_at": "2026-08-12T09:20:00Z"
+}
+```
+
+`hidden_at` is `null` when the event is live, a timestamp when it is withheld, so the response also says when the takedown landed, or confirms `hidden: false` lifted a prior one.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `event_not_found`: unknown or soft-deleted event |
+
+Rate-limited to 60/hour.
 
 ### `POST /admin/seed-demo-requests` 🛡️
 

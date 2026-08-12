@@ -417,6 +417,8 @@ vercel --prod --yes                               # promote to production
 
 `NEXT_PUBLIC_*` env vars are baked into the JS bundle at build time. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video, a CloudFront `.mp4` URL, currently `landing/promo-v04.mp4` on the media bucket) are passed explicitly into the build from repo **variables** in [`deploy.yml`](../.github/workflows/deploy.yml), because `vercel pull` doesn't reliably surface `NEXT_PUBLIC_*` to `next build`.
 
+**Legal pages.** `NEXT_PUBLIC_LEGAL_HOST_NAME`, `NEXT_PUBLIC_LEGAL_HOST_ADDRESS`, and `NEXT_PUBLIC_LEGAL_HOST_CONTACT` back `/legal`'s *Hébergeur* section: the hosting provider's name, postal address, and phone or email (the platform is a non-professional publisher under LCEN article 6-III-2, so only the host is identified). `NEXT_PUBLIC_LEGAL_CONTACT_EMAIL` is the address `/legal` and `/privacy` publish for takedown notices, data requests, and other legal mail. Each is read at build time; an unset value renders a visible French `[TODO: …]` placeholder on the page instead of a blank line. **TODO: set all four to production values in Vercel before `/legal` and `/privacy` are accurate.** None of the four is in the explicit `deploy.yml` passthrough above, unlike `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL`, so they depend on `vercel pull` surfacing them from the Vercel project's own Production environment variables.
+
 ### Observability: what's wired and how to turn it on
 
 | Piece | State | How to turn on |
