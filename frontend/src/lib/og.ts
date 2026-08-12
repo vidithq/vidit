@@ -67,6 +67,10 @@ const PRIVATE_HOST_SUFFIXES = [".local", ".internal", ".localhost", ".home.arpa"
  * fetch to plausible public image hosts: TLS only (the cloud metadata services
  * answer over plain http), no address literals, no private-network name, and a
  * dotted hostname. Anything rejected falls back to the monogram avatar.
+ *
+ * This is the name half of the guard, and it is not sufficient on its own: a
+ * name that passes here is free to resolve anywhere, which is what
+ * `isPrivateAddress` covers at connection time.
  */
 export function isFetchableAvatarUrl(value: string | null | undefined): boolean {
   if (!value) return false;
