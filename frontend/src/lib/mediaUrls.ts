@@ -64,6 +64,22 @@ function mediaUrls(storage_url: string): MediaUrlBundle {
 }
 
 /**
+ * The clip URL carrying the media fragment that makes an unplayed video paint
+ * its first frame instead of a black rectangle: the browser seeks a tenth of a
+ * second in while it loads metadata. Stored clips carry no poster derivative,
+ * so this is what stands in for one, and it is the single home of the fragment
+ * for every surface that shows a video still (the player, the card thumbnail,
+ * the media manager's tiles). Pair it with `preload="metadata"`, which is what
+ * makes the browser fetch far enough to decode that frame.
+ *
+ * A URL that already names a fragment keeps it, so an explicit start time from
+ * a caller wins.
+ */
+export function posterFrameUrl(src: string): string {
+  return src.includes("#") ? src : `${src}#t=0.1`;
+}
+
+/**
  * Pick the URL for a Media row at the desired render size, accounting for
  * `media_type`. Videos fall back to the original (no first-frame extraction
  * yet). Use in `<img>` / `<video>` `src` instead of raw `storage_url`.

@@ -10,6 +10,7 @@ these fail loudly if a future re-sort breaks it.
 from __future__ import annotations
 
 from app.routers.events import (
+    batch,
     duplicates,
     import_archive,
     import_tweet,
@@ -30,6 +31,7 @@ def test_router_mount_order_is_pinned():
         import_tweet.router,
         import_archive.router,
         write.router,
+        batch.router,
         item.router,
     )
     assert routers[-1] is item.router

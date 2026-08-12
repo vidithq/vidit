@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import DetectionCard from "@/components/event/DetectionCard";
+import { BatchCompletionPanel } from "@/components/geolocations/BatchCompletionPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -15,6 +16,7 @@ import {
   detectionsPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
+import type { Conflict, Tag } from "@/types";
 
 export default function DetectionsPage() {
   const params = useParams();
@@ -32,8 +34,17 @@ export default function DetectionsPage() {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  const { data, error } = useApiResource<PaginatedEventDetails>(
+  const { data, error, refetch } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsPath(page) : null
+  );
+  // The two referentials the batch completion picks from, loaded once for the
+  // page. Same sources as the submit form: the full curated taxonomy (so a
+  // zero-usage capture source is still offered) and the whole conflicts list.
+  const { data: curatedTags } = useApiResource<Tag[]>(
+    isOwn ? "/tags?curated=true" : null
+  );
+  const { data: conflicts } = useApiResource<Conflict[]>(
+    isOwn ? "/conflicts" : null
   );
 
   if (authLoading || !user || !isOwn) {
@@ -69,6 +80,12 @@ export default function DetectionsPage() {
     const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
     listBody = (
       <div className="space-y-3">
+        <BatchCompletionPanel
+          drafts={data.items}
+          curatedTags={curatedTags ?? []}
+          conflicts={conflicts ?? []}
+          onPublished={refetch}
+        />
         {data.items.map((geo) => (
           <DetectionCard key={geo.id} geo={geo} />
         ))}

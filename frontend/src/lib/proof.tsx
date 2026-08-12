@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ProofImage } from "@/components/event/ProofImage";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type TiptapNode = {
@@ -186,22 +187,11 @@ function renderBlock(node: TiptapNode, key: number): ReactNode {
       if (!src || !isSafeImageSrc(src)) return null;
       const alt = stringAttr(node.attrs?.alt) ?? "";
       const title = stringAttr(node.attrs?.title);
-      return (
-        // Plain `<img>` on purpose — proof images have unknown natural
-        // dimensions, but `next/image` requires explicit width/height or a
-        // sized parent, which a Tiptap document can't guarantee. The lazy +
-        // no-referrer hints cover the load-discipline next/image would add.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={key}
-          src={src}
-          alt={alt}
-          title={title}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="my-3 max-w-full h-auto rounded-sm border border-neutral-800"
-        />
-      );
+      // The one interactive leaf of an otherwise static render: a click opens
+      // the shared MediaLightbox, since a proof image is evidence and is only
+      // auditable at full size. See ProofImage for why it is a client
+      // component and why it stays a plain `<img>`.
+      return <ProofImage key={key} src={src} alt={alt} title={title} />;
     }
     default:
       return null;

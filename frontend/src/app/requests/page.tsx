@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback } from "react";
 import { Megaphone } from "lucide-react";
-import { useApiResource } from "@/hooks/useApiResource";
+import { useCursorList } from "@/hooks/useCursorList";
 import { eventListPath } from "@/lib/events";
 import type { EventListItem } from "@/types";
 import { EntityCard } from "@/components/ui/EntityCard";
@@ -11,7 +12,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 
 export default function RequestsPage() {
   // The board is the open queue: only ``requested`` events. A fulfilled request
@@ -22,9 +23,23 @@ export default function RequestsPage() {
   // activity signals) is a v1.0 item, gated on request volume (see next.md).
   // Public read: no auth gate; "Post request" routes through /submit, which
   // bounces a signed-out visitor to login.
-  const { data: requests, error } = useApiResource<EventListItem[]>(
-    eventListPath({ view: "requested", status: "requested" })
+  //
+  // Cursor-paged: the list endpoint caps a response at 100 rows, so a queue
+  // longer than that is read by following the `Link: rel="next"` cursor rather
+  // than by asking for one wide page.
+  const buildPath = useCallback(
+    (cursor: string | null) =>
+      eventListPath({ view: "requested", status: "requested", cursor }),
+    []
   );
+  const {
+    items: requests,
+    error,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+  } = useCursorList<EventListItem>(buildPath);
 
   return (
     <PageShell title="Requests">
@@ -40,11 +55,11 @@ export default function RequestsPage() {
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
-      {!error && requests === null && (
+      {loading && (
         <p className="text-sm text-neutral-500">Loading requests…</p>
       )}
 
-      {!error && requests !== null && requests.length === 0 && (
+      {!error && !loading && requests.length === 0 && (
         <EmptyState>
           No open requests yet.{" "}
           <Link href="/submit" className={TEXT_LINK}>
@@ -54,12 +69,12 @@ export default function RequestsPage() {
         </EmptyState>
       )}
 
-      {!error && requests !== null && requests.length > 0 && (
+      {!loading && requests.length > 0 && (
         <>
           <div className="flex items-center justify-between text-[11px] text-neutral-500">
             <span>
               <span className="text-neutral-300 font-medium">
-                {requests.length} open
+                {requests.length} open{hasMore ? " so far" : ""}
               </span>{" "}
               · sorted by newest
             </span>
@@ -86,6 +101,17 @@ export default function RequestsPage() {
               />
             ))}
           </div>
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="secondary"
+                onClick={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            </div>
+          )}
         </>
       )}
     </PageShell>

@@ -44,9 +44,12 @@ export default function TimelinePage() {
   }
 
   return (
+    // `GET /timeline` orders by submission (`created_at DESC, id DESC`), which
+    // is what the subtitle names; the cards keep showing each event's own
+    // event date, a different thing from the order they arrive in.
     <PageShell
       title="Timeline"
-      subtitle="Activity from analysts you follow, newest geolocations first."
+      subtitle="Activity from analysts you follow, newest submissions first."
     >
         {entries.length > 0 ? (
           <div className="space-y-4">

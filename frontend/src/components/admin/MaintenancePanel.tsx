@@ -6,6 +6,7 @@ import {
   enqueueSourceArchival,
   reapAuthTokens,
   reapPendingRegistrations,
+  sendCompletionDigests,
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
@@ -49,6 +50,9 @@ export function MaintenancePanel() {
   );
   const [archivalResult, setArchivalResult] =
     useState<MaintenanceResponse | null>(null);
+  const [digestResult, setDigestResult] = useState<MaintenanceResponse | null>(
+    null
+  );
 
   const reapAuth = useMutation(reapAuthTokens, {
     fallback: "Failed",
@@ -63,10 +67,16 @@ export function MaintenancePanel() {
     onSuccess: setArchivalResult,
   });
 
+  const sendDigests = useMutation(sendCompletionDigests, {
+    fallback: "Failed",
+    onSuccess: setDigestResult,
+  });
+
   // The actions share one error slot, cleared when any of them fires (each
-  // run resets the other two).
-  const mutations = [reapAuth, reapPending, archiveSources];
-  const error = reapAuth.error ?? reapPending.error ?? archiveSources.error;
+  // run resets the others).
+  const mutations = [reapAuth, reapPending, archiveSources, sendDigests];
+  const error =
+    reapAuth.error ?? reapPending.error ?? archiveSources.error ?? sendDigests.error;
   const running = mutations.some((m) => m.loading);
 
   const start = (target: (typeof mutations)[number]) => () => {
@@ -119,6 +129,22 @@ export function MaintenancePanel() {
             <>
               Events scanned: {archivalResult.events_scanned ?? 0} · Links
               queued: {archivalResult.links_enqueued ?? 0}
+            </>
+          )
+        }
+      />
+      <MaintenanceRow
+        label="Email the drafts-awaiting-completion digest"
+        busyLabel="Sending…"
+        loading={sendDigests.loading}
+        disabled={running}
+        onClick={start(sendDigests)}
+        summary={
+          digestResult && (
+            <>
+              Analysts emailed: {digestResult.analysts_notified ?? 0} · Drafts:{" "}
+              {digestResult.drafts_pending ?? 0} · Failed sends:{" "}
+              {digestResult.digest_send_failures ?? 0}
             </>
           )
         }

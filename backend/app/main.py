@@ -212,8 +212,10 @@ app.add_middleware(
     # `allow_headers` governs the request direction only. Without this, a
     # cross-origin browser client cannot read `Retry-After` off a 429 and the
     # header the limiter handler emits is invisible to exactly the callers
-    # meant to back off on it.
-    expose_headers=["Retry-After"],
+    # meant to back off on it. `Link` is the same problem on the read path: it
+    # carries the next-page cursor of every capped list, so a browser client
+    # that cannot read it cannot page past the first 100 rows.
+    expose_headers=["Retry-After", "Link"],
 )
 
 
