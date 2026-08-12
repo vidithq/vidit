@@ -111,16 +111,10 @@ const ROADMAP: {
   link?: { href: string; label: string };
 }[] = [
   {
-    version: "v0.4",
-    state: "current",
-    title: "Curated onboarding",
-    body: "Read opens to everyone: the map and the archive go public. Invited analysts bring their existing work with them: upload your X archive or tag the bot, with no manual re-entry.",
-  },
-  {
     version: "v0.5",
-    state: "upcoming",
+    state: "current",
     title: "Analyst portfolio",
-    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported drafts, a mobile pass on the pages readers land on, and sources archived at creation so the work outlives its tweets.",
+    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported drafts, a mobile pass on the pages readers land on, and sources archived when you publish so the work outlives its tweets.",
   },
   {
     version: "v0.6",

@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.0, 2026-08-12
+
 ### Added
 - **Public archive-import guide** ([`frontend/src/app/archive/page.tsx`](frontend/src/app/archive/page.tsx), [`frontend/src/lib/archiveExport.ts`](frontend/src/lib/archiveExport.ts)). `/archive` answers the two questions an analyst asks before uploading their whole posting history: what the importer reads out of an X export, and what it never touches. It covers getting the export, then maps nine cases from the post to the draft it produces: a coordinate in the text, a bare coordinate, a self thread, several coordinates, and the five ways a source is read (a quote, a fetchable link, two ambiguous footage links, a link on any other platform, your own video). Each case states the rule the import worker applied and pairs the post with the draft as the detail surfaces render it, reusing their `StatusBadge`, `SectionEyebrow`, `DetailRow` and `SourceLabel`, so the fields a reader meets here are the ones they meet after the import: title, source media, coordinates, status, source, secondary sources, detected from, and the proof text the pipeline actually stores. The retweet skip, the text-only coordinate rule and the no-duplicate re-import close it. Reachable without an account, linked from the About guides hub, the getting-started guide, and the import panel; the four export steps now have one home, shared with that panel. The bot guide states the same media split: a video attached to a mention becomes the draft's footage when the source link yields none, photos always land as proof.
 - **The guides link back to their hub** ([`frontend/src/components/ui/PageShell.tsx`](frontend/src/components/ui/PageShell.tsx)). `/guide`, `/methodology`, `/bot` and `/archive` carry the back arrow the event detail page already had. `PageShell` gains an optional `backFallback`, so a reader who arrived straight from a search result, with no session history to pop, lands on the About guides hub rather than the map.
