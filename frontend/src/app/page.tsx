@@ -27,14 +27,14 @@ import DemoVideo from "@/components/landing/DemoVideo";
 export const metadata: Metadata = {
   title: "Vidit: archive and map conflict geolocations",
   description:
-    "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+    "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
   openGraph: {
     type: "website",
     url: "https://vidit.app",
     siteName: "Vidit",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
     locale: "en_US",
   },
   twitter: {
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     creator: "@vidithq",
     title: "Vidit: archive and map conflict geolocations",
     description:
-      "An open-source, professional platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.",
+      "Vidit is where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts. Open source and free for analysts.",
   },
 };
 
@@ -142,17 +142,17 @@ export default function LandingPage() {
             The home for conflict geolocations
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
-            Vidit is an{" "}
+            Vidit is where OSINT/GEOINT analysts publish, archive and share
+            geolocated events from armed conflicts.{" "}
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
               className={TEXT_LINK}
             >
-              open-source
-            </a>
-            , professional platform for OSINT/GEOINT analysts to archive,
-            reference, and visualise geolocations of armed-conflict events.
+              Open source
+            </a>{" "}
+            and free for analysts.
           </p>
           <HeroCtas />
         </section>
@@ -177,15 +177,10 @@ export default function LandingPage() {
                   <Play size={18} />
                 </span>
                 <p className="text-sm text-neutral-400">Product demo</p>
+                {/* Fallback rendered when `DEMO_VIDEO_URL` is unset: the
+                    written guide covers the same ground. */}
                 <p className="text-xs text-neutral-600">
-                  A short walkthrough: map to geolocation to submission. Coming
-                  soon.
-                </p>
-                {/* Placeholder-only: while there is no video, the written
-                    guide covers the same ground. When a video ships, how the
-                    two pair gets decided then. */}
-                <p className="text-xs text-neutral-600">
-                  In the meantime, read{" "}
+                  Read{" "}
                   <Link href="/guide" className={TEXT_LINK}>
                     how Vidit works
                   </Link>
