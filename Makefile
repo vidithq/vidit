@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-demo seed-detections seed-timeline typology-weights mock-admin mock-demo-user promo gen-api-types check-dup vulture hygiene
+.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-demo seed-detections seed-timeline typology-weights mock-admin mock-demo-user promo gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
@@ -23,7 +23,7 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
-	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) checks"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the closed-beta promo MP4 (see video/README.md)"
 
@@ -135,7 +135,13 @@ check-dup:
 vulture:
 	cd backend && uv run vulture
 
-hygiene: check-dup vulture
+# The capture scripts run outside every test suite, so a route rename
+# elsewhere in the repo only surfaces at the next promo render. See
+# video/check-routes.sh.
+check-video-routes:
+	./video/check-routes.sh
+
+hygiene: check-dup vulture check-video-routes
 	cd frontend && npm run knip
 	cd frontend && npm run palette:check
 

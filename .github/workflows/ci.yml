@@ -212,7 +212,9 @@ jobs:
   # tree is ~0.5%, so it fails when a contributor adds a meaningful chunk of
   # copy-paste (it's a ceiling, not a zero-new-clones ratchet). knip refuses
   # dead frontend code (unused files / exports). Both pass the current tree
-  # (see `.jscpd.json` / `frontend/knip.json`).
+  # (see `.jscpd.json` / `frontend/knip.json`). The route gate holds the
+  # capture scripts to the live API and frontend paths, which no test suite
+  # covers (see `video/check-routes.sh`).
   hygiene:
     name: Hygiene — duplication & dead code
     runs-on: ubuntu-latest
@@ -240,6 +242,9 @@ jobs:
       - name: Palette coverage
         run: npm run palette:check
         working-directory: frontend
+
+      - name: Video capture routes
+        run: ./video/check-routes.sh
 
   # Lightweight, opinionated guardrail: every PR to `main` must touch
   # at least one file under `docs/` AND at least one file under
