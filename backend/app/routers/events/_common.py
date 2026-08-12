@@ -140,6 +140,12 @@ def build_event_read(
         # Ordered by the relationship's ``position``, so the read order is the
         # order the submitter gave.
         secondary_source_urls=[link.url for link in geo.source_links],
+        # Built from the same walk, so the two lists stay index-aligned by
+        # construction. Reads the same eager-loaded ``archives`` collection as
+        # ``archived_source_url``, so a mirror costs no extra query.
+        archived_secondary_source_urls=[
+            archived_url_for(geo, link.url) for link in geo.source_links
+        ],
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,

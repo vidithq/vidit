@@ -2123,6 +2123,8 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
+            /** Archived Secondary Source Urls */
+            archived_secondary_source_urls: (string | null)[];
             /** Archived Source Url */
             archived_source_url: string | null;
             /** Before Closed Status */
