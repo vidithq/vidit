@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -46,13 +46,28 @@ import type { EventDetail } from "@/types";
  * (with a confirm, since submitting freezes it). State is seeded from props (the
  * form mounts only after the row loaded), so the Tiptap editor gets its
  * `initialContent` on first paint.
+ *
+ * The detections review flow mounts this same surface, header and all: `review`
+ * adds its position row above the fields, sends a finished draft to the next one
+ * instead of back to the queue, and drops the Cancel link, since leaving a
+ * review session is the back arrow.
  */
 export function EventEditForm({
   geo,
   redirectTo,
+  review,
 }: {
   geo: EventDetail;
   redirectTo: string;
+  /** Set by the review flow, which hosts this form one draft at a time. */
+  review?: {
+    /** The position and Skip row, rendered above the fields. */
+    chrome: ReactNode;
+    /** Advance to the next draft, after a submit or a rejection. */
+    onDone: () => void;
+    /** Where the back arrow lands with no session history to pop. */
+    backFallback: string;
+  };
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
@@ -61,6 +76,10 @@ export function EventEditForm({
   // end. The header still shares and reports the draft like every other detail
   // surface.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
+
+  // Where a write that finishes with this row goes: back to the queue on the
+  // edit page, on to the next draft in the review flow.
+  const finish = review?.onDone ?? (() => router.push(redirectTo));
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
@@ -162,7 +181,7 @@ export function EventEditForm({
     fallback: "Couldn't submit.",
     onSuccess: () => {
       refreshDetectionCount();
-      router.push(redirectTo);
+      finish();
     },
   });
 
@@ -236,10 +255,15 @@ export function EventEditForm({
   return (
     <PageShell
       back
+      backFallback={review?.backFallback}
       title="Submit detection"
       subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
       actions={actions}
     >
+      {/* The review's position and Skip row, above the fields it steps through.
+          The rest of the surface is the edit page's, unchanged. */}
+      {review?.chrome}
+
       {/* Under the header, where the trigger that opened it is. */}
       {panels}
 
@@ -373,9 +397,13 @@ export function EventEditForm({
             </span>
           )}
 
-          <Link href={redirectTo} className={buttonClasses("ghost")}>
-            Cancel
-          </Link>
+          {/* In review, leaving is the back arrow and moving on is Skip, so the
+              form carries no exit of its own. */}
+          {!review && (
+            <Link href={redirectTo} className={buttonClasses("ghost")}>
+              Cancel
+            </Link>
+          )}
 
           {/* Reject (close) lives here now, not on the queue card. It opens the
               inline reason panel below rather than closing on a fixed reason. */}
@@ -402,7 +430,7 @@ export function EventEditForm({
               disabled={busy}
               onClosed={() => {
                 refreshDetectionCount();
-                router.push(redirectTo);
+                finish();
               }}
               onCancel={() => setRejecting(false)}
             />

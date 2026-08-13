@@ -1,24 +1,82 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DetectionReview } from "./DetectionReview";
-import { geolocateEvent } from "@/lib/events";
-import type { Conflict, EventDetail, Tag } from "@/types";
-
-// The map canvas needs WebGL, which jsdom has none of, and the review only
-// reads a point off it. The rest of the flow is what these tests are about.
+// The review renders the shared edit form, so the two surfaces jsdom can't
+// mount are stubbed: the map canvas needs WebGL, and the Tiptap editor needs
+// DOM APIs jsdom lacks. Both keep a marker, since "the proof editor is on the
+// page" is one of the things these tests are about.
 vi.mock("@/components/map/Map", () => ({
   default: () => <div data-testid="map" />,
 }));
+vi.mock("@/components/editor/ProofEditor", () => ({
+  default: () => <div data-testid="proof-editor" />,
+}));
 
-// Only the publish call is faked: the floor computation, the payload assembly
-// and the sticky picks are the code under test.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useParams: () => ({ username: "ana" }),
+}));
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
+}));
+
+const refreshDetectionCount = vi.fn();
+vi.mock("@/contexts/DetectionsContext", () => ({
+  useDetectionsCount: () => ({ count: 2, refresh: refreshDetectionCount }),
+}));
+
+// The taxonomy the form's Classification block fetches. Everything else the
+// form reads comes from the draft it is given.
+vi.mock("@/hooks/useApiResource", () => ({
+  useApiResource: (path: string | null) => ({
+    data:
+      path === "/tags?curated=true"
+        ? CURATED_TAGS
+        : path === "/conflicts"
+          ? CONFLICTS
+          : null,
+    error: null,
+    refetch: () => {},
+  }),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: vi.fn().mockResolvedValue([]),
+}));
+
+// Only the publish call is faked: the payload assembly and the queue's own
+// stepping are the code under test.
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   geolocateEvent: vi.fn(),
+  closeEvent: vi.fn(),
 }));
 
+import { closeEvent, geolocateEvent } from "@/lib/events";
+import type { Conflict, EventDetail, Tag } from "@/types";
+
+import { DetectionReview } from "./DetectionReview";
+
 const geolocateMock = vi.mocked(geolocateEvent);
+const closeMock = vi.mocked(closeEvent);
+
+const CONFLICTS: Conflict[] = [
+  {
+    id: "c1",
+    name: "Russian invasion of Ukraine",
+    wikidata_id: "Q110999040",
+    start_year: 2022,
+    end_year: null,
+    ongoing: true,
+    tier: "major",
+  },
+];
+
+const CURATED_TAGS: Tag[] = [
+  { id: "t-drone", name: "Drone", category: "capture_source" },
+];
 
 function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
@@ -61,42 +119,18 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         role: "source",
       },
     ],
-    thumbnail: {
-      id: "m1",
-      storage_url: "/local-storage/evidence.jpg",
-      media_type: "image",
-      role: "source",
-    },
+    thumbnail: null,
     requested_by: null,
     geolocators: [],
     ...overrides,
   };
 }
 
-const CONFLICTS: Conflict[] = [
-  {
-    id: "c1",
-    name: "Russian invasion of Ukraine",
-    wikidata_id: "Q110999040",
-    start_year: 2022,
-    end_year: null,
-    ongoing: true,
-    tier: "major",
-  },
-];
-
-const CURATED_TAGS: Tag[] = [
-  { id: "t-drone", name: "Drone", category: "capture_source" },
-  { id: "t-free", name: "Artillery", category: "free" },
-];
-
 function renderReview(drafts: EventDetail[], total = drafts.length) {
   return render(
     <DetectionReview
       drafts={drafts}
       total={total}
-      curatedTags={CURATED_TAGS}
-      conflicts={CONFLICTS}
       queueHref="/profile/ana/detections"
       onReload={() => {}}
     />
@@ -106,74 +140,59 @@ function renderReview(drafts: EventDetail[], total = drafts.length) {
 // Role-scoped, because every field label carries a `?` help button whose
 // accessible name repeats the label text.
 const titleField = () => screen.getByRole("textbox", { name: /Title/ });
-const captureSourceField = () =>
-  screen.getByRole("combobox", { name: /Capture source/ });
 
-/** Make the two human picks the floor asks for on the draft on screen. */
-function pickConflictAndCaptureSource() {
-  fireEvent.click(screen.getByRole("button", { name: /Russian invasion of Ukraine/ }));
-  fireEvent.change(captureSourceField(), { target: { value: "t-drone" } });
+/** Make the two curated picks the publish floor asks for, then submit through
+ *  the form's confirm step. */
+async function publishCurrentDraft() {
+  fireEvent.click(
+    screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Drone" }));
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Confirm & submit" })
+  );
 }
 
 beforeEach(() => {
   geolocateMock.mockReset();
+  closeMock.mockReset();
   geolocateMock.mockResolvedValue(draftFixture({ status: "geolocated" }));
 });
 
 describe("DetectionReview", () => {
-  it("shows one draft at a time with its position in the queue", () => {
-    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
-    expect(screen.getByText("Draft 1 of 2")).toBeInTheDocument();
+  it("reviews a draft on the shared edit form, proof editor included", async () => {
+    renderReview([draftFixture()]);
+
+    // The whole edit surface, not a subset: its header, its source media, its
+    // location, its details, its classification, and the proof editor the
+    // review used to render read-only.
+    expect(
+      screen.getByRole("heading", { name: "Submit detection" })
+    ).toBeInTheDocument();
+    expect(titleField()).toHaveValue("Strike near Bakhmut");
+    expect(
+      screen.getByDisplayValue("https://t.me/channel/12345")
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId("proof-editor")).toBeInTheDocument();
+  });
+
+  it("shows the position in the queue and no way back but the arrow", () => {
+    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second" })]);
+    expect(screen.getByText(/Draft 1 of 2/)).toBeInTheDocument();
     expect(screen.getByDisplayValue("Strike near Bakhmut")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Second draft")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Second")).not.toBeInTheDocument();
+    // Leaving the session is the header's back arrow, so the flow carries
+    // neither a queue link nor the form's own Cancel.
+    expect(screen.queryByText("Back to the queue")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
   });
 
-  it("heads the session with the shortcut legend, above the draft", () => {
-    renderReview([draftFixture()]);
-    const legend = screen.getByText("publish");
-    expect(legend).toBeInTheDocument();
-    expect(screen.getByText("skip")).toBeInTheDocument();
-    expect(screen.getByText("reject")).toBeInTheDocument();
-    // Above the draft body, so it is on screen without a scroll: a shortcut
-    // parked under the fold is one nobody learns.
-    expect(
-      legend.compareDocumentPosition(titleField()) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-  });
-
-  it("orders the fields like the submit form", () => {
-    renderReview([draftFixture()]);
-    // Title, source media, location, details, proof: the same sequence
-    // /submit renders, so the two forms read alike.
-    const order = [
-      titleField(),
-      screen.getByText("Source media"),
-      screen.getByText("Location"),
-      screen.getByText("Details"),
-      screen.getByText("Proof"),
-    ];
-    for (let i = 0; i < order.length - 1; i += 1) {
-      expect(
-        order[i].compareDocumentPosition(order[i + 1]) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy();
-    }
-    // Conflict comes before capture source inside the details card, as on
-    // /submit.
-    expect(
-      screen
-        .getByText("Conflict")
-        .compareDocumentPosition(captureSourceField()) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-  });
-
-  it("publishes through the single-row geolocate transition and advances", async () => {
-    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
-    pickConflictAndCaptureSource();
+  it("publishes through the geolocate transition and advances to the next draft", async () => {
+    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second" })]);
     fireEvent.change(titleField(), { target: { value: "Reviewed title" } });
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await publishCurrentDraft();
 
     await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
     const [id, input] = geolocateMock.mock.calls[0];
@@ -183,110 +202,47 @@ describe("DetectionReview", () => {
       lat: 48.5,
       lng: 37.8,
       source_url: "https://t.me/channel/12345",
-      event_date: "2026-06-01",
-      conflict_ids: ["c1"],
-      tag_ids: ["t-drone"],
-      // The review writes no media and no proof files: the draft keeps what the
-      // import gave it.
-      remove_media_ids: [],
-      files: [],
-      proof_files: [],
-    });
-
-    // The published row is behind us; the next draft is on screen.
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("Second draft")).toBeInTheDocument()
-    );
-    expect(screen.getByText("Draft 2 of 2")).toBeInTheDocument();
-  });
-
-  it("carries the conflict and capture source to the next draft", async () => {
-    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
-    pickConflictAndCaptureSource();
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("Second draft")).toBeInTheDocument()
-    );
-
-    // Both picks are still made, so the second draft publishes with no further
-    // input.
-    expect(captureSourceField()).toHaveValue("t-drone");
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(2));
-    expect(geolocateMock.mock.calls[1][1]).toMatchObject({
       conflict_ids: ["c1"],
       tag_ids: ["t-drone"],
     });
-  });
 
-  it("keeps the draft's own tags and replaces only the capture source", async () => {
-    renderReview([
-      draftFixture({
-        tags: [
-          { id: "t-free", name: "Artillery", category: "free" },
-          { id: "t-old", name: "Ground", category: "capture_source" },
-        ],
-      }),
-    ]);
-    pickConflictAndCaptureSource();
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
-    expect(geolocateMock.mock.calls[0][1].tag_ids).toEqual(["t-free", "t-drone"]);
-  });
-
-  it("blocks a draft missing evidence the review can't supply", () => {
-    renderReview([draftFixture({ media: [], source_url: null })]);
-    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
-    expect(
-      screen.getByText(/missing source url, source media/i)
-    ).toBeInTheDocument();
-    // Skip is the way past it, and the full form is offered by name.
-    expect(screen.getByRole("button", { name: "Skip" })).toBeEnabled();
-    expect(screen.getByRole("link", { name: "open the full form" })).toHaveAttribute(
-      "href",
-      "/events/d1/edit"
+    // The published row is behind us; the next draft is on screen, on a fresh
+    // form.
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Second")).toBeInTheDocument()
     );
+    expect(screen.getByText(/Draft 2 of 2/)).toBeInTheDocument();
   });
 
-  it("lists the picks still missing instead of publishing a half-filled row", () => {
-    renderReview([draftFixture()]);
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  it("skips to the next draft without writing", () => {
+    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second" })]);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(geolocateMock).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Conflict");
-    expect(screen.getByRole("alert")).toHaveTextContent("Capture source tag");
+    expect(screen.getByDisplayValue("Second")).toBeInTheDocument();
+    expect(screen.getByText(/Draft 2 of 2/)).toBeInTheDocument();
   });
 
-  it("drives the queue from the keyboard", async () => {
-    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
-
-    // S skips without publishing.
-    fireEvent.keyDown(window, { key: "s" });
-    expect(geolocateMock).not.toHaveBeenCalled();
-    expect(screen.getByDisplayValue("Second draft")).toBeInTheDocument();
-
-    // X opens the disposal panel, and the shortcuts stand down while it is up.
-    fireEvent.keyDown(window, { key: "x" });
-    expect(screen.getByLabelText("Reject reason")).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Enter" });
-    expect(geolocateMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    pickConflictAndCaptureSource();
-    fireEvent.keyDown(window, { key: "Enter" });
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
-    expect(geolocateMock.mock.calls[0][0]).toBe("d2");
-  });
-
-  it("leaves the shortcuts alone while a field has focus", () => {
-    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
-    fireEvent.keyDown(titleField(), { key: "s" });
-    expect(screen.getByDisplayValue("Strike near Bakhmut")).toBeInTheDocument();
+  it("advances after a rejection instead of leaving for the queue", async () => {
+    closeMock.mockResolvedValue(draftFixture({ status: "closed" }));
+    renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second" })]);
+    fireEvent.click(screen.getByRole("button", { name: "Reject detection" }));
+    fireEvent.change(screen.getByLabelText(/Reject reason/), {
+      target: { value: "Not a strike." },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reject this detection" })
+    );
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Second")).toBeInTheDocument()
+    );
   });
 
   it("closes the session when the batch runs out", () => {
     renderReview([draftFixture()], 4);
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(screen.getByText("You reached the end of this batch.")).toBeInTheDocument();
+    expect(
+      screen.getByText("You reached the end of this batch.")
+    ).toBeInTheDocument();
     expect(screen.getByText(/3 more drafts are waiting/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Review the next batch" })

@@ -150,7 +150,7 @@ export default function DetectionsPage() {
     <PageShell
       back
       title="Detections"
-      subtitle="Machine drafts awaiting a pass. Review them one at a time, or open a row to fix it on the full form."
+      subtitle="Machine drafts awaiting a pass. Open a row to work on it, or review them one after another on the same form."
       actions={
         data && data.items.length > 0 ? (
           <Link href={reviewHref} className={buttonClasses("primary")}>

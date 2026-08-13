@@ -102,13 +102,9 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
-  section_review: {
-    text: "The judgment a machine draft still needs: a title, the point on the map, the conflict and the capture source. Your last conflict and capture source carry to the next draft, since an import usually sits in one conflict. Everything else the draft already carries.",
-    label: "What does reviewing a draft cover?",
-  },
   // Detections queue: the filter over the page.
   detection_queue_filter: {
-    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), which only the full edit form fills in.",
+    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   // Detection submit action, spelled out here.

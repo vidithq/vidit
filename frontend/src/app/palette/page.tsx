@@ -554,7 +554,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Carries the capture-source pick in the detections review flow. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
+          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Carries the reason bucket on the report-event form. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Select defaultValue="">
