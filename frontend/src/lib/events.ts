@@ -169,6 +169,10 @@ export interface EventEditInput {
   capture_source_lat?: number;
   capture_source_lng?: number;
   source_url: string;
+  /** Optional snapshot of `source_url`, archived by the analyst while filling
+   *  the form. Stored as the event's archived source by the same write, so a
+   *  snapshot that isn't one of `source_url` fails the whole submit. */
+  source_snapshot_url?: string;
   /** Optional mirrors of the same media, in the order the analyst listed them.
    *  Blank entries are dropped at assembly; the server normalizes the rest. */
   secondary_source_urls?: string[];
@@ -206,6 +210,7 @@ function appendSharedEventFields(
   input: {
     title: string;
     source_url: string;
+    source_snapshot_url?: string;
     secondary_source_urls?: string[];
     source_posted_at: string;
     proof?: Record<string, unknown> | null;
@@ -218,6 +223,11 @@ function appendSharedEventFields(
 ): void {
   fd.append("title", input.title);
   fd.append("source_url", input.source_url);
+  // The archived copy of that source, when the analyst made one on the form.
+  // Omitted rather than posted empty: the field is optional on all three paths.
+  if (input.source_snapshot_url?.trim()) {
+    fd.append("source_snapshot_url", input.source_snapshot_url.trim());
+  }
   // One append per link: the backend reads `secondary_source_urls` as a
   // repeated form field, not a JSON blob (unlike the id lists below, whose
   // items are opaque uuids). A row the analyst left blank is dropped here so an
@@ -315,6 +325,9 @@ export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
 export interface EventRequestInput {
   title: string;
   source_url: string;
+  /** Optional snapshot of `source_url`, same contract as a geolocation's: the
+   *  submit form posts either shape, so a paste made there is kept on both. */
+  source_snapshot_url?: string;
   /** Optional mirrors, same contract as a geolocation's (see `EventEditInput`). */
   secondary_source_urls?: string[];
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */

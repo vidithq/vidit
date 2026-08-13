@@ -14,27 +14,12 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
-from app.routers.events._common import resolve_live_event
+from app.routers.events._common import raise_archive_error, resolve_live_event
 from app.schemas.event import ArchivedLinkRead, EventArchiveCreate
 from app.services import permissions
 from app.services import source_archive as source_archive_service
 
 router = APIRouter()
-
-# Every ``SnapshotRejected`` code is the same verdict about the same two fields:
-# what the analyst pasted is not a snapshot of the link they named. 400 across
-# the board, with the code telling them which check it failed.
-_ARCHIVE_ERROR_STATUS: dict[str, int] = {
-    "original_url_not_on_event": 400,
-    "snapshot_url_invalid": 400,
-    "snapshot_url_too_long": 400,
-    "snapshot_url_not_https": 400,
-    "snapshot_provider_not_allowed": 400,
-    "snapshot_not_a_replay_url": 400,
-    "snapshot_original_mismatch": 400,
-    "snapshot_not_a_snapshot_code": 400,
-}
 
 
 @router.post("/{event_id}/archives", response_model=ArchivedLinkRead)
@@ -73,5 +58,5 @@ def record_archived_copy(
             snapshot_url=body.snapshot_url,
         )
     except source_archive_service.SnapshotRejected as exc:
-        raise_typed_error(exc, _ARCHIVE_ERROR_STATUS)
+        raise_archive_error(exc)
     return ArchivedLinkRead(url=row.snapshot_url, provider=row.provider)

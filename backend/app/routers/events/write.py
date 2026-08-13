@@ -36,12 +36,14 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    raise_archive_error,
 )
 from app.schemas.event import (
     EventRead,
 )
 from app.services import events as events_service
 from app.services.evidence_intake import EvidenceIntakeError
+from app.services.source_archive import SnapshotRejected
 
 router = APIRouter()
 
@@ -72,6 +74,11 @@ async def create_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of ``source_url``, if the analyst made one while filling
+    # the form (the form opens the provider pages prefilled with the source and
+    # takes the snapshot back here). Optional; checked against ``source_url``
+    # and stored with the event.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # Mirrors of the same media elsewhere, repeated once per link. Optional and
     # ordered; the service normalizes and caps them.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
@@ -101,6 +108,11 @@ async def create_event(
     Parses the multipart form into clean Python types; business rules + IO
     (the evidence floor, the S3 uploads, the placeholder resolution) live in
     ``services/events.create_with_evidence``.
+
+    ``source_snapshot_url`` records the event's archived source in the same
+    write: the same checks ``POST /events/{id}/archives`` runs, so a paste that
+    is not a snapshot of ``source_url`` is a 400 carrying the failing check's
+    code, and no event is created.
     """
     proof_files = proof_files or []
 
@@ -129,6 +141,7 @@ async def create_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
@@ -141,6 +154,8 @@ async def create_event(
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
 
     # A direct create is born ``geolocated`` with no preceding request, so
     # ``requested_by`` is null, so ``build_event_read`` reads it off the row.
@@ -158,6 +173,9 @@ async def create_event_request(
     # attached file has already hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of ``source_url``, as on the direct-create form: one
+    # form posts either shape, so the analyst's paste is kept on both.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # Mirrors of the same media elsewhere, as on the direct-create form.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     proof: str | None = Form(None),
@@ -223,9 +241,12 @@ async def create_event_request(
             conflict_ids=parsed_conflict_ids,
             file=file,
             proof_files=proof_files,
+            source_snapshot_url=source_snapshot_url,
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
 
     # Serialise off the refreshed row; a request's guess is optional, so both
     # points project in Python rather than via a second ST_X/ST_Y query.

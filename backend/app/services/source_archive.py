@@ -4,7 +4,11 @@ A source tweet gets deleted and an account gets suspended, which destroys
 exactly the evidence the catalog promises to preserve. An archived copy is what
 keeps a dead original readable, and the analyst is who makes it: they open the
 provider's own submit page from their own browser and paste the snapshot URL
-back through ``POST /events/{event_id}/archives``.
+back. Two paths take that paste. The submit and edit forms carry it as
+``source_snapshot_url`` beside the source URL it archives, so the copy is made
+while the source is in front of the analyst and lands in the same transaction
+as the event; ``POST /events/{event_id}/archives`` takes it afterwards, for any
+link a live event carries.
 
 The capture is not attempted server side. Roughly nine in ten sources here are
 ``x.com``, which Save Page Now structurally refuses, and archive.today has no
@@ -255,27 +259,28 @@ def validate_snapshot(*, original_url: str, snapshot_url: str) -> SourceArchiveP
     return provider
 
 
-def record_snapshot(
-    db: Session, *, event: Event, original_url: str, snapshot_url: str
-) -> SourceArchive:
-    """Store the archived copy an analyst recorded for one of the event's links.
+def stage_snapshot(
+    db: Session,
+    *,
+    event: Event,
+    original_url: str,
+    origin: SourceArchiveOrigin,
+    snapshot_url: str,
+) -> None:
+    """Validate a snapshot and stage its row, leaving the transaction open.
 
-    ``original_url`` has to be a link the event actually carries
-    (:func:`origin_of`), and ``snapshot_url`` has to pass
-    :func:`validate_snapshot`; either failing raises
-    :class:`SnapshotRejected` with the code the router turns into a 400.
+    The one write both archival paths run: the standalone endpoint on a live
+    event, and the ``source_snapshot_url`` a submit or an edit carries, which
+    has to land in the same transaction as the event it archives. Nothing is
+    committed here, so a caller that fails afterwards takes the row down with
+    the rest of its write.
 
-    The write is an upsert on ``(event_id, original_url)``, which is the
-    owner's correction path: pasting a second snapshot for a link replaces the
-    first rather than competing with it. ``origin`` is refreshed with it, since
-    the same URL can have moved from a proof citation to the declared source
+    The statement is an upsert on ``(event_id, original_url)``, which is the
+    owner's correction path: a second snapshot for a link replaces the first
+    rather than competing with it. ``origin`` is refreshed with it, since the
+    same URL can have moved from a proof citation to the declared source
     between the two pastes.
     """
-    origin = origin_of(event, original_url)
-    if origin is None:
-        raise SnapshotRejected(
-            "original_url_not_on_event", "That link is not one of this event's sources."
-        )
     provider = validate_snapshot(original_url=original_url, snapshot_url=snapshot_url)
     now = datetime.now(UTC)
     db.execute(
@@ -298,6 +303,89 @@ def record_snapshot(
                 "created_at": now,
             },
         )
+    )
+
+
+def stage_source_snapshot(db: Session, *, event: Event, snapshot_url: str) -> None:
+    """Stage the copy of ``event.source_url`` a write path carried with it.
+
+    What the submit and edit forms post as ``source_snapshot_url``: the analyst
+    archived the source while filling the form, so the copy is filed against
+    the source URL the same write stores, under origin ``source_url``. The
+    membership walk :func:`record_snapshot` runs is not needed here, since the
+    link is the one being written, but the snapshot check is the same
+    :func:`validate_snapshot` and raises the same :class:`SnapshotRejected`
+    codes, so a paste is judged identically wherever it arrives.
+
+    Call it before the caller's own commit and after ``event.id`` exists; the
+    row rides that transaction.
+    """
+    if event.source_url is None:
+        raise SnapshotRejected(
+            "original_url_not_on_event", "That link is not one of this event's sources."
+        )
+    stage_snapshot(
+        db,
+        event=event,
+        original_url=event.source_url,
+        origin="source_url",
+        snapshot_url=snapshot_url,
+    )
+
+
+def reconcile_source_archive(db: Session, *, event: Event) -> None:
+    """Keep the copy filed as the declared source matching ``source_url``.
+
+    A snapshot is a snapshot *of a link*, so a row filed under origin
+    ``source_url`` whose ``original_url`` is no longer the event's source URL
+    is a mismatch, and a mismatch must never survive a write. An edit that
+    changes the source URL therefore either re-files that row or drops it:
+
+    * the old URL is still one of the event's links (the analyst moved it to
+      the mirrors, or cited it in the proof): the copy is real evidence of a
+      link the event still carries, so the row stays and takes that link's
+      origin;
+    * the old URL is gone from the event: the row is deleted.
+
+    Either way nothing claims to archive the source URL but the copy of the
+    source URL, so an edit that changes the source and pastes no new snapshot
+    leaves the event with no archived source rather than a stale one. Pasting
+    a ``source_snapshot_url`` with the same write fills the slot back in.
+
+    Runs inside the caller's transaction, and reads the links the event carries
+    at that moment: the mirrors are already replaced, while the proof body is
+    still the stored one, since a write applies its new proof at commit.
+    """
+    for row in list(event.archives):
+        if row.origin != "source_url" or row.original_url == event.source_url:
+            continue
+        origin = origin_of(event, row.original_url)
+        if origin is None:
+            db.delete(row)
+        else:
+            row.origin = origin
+
+
+def record_snapshot(
+    db: Session, *, event: Event, original_url: str, snapshot_url: str
+) -> SourceArchive:
+    """Store the archived copy an analyst recorded for one of the event's links.
+
+    ``original_url`` has to be a link the event actually carries
+    (:func:`origin_of`), and ``snapshot_url`` has to pass
+    :func:`validate_snapshot`; either failing raises
+    :class:`SnapshotRejected` with the code the router turns into a 400.
+
+    The write itself is :func:`stage_snapshot`, committed here: this is the
+    standalone endpoint, whose whole transaction is the one row.
+    """
+    origin = origin_of(event, original_url)
+    if origin is None:
+        raise SnapshotRejected(
+            "original_url_not_on_event", "That link is not one of this event's sources."
+        )
+    stage_snapshot(
+        db, event=event, original_url=original_url, origin=origin, snapshot_url=snapshot_url
     )
     db.commit()
     # The collection was loaded before the upsert, so it still holds whatever
@@ -337,6 +425,9 @@ __all__ = [
     "archive_row_for",
     "collect_links",
     "origin_of",
+    "reconcile_source_archive",
     "record_snapshot",
+    "stage_snapshot",
+    "stage_source_snapshot",
     "validate_snapshot",
 ]

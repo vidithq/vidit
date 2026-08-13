@@ -537,6 +537,11 @@ export interface paths {
          *     Parses the multipart form into clean Python types; business rules + IO
          *     (the evidence floor, the S3 uploads, the placeholder resolution) live in
          *     ``services/events.create_with_evidence``.
+         *
+         *     ``source_snapshot_url`` records the event's archived source in the same
+         *     write: the same checks ``POST /events/{id}/archives`` runs, so a paste that
+         *     is not a snapshot of ``source_url`` is a 400 carrying the failing check's
+         *     code, and no event is created.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -948,6 +953,12 @@ export interface paths {
          *     Blocked until the evidence floor is met (one source media, a proof image,
          *     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
+         *
+         *     ``source_snapshot_url`` records the archived source in the same write, on
+         *     the terms ``POST /events/{id}/archives`` applies (a paste that is not a
+         *     snapshot of the stored source URL is a 400, and nothing is written). An
+         *     edit that changes the source URL and pastes no new snapshot leaves the
+         *     event with no archived source rather than the old one's copy.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
@@ -1750,6 +1761,8 @@ export interface components {
             secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
             /** Source Url */
             source_url: string;
             /** Tag Ids */
@@ -1786,6 +1799,8 @@ export interface components {
             secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
             /** Source Url */
             source_url: string;
             /** Tag Ids */
@@ -1824,6 +1839,8 @@ export interface components {
             secondary_source_urls: string[];
             /** Source Posted At */
             source_posted_at: string;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
             /** Source Url */
             source_url: string;
             /** Tag Ids */

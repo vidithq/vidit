@@ -45,6 +45,7 @@ from app.models.event import (
 )
 from app.models.tag import Tag
 from app.models.user import User
+from app.services import source_archive
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     MediaRequiredError,
@@ -333,6 +334,7 @@ async def create_with_evidence(
     conflict_ids: list,
     file: UploadFile,
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Create a ``geolocated`` event row + its evidence (a direct geolocate).
 
@@ -347,6 +349,12 @@ async def create_with_evidence(
     resolved from ``proof_files``, see ``evidence_intake``), a conflict, and
     the curated ``capture_source`` tag. ``capture_source_lat`` / ``lng``
     (the camera point) are optional, both-or-neither.
+
+    ``source_snapshot_url`` is the archived copy of ``source_url`` the analyst
+    made while filling the form: optional, checked by
+    ``services/source_archive`` and stored as the event's archived source in
+    this same transaction, so a rejected paste (:class:`SnapshotRejected`,
+    raised before any upload) creates no event.
 
     Failure modes (:class:`EvidenceIntakeError` subclasses, event rules
     here, shared file/media rules from ``evidence_intake``):
@@ -407,6 +415,12 @@ async def create_with_evidence(
     # row so the owner-among-geolocators invariant lives in one place.
     _credit_geolocator(db, geo, current_user)
 
+    # The copy of the source the analyst archived while filling the form. The
+    # row needs the event's id, so it is staged after the flush, and still
+    # before the first upload: a rejected paste costs no S3 round-trip.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
     await attach_evidence_and_commit(
         db,
         event=geo,
@@ -440,6 +454,7 @@ async def create_request(
     conflict_ids: list,
     file: UploadFile,
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -459,6 +474,11 @@ async def create_request(
     ``proof_files`` and resolve against ``placeholder://`` srcs exactly like the
     geolocate path. Unlike a geolocation there is no proof-image floor, so a
     blank request stays imageless.
+
+    ``source_snapshot_url`` is the archived copy of ``source_url``, on the same
+    terms as :func:`create_with_evidence`: the poster archives the source while
+    filling the one form that posts either shape, so the paste is kept whichever
+    button they press.
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -504,6 +524,11 @@ async def create_request(
     db.add(geo)
     db.flush()
 
+    # Same placement as the direct create: after the flush that mints the id,
+    # before the first upload.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
     await attach_evidence_and_commit(
         db,
         event=geo,
@@ -538,6 +563,7 @@ async def geolocate(
     remove_media_ids: list,
     files: list[UploadFile],
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Transition a ``requested`` or ``detected`` event to ``geolocated``.
 
@@ -583,6 +609,13 @@ async def geolocate(
     requested fulfilment as well as an owner's detected submit. They are
     mirrors, not the evidence origin, so a fulfiller correcting them is an
     edit, not a rewrite of the requester's claim.
+
+    ``source_snapshot_url`` is the archived copy of the stored source URL, same
+    field the submit form carries: optional, checked by
+    ``services/source_archive``, and stored in this transaction. Whether or not
+    the form carries one, ``reconcile_source_archive`` runs, so an edit that
+    changes the source URL never leaves a copy of the old one filed as the
+    event's archived source (see that function for the drop-or-re-file rule).
 
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
@@ -683,6 +716,15 @@ async def geolocate(
     for m in removed_rows:
         db.delete(m)
     db.flush()
+
+    # The archived source follows the source URL this write stores: a copy of a
+    # URL that is no longer the source is re-filed or dropped, and the paste the
+    # form carried fills the slot. Both run before the upload, so a rejected
+    # paste costs no S3 round-trip, and inside this transaction, so a failure
+    # takes them back with everything else.
+    source_archive.reconcile_source_archive(db, event=geo)
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
 
     # Upload new files + commit everything atomically; rollback-sweeps the new
     # uploads on failure. Empty ``files`` still commits the field + removal edits.

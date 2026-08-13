@@ -101,6 +101,22 @@ describe("createEvent multipart", () => {
     expect(lastBody().has("secondary_source_urls")).toBe(false);
   });
 
+  it("posts the archived copy of the source when one was pasted", async () => {
+    await createEvent({
+      ...createInput,
+      source_snapshot_url: "  https://archive.ph/abcde  ",
+    });
+    // Trimmed, like every other pasted URL on the form.
+    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
+  });
+
+  it("sends no source_snapshot_url part when nothing was pasted", async () => {
+    await createEvent(createInput);
+    expect(lastBody().has("source_snapshot_url")).toBe(false);
+    await createEvent({ ...createInput, source_snapshot_url: "   " });
+    expect(lastBody().has("source_snapshot_url")).toBe(false);
+  });
+
   it("encodes tag_ids and conflict_ids as JSON arrays", async () => {
     await createEvent(createInput);
     const body = lastBody();
@@ -152,6 +168,16 @@ describe("geolocateEvent multipart", () => {
     expect(path).toBe("/events/e1/geolocate");
   });
 
+  it("carries the archived copy pasted on the edit form", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await geolocateEvent("e1", {
+      ...createInput,
+      remove_media_ids: [],
+      source_snapshot_url: "https://archive.ph/abcde",
+    });
+    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
+  });
+
   it("carries the secondary source links (the transition replaces the list)", async () => {
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
     await geolocateEvent("e1", {
@@ -180,6 +206,20 @@ describe("createEventRequest multipart", () => {
     expect(body.get("capture_source_lat")).toBe("50.1");
     expect(body.get("capture_source_lng")).toBe("30.2");
     expect(body.has("proof_files")).toBe(false);
+  });
+
+  it("posts the archived copy a request's poster made", async () => {
+    // One form posts either shape, so the paste survives the choice.
+    mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
+    await createEventRequest({
+      title: "Footage wanted",
+      source_url: "https://t.me/c/2",
+      source_snapshot_url: "https://archive.ph/abcde",
+      source_posted_at: "2026-01-01T00:00",
+      files: [vid],
+      proof_files: [],
+    });
+    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
   });
 
   it("posts the secondary source links a request declares", async () => {

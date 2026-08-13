@@ -11,6 +11,7 @@ import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { PageShell } from "@/components/ui/PageShell";
+import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -75,6 +76,10 @@ export function EventEditForm({
   // A ``detected`` draft may be born with no declared source, so the field
   // starts empty (not `String(null)`) rather than showing a fabricated value.
   const [sourceUrl, setSourceUrl] = useState(geo.source_url ?? "");
+  // A snapshot pasted here replaces whatever copy the draft carries, so the
+  // field starts empty and the existing copy shows beside it instead: the value
+  // is what to write, not what is stored.
+  const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
   // The mirrors the import found, editable here: submitting replaces the whole
   // list, so a row the owner deletes is gone from the published event.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
@@ -126,6 +131,7 @@ export function EventEditForm({
     lng: cleanNumber(lng) ?? NaN,
     ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
+    source_snapshot_url: sourceSnapshotUrl,
     secondary_source_urls: secondarySourceUrls,
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
@@ -193,6 +199,12 @@ export function EventEditForm({
     // field, and the same message the create form shows.
     if (taxonomy.blockedMessage !== null) {
       submitMutation.setError(taxonomy.blockedMessage);
+      return;
+    }
+    // A snapshot that cannot be one is caught before the upload; the field
+    // flags itself red and the banner says what a snapshot link looks like.
+    if (sourceSnapshotUrl.trim() && !isSnapshotUrl(sourceSnapshotUrl)) {
+      submitMutation.setError(SNAPSHOT_HINT);
       return;
     }
     const missing = missingEventFields(fieldsState(), {
@@ -263,6 +275,9 @@ export function EventEditForm({
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
+          sourceSnapshotUrl={sourceSnapshotUrl}
+          setSourceSnapshotUrl={setSourceSnapshotUrl}
+          archivedSource={geo.archived_source}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
           eventDate={eventDate}

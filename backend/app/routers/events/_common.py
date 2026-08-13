@@ -3,8 +3,8 @@
 What the ``read`` / ``write`` / ``item`` sub-routers all need, kept here so
 none imports another:
 
-* the typed-error → HTTP envelope (``_raise_event_error`` over the
-  ``code → status`` map),
+* the typed-error → HTTP envelopes (``_raise_event_error`` and
+  :func:`raise_archive_error`, each over its ``code → status`` map),
 * :func:`build_event_read` and :func:`build_event_list`, the single
   ``EventRead`` / ``EventList`` assemblers shared by every response site
   (including the users and social routers, which import from here), and
@@ -25,7 +25,7 @@ from app.routers._errors import raise_typed_error
 from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
-from app.services.source_archive import archive_row_for
+from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
@@ -33,6 +33,29 @@ from app.services.thumbnails import pick_thumbnail
 # ``max_length`` on the ``list[str]`` parameter would cap how many entries the
 # form accepts, not how long each URL may be.
 SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
+
+# Every ``SnapshotRejected`` code is the same verdict about the same two
+# fields: what the analyst pasted is not a snapshot of the link they named. 400
+# across the board, with the code telling them which check it failed. Shared by
+# the archives endpoint and the two write forms that carry
+# ``source_snapshot_url``, so one paste is answered the same way wherever it
+# arrives.
+ARCHIVE_ERROR_STATUS: dict[str, int] = {
+    "original_url_not_on_event": 400,
+    "snapshot_url_invalid": 400,
+    "snapshot_url_too_long": 400,
+    "snapshot_url_not_https": 400,
+    "snapshot_provider_not_allowed": 400,
+    "snapshot_not_a_replay_url": 400,
+    "snapshot_original_mismatch": 400,
+    "snapshot_not_a_snapshot_code": 400,
+}
+
+
+def raise_archive_error(exc: SnapshotRejected) -> NoReturn:
+    """Translate a rejected snapshot paste into its 400."""
+    raise_typed_error(exc, ARCHIVE_ERROR_STATUS)
+
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,

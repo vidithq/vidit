@@ -9,7 +9,11 @@ import { useMutation } from "@/hooks/useMutation";
 import { Button } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Input } from "@/components/ui/Input";
-import { FORM_ERROR_BANNER, FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
+import {
+  FORM_ERROR_BANNER,
+  FORM_LABEL,
+  FORM_LABEL_COMPACT,
+} from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 interface ArchivedCopiesProps {
@@ -74,6 +78,66 @@ const PROVIDERS: readonly ProviderSpec[] = [
 ];
 
 const PROVIDER_BY_KEY = new Map(PROVIDERS.map((p) => [p.key, p]));
+
+/** Every host a snapshot may live on. Mirrors `PROVIDER_HOSTS` in
+ *  `services/source_archive.py`; change it with its backend counterpart. */
+const SNAPSHOT_HOSTS = ["web.archive.org", "archive.ph", "archive.today"];
+
+/** What a snapshot link looks like, said once: the field's own hint under the
+ *  input, and the banner a form shows when it refuses to publish a paste that
+ *  cannot be one. */
+export const SNAPSHOT_HINT =
+  "A snapshot link is an https link on web.archive.org, archive.ph or archive.today.";
+
+/**
+ * Whether a pasted value can be a snapshot at all: `https` on one of the three
+ * archive hosts.
+ *
+ * The first two checks of `source_archive.validate_snapshot`, run here so a
+ * typo costs no round-trip. Deliberately no further: whether a Wayback replay
+ * URL embeds *this* link, and whether an archive.today path is a snapshot code,
+ * stay server side, where the stored source URL is what the snapshot is
+ * compared against. A value this returns true for can still be a 400.
+ */
+export function isSnapshotUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return (
+      parsed.protocol === "https:" && SNAPSHOT_HOSTS.includes(parsed.hostname.toLowerCase())
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** The link the provider pages can be opened for, or null while the source
+ *  field holds nothing usable. `http(s)` only, matching what the catalog will
+ *  accept as a source, so the two links appear exactly when they would work. */
+function archivable(url: string): string | null {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The two provider pages, each prefilled with the link. One row of links,
+ *  shared by the popover on a live event and the field on the submit / edit
+ *  forms, so "archive it yourself" is the same two links wherever it appears. */
+function ProviderLinks({ url }: { url: string }) {
+  return PROVIDERS.map(({ key, label, submitUrl }) => (
+    <a
+      key={key}
+      href={submitUrl(url)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`text-xs ${TEXT_LINK}`}
+    >
+      Open {label}
+    </a>
+  ));
+}
 
 /**
  * The archived copy beside an outbound source link, and the way its owner makes
@@ -215,17 +279,7 @@ function ArchiveAction({
       {open && (
         <span className="absolute right-0 top-5 z-20 flex w-64 flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left shadow-lg">
           <span className={FORM_LABEL_COMPACT}>Archive it yourself</span>
-          {PROVIDERS.map(({ key, label, submitUrl }) => (
-            <a
-              key={key}
-              href={submitUrl(url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`text-xs ${TEXT_LINK}`}
-            >
-              Open {label}
-            </a>
-          ))}
+          <ProviderLinks url={url} />
           <label className={FORM_LABEL_COMPACT} htmlFor={fieldId}>
             Paste the snapshot link
           </label>
@@ -247,6 +301,85 @@ function ArchiveAction({
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * The archival affordance on the submit and edit forms: archive the source you
+ * just typed, paste the snapshot, publish both together.
+ *
+ * The same two provider links and one paste field as the popover on a live
+ * event, minus its mutation: nothing is written until the form is submitted, so
+ * the value travels with the event as `source_snapshot_url` and lands in the
+ * same write. That is what lets an analyst archive a source while it is still
+ * in front of them, rather than after the event exists.
+ *
+ * Optional, and shaped to read that way: no required marker, no readiness
+ * entry, and while the source field holds nothing usable the links are replaced
+ * by one line saying what to do first, so an empty source URL never presents a
+ * dead link. The links recompute from the current field value, so archiving a
+ * corrected URL is a re-click, not a reload.
+ *
+ * `copy` is the copy the event already carries (the edit form): it renders as
+ * the same accent glyph the detail page shows, and the field below it replaces
+ * it, since one link holds one copy.
+ */
+export function ArchiveSourceField({
+  sourceUrl,
+  value,
+  onChange,
+  copy = null,
+}: {
+  /** The Source URL field's current value, which is what gets archived. */
+  sourceUrl: string;
+  /** The pasted snapshot URL, posted with the form. */
+  value: string;
+  onChange: (value: string) => void;
+  /** The copy the event already carries, on the edit form. */
+  copy?: ArchivedLink | null;
+}) {
+  const fieldId = useId();
+  const target = archivable(sourceUrl);
+  const pasted = value.trim();
+  // Flagged only once something is typed: an empty field is the ordinary state
+  // of an optional one, not a mistake.
+  const invalid = pasted !== "" && !isSnapshotUrl(pasted);
+
+  return (
+    <div className="space-y-1.5">
+      <label className={FORM_LABEL} htmlFor={fieldId}>
+        Archived copy <FieldHelp concept="archived_copies" />
+        <span className="ml-1.5 text-[10px] normal-case tracking-normal text-neutral-500">
+          optional
+        </span>
+      </label>
+      {copy && (
+        <p className="flex items-center gap-1.5 text-xs text-neutral-400">
+          This source has a copy
+          <ArchivedGlyph copy={copy} describes={PRIMARY_SOURCE_DESCRIPTION} />
+          <span className="text-neutral-500">paste another to replace it.</span>
+        </p>
+      )}
+      {target ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <ProviderLinks url={target} />
+        </div>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          Fill in the source URL above to archive it.
+        </p>
+      )}
+      <Input
+        id={fieldId}
+        type="url"
+        variant="compact"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="https://archive.ph/…"
+        invalid={invalid}
+      />
+      {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
+    </div>
   );
 }
 

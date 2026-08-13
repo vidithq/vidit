@@ -62,6 +62,7 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
+  ArchiveSourceField,
   ArchivedCopies,
   DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
@@ -719,6 +720,37 @@ export default function PalettePage() {
                   canArchive
                 />
               </span>
+            </Variant>
+          </Item>
+
+          <Item
+            name="<ArchiveSourceField>"
+            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The two provider links recompute from the current Source URL value and are replaced by one line while it holds nothing usable; `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
+          >
+            <Variant label="a source URL is typed: both providers, one paste field">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value=""
+                onChange={() => {}}
+              />
+            </Variant>
+            <Variant label="no usable source URL yet">
+              <ArchiveSourceField sourceUrl="" value="" onChange={() => {}} />
+            </Variant>
+            <Variant label="a paste that cannot be a snapshot">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value="https://example.com/not-an-archive"
+                onChange={() => {}}
+              />
+            </Variant>
+            <Variant label="the event already carries a copy (edit form)">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value=""
+                onChange={() => {}}
+                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+              />
             </Variant>
           </Item>
 

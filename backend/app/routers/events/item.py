@@ -37,12 +37,14 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    raise_archive_error,
     resolve_live_event,
 )
 from app.schemas.event import EventCloseRequest, EventRead
 from app.services import events as events_service
 from app.services import permissions
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
+from app.services.source_archive import SnapshotRejected
 from app.services.storage import (
     sweep_keys,
 )
@@ -160,6 +162,10 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of the stored source URL, if the analyst made one while
+    # editing (same field the submit form carries). Optional; checked against
+    # the source URL this write stores.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The mirrors, repeated once per link. The submitted list REPLACES whatever
     # the row held, on a requested fulfilment too: unlike ``source_url`` these
     # carry no requester protection (see the service docstring).
@@ -193,6 +199,12 @@ async def geolocate_event(
     Blocked until the evidence floor is met (one source media, a proof image,
     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
+
+    ``source_snapshot_url`` records the archived source in the same write, on
+    the terms ``POST /events/{id}/archives`` applies (a paste that is not a
+    snapshot of the stored source URL is a 400, and nothing is written). An
+    edit that changes the source URL and pastes no new snapshot leaves the
+    event with no archived source rather than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -218,6 +230,7 @@ async def geolocate_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
@@ -231,6 +244,8 @@ async def geolocate_event(
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
     return _serialize_event(db, geolocated)
 
 
