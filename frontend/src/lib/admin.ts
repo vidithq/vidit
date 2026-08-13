@@ -194,16 +194,6 @@ export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
   );
 }
 
-/** Queue Wayback archival for every live event link that has no row yet. The
- *  call returns as soon as the rows are inserted; the worker paces the
- *  captures. */
-export function enqueueSourceArchival(): Promise<MaintenanceResponse> {
-  return apiFetch<MaintenanceResponse>(
-    "/admin/maintenance/enqueue-source-archival",
-    { method: "POST" }
-  );
-}
-
 /** Email every analyst holding unpublished `detected` drafts: one message with
  *  the count and a link to their own Detections queue. */
 export function sendCompletionDigests(): Promise<MaintenanceResponse> {

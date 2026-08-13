@@ -9,16 +9,20 @@ none imports another:
   ``EventRead`` / ``EventList`` assemblers shared by every response site
   (including the users and social routers, which import from here), and
 * the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
-  every serializer leans on.
+  every serializer leans on, and :func:`resolve_live_event`, the by-id fetch
+  the ``item`` and ``archives`` sub-routers share.
 """
 
+import uuid
 from typing import Annotated, NoReturn
 
+from fastapi import HTTPException
 from pydantic import StringConstraints
+from sqlalchemy.orm import Session
 
 from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
-from app.schemas.event import ArchivedCopiesRead, CoordsRead, EventList, EventRead
+from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
 from app.schemas.user import AuthorRef
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
@@ -48,6 +52,21 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
 def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:
     """Translate a typed events-service error into an HTTP response."""
     raise_typed_error(exc, _EVENT_ERROR_STATUS)
+
+
+def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
+    """Fetch a live event by id, or 404.
+
+    A soft-deleted row reads as 404 (an admin-removed row isn't actionable, the
+    same surface as a genuine 404, no enumeration oracle). Permission is the
+    caller's concern: the geolocate transition owns per-status ownership (a
+    ``requested`` event is answerable by anyone), while the owner-only verbs
+    call ``permissions.ensure_owner`` themselves.
+    """
+    geo = db.query(Event).filter(Event.id == event_id, Event.deleted_at.is_(None)).first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return geo
 
 
 def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
@@ -105,22 +124,17 @@ def build_event_list(
     )
 
 
-def _archived_copies(geo: Event, url: str | None) -> ArchivedCopiesRead | None:
-    """One link's capture columns and dead-end flag, or ``None`` when untracked.
+def _archived_link(geo: Event, url: str | None) -> ArchivedLinkRead | None:
+    """One link's archived copy as wire shape, or ``None`` when it has none.
 
-    The one place the queue row becomes wire shape, so the primary source and
-    every mirror serialise identically. ``unavailable`` is exactly the row's
-    terminal ``failed`` state: both providers refused and the attempt budget is
-    spent, which the read surface displays rather than swallows.
+    The one place the stored row becomes wire shape, so the primary source, the
+    provenance link and every mirror serialise identically. ``None`` is the
+    ordinary state: a copy exists only where the owner recorded one.
     """
     row = archive_row_for(geo, url)
     if row is None:
         return None
-    return ArchivedCopiesRead(
-        wayback=row.wayback_url,
-        archive_today=row.archive_today_url,
-        unavailable=row.status == "failed",
-    )
+    return ArchivedLinkRead(url=row.snapshot_url, provider=row.provider)
 
 
 def build_event_read(
@@ -154,14 +168,14 @@ def build_event_read(
         # Reads the eager-loaded ``archives`` collection; callers that skip
         # that load pay a lazy query per event, so every detail loader carries
         # it (see ``_DETAIL_LOADS``).
-        archived_source=_archived_copies(geo, geo.source_url),
+        archived_source=_archived_link(geo, geo.source_url),
         # Ordered by the relationship's ``position``, so the read order is the
         # order the submitter gave.
         secondary_source_urls=[link.url for link in geo.source_links],
         # Built from the same walk, so the two lists stay index-aligned by
         # construction. Reads the same eager-loaded ``archives`` collection as
         # ``archived_source``, so a mirror costs no extra query.
-        archived_secondary_sources=[_archived_copies(geo, link.url) for link in geo.source_links],
+        archived_secondary_sources=[_archived_link(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,
@@ -179,7 +193,7 @@ def build_event_read(
         detected_from_url=geo.detected_from_url,
         # Same eager-loaded collection as the source and the mirrors, so the
         # provenance row costs no extra query either.
-        archived_detected_from=_archived_copies(geo, geo.detected_from_url),
+        archived_detected_from=_archived_link(geo, geo.detected_from_url),
         detected_post_at=geo.detected_post_at,
         owner=geo.owner,
         # Null a soft-deleted requester so a banned account never surfaces in the

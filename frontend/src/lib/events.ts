@@ -4,6 +4,7 @@ import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage } from "./proof";
 import type {
   ArchiveImportJob,
+  ArchivedLink,
   ArchiveImportPresign,
   EventDetail,
   EventStatus,
@@ -743,4 +744,25 @@ export function missingEventRequestFields(s: {
     missing.push({ key: "source_media", label: FIELD_LABELS.source_media });
   }
   return missing;
+}
+
+/**
+ * Record the archived copy of one of an event's links: `POST
+ * /events/{id}/archives` (owner-only).
+ *
+ * `originalUrl` has to be one of the links the event carries (its source, a
+ * secondary source, the post it was detected from, or a proof citation), and
+ * `snapshotUrl` an `https` URL on one of the three archive hosts the server
+ * accepts. A second call for the same link replaces the copy rather than
+ * adding one, which is how a wrong paste is corrected.
+ */
+export function recordArchivedCopy(
+  eventId: string,
+  originalUrl: string,
+  snapshotUrl: string
+): Promise<ArchivedLink> {
+  return apiFetch<ArchivedLink>(`/events/${eventId}/archives`, {
+    method: "POST",
+    body: JSON.stringify({ original_url: originalUrl, snapshot_url: snapshotUrl }),
+  });
 }

@@ -114,22 +114,6 @@ class Settings(BaseSettings):
     # false, a mention arriving via the cron is nominal and raises no warning.
     x_webhook_enabled: bool = False
 
-    # ── Source archival ──────────────────────────────────────────────────
-    # Wayback Machine "Save Page Now" credentials (an archive.org account's
-    # S3-style key pair). Both empty means the worker still submits captures
-    # anonymously, at the much tighter anonymous rate ceiling; set them for a
-    # deployment that archives at catalog volume.
-    archive_org_access_key: str = ""
-    archive_org_secret_key: str = ""
-    # Operator kill switch for the archive.today leg, on by default: every link
-    # is submitted to both providers, so a link survives one of them refusing
-    # it. Set false to stop submitting there at all, which leaves the Wayback
-    # capture the only one a link can get. archive.today has no API contract
-    # and blocks datacentre egress freely, so a deployment whose egress it
-    # refuses outright can turn the leg off instead of paying an attempt for it
-    # on every link.
-    archive_today_enabled: bool = True
-
     model_config = {"env_file": ".env"}
 
     @property
@@ -190,17 +174,6 @@ class Settings(BaseSettings):
                 f"non-local host (got {host!r}). A non-local deployment must "
                 f"set COOKIE_SECURE=true so the session cookie is never sent "
                 f"over plaintext."
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _validate_archive_org_config(self) -> "Settings":
-        pair = (self.archive_org_access_key, self.archive_org_secret_key)
-        if any(pair) and not all(pair):
-            raise ValueError(
-                "ARCHIVE_ORG_ACCESS_KEY and ARCHIVE_ORG_SECRET_KEY must be set "
-                "together; a half-configured pair authenticates nothing and "
-                "would silently fall back to the anonymous rate ceiling."
             )
         return self
 

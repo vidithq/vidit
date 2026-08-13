@@ -262,10 +262,6 @@ class AdminMaintenanceResponse(BaseModel):
     expired: int | None = None
     old_consumed: int | None = None
     pending_registrations_deleted: int | None = None
-    # Source-archival backfill: live events walked, and links newly queued for
-    # capture across them.
-    events_scanned: int | None = None
-    links_enqueued: int | None = None
     # Completion digest: analysts written to, the drafts those messages
     # covered, and the sends the provider rejected.
     analysts_notified: int | None = None

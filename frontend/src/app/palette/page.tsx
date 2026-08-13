@@ -232,31 +232,25 @@ const MOCK_DRAFT_SEVERAL_MISSING: EventDetail = {
 };
 
 // The same detail body with a real source captured at both providers, a
-// provenance link captured at one, plus one mirror captured at one provider
-// only and one whose archiving failed for good: the archived pair is
-// suppressed on a synthetic demo source, so the mock above can never show it.
+// provenance link archived at archive.today, plus one mirror archived and one
+// with no copy yet: the archive affordance is suppressed on a synthetic demo
+// source, so the mock above can never show it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
   is_demo: false,
   source_url: "https://t.me/channel/12345",
   archived_source: {
-    wayback: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
-    unavailable: false,
+    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+    provider: "wayback",
   },
   detected_from_url: "https://x.com/analyst/status/1234567890",
-  archived_detected_from: {
-    wayback: "https://web.archive.org/web/20260601120200/https://x.com/analyst/status/1234567890",
-    archive_today: null,
-    unavailable: false,
-  },
+  archived_detected_from: { url: "https://archive.ph/fghij", provider: "archive_today" },
   archived_secondary_sources: [
     {
-      wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-      archive_today: null,
-      unavailable: false,
+      url: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
+      provider: "wayback",
     },
-    { wayback: null, archive_today: null, unavailable: true },
+    null,
   ],
 };
 
@@ -690,60 +684,56 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row), so a caller hands it the payload field with no guard of its own; pendingPublication is the exception, the draft variant a caller sets from the event's status, since a draft's links are queued only when it is published. The pair closes on a <FieldHelp> `?` (archived_copies) explaining what the two icons are; help={false} drops it where a caller renders a list of pairs and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph (a clock-with-arrow for the Wayback Machine, a box for archive.today, never the services' own logos), accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens both providers' submit pages prefilled with the link plus one field to paste the snapshot back, which flips the glyph in place. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="captured at both providers (primary source)">
+            <Variant label="archived at the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{
-                    wayback:
-                      "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-                    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
-                    unavailable: false,
+                  copy={{
+                    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+                    provider: "wayback",
                   }}
+                  url="https://t.me/channel/12345"
+                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="captured at one provider (mirror 2 of a multi-mirror list)">
+            <Variant label="archived at archive.today (mirror 2 of a multi-mirror list)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{
-                    wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-                    archive_today: null,
-                    unavailable: false,
-                  }}
+                  copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+                  url="https://t.me/mirror/1"
+                  eventId="demo"
                   describes={mirrorDescription("t.me", 1, 2)}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="archiving in progress (queued, no copy yet)">
+            <Variant label="no copy yet, seen by a reader (inert)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{ wayback: null, archive_today: null, unavailable: false }}
+                  copy={null}
+                  url="https://t.me/channel/12345"
+                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="not archived (both providers failed, no retry left)">
-              <span className="text-sm text-neutral-300">
-                t.me
-                <ArchivedCopies
-                  copies={{ wayback: null, archive_today: null, unavailable: true }}
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
-                />
-              </span>
-            </Variant>
-            <Variant label="archived when published (a detected draft, no queue row yet)">
+            <Variant label="no copy yet, seen by the owner (opens the providers + paste field)">
               <span className="text-sm text-neutral-300">
                 x.com
                 <ArchivedCopies
-                  copies={null}
+                  copy={null}
+                  url="https://x.com/analyst/status/1234567890"
+                  eventId="demo"
                   describes={DETECTED_FROM_DESCRIPTION}
-                  pendingPublication
+                  canArchive
                 />
               </span>
             </Variant>

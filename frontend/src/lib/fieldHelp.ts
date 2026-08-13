@@ -38,7 +38,7 @@ export const FIELD_HELP = {
     label: "What are secondary sources?",
   },
   archived_copies: {
-    text: "Two independent archives, the Wayback Machine and archive.today, capture each source link when the event is published. An orange icon opens that archive's copy; a greyed one means that archive holds none, because the capture failed or the site refused it. On a draft the pair reads “archived when published”.",
+    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events the greyed icon opens the Wayback Machine or archive.today with the link filled in, and you paste the snapshot it gives you back. Orange means a copy exists and opens it; grey means none yet.",
     label: "What are the archived copies?",
   },
   source_media: {

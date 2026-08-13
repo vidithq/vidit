@@ -1,153 +1,253 @@
+"use client";
+
+import { useId, useState } from "react";
 import { Archive, History } from "lucide-react";
 
-import type { ArchivedCopies as ArchivedCopiesPayload } from "@/types";
+import type { ArchivedLink } from "@/types";
+import { recordArchivedCopy } from "@/lib/events";
+import { useMutation } from "@/hooks/useMutation";
+import { Button } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { Input } from "@/components/ui/Input";
+import { FORM_ERROR_BANNER, FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 interface ArchivedCopiesProps {
-  /** The link's archival record. Null on a link the queue does not track (a
-   *  source-less row, an unpublished draft): the component renders nothing, so
-   *  callers hand it the field straight off the payload without their own
-   *  guard. */
-  copies: ArchivedCopiesPayload | null;
-  /** What the copies are of, folded into each accessible name ("the source",
-   *  "mirror 2, t.me"). A page carries several of these pairs and every glyph
-   *  in them looks alike, so each one is named for what it points at. Build a
-   *  mirror's value with `mirrorDescription`, which keeps two mirrors on one
-   *  host tellable apart. */
+  /** The link's archived copy, or null while it has none. */
+  copy: ArchivedLink | null;
+  /** The link itself: what the provider pages are prefilled with, and what the
+   *  recorded copy is filed under. */
+  url: string;
+  /** Which event the link belongs to. The write endpoint is per event. */
+  eventId: string;
+  /** What the copy is of, folded into each accessible name ("the source",
+   *  "mirror 2, t.me"). A page carries several of these and every glyph in them
+   *  looks alike, so each one is named for what it points at. Build a mirror's
+   *  value with `mirrorDescription`, which keeps two mirrors on one host
+   *  tellable apart. */
   describes: string;
-  /** Render the pair as the promise a draft's links carry: greyed, inert, and
-   *  named "archived when published".
-   *
-   *  A draft has no queue rows at all by design, publication being the trigger,
-   *  so its `copies` are null and the pair would otherwise be nothing at all on
-   *  a surface where every published event shows one. The caller reads it off
-   *  the event's status; it is never inferred from payload the queue did not
-   *  write. */
-  pendingPublication?: boolean;
-  /** Set false where a caller renders several pairs in one list and hoists the
-   *  `?` to the section instead, so the explanation appears once rather than on
-   *  every row (the Secondary sources list). */
+  /** Whether the viewer may record a copy, which is exactly whether they own
+   *  the event. False leaves the glyph inert: a reader sees that no copy exists
+   *  without being offered an action the server would refuse. */
+  canArchive: boolean;
+  /** Set false where a caller renders several of these in one list and hoists
+   *  the `?` to the section instead, so the explanation appears once rather
+   *  than on every row (the Secondary sources list). */
   help?: boolean;
 }
 
-/**
- * How one provider's copy stands, which is what decides its glyph.
- *
- * `unpublished` is the draft state: no capture has been attempted because none
- * is due yet. It comes from the event's status rather than from the record, so
- * it sits alongside the four the record itself can express.
- */
-type CopyState = "captured" | "missing" | "failed" | "pending" | "unpublished";
-
+/** How a provider's own submit page is opened, prefilled with the link. */
 interface ProviderSpec {
-  key: "wayback" | "archive_today";
+  key: ArchivedLink["provider"];
   /** The service's name, as it is announced. */
   label: string;
   Glyph: typeof History;
+  /** The provider page that archives `url`, opened in the analyst's own tab. */
+  submitUrl: (url: string) => string;
 }
 
 /**
- * The two providers, in the order they read. Distinguishable glyphs rather
- * than the services' own marks: a logo is a trademark, and a clock-with-arrow
- * for the Wayback Machine's history replay against a box for archive.today's
+ * The two services, in the order they read. Distinguishable glyphs rather than
+ * the services' own marks: a logo is a trademark, and a clock-with-arrow for
+ * the Wayback Machine's history replay against a box for archive.today's
  * snapshot tells them apart on their own. The name is what carries the
  * identity, in the accessible name.
+ *
+ * `submitUrl` encodes to match each form: the Wayback save page carries the
+ * link as a path, where `encodeURI` keeps the scheme separator readable, and
+ * archive.today carries it as a query parameter, where every reserved
+ * character has to be escaped.
  */
 const PROVIDERS: readonly ProviderSpec[] = [
-  { key: "wayback", label: "Wayback Machine", Glyph: History },
-  { key: "archive_today", label: "archive.today", Glyph: Archive },
+  {
+    key: "wayback",
+    label: "Wayback Machine",
+    Glyph: History,
+    submitUrl: (url) => `https://web.archive.org/save/${encodeURI(url)}`,
+  },
+  {
+    key: "archive_today",
+    label: "archive.today",
+    Glyph: Archive,
+    submitUrl: (url) => `https://archive.ph/?url=${encodeURIComponent(url)}`,
+  },
 ];
 
+const PROVIDER_BY_KEY = new Map(PROVIDERS.map((p) => [p.key, p]));
+
 /**
- * The archived copies beside an outbound source link: one icon per archiving
- * service, accent and clickable where that service holds a copy, greyed and
- * inert where it does not.
+ * The archived copy beside an outbound source link, and the way its owner makes
+ * one.
  *
  * Sits next to the original rather than replacing it: the original stays the
- * primary link while it resolves, and a copy is one click away the day it
- * stops. Absence is shown rather than hidden, so a reader can tell a copy that
- * is still coming from one that is never coming: greyed glyphs with an "in
- * progress" name while the queue is still trying, with an "archiving failed"
- * name once both services have given up for good, and with an "archived when
- * published" name on a draft, whose links are queued at publication.
+ * primary link while it resolves, and the copy is one click away the day it
+ * stops. One copy per link, from whichever service the analyst used, so the
+ * affordance is a single glyph: accent and clickable once a copy exists, grey
+ * while none does.
  *
- * The glyphs are small marks with no label beside them, so the pair closes on
- * a `?`: each icon's accessible name carries its own state for a screen
- * reader, and the `archived_copies` concept explains the pair to a sighted one.
- * One `?` per group, never one per icon.
+ * Archiving is an act the analyst performs, not something the server attempts.
+ * Both services refuse or throttle server-side submissions of exactly the hosts
+ * this catalog cites, and both work from a browser, so the grey glyph opens the
+ * two provider pages prefilled with the link and takes the snapshot URL back in
+ * one field. A viewer who does not own the event sees the grey glyph inert.
  *
- * One component for the primary source, the provenance link and every
- * secondary mirror, so the same fact cannot grow two affordances.
+ * The glyph is a small mark with no label beside it, so the affordance closes
+ * on a `?`: the glyph's accessible name carries its own state for a screen
+ * reader, and the `archived_copies` concept explains it to a sighted one. One
+ * `?` per group, never one per glyph.
+ *
+ * One component for the primary source, the provenance link and every secondary
+ * mirror, so the same fact cannot grow two affordances.
  */
 export function ArchivedCopies({
-  copies,
+  copy,
+  url,
+  eventId,
   describes,
-  pendingPublication = false,
+  canArchive,
   help = true,
 }: ArchivedCopiesProps) {
-  if (!copies && !pendingPublication) return null;
+  // What the paste recorded, which outranks the payload the page was rendered
+  // with: the copy has to appear the moment it is saved, and the page's own
+  // data is a fetch old by then.
+  const [recorded, setRecorded] = useState<ArchivedLink | null>(null);
+  const [open, setOpen] = useState(false);
+  const current = recorded ?? copy;
+
   return (
     <span className="ml-2 inline-flex shrink-0 items-center gap-1 align-middle">
-      {PROVIDERS.map(({ key, label, Glyph }) => {
-        const href = copies?.[key] ?? null;
-        // A record, wherever one exists, outranks the promise: the flag only
-        // decides what an *absent* record renders, so a link the queue has
-        // already answered for never reads as "archived when published".
-        const state: CopyState = copies ? copyState(copies, href) : "unpublished";
-        const name = accessibleName(label, describes, state);
-        if (href) {
-          return (
-            <a
-              key={key}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={name}
-              className={`${TEXT_LINK} inline-flex`}
-            >
-              <Glyph size={13} aria-hidden />
-            </a>
-          );
-        }
-        return (
-          <span key={key} role="img" aria-label={name} className="inline-flex text-neutral-600">
-            <Glyph size={13} aria-hidden />
-          </span>
-        );
-      })}
+      {current ? (
+        <ArchivedGlyph copy={current} describes={describes} />
+      ) : canArchive ? (
+        <ArchiveAction
+          url={url}
+          eventId={eventId}
+          describes={describes}
+          open={open}
+          setOpen={setOpen}
+          onRecorded={setRecorded}
+        />
+      ) : (
+        <MissingGlyph describes={describes} />
+      )}
       {help && <FieldHelp concept="archived_copies" size={12} />}
     </span>
   );
 }
 
-/**
- * One provider's state, read off the whole record rather than its own field: a
- * missing copy means something different depending on how the link's single
- * shared job ended. `unavailable` is terminal failure of both services;
- * otherwise a link that already holds one copy is finished, so the empty side
- * is settled rather than still coming.
- */
-function copyState(copies: ArchivedCopiesPayload, href: string | null): CopyState {
-  if (href) return "captured";
-  if (copies.unavailable) return "failed";
-  if (copies.wayback || copies.archive_today) return "missing";
-  return "pending";
+/** The copy that exists: one accent glyph opening it, marked with its service. */
+function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+  // A provider the client does not know is still a stored copy, so it opens
+  // under the generic archive mark rather than rendering as no copy at all.
+  const spec = PROVIDER_BY_KEY.get(copy.provider);
+  const Glyph = spec?.Glyph ?? Archive;
+  const label = spec ? `${spec.label} copy of ${describes}` : `Archived copy of ${describes}`;
+  return (
+    <a
+      href={copy.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      className={`${TEXT_LINK} inline-flex`}
+    >
+      <Glyph size={13} aria-hidden />
+    </a>
+  );
 }
 
-function accessibleName(label: string, describes: string, state: CopyState): string {
-  switch (state) {
-    case "captured":
-      return `${label} copy of ${describes}`;
-    case "failed":
-      return `${describes}: archiving failed, no ${label} copy`;
-    case "missing":
-      return `No ${label} copy of ${describes}`;
-    case "pending":
-      return `${label} copy of ${describes}: archiving in progress`;
-    case "unpublished":
-      return `${label} copy of ${describes}: archived when published`;
-  }
+/** No copy, and nothing the viewer can do about it. */
+function MissingGlyph({ describes }: { describes: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`No archived copy of ${describes}`}
+      className="inline-flex text-neutral-600"
+    >
+      <Archive size={13} aria-hidden />
+    </span>
+  );
+}
+
+/**
+ * The owner's path from no copy to one: open a provider, paste what it gives
+ * back.
+ *
+ * Collapsed to the same grey glyph a reader sees, so an unarchived link reads
+ * identically whoever is looking at it until they ask for the action. Expanded,
+ * the two provider links carry the URL already filled in, so the analyst never
+ * copies it by hand, and the field beside them is where the snapshot returns.
+ */
+function ArchiveAction({
+  url,
+  eventId,
+  describes,
+  open,
+  setOpen,
+  onRecorded,
+}: {
+  url: string;
+  eventId: string;
+  describes: string;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onRecorded: (copy: ArchivedLink) => void;
+}) {
+  const [snapshot, setSnapshot] = useState("");
+  // Generated rather than derived from the URL: several of these sit on one
+  // page, and a link is not a legal id.
+  const fieldId = useId();
+  const save = useMutation(recordArchivedCopy, {
+    fallback: "Could not save that link.",
+    onSuccess: onRecorded,
+  });
+
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={`Archive ${describes}`}
+        className="inline-flex text-neutral-600 hover:text-neutral-300 transition-colors"
+      >
+        <Archive size={13} aria-hidden />
+      </button>
+      {open && (
+        <span className="absolute right-0 top-5 z-20 flex w-64 flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left shadow-lg">
+          <span className={FORM_LABEL_COMPACT}>Archive it yourself</span>
+          {PROVIDERS.map(({ key, label, submitUrl }) => (
+            <a
+              key={key}
+              href={submitUrl(url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`text-xs ${TEXT_LINK}`}
+            >
+              Open {label}
+            </a>
+          ))}
+          <label className={FORM_LABEL_COMPACT} htmlFor={fieldId}>
+            Paste the snapshot link
+          </label>
+          <Input
+            id={fieldId}
+            variant="compact"
+            value={snapshot}
+            onChange={(e) => setSnapshot(e.target.value)}
+            placeholder="https://archive.ph/…"
+          />
+          {save.error && <span className={FORM_ERROR_BANNER}>{save.error}</span>}
+          <Button
+            variant="secondary"
+            disabled={save.loading || !snapshot.trim()}
+            onClick={() => void save.run(eventId, url, snapshot.trim())}
+          >
+            {save.loading ? "Saving…" : "Save"}
+          </Button>
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** The primary source's own name, kept distinct from every mirror's. */

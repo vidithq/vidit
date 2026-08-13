@@ -1,15 +1,37 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { EventDetailBody } from "./EventDetailBody";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { EventDetail } from "@/types";
 
+// Who is looking decides whether the archive affordance is offered, and the
+// body reads that off the auth context. The default is a signed-out reader;
+// `asOwner` is the one test that needs the owner's view.
+const viewer: { id: string | null } = { id: null };
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: viewer.id ? { id: viewer.id } : null }),
+}));
+
+function asOwner<T>(run: () => T): T {
+  viewer.id = "u1";
+  try {
+    return run();
+  } finally {
+    viewer.id = null;
+  }
+}
+
+// The media gallery's alt text, which is the event title. Named because the
+// detail rows carry archive glyphs of their own, so a media assertion has to
+// say which image it means.
+const TITLE = "Strike on ammunition depot";
+
 function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "g1",
-    title: "Strike on ammunition depot",
+    title: TITLE,
     event_coords: { lat: 48.015883, lng: 37.802411 },
     capture_source_coords: null,
     archived_source: null,
@@ -86,7 +108,7 @@ describe("EventDetailBody", () => {
   it("panel variant: thumbnail media, section headings, no request/author rows", () => {
     const geo = geoFixture();
     render(<EventDetailBody geo={geo} variant="panel" />);
-    const img = screen.getByRole("img");
+    const img = screen.getByRole("img", { name: geo.title });
     // Derive the expected URL from the same helper the component uses,
     // decoded so the assertion survives next/image's loader encoding.
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
@@ -158,7 +180,7 @@ describe("EventDetailBody", () => {
   it("page variant: hero media, requested-by + author rows, section headings", () => {
     const geo = geoFixture();
     render(<EventDetailBody geo={geo} variant="page" />);
-    const img = screen.getByRole("img");
+    const img = screen.getByRole("img", { name: geo.title });
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(geo.media[0]).hero
     );
@@ -227,7 +249,7 @@ describe("EventDetailBody", () => {
       </EventDetailBody>
     );
     const slot = screen.getByTestId("location-map");
-    const media = screen.getByRole("img");
+    const media = screen.getByRole("img", { name: TITLE });
     const details = screen.getByText("Details");
     // Position is the contract, not mere presence: media → slot → details.
     expect(
@@ -265,7 +287,7 @@ describe("EventDetailBody", () => {
     expect(container.querySelector("media-controller")).not.toBeNull();
     expect(container.querySelector("video[controls]")).toBeNull();
     // The image sibling still renders through next/image.
-    expect(screen.getByRole("img")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: TITLE })).toBeInTheDocument();
   });
 
   it("falls back on empty media and missing proof", () => {
@@ -385,105 +407,92 @@ describe("EventDetailBody", () => {
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
   });
 
-  it("links each provider that holds a copy of the source", () => {
+  it("links the archived copy of the source, named for its service", () => {
     render(
       <EventDetailBody
         geo={geoFixture({
           archived_source: {
-            wayback: "https://web.archive.org/web/2026/t.me/channel/12345",
-            archive_today: "https://archive.ph/abcde/t.me/channel/12345",
-            unavailable: false,
+            url: "https://web.archive.org/web/2026/t.me/channel/12345",
+            provider: "wayback",
           },
         })}
         variant="page"
       />
     );
-    // Named per provider and per target, since every glyph on the page looks
+    // Named per service and per target, since every glyph on the page looks
     // alike and a screen reader has nothing else to tell them apart by.
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/t.me/channel/12345");
-    expect(
-      screen.getByRole("link", { name: "archive.today copy of the source" })
-    ).toHaveAttribute("href", "https://archive.ph/abcde/t.me/channel/12345");
-    // The original stays the primary link; the copies are the fallback.
+    // The original stays the primary link; the copy is the fallback.
     expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
   });
 
-  it("greys the provider that holds no copy, leaving the other clickable", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: {
-            wayback: null,
-            archive_today: "https://archive.ph/abcde/t.me/channel/12345",
-            unavailable: false,
-          },
-        })}
-        variant="page"
-      />
-    );
-    // One copy finishes the job, so the empty side is settled rather than
-    // pending: it announces the absence, and is not a link.
-    expect(
-      screen.getByRole("link", { name: "archive.today copy of the source" })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /Wayback Machine copy of the source/ })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("img", { name: "No Wayback Machine copy of the source" })
-    ).toBeInTheDocument();
-  });
-
-  it("says archiving is in progress while no copy exists yet", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: { wayback: null, archive_today: null, unavailable: false },
-        })}
-        variant="page"
-      />
-    );
-    expect(screen.queryAllByRole("link", { name: /copy of the source/ })).toHaveLength(0);
-    expect(
-      screen.getByRole("img", {
-        name: "Wayback Machine copy of the source: archiving in progress",
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "archive.today copy of the source: archiving in progress",
-      })
-    ).toBeInTheDocument();
-  });
-
-  it("shows a terminally failed link as not archived rather than silently", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: { wayback: null, archive_today: null, unavailable: true },
-        })}
-        variant="page"
-      />
-    );
-    // Both providers gave up for good: the pair still renders, and says so.
-    expect(
-      screen.getByRole("img", {
-        name: "the source: archiving failed, no Wayback Machine copy",
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "the source: archiving failed, no archive.today copy",
-      })
-    ).toBeInTheDocument();
-  });
-
-  it("renders no archival affordance on an untracked link", () => {
+  it("shows a reader that no copy exists, without offering them the action", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    expect(screen.queryAllByRole("img", { name: /copy of the source/ })).toHaveLength(0);
-    expect(screen.queryAllByRole("link", { name: /copy of the source/ })).toHaveLength(0);
+    expect(
+      screen.getByRole("img", { name: "No archived copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Archive / })
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the owner the archive action on every unarchived link row", () => {
+    asOwner(() =>
+      render(
+        <EventDetailBody
+          geo={geoFixture({
+            detected_from_url: "https://x.com/ana/status/123",
+            secondary_source_urls: ["https://t.me/mirror/1"],
+            archived_secondary_sources: [null],
+          })}
+          variant="page"
+        />
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
+    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive t.me" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Archive the post it was detected from",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("offers a draft's owner the same action, publication being no longer the trigger", () => {
+    asOwner(() =>
+      render(
+        <EventDetailBody
+          geo={geoFixture({
+            status: "detected",
+            detected_at: "2026-06-02T09:00:00Z",
+            geolocated_at: null,
+          })}
+          variant="page"
+        />
+      )
+    );
+    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
+  });
+
+  it("shows no archival affordance on a draft that declares no source", () => {
+    asOwner(() =>
+      render(
+        <EventDetailBody
+          geo={geoFixture({
+            status: "detected",
+            detected_at: "2026-06-02T09:00:00Z",
+            geolocated_at: null,
+            source_url: null,
+          })}
+          variant="page"
+        />
+      )
+    );
+    // There is no link to archive, so the affordance would be about nothing.
+    expect(screen.queryByRole("button", { name: /^Archive / })).not.toBeInTheDocument();
   });
 
   it("omits the Secondary sources row when the event declares no mirror", () => {
@@ -517,14 +526,14 @@ describe("EventDetailBody", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
     // One `?` for the whole expanded list, hoisted off the mirrors: ten mirrors
-    // must not carry ten copies of the same sentence. The Source row's own pair
-    // keeps its own, one per group.
+    // must not carry ten copies of the same sentence. The Source row keeps its
+    // own, one per group, so the page shows exactly two.
     expect(
       screen.getAllByRole("button", { name: FIELD_HELP.archived_copies.label })
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
-  it("keeps each mirror's archival record on its own mirror", () => {
+  it("keeps each mirror's archived copy on its own mirror", () => {
     render(
       <EventDetailBody
         geo={geoFixture({
@@ -533,13 +542,12 @@ describe("EventDetailBody", () => {
             "https://www.youtube.com/watch?v=abc",
           ],
           // Only the second mirror has a copy: the alignment is by position, so
-          // a record must not slide onto the neighbouring mirror.
+          // a copy must not slide onto the neighbouring mirror.
           archived_secondary_sources: [
-            { wayback: null, archive_today: null, unavailable: true },
+            null,
             {
-              wayback: "https://web.archive.org/web/2026/youtube.com/watch?v=abc",
-              archive_today: null,
-              unavailable: false,
+              url: "https://web.archive.org/web/2026/youtube.com/watch?v=abc",
+              provider: "wayback",
             },
           ],
         })}
@@ -560,70 +568,56 @@ describe("EventDetailBody", () => {
     );
     expect(archived).toHaveAttribute("target", "_blank");
     expect(archived).toHaveAttribute("rel", "noopener noreferrer");
+    // The uncopied mirror says so rather than showing nothing.
     expect(
-      screen.queryByRole("link", { name: /copy of mirror 1/ })
-    ).not.toBeInTheDocument();
-    // The failed mirror still says so rather than showing nothing.
-    expect(
-      screen.getByRole("img", {
-        name: "mirror 1, x.com: archiving failed, no Wayback Machine copy",
-      })
+      screen.getByRole("img", { name: "No archived copy of mirror 1, x.com" })
     ).toBeInTheDocument();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
   });
 
-  it("renders the archived pair beside the Detected from link", () => {
+  it("renders the archived copy beside the Detected from link", () => {
     render(
       <EventDetailBody
         geo={geoFixture({
           detected_from_url: "https://x.com/ana/status/123",
           archived_detected_from: {
-            wayback: "https://web.archive.org/web/2026/x.com/ana/status/123",
-            archive_today: null,
-            unavailable: false,
+            url: "https://web.archive.org/web/2026/x.com/ana/status/123",
+            provider: "wayback",
           },
         })}
         variant="page"
       />
     );
     // Named apart from the source: the provenance link is the analyst's own
-    // post, not the footage origin, and both rows carry the same glyphs.
+    // post, not the footage origin, and both rows carry the same glyph.
     expect(
       screen.getByRole("link", {
         name: "Wayback Machine copy of the post it was detected from",
       })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/x.com/ana/status/123");
-    expect(
-      screen.getByRole("img", {
-        name: "No archive.today copy of the post it was detected from",
-      })
-    ).toBeInTheDocument();
   });
 
-  it("the map panel carries the pair on every link row it shows", () => {
+  it("the map panel carries the copy on every link row it shows", () => {
     // The panel renders the same rows as the page, so a regression that drops
     // the affordance from one surface only would pass the page tests alone.
     render(
       <EventDetailBody
         geo={geoFixture({
           archived_source: {
-            wayback: "https://web.archive.org/web/2026/t.me/channel/12345",
-            archive_today: null,
-            unavailable: false,
+            url: "https://web.archive.org/web/2026/t.me/channel/12345",
+            provider: "wayback",
           },
           detected_from_url: "https://x.com/ana/status/123",
           archived_detected_from: {
-            wayback: "https://web.archive.org/web/2026/x.com/ana/status/123",
-            archive_today: null,
-            unavailable: false,
+            url: "https://web.archive.org/web/2026/x.com/ana/status/123",
+            provider: "wayback",
           },
           secondary_source_urls: ["https://t.me/mirror/1"],
           archived_secondary_sources: [
             {
-              wayback: "https://web.archive.org/web/2026/t.me/mirror/1",
-              archive_today: null,
-              unavailable: false,
+              url: "https://web.archive.org/web/2026/t.me/mirror/1",
+              provider: "wayback",
             },
           ],
         })}
@@ -644,59 +638,8 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
   });
 
-  it("tells a draft's link rows their copies come at publication", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          status: "detected",
-          detected_at: "2026-06-02T09:00:00Z",
-          geolocated_at: null,
-          detected_from_url: "https://x.com/ana/status/123",
-          secondary_source_urls: ["https://t.me/mirror/1"],
-          archived_secondary_sources: [null],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    // A draft carries no queue row at all, so nothing in the payload could say
-    // this: the state is read off the status. Source, mirror and provenance
-    // rows each get the pair.
-    expect(
-      screen.getAllByRole("img", { name: /archived when published/ })
-    ).toHaveLength(6);
-    expect(
-      screen.getByRole("img", {
-        name: "archive.today copy of the post it was detected from: archived when published",
-      })
-    ).toBeInTheDocument();
-    expect(screen.queryAllByRole("link", { name: /copy of/ })).toHaveLength(0);
-  });
-
-  it("shows no archival pair on a draft that declares no source", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          status: "detected",
-          detected_at: "2026-06-02T09:00:00Z",
-          geolocated_at: null,
-          source_url: null,
-        })}
-        variant="page"
-      />
-    );
-    // There is no link to archive, so the promise would be about nothing.
-    expect(
-      screen.queryAllByRole("img", { name: /archived when published/ })
-    ).toHaveLength(0);
-  });
-
   it("names two mirrors sharing a host apart, and the primary apart from both", () => {
-    const captured = (url: string) => ({
-      wayback: url,
-      archive_today: null,
-      unavailable: false,
-    });
+    const captured = (url: string) => ({ url, provider: "wayback" as const });
     render(
       <EventDetailBody
         geo={geoFixture({
@@ -730,9 +673,8 @@ describe("EventDetailBody", () => {
           secondary_source_urls: ["https://t.me/mirror/1"],
           archived_secondary_sources: [
             {
-              wayback: "https://web.archive.org/web/2026/t.me/mirror/1",
-              archive_today: null,
-              unavailable: false,
+              url: "https://web.archive.org/web/2026/t.me/mirror/1",
+              provider: "wayback",
             },
           ],
         })}
@@ -752,11 +694,7 @@ describe("EventDetailBody", () => {
         geo={geoFixture({
           secondary_source_urls: ["mailto:tips@example.org"],
           archived_secondary_sources: [
-            {
-              wayback: "https://web.archive.org/web/2026/tips",
-              archive_today: null,
-              unavailable: false,
-            },
+            { url: "https://web.archive.org/web/2026/tips", provider: "wayback" },
           ],
         })}
         variant="page"

@@ -90,31 +90,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/maintenance/enqueue-source-archival": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maintenance Enqueue Source Archival
-         * @description Queue Wayback archival for every live event link that lacks a row.
-         *
-         *     The catalog backfill behind create-time archival: events written before a
-         *     link was tracked get their ``source_url`` and proof-body hrefs queued.
-         *     Enqueue only, so the click returns immediately; the worker drains the
-         *     queue at its paced rate.
-         */
-        post: operations["maintenance_enqueue_source_archival_api_v1_admin_maintenance_enqueue_source_archival_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/maintenance/reap-auth-tokens": {
         parameters: {
             query?: never;
@@ -666,8 +641,7 @@ export interface paths {
          *     draft that fails the floor (no proof image, no source media, no
          *     coordinates, no source URL) rolls back alone and stays a draft with its
          *     reason in ``rows[]``. Publishing a row credits the caller as its
-         *     geolocator and queues its links for archival, exactly as the single-row
-         *     transition does.
+         *     geolocator, exactly as the single-row transition does.
          *
          *     Two conditions reject the whole call, before anything is published: no
          *     resolvable conflict (400, since no row could clear the floor) and a
@@ -937,6 +911,41 @@ export interface paths {
          *     business rules + IO live in ``services/events.create_request``.
          */
         post: operations["create_event_request_api_v1_events_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{event_id}/archives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Archived Copy
+         * @description Record the archived copy of one of this event's links (owner-only).
+         *
+         *     ``original_url`` has to be one of the links the event carries (its source,
+         *     a secondary source, the post it was detected from, or a proof citation);
+         *     ``snapshot_url`` has to be an ``https`` URL on one of the three allowed
+         *     archive hosts, and to name the same page. Both checks live in
+         *     ``services/source_archive``; a failure is a 400 carrying the code that says
+         *     which one.
+         *
+         *     One copy per link: pasting a second snapshot for a link replaces the first,
+         *     which is how the owner corrects a wrong paste. Soft-deleted → 404, not the
+         *     owner → 403.
+         *
+         *     The ceiling is per hour rather than per minute: one analyst archiving every
+         *     link on a busy event is a run of a dozen calls, and nothing here costs an
+         *     outbound request.
+         */
+        post: operations["record_archived_copy_api_v1_events__event_id__archives_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1533,12 +1542,8 @@ export interface components {
             digest_send_failures?: number | null;
             /** Drafts Pending */
             drafts_pending?: number | null;
-            /** Events Scanned */
-            events_scanned?: number | null;
             /** Expired */
             expired?: number | null;
-            /** Links Enqueued */
-            links_enqueued?: number | null;
             /** Old Consumed */
             old_consumed?: number | null;
             /** Pending Registrations Deleted */
@@ -1783,24 +1788,23 @@ export interface components {
             upload_key: string;
         };
         /**
-         * ArchivedCopiesRead
-         * @description One link's archived copies, one field per provider, plus the dead end.
+         * ArchivedLinkRead
+         * @description One link's archived copy: where it lives, and who holds it.
          *
-         *     Both providers are attempted for every link, so a link can end up with two
-         *     copies, one, or none. An object rather than a URL per field on ``EventRead``
-         *     keeps the primary source and each mirror reading the same shape, and leaves
-         *     room for the state a bare URL cannot express: ``unavailable`` is ``true``
-         *     only once neither provider captured the link and no attempt is left, which
-         *     is what lets the detail surface show "not archived" instead of showing
-         *     nothing.
+         *     One copy per link, from whichever provider the analyst used, so the field
+         *     carrying this is ``null`` exactly when no copy has been recorded. An object
+         *     rather than a bare URL because the read surface picks its icon from
+         *     ``provider``, and because the primary source, each mirror and the
+         *     provenance link all serialise through this one shape.
          */
-        ArchivedCopiesRead: {
-            /** Archive Today */
-            archive_today: string | null;
-            /** Unavailable */
-            unavailable: boolean;
-            /** Wayback */
-            wayback: string | null;
+        ArchivedLinkRead: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "wayback" | "archive_today";
+            /** Url */
+            url: string;
         };
         /**
          * AuthorRef
@@ -2101,6 +2105,21 @@ export interface components {
             title: string;
         };
         /**
+         * EventArchiveCreate
+         * @description Body of ``POST /events/{event_id}/archives``.
+         *
+         *     ``original_url`` names which of the event's links the copy is of, and has
+         *     to be one the event actually carries; ``snapshot_url`` is what the provider
+         *     handed the analyst back. Both ceilings match the columns behind them, so an
+         *     oversized paste is a 422 on the field rather than a database error.
+         */
+        EventArchiveCreate: {
+            /** Original Url */
+            original_url: string;
+            /** Snapshot Url */
+            snapshot_url: string;
+        };
+        /**
          * EventCloseRequest
          * @description Body for ``POST /events/{id}/close``. The reason is required: a closed
          *     event stays publicly visible, so the why must travel with it.
@@ -2143,10 +2162,10 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
-            archived_detected_from: components["schemas"]["ArchivedCopiesRead"] | null;
+            archived_detected_from: components["schemas"]["ArchivedLinkRead"] | null;
             /** Archived Secondary Sources */
-            archived_secondary_sources: (components["schemas"]["ArchivedCopiesRead"] | null)[];
-            archived_source: components["schemas"]["ArchivedCopiesRead"] | null;
+            archived_secondary_sources: (components["schemas"]["ArchivedLinkRead"] | null)[];
+            archived_source: components["schemas"]["ArchivedLinkRead"] | null;
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected") | null;
             capture_source_coords: components["schemas"]["CoordsRead"] | null;
@@ -2971,37 +2990,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminInviteCodeRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    maintenance_enqueue_source_archival_api_v1_admin_maintenance_enqueue_source_archival_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminMaintenanceResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4162,6 +4150,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_archived_copy_api_v1_events__event_id__archives_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventArchiveCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchivedLinkRead"];
                 };
             };
             /** @description Validation Error */

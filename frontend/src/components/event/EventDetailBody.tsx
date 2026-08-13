@@ -4,7 +4,8 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { ArchivedCopies as ArchivedCopiesPayload, EventDetail } from "@/types";
+import type { ArchivedLink, EventDetail } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { sourceIsSynthetic } from "@/lib/events";
@@ -106,16 +107,18 @@ function DetailRows({
   compact: boolean;
   detailExtras?: ReactNode;
 }) {
+  const { user } = useAuth();
+  const viewerId = user?.id;
   // Conflicts (their own referential) and curated capture-source tags get
   // their own labelled rows so they read as structured facts, not free-form
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  // A draft's links carry no archival record by design: publication is what
-  // queues them. Read off the status rather than off the payload, so every
-  // link row on a draft says when its copies are coming instead of showing a
-  // blank where a published event shows the pair.
-  const pendingPublication = geo.status === "detected";
+  // Archiving a link is the owner's own act, so the affordance is offered to
+  // exactly the analyst the endpoint would accept it from. A draft is included:
+  // archival is no longer tied to publication, and a draft's source rots while
+  // it waits.
+  const canArchive = viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
@@ -190,9 +193,11 @@ function DetailRows({
           />
           {!sourceIsSynthetic(geo) && geo.source_url && (
             <ArchivedCopies
-              copies={geo.archived_source}
+              copy={geo.archived_source}
+              url={geo.source_url}
+              eventId={geo.id}
               describes={PRIMARY_SOURCE_DESCRIPTION}
-              pendingPublication={pendingPublication}
+              canArchive={canArchive}
             />
           )}
         </span>
@@ -204,8 +209,9 @@ function DetailRows({
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
+          eventId={geo.id}
           isDemo={sourceIsSynthetic(geo)}
-          pendingPublication={pendingPublication}
+          canArchive={canArchive}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -230,9 +236,11 @@ function DetailRows({
                 the provenance of the claim, and it rots the same way. */}
             {!sourceIsSynthetic(geo) && (
               <ArchivedCopies
-                copies={geo.archived_detected_from}
+                copy={geo.archived_detected_from}
+                url={geo.detected_from_url}
+                eventId={geo.id}
                 describes={DETECTED_FROM_DESCRIPTION}
-                pendingPublication={pendingPublication}
+                canArchive={canArchive}
               />
             )}
           </span>
@@ -333,15 +341,17 @@ function DetailRows({
 function SecondarySourcesRow({
   urls,
   archived,
+  eventId,
   isDemo,
-  pendingPublication,
+  canArchive,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
-  archived: (ArchivedCopiesPayload | null)[];
+  archived: (ArchivedLink | null)[];
+  eventId: string;
   isDemo: boolean;
-  pendingPublication: boolean;
+  canArchive: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -397,9 +407,11 @@ function SecondarySourcesRow({
                   URL with no host to show). */}
               {!isDemo && (
                 <ArchivedCopies
-                  copies={archived[index] ?? null}
+                  copy={archived[index] ?? null}
+                  url={url}
+                  eventId={eventId}
                   describes={mirrorDescription(safeHostname(url), index, urls.length)}
-                  pendingPublication={pendingPublication}
+                  canArchive={canArchive}
                   help={false}
                 />
               )}

@@ -38,6 +38,7 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    resolve_live_event,
 )
 from app.schemas.event import EventCloseRequest, EventRead
 from app.services import events as events_service
@@ -65,20 +66,6 @@ _DETAIL_LOADS = (
     selectinload(Event.archives),
     selectinload(Event.source_links),
 )
-
-
-def _resolve_live_event(db: Session, geolocation_id: uuid.UUID) -> Event:
-    """Fetch a live event by id, or 404.
-
-    A soft-deleted row reads as 404 (an admin-removed row isn't actionable —
-    same surface as a genuine 404, no enumeration oracle). Permission is the
-    caller's concern: the geolocate transition owns per-status ownership (a
-    ``requested`` event is answerable by anyone).
-    """
-    geo = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return geo
 
 
 def _serialize_event(db: Session, geo: Event) -> EventRead:
@@ -137,7 +124,7 @@ def delete_event(
     image derivatives) are swept after the commit lands. Admin soft-delete
     lives behind the admin router and stamps ``deleted_at`` instead.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 
     # Snapshot the S3 keys before the cascade drops the rows, then
@@ -221,7 +208,7 @@ async def geolocate_event(
 
     # Not owner-gated at the router: the service enforces per-status ownership
     # (owner-only for ``detected``, open for ``requested``) under a row lock.
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         geolocated = await events_service.geolocate(
             db,
@@ -266,7 +253,7 @@ def close_event(
     map, and a closed detection is re-importable. Off ``requested`` /
     ``detected`` → 409; soft-deleted → 404; not the owner → 403.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         closed = events_service.close(
             db, geo=geo, current_user=current_user, close_reason=body.close_reason
@@ -289,7 +276,7 @@ def investigate_event(
     signal is rejected with 409. The rules and the race backstop live in the
     service.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         events_service.investigate(db, geo=geo, current_user=current_user)
     except EvidenceIntakeError as exc:
@@ -309,7 +296,7 @@ def uninvestigate_event(
     promise, not "exactly one row was deleted". Gated to ``requested`` like the
     POST: a terminated event's signals are frozen history. Rules in the service.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         events_service.uninvestigate(db, geo=geo, current_user=current_user)
     except EvidenceIntakeError as exc:

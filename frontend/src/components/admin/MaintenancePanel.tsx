@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 
 import {
-  enqueueSourceArchival,
   reapAuthTokens,
   reapPendingRegistrations,
   sendCompletionDigests,
@@ -48,8 +47,6 @@ export function MaintenancePanel() {
   const [pendingResult, setPendingResult] = useState<MaintenanceResponse | null>(
     null
   );
-  const [archivalResult, setArchivalResult] =
-    useState<MaintenanceResponse | null>(null);
   const [digestResult, setDigestResult] = useState<MaintenanceResponse | null>(
     null
   );
@@ -62,11 +59,6 @@ export function MaintenancePanel() {
     fallback: "Failed",
     onSuccess: setPendingResult,
   });
-  const archiveSources = useMutation(enqueueSourceArchival, {
-    fallback: "Failed",
-    onSuccess: setArchivalResult,
-  });
-
   const sendDigests = useMutation(sendCompletionDigests, {
     fallback: "Failed",
     onSuccess: setDigestResult,
@@ -74,9 +66,8 @@ export function MaintenancePanel() {
 
   // The actions share one error slot, cleared when any of them fires (each
   // run resets the others).
-  const mutations = [reapAuth, reapPending, archiveSources, sendDigests];
-  const error =
-    reapAuth.error ?? reapPending.error ?? archiveSources.error ?? sendDigests.error;
+  const mutations = [reapAuth, reapPending, sendDigests];
+  const error = reapAuth.error ?? reapPending.error ?? sendDigests.error;
   const running = mutations.some((m) => m.loading);
 
   const start = (target: (typeof mutations)[number]) => () => {
@@ -115,21 +106,6 @@ export function MaintenancePanel() {
         summary={
           pendingResult && (
             <>Deleted: {pendingResult.pending_registrations_deleted ?? 0}</>
-          )
-        }
-      />
-      <MaintenanceRow
-        label="Queue source archival for the catalog"
-        busyLabel="Queueing…"
-        loading={archiveSources.loading}
-        disabled={running}
-        onClick={start(archiveSources)}
-        summary={
-          archivalResult && (
-            <>
-              Events scanned: {archivalResult.events_scanned ?? 0} · Links
-              queued: {archivalResult.links_enqueued ?? 0}
-            </>
           )
         }
       />
