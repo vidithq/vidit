@@ -475,7 +475,7 @@ The system writes this list wholesale, not row by row. A create sets the full or
 
 ### `content_reports`
 
-One viewer's report against one event. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same event, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided, not a queue that empties.
+One viewer's report against one event. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same event, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided. Resolved rows stay in the table.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -496,7 +496,7 @@ One viewer's report against one event. Open to anonymous viewers: a takedown req
 
 **Indexes:**
 - `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
-- `ix_content_reports_open_created_at`: partial index on `(created_at) WHERE resolved_at IS NULL`. Backs the admin queue's read, open reports first then newest first; partial on the open cohort, which stays small because resolving is the whole point of the queue while the resolved rows accumulate forever.
+- `ix_content_reports_open_created_at`: partial index on `(created_at) WHERE resolved_at IS NULL`. Backs the admin queue's read, open reports first then newest first. The index is partial on the open cohort, which stays small: admins resolve reports, and resolved rows leave the cohort while staying in the table.
 
 ---
 

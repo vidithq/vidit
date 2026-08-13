@@ -769,7 +769,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 
 ### `POST /events/{id}/report` 🌐
 
-Report an event for moderation. Open to anonymous viewers: the people a piece of footage harms rarely hold an account here, so requiring one would close the door on the reports that matter most. A signed-in reporter is recorded on the row (`reporter_user_id`); an anonymous one leaves it `null`. The per-IP rate limit is the only abuse floor on this write.
+Report an event for moderation. Open to anonymous viewers: the people a piece of footage harms rarely hold an account here, so requiring one would block the reports this endpoint exists to collect. A signed-in reporter is recorded on the row (`reporter_user_id`); an anonymous one leaves it `null`. The per-IP rate limit is the only abuse floor on this write.
 
 **Request body:**
 ```json
