@@ -19,6 +19,7 @@
  */
 const NAV_STACK_KEY = "vidit:nav-stack";
 const GOING_BACK_KEY = "vidit:nav-going-back";
+const SKIP_RECORD_KEY = "vidit:nav-skip-record";
 // Cap the stack so a long session can't grow sessionStorage without bound; the
 // deep tail of a back-stack is never reached in practice.
 const MAX_STACK = 50;
@@ -103,6 +104,13 @@ export function recordNavigation(leftPath: string): void {
     window.sessionStorage.removeItem(GOING_BACK_KEY);
     return;
   }
+  // Same one-shot shape, for the page being left rather than the walk: a
+  // doorway declared itself before sending the reader on, so it never enters
+  // the chain.
+  if (window.sessionStorage.getItem(SKIP_RECORD_KEY) === "1") {
+    window.sessionStorage.removeItem(SKIP_RECORD_KEY);
+    return;
+  }
   const stack = readStack();
   // Skip a duplicate of the current top (effect re-runs, repeated nav to the
   // same path) so the stack mirrors the real visit chain.
@@ -110,6 +118,24 @@ export function recordNavigation(leftPath: string): void {
     stack.push(leftPath);
     writeStack(stack);
   }
+}
+
+/**
+ * Keep the page currently on screen out of the back-stack, for the one
+ * navigation about to leave it.
+ *
+ * For a **redirect-only route**: a doorway that exists to resolve something and
+ * send the reader on (the detections review entry, which opens the head of the
+ * queue). Recorded like an ordinary page it is a trap, because walking back
+ * onto it runs its redirect again and lands where the walk started, so the back
+ * arrow reads as doing nothing. Call it immediately before the `replace`, in
+ * the same effect: like the back-nav flag, it is consumed by the next
+ * `recordNavigation`, so a flag set without a navigation following would eat
+ * the next entry instead.
+ */
+export function skipBackRecord(): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(SKIP_RECORD_KEY, "1");
 }
 
 export function smartBack(

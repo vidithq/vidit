@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { skipBackRecord } from "@/lib/navigation";
 import {
   detectionsReviewPath,
   draftEditPath,
@@ -19,9 +20,10 @@ import {
  * A pass lives on the edit route, one address per draft, so this page holds no
  * state of its own. It stays as the entry because it is the link the queue's
  * *Start reviewing* and any kept bookmark point at, and it always resolves to
- * whatever is at the head of the queue now. It replaces itself in history, so
- * Back from the first draft lands on the queue rather than bouncing through the
- * redirect.
+ * whatever is at the head of the queue now. It leaves no trace behind it: the
+ * history entry is replaced, and `skipBackRecord` keeps the route out of the
+ * back-stack, so both the browser's Back and the header arrow reach the page
+ * that opened the pass instead of running this redirect again.
  */
 export default function DetectionReviewPage() {
   const params = useParams();
@@ -47,6 +49,11 @@ export default function DetectionReviewPage() {
   useEffect(() => {
     if (!data) return;
     const first = data.items[0];
+    // This route resolves and hands over, so it is no part of the walk: the
+    // back arrow must reach the page that opened it. Left in the back-stack it
+    // would redirect again and land back on the draft the reader is trying to
+    // leave.
+    skipBackRecord();
     router.replace(first ? draftEditPath(first.id, true) : queueHref);
   }, [data, router, queueHref]);
 

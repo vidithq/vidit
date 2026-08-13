@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { recordNavigation, safeNext, smartBack } from "./navigation";
+import {
+  recordNavigation,
+  safeNext,
+  skipBackRecord,
+  smartBack,
+} from "./navigation";
 
 // jsdom origin is pinned to http://localhost:3000 in vitest.config.mts —
 // the same-origin check below compares against window.location.origin.
@@ -107,5 +112,71 @@ describe("smartBack back-stack", () => {
     );
     smartBack(router, "/map");
     expect(current).toBe("/map");
+  });
+});
+
+// A doorway route exists only to send the reader somewhere else. Left in the
+// chain it is a trap: walking back onto it runs its redirect again and lands
+// where the walk started, which reads as a back arrow that does nothing.
+describe("redirect-only routes", () => {
+  let current: string;
+
+  const setLocation = (path: string) => {
+    window.history.pushState({}, "", path);
+    current = path;
+  };
+  const navigate = (to: string) => {
+    const left = current;
+    setLocation(to);
+    recordNavigation(left);
+  };
+  const router = {
+    push: (to: string) => {
+      const left = current;
+      setLocation(to);
+      recordNavigation(left);
+    },
+  };
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    setLocation("/map");
+  });
+
+  it("leaves the doorway out of the chain, so back reaches the page before it", () => {
+    navigate("/profile/ana/detections");
+    // Start reviewing, which lands on a route that only redirects.
+    navigate("/profile/ana/detections/review");
+    skipBackRecord();
+    navigate("/events/d1/edit");
+
+    // Back from the draft goes to the queue, not onto the doorway that would
+    // redirect straight back to the draft.
+    smartBack(router, "/profile/ana/detections");
+    expect(current).toBe("/profile/ana/detections");
+  });
+
+  it("unwinds a walk of drafts entered through the doorway", () => {
+    navigate("/profile/ana/detections");
+    navigate("/profile/ana/detections/review");
+    skipBackRecord();
+    navigate("/events/d1/edit");
+    navigate("/events/d2/edit");
+
+    smartBack(router, "/profile/ana/detections");
+    expect(current).toBe("/events/d1/edit");
+    smartBack(router, "/profile/ana/detections");
+    expect(current).toBe("/profile/ana/detections");
+  });
+
+  it("is one-shot: only the navigation it was set for goes unrecorded", () => {
+    navigate("/profile/ana/detections");
+    skipBackRecord();
+    navigate("/events/d1/edit");
+    navigate("/events/d2/edit");
+
+    // The second hop is an ordinary forward nav and records normally.
+    smartBack(router, "/map");
+    expect(current).toBe("/events/d1/edit");
   });
 });
