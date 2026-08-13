@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -106,12 +107,15 @@ class ContentReport(Base):
             " OR (resolution IS NOT NULL AND resolved_at IS NOT NULL)",
             name="ck_content_reports_resolution_stamp",
         ),
-        # The admin queue's read: open reports, newest first. Partial on the
-        # open cohort, which stays small because resolving is the whole point
-        # of the queue while the resolved rows accumulate forever.
+        # The admin queue's read, matched expression for expression to its
+        # ORDER BY (see :func:`services.reports.list_reports`): open reports
+        # first, then newest first, with the id breaking ties so the offset
+        # walk is total. A partial index on the open cohort cannot serve this
+        # sort, because the query orders the whole table.
         Index(
-            "ix_content_reports_open_created_at",
-            "created_at",
-            postgresql_where="resolved_at IS NULL",
+            "ix_content_reports_queue",
+            text("(resolved_at IS NOT NULL)"),
+            text("created_at DESC"),
+            text("id DESC"),
         ),
     )

@@ -484,7 +484,7 @@ One viewer's report against one event. Open to anonymous viewers: a takedown req
 | `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `reporter_user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
 | `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the event from every public read via `events.hidden_at`, `dismissed` closes the report and leaves the event untouched. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
 | `resolved_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
@@ -496,7 +496,7 @@ One viewer's report against one event. Open to anonymous viewers: a takedown req
 
 **Indexes:**
 - `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
-- `ix_content_reports_open_created_at`: partial index on `(created_at) WHERE resolved_at IS NULL`. Backs the admin queue's read, open reports first then newest first. The index is partial on the open cohort, which stays small: admins resolve reports, and resolved rows leave the cohort while staying in the table.
+- `ix_content_reports_queue`: expression index on `((resolved_at IS NOT NULL), created_at DESC, id DESC)`. Backs the admin queue's read, open reports first then newest first, with the id breaking ties so the offset walk is total. The index repeats the query's `ORDER BY` expression for expression, so Postgres walks it instead of sorting the table. Change the sort and you change this index.
 
 ---
 

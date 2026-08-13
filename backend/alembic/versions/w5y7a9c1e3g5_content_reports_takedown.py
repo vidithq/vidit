@@ -7,8 +7,9 @@ Create Date: 2026-08-12 11:00:00.000000
 ``content_reports`` is the viewer-facing flag queue: anyone, signed in or not,
 reports an event, and an admin resolves the row with one of three verdicts. The
 row is never deleted, so the table doubles as the record of what was reported
-and what was decided. The partial index serves the queue's read (open reports,
-newest first) and stays small as the resolved cohort grows.
+and what was decided. ``ix_content_reports_queue`` matches the queue's ORDER BY
+expression for expression, which is what lets Postgres walk the index instead of
+sorting the whole table on every page.
 
 ``event_id`` is nullable with ``ON DELETE SET NULL`` rather than ``NOT NULL``
 with ``CASCADE``: the report is the record that a complaint was filed and how
@@ -66,11 +67,17 @@ def upgrade() -> None:
         ),
     )
     op.create_index(op.f("ix_content_reports_event_id"), "content_reports", ["event_id"])
+    # Exactly the queue's ORDER BY: open first, then newest first, with the id
+    # breaking ties so the offset walk is total. An index that does not match
+    # the sort expression for expression cannot serve it.
     op.create_index(
-        "ix_content_reports_open_created_at",
+        "ix_content_reports_queue",
         "content_reports",
-        ["created_at"],
-        postgresql_where=sa.text("resolved_at IS NULL"),
+        [
+            sa.text("(resolved_at IS NOT NULL)"),
+            sa.text("created_at DESC"),
+            sa.text("id DESC"),
+        ],
     )
 
     op.add_column(
@@ -81,6 +88,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("events", "hidden_at")
-    op.drop_index("ix_content_reports_open_created_at", table_name="content_reports")
+    op.drop_index("ix_content_reports_queue", table_name="content_reports")
     op.drop_index(op.f("ix_content_reports_event_id"), table_name="content_reports")
     op.drop_table("content_reports")

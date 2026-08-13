@@ -19,6 +19,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -172,9 +173,11 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
 
     ``resolved_at IS NOT NULL`` sorts ascending, so ``false`` (open) leads. The
     ``created_at, id`` tie-break makes the ordering total, which an offset walk
-    needs to avoid serving a row twice.
+    needs to avoid serving a row twice. ``ix_content_reports_queue`` carries
+    these three expressions in this order, so the walk reads the index rather
+    than sorting the table; changing this ORDER BY means changing that index.
     """
-    total = db.query(ContentReport).count()
+    total = db.query(func.count(ContentReport.id)).scalar() or 0
     rows = (
         db.query(ContentReport)
         .order_by(
