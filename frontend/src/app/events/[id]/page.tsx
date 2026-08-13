@@ -7,9 +7,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { formatCoordinates } from "@/lib/coordinates";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { CoordinateActions } from "@/components/event/CoordinateActions";
-import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
-import { useReportEvent } from "@/components/event/useReportEvent";
+import { useEventActions } from "@/components/event/useEventActions";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -22,10 +21,10 @@ export default function EventPage() {
   const { data: geo, error } = useApiResource<EventDetail>(
     eventId ? `/events/${eventId}` : null
   );
-  // Two nodes from one state machine: the red trigger joins the share row in
-  // the header, the form opens under it. Called before the early returns, as
-  // every hook here must be.
-  const report = useReportEvent(eventId);
+  // A geolocated event is finished work, so its cluster is the utilities tier
+  // alone: share, copy, report. Called before the early returns, as every hook
+  // here must be.
+  const { actions, panels } = useEventActions({ event: geo, surface: "event" });
 
   if (error)
     return (
@@ -38,23 +37,10 @@ export default function EventPage() {
       back
       title={geo.title}
       subtitle={<AuthorByline author={geo.owner} avatar />}
-      actions={
-        <div className="flex items-center gap-1.5">
-          <ShareButtons
-            id={geo.id}
-            title={geo.title}
-            author={geo.owner.username}
-            eventDate={geo.event_date}
-            lat={geo.event_coords?.lat ?? null}
-            lng={geo.event_coords?.lng ?? null}
-            status={geo.status}
-          />
-          {report.trigger}
-        </div>
-      }
+      actions={actions}
     >
         {/* Directly under the header, where the trigger that opened it is. */}
-        {report.panel}
+        {panels}
 
         <EventDetailBody geo={geo} variant="page">
           {/* A located row (``geolocated`` / ``detected`` with coords) gets the

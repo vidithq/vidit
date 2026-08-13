@@ -20,6 +20,7 @@ import {
   useTaxonomy,
 } from "@/components/geolocations/TaxonomyFields";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
+import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
@@ -54,6 +55,11 @@ export function EventEditForm({
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
+  // The utilities tier only: this page's flow action is the form's own
+  // "Confirm & submit", which stays at the bottom where the fields it applies
+  // end. The header still shares and reports the draft like every other detail
+  // surface.
+  const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
@@ -220,7 +226,11 @@ export function EventEditForm({
       back
       title="Submit detection"
       subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
+      actions={actions}
     >
+      {/* Under the header, where the trigger that opened it is. */}
+      {panels}
+
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
       <form onSubmit={attemptSubmit} className="space-y-6" noValidate>

@@ -76,6 +76,7 @@ import {
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { OverflowMenu } from "@/components/ui/OverflowMenu";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -376,6 +377,15 @@ export default function PalettePage() {
 
           <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose copy glyph flips to a check for the flash window (useCopyToClipboard). Used by the profile share control and the event share row. `value` is a getter so the call site can read window at click time; `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
             <CopyButton value={() => "https://vidit.app/profile/demo"} label="Copy profile link" />
+          </Item>
+
+          <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick | href, danger, disabled, controls, icon}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
+            <OverflowMenu
+              items={[
+                { label: "Close this request", onClick: () => {} },
+                { label: "Delete this request", danger: true, onClick: () => {} },
+              ]}
+            />
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">

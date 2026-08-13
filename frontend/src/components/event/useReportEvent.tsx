@@ -20,13 +20,16 @@ import {
 } from "@/components/ui/form-styles";
 
 /**
- * The reader's "something is wrong with this" control, on the event and
- * request detail pages. One state machine, two nodes: `trigger` is the red
- * `Report` button the page puts in its header next to the share actions, and
- * `panel` is the form it opens, which the page renders in its body where there
- * is room for a select and a textarea. Splitting them this way keeps the
- * affordance in the action row without either page owning a second copy of the
- * reporting state.
+ * The reader's "something is wrong with this" control, on every detail surface.
+ * One state machine, two nodes: `trigger` is the red flag icon button that
+ * closes the utilities tier of the action row next to the share controls, and
+ * `panel` is the form it opens, which the surface renders in its body where
+ * there is room for a select and a textarea. Splitting them this way keeps the
+ * affordance in the action row without a surface owning a second copy of the
+ * reporting state. `useEventActions` assembles both into the shared cluster.
+ *
+ * Icon-only, like the share pair beside it: the utilities tier is icon-compact,
+ * so the flag carries the meaning and `aria-label` plus `title` carry the name.
  *
  * Red because reporting is the one destructive-in-intent thing a reader can do
  * to a published claim: it is the `danger` variant every other quiet
@@ -104,7 +107,10 @@ export function useReportEvent(eventId: string): {
 
   const trigger = (
     <Button
+      icon
       variant="danger"
+      aria-label="Report"
+      title="Report"
       aria-expanded={open}
       aria-controls={FORM_ID}
       onClick={() => {
@@ -113,7 +119,6 @@ export function useReportEvent(eventId: string): {
       }}
     >
       <Flag size={14} />
-      Report
     </Button>
   );
 

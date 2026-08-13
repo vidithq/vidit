@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -72,7 +72,10 @@ export function buttonClasses(
   );
 }
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+// `ComponentPropsWithRef`, not `ButtonHTMLAttributes`: a caller that has to
+// measure or focus the real button (the overflow menu anchors its panel off it)
+// passes `ref` through like any other native prop.
+interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: ButtonVariant;
   fullWidth?: boolean;
   /** Square icon-only shape for a bare icon child (no text padding). */
