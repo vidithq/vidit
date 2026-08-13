@@ -27,11 +27,6 @@ interface ProofEditorPanelProps {
    *  ``placeholder://<filename>`` nodes in `proof`, for the editor to hydrate
    *  into a live preview on mount (see `components/editor/ProofEditor.tsx`). */
   initialProofFiles?: File[];
-  /** Drop the editor's image control (see ProofEditor). Both publish paths
-   *  keep it: a geolocation's proof must carry an image (the readiness list
-   *  names it), and a request's in-progress proof may attach one or stay
-   *  imageless, so every call site today takes the default. */
-  allowImages?: boolean;
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
 }
@@ -45,7 +40,6 @@ export function ProofEditorPanel({
   onChange,
   onProofFilesChange,
   initialProofFiles,
-  allowImages = true,
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
@@ -82,7 +76,6 @@ export function ProofEditorPanel({
         initialProofFiles={initialProofFiles}
         onChange={onChange}
         onProofFilesChange={onProofFilesChange}
-        allowImages={allowImages}
       />
     </Card>
   );

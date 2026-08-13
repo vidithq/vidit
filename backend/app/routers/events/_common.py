@@ -24,7 +24,6 @@ from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
 from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
-from app.schemas.user import AuthorRef
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.source_archive import archive_row_for
 from app.services.thumbnails import pick_thumbnail
@@ -95,8 +94,6 @@ def build_event_list(
     *,
     lat: float | None,
     lng: float | None,
-    investigator_count: int | None = None,
-    investigators_sample: list[AuthorRef] | None = None,
 ) -> EventList:
     """Assemble the ``EventList`` card for one event.
 
@@ -104,8 +101,6 @@ def build_event_list(
     surface (the events index, a user's geolocations, the follow timeline) so
     a card is the same shape wherever it renders. Coordinates come in
     re-projected by the caller, same contract as :func:`build_event_read`.
-    The investigator aggregates default to ``None``: only the requested view
-    computes them (see ``services.events.investigator_aggregates``).
     """
     return EventList(
         id=geo.id,
@@ -118,8 +113,6 @@ def build_event_list(
         media=thumbnail_media(geo),
         tags=geo.tags,
         conflicts=geo.conflicts,
-        investigator_count=investigator_count,
-        investigators_sample=investigators_sample,
     )
 
 
@@ -151,8 +144,8 @@ def build_event_read(
     the response sites (create, detail, and the lifecycle mutations) build an
     identical shape from one place. ``requested_by`` reads off the model
     relationship (``None`` for a directly-submitted geolocation); callers
-    eager-load it along with ``geolocators`` / ``investigators`` and their
-    users. ``media`` carries only the ``source`` rows: proof images travel
+    eager-load it along with ``geolocators`` and their users. ``media``
+    carries only the ``source`` rows: proof images travel
     inside the proof JSON as URLs. ``thumbnail`` is the card pick
     (``services.thumbnails``), which may be a proof image on a source-less
     event; callers that want it non-null on such rows must eager-load media
@@ -206,11 +199,9 @@ def build_event_read(
         # Pydantic ``from_attributes`` coerces each SQLAlchemy ``User`` into
         # ``AuthorRef`` at validation time. Drop soft-deleted contributors for
         # the same reason as ``requested_by`` above: a banned account must not
-        # surface as a credited geolocator or an active investigator on a
-        # still-live event owned by someone else.
+        # surface as a credited geolocator on a still-live event owned by
+        # someone else.
         geolocators=[g.user for g in geo.geolocators if g.user.deleted_at is None],
-        investigator_count=sum(1 for i in geo.investigators if i.user.deleted_at is None),
-        investigators=[i.user for i in geo.investigators if i.user.deleted_at is None],
         media=[m for m in geo.media if m.role == "source"],
         thumbnail=thumbnail_media(geo),
         tags=geo.tags,

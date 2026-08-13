@@ -9,7 +9,7 @@ import {
   type MaintenanceResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
-import { DevToolPanel } from "@/components/admin/DevToolPanel";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -76,56 +76,62 @@ export function MaintenancePanel() {
   };
 
   return (
-    <DevToolPanel
-      title="Maintenance"
-      description={
-        <>On-demand sweeps. Click when you remember; there&apos;s no schedule.</>
-      }
-    >
-      <MaintenanceRow
-        label="Reap expired auth tokens"
-        busyLabel="Reaping…"
-        loading={reapAuth.loading}
-        disabled={running}
-        onClick={start(reapAuth)}
-        summary={
-          authResult && (
-            <>
-              Expired: {authResult.expired ?? 0} · Old consumed:{" "}
-              {authResult.old_consumed ?? 0}
-            </>
-          )
-        }
-      />
-      <MaintenanceRow
-        label="Reap expired pending registrations"
-        busyLabel="Reaping…"
-        loading={reapPending.loading}
-        disabled={running}
-        onClick={start(reapPending)}
-        summary={
-          pendingResult && (
-            <>Deleted: {pendingResult.pending_registrations_deleted ?? 0}</>
-          )
-        }
-      />
-      <MaintenanceRow
-        label="Email the drafts-awaiting-completion digest"
-        busyLabel="Sending…"
-        loading={sendDigests.loading}
-        disabled={running}
-        onClick={start(sendDigests)}
-        summary={
-          digestResult && (
-            <>
-              Analysts emailed: {digestResult.analysts_notified ?? 0} · Drafts:{" "}
-              {digestResult.drafts_pending ?? 0} · Failed sends:{" "}
-              {digestResult.digest_send_failures ?? 0}
-            </>
-          )
-        }
-      />
-      {error && <p className="text-xs text-red-400">{error}</p>}
-    </DevToolPanel>
+    // Deliberately lighter than the `<Card as="section">` the real admin
+    // actions use (translucent background, bordered header), so dev tooling
+    // reads as a separate register on the admin page.
+    <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
+      <header className="px-4 py-3 border-b border-neutral-800">
+        <SectionEyebrow title="Maintenance" margin="none" />
+        <p className="text-xs text-neutral-500 mt-0.5">
+          On-demand sweeps. Click when you remember; there&apos;s no schedule.
+        </p>
+      </header>
+      <div className="px-4 py-3 space-y-3">
+        <MaintenanceRow
+          label="Reap expired auth tokens"
+          busyLabel="Reaping…"
+          loading={reapAuth.loading}
+          disabled={running}
+          onClick={start(reapAuth)}
+          summary={
+            authResult && (
+              <>
+                Expired: {authResult.expired ?? 0} · Old consumed:{" "}
+                {authResult.old_consumed ?? 0}
+              </>
+            )
+          }
+        />
+        <MaintenanceRow
+          label="Reap expired pending registrations"
+          busyLabel="Reaping…"
+          loading={reapPending.loading}
+          disabled={running}
+          onClick={start(reapPending)}
+          summary={
+            pendingResult && (
+              <>Deleted: {pendingResult.pending_registrations_deleted ?? 0}</>
+            )
+          }
+        />
+        <MaintenanceRow
+          label="Email the drafts-awaiting-completion digest"
+          busyLabel="Sending…"
+          loading={sendDigests.loading}
+          disabled={running}
+          onClick={start(sendDigests)}
+          summary={
+            digestResult && (
+              <>
+                Analysts emailed: {digestResult.analysts_notified ?? 0} · Drafts:{" "}
+                {digestResult.drafts_pending ?? 0} · Failed sends:{" "}
+                {digestResult.digest_send_failures ?? 0}
+              </>
+            )
+          }
+        />
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
+    </section>
   );
 }

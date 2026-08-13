@@ -68,7 +68,7 @@ class AuthorRef(BaseModel):
     """Compact author handle used wherever one payload references another.
 
     The public ``User`` fields other schemas need for the byline: handle and
-    avatar (geolocation card, request claimers, search hit).
+    avatar (geolocation card, geolocator credit, search hit).
     ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
     directly, no field-by-field build, so ``avatar_url`` flows off the column.
     """

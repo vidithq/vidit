@@ -314,7 +314,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
 # ── Requests ──────────────────────────────────────────────────────────────
 
 
-def test_search_matches_request_by_title_with_claimer_count(db, caller):
+def test_search_matches_request_by_title(db, caller):
     token = _unique_token()
     # A request is a ``requested`` event: no location (the requested-view search
     # filter is ``status = 'requested'``).
@@ -348,9 +348,6 @@ def test_search_matches_request_by_title_with_claimer_count(db, caller):
         assert body["total"]["requests"] == 1
         hit = body["requests"][0]
         assert hit["id"] == str(request_id)
-        # Mirrors the RequestList aggregate so the search card can reuse
-        # the same "N working" treatment.
-        assert hit["claimer_count"] == 0
         assert hit["status"] == STATUS_REQUESTED
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
     finally:

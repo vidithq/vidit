@@ -145,9 +145,7 @@ export type EventDetail = components["schemas"]["EventRead"];
  *  for that link yet. */
 export type ArchivedLink = components["schemas"]["ArchivedLinkRead"];
 
-/** Compact event card (`GET /events`). ``investigator_count`` /
- *  ``investigators_sample`` are populated only on the requested view (the
- *  requested queue); null on the located catalogue. */
+/** Compact event card (`GET /events`). */
 export type EventListItem = components["schemas"]["EventList"];
 
 /** The ``type=`` filter values, echoed back on the response. */
@@ -164,8 +162,7 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
 /** A requested-view search hit: an event card plus the
- *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
- *  renders the same "N working" badge. ``source_url`` is required-nullable
+ *  ``title_highlight`` fragment. ``source_url`` is required-nullable
  *  (a ``requested`` hit always carries one today, per
  *  ``ck_events_source_url_status``). */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];

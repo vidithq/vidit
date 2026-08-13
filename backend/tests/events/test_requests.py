@@ -13,14 +13,9 @@ What we lock in:
 
 * Soft-delete invariant, every public read filters ``deleted_at IS NULL``.
 * ``GET /events?view=requested`` scoping + status / tag / author filters.
-* The requested list carries ``investigator_count`` + a small
-  ``investigators_sample``.
 * ``POST /events/requests`` rejects blank title / source_url / a missing
   file; auth required; the row is born ``requested`` + stamped.
 * ``DELETE /events/{id}`` owner-only; 404 for unknown / soft-deleted.
-* ``POST /events/{id}/investigate`` is idempotent, multi-analyst (no
-  single-claimer reservation), rejected off ``requested``. ``DELETE`` is a
-  no-op when the caller wasn't signalling.
 * ``POST /events/{id}/close`` owner-only; requires a reason; rejects
   already-terminal states; stamps ``closed_at`` + ``before_closed_status``.
 * ``POST /events/{id}/geolocate`` fulfils a requested event in place:
@@ -35,20 +30,16 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-import pytest
-
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
-from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
@@ -62,36 +53,13 @@ from tests.events._helpers import (
 # ``db`` / ``author`` / ``second_user`` / ``free_tag`` / ``conflict`` /
 # ``capture_source_tag``, the autouse cookie-and-cache reset, and the shared
 # ``client`` all come from the package ``conftest`` + ``_helpers``. The
-# author / second_user teardown there is a superset that also clears
-# contributor rows and ``requested_by_id`` rows, which the request flows need.
-# ``third_user`` (a second investigator) is the one extra actor this suite adds.
+# author / second_user teardown there is a superset that also clears credit
+# rows and ``requested_by_id`` rows, which the request flows need.
 
 _LIST = "/api/v1/events?view=requested"
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def third_user(db):
-    user = User(
-        username=f"bthr{uuid.uuid4().hex[:8]}",
-        email=f"bthr-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(EventInvestigator).filter(EventInvestigator.user_id == user_id).delete(
-        synchronize_session=False
-    )
-    db.query(EventGeolocator).filter(EventGeolocator.user_id == user_id).delete(
-        synchronize_session=False
-    )
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 # The geolocate transition (fulfilment) requires one conflict + one
@@ -253,35 +221,6 @@ def test_list_rejects_unusable_limit(author):
         assert response.status_code == 422, f"expected 422 for limit={bad!r}"
 
 
-def test_list_carries_investigator_aggregates(db, author, second_user, third_user):
-    """The requested list gives every card a count + a small avatar sample
-    without N+1. The detail endpoint serves the full investigators list."""
-    request = _make_request(db, author=author)
-    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
-    db.add(EventInvestigator(event_id=request.id, user_id=third_user.id))
-    db.commit()
-    try:
-        response = client.get(_LIST)
-        assert response.status_code == 200
-        row = next(r for r in response.json() if r["id"] == str(request.id))
-        assert row["investigator_count"] == 2
-        usernames = {u["username"] for u in row["investigators_sample"]}
-        assert usernames == {second_user.username, third_user.username}
-    finally:
-        db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).delete(
-            synchronize_session=False
-        )
-        db.commit()
-
-
-def test_located_list_leaves_investigator_aggregates_null(db, author):
-    """The located view skips the aggregate queries; its cards carry nulls."""
-    geo = _make_geo(db, author=author)
-    row = next(r for r in client.get("/api/v1/events").json() if r["id"] == str(geo.id))
-    assert row["investigator_count"] is None
-    assert row["investigators_sample"] is None
-
-
 # ── GET /events/{id}, requested detail ───────────────────────────────────
 
 
@@ -300,8 +239,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
     assert len(body["media"]) == 1
     assert body["media"][0]["role"] == "source"
-    assert body["investigators"] == []
-    assert body["investigator_count"] == 0
     assert body["geolocators"] == []
 
 
@@ -309,25 +246,6 @@ def test_detail_404_for_soft_deleted(db, author):
     request = _make_request(db, author=author, deleted=True)
     response = client.get(f"/api/v1/events/{request.id}")
     assert response.status_code == 404
-
-
-def test_detail_lists_every_investigator(db, author, second_user, third_user):
-    request = _make_request(db, author=author)
-    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
-    db.add(EventInvestigator(event_id=request.id, user_id=third_user.id))
-    db.commit()
-    try:
-        response = client.get(f"/api/v1/events/{request.id}")
-        assert response.status_code == 200
-        body = response.json()
-        usernames = {c["username"] for c in body["investigators"]}
-        assert usernames == {second_user.username, third_user.username}
-        assert body["investigator_count"] == 2
-    finally:
-        db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).delete(
-            synchronize_session=False
-        )
-        db.commit()
 
 
 # ── POST /events/requests, auth + validation + happy path ────────────────
@@ -485,7 +403,6 @@ def test_create_happy_path(db, author, free_tag):
     assert any(t["name"] == free_tag.name for t in body["tags"])
     assert len(body["media"]) == 1
     assert body["media"][0]["role"] == "source"
-    assert body["investigators"] == []
 
     request_id = uuid.UUID(body["id"])
     # The created row is a requested event with no location and the poster on
@@ -762,125 +679,6 @@ def test_delete_succeeds_for_owner_and_cascades_media(db, author):
     db.expire_all()
     assert db.query(Event).filter(Event.id == request_id).first() is None
     assert db.query(Media).filter(Media.event_id == request_id).count() == 0
-
-
-# ── POST /events/{id}/investigate ─────────────────────────────────────────
-
-
-def test_investigate_requires_authentication(db, author):
-    request = _make_request(db, author=author)
-    response = client.post(f"/api/v1/events/{request.id}/investigate")
-    assert response.status_code == 401
-
-
-def test_investigate_inserts_row(db, author, second_user):
-    request = _make_request(db, author=author)
-    response = client.post(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 204
-    db.expire_all()
-    rows = db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).all()
-    assert len(rows) == 1
-    assert rows[0].user_id == second_user.id
-
-
-def test_investigate_is_idempotent(db, author, second_user):
-    request = _make_request(db, author=author)
-    for _ in range(3):
-        response = client.post(
-            f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-        )
-        assert response.status_code == 204
-    db.expire_all()
-    assert (
-        db.query(EventInvestigator)
-        .filter(
-            EventInvestigator.event_id == request.id,
-            EventInvestigator.user_id == second_user.id,
-        )
-        .count()
-        == 1
-    )
-
-
-def test_multiple_analysts_can_investigate_same_request(db, author, second_user, third_user):
-    """The core multi-analyst contract, two investigators both signalling."""
-    request = _make_request(db, author=author)
-    r1 = client.post(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    r2 = client.post(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, third_user)
-    )
-    assert r1.status_code == 204
-    assert r2.status_code == 204
-    db.expire_all()
-    user_ids = {
-        c.user_id
-        for c in db.query(EventInvestigator).filter(EventInvestigator.event_id == request.id).all()
-    }
-    assert user_ids == {second_user.id, third_user.id}
-
-
-def test_investigate_rejected_off_requested(db, author, second_user):
-    request = _make_request(db, author=author, status=STATUS_CLOSED)
-    response = client.post(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 409
-
-
-def test_investigate_404_for_soft_deleted(db, author, second_user):
-    request = _make_request(db, author=author, deleted=True)
-    response = client.post(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 404
-
-
-# ── DELETE /events/{id}/investigate ───────────────────────────────────────
-
-
-def test_uninvestigate_removes_row(db, author, second_user):
-    request = _make_request(db, author=author)
-    db.add(EventInvestigator(event_id=request.id, user_id=second_user.id))
-    db.commit()
-
-    response = client.delete(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 204
-    db.expire_all()
-    assert (
-        db.query(EventInvestigator)
-        .filter(
-            EventInvestigator.event_id == request.id,
-            EventInvestigator.user_id == second_user.id,
-        )
-        .count()
-        == 0
-    )
-
-
-def test_uninvestigate_is_noop_when_not_signalling(db, author, second_user):
-    """Withdrawing a signal you never gave is still a 204, the user-
-    observable post-condition (caller not in the working set) is what
-    we promise, not "exactly one row was deleted." """
-    request = _make_request(db, author=author)
-    response = client.delete(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 204
-
-
-def test_uninvestigate_rejected_off_requested(db, author, second_user):
-    """A terminated event's signals are frozen history, 409, mirroring POST."""
-    request = _make_request(db, author=author, status=STATUS_CLOSED)
-    response = client.delete(
-        f"/api/v1/events/{request.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 409
 
 
 # ── POST /events/{id}/close (withdraw) ────────────────────────────────────

@@ -9,8 +9,7 @@ highlights, so the result card reuses the same components.
 The geolocation + request groups are two views over the one ``events`` table
 (the located rows vs the ``requested`` ones), so both run through a single
 FTS query path in ``services.search``; the two hit shapes differ only in the
-fields each view surfaces (coordinates for the located view, claimer counts for
-the requested one).
+fields each view surfaces (the located view adds coordinates).
 """
 
 from __future__ import annotations
@@ -79,10 +78,6 @@ class SearchRequestHit(BaseModel):
     # Same picked-thumbnail shape as ``SearchEventHit.media``.
     media: list[MediaRead]
     tags: list[TagRead]
-    # Denormalised so the card renders the "N working" badge without a
-    # per-result fetch. Mirrors ``EventList.investigator_count``; the "claimer"
-    # name is reader vocabulary kept stable on this wire shape.
-    claimer_count: int
 
     model_config = {"from_attributes": True}
 

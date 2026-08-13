@@ -139,7 +139,9 @@ def test_list_cursor_holds_across_a_row_landing_mid_walk(db, author):
     assert walked == list(reversed(first_batch)), "newest first, and the late row stays out"
 
 
-def test_detections_cursor_walks_the_whole_queue(db, author):
+def test_detections_offset_pager_walks_the_whole_queue(db, author):
+    """The queue is offset-paged: the pager reads `page` / `per_page` and the
+    walk ends on the first short page."""
     created = {
         str(
             _make_geo(
@@ -154,7 +156,15 @@ def test_detections_cursor_walks_the_whole_queue(db, author):
     }
     headers = login_as(client, author)
 
-    pages = _walk(f"{_DETECTIONS}?per_page=2", headers=headers)
+    pages = [
+        [
+            row["id"]
+            for row in client.get(f"{_DETECTIONS}?per_page=2&page={n}", headers=headers).json()[
+                "items"
+            ]
+        ]
+        for n in (1, 2, 3)
+    ]
 
     assert [len(page) for page in pages] == [2, 2, 1]
     walked = [row_id for page in pages for row_id in page]
@@ -221,11 +231,6 @@ def test_list_accepts_a_well_formed_cursor_it_did_not_mint(db, author):
 
     assert response.status_code == 200
     assert len(response.json()) == 3
-
-
-def test_detections_rejects_a_cursor_it_did_not_mint(author):
-    response = client.get(f"{_DETECTIONS}?cursor=garbage", headers=login_as(client, author))
-    assert response.status_code == 422
 
 
 def test_user_events_rejects_a_page_below_one(author):

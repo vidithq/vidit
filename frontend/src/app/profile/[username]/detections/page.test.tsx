@@ -64,8 +64,6 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     thumbnail: null,
     requested_by: null,
     geolocators: [],
-    investigator_count: 0,
-    investigators: [],
     ...overrides,
   };
 }

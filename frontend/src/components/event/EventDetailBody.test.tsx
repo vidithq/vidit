@@ -97,8 +97,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       username: "poster",
     },
     geolocators: [],
-    investigator_count: 0,
-    investigators: [],
     ...overrides,
   };
 }

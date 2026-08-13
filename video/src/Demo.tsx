@@ -88,7 +88,7 @@ const CHROME_TOP = 32;
 //   7–10s   click Submit → /geolocations/new + sidebar collapse
 //   10–25s  submit flow: paste → import → tag → publish
 //   25–31s  the just-published geolocation detail page
-//   31–42s  requests list + click request + "I'm working on this"
+//   31–42s  requests list + click request + read it down to the CTA
 //   42–59s  Post request form: type title + paste URL + media + submit
 // Captions are anchored to the beat they describe — "Review" and
 // "Publish" live on their own beats (proof-edit, submit) instead of

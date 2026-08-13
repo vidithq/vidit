@@ -103,7 +103,7 @@ vidit/
 ├── README.md
 ├── SECURITY.md                     # vulnerability reporting
 ├── docker-compose.yml              # PostgreSQL + PostGIS for local dev
-├── docker/                         # custom PG 18 image (PostGIS + AGE + pg_cron) + backup cron
+├── docker/                         # backup cron image
 │
 ├── backend/                        # FastAPI (Python)
 │   ├── app/
@@ -293,7 +293,7 @@ Default to none. A comment earns its place only when it states something the cod
 
 ### Docker Compose
 
-`docker-compose.yml` spins up a custom PostgreSQL image (`docker/Dockerfile`) that bundles PostGIS, Apache AGE, and pg_cron. The two preloaded extensions need `shared_preload_libraries = 'age, pg_cron'` baked into `postgresql.conf` at image-build time. This setting is appended to `postgresql.conf.sample` in [`docker/Dockerfile`](../docker/Dockerfile), because the stock `postgres` image doesn't honour `POSTGRES_SHARED_PRELOAD_LIBRARIES`. The container is named `vidit-db`. Its data volume is mounted at `/var/lib/postgresql` (not `/data`) so AGE catalog state persists across restarts.
+`docker-compose.yml` runs the stock `postgis/postgis:16-3.4` image, the same one production runs on Railway. It ships every extension a production dump references (`postgis`, `postgis_topology`, `fuzzystrmatch`, `postgis_tiger_geocoder`), so [`make import-prod`](backups.md) restores into it unchanged. The container is named `vidit-db` and its data volume is mounted at `/var/lib/postgresql/data`.
 
 The backend (FastAPI via uvicorn) and the frontend (Next.js dev server) run on the host for hot reload.
 

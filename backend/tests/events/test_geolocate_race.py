@@ -32,7 +32,6 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from app.models.user import User
 from app.services.auth import hash_password
@@ -44,12 +43,10 @@ from tests.events._helpers import proof_file_part, proof_form_field
 def third_user(db):
     """A second potential fulfiller, alongside ``second_user``.
 
-    Unlike ``test_requests.py``'s same-named fixture (where ``third_user`` is
-    only ever an investigator, never an owner), either racer here can win the
-    fulfilment and become the event's ``owner_id``, so teardown needs the
-    fuller ``owner_id`` / ``requested_by_id`` sweep ``conftest.py``'s
-    ``_delete_user_and_events`` uses for ``author`` / ``second_user``, not
-    just the contributor-table cleanup.
+    Either racer here can win the fulfilment and become the event's
+    ``owner_id``, so teardown needs the fuller ``owner_id`` /
+    ``requested_by_id`` sweep ``conftest.py``'s ``_delete_user_and_events``
+    uses for ``author`` / ``second_user``, not just the credit-table cleanup.
     """
     user = User(
         username=f"race{uuid.uuid4().hex[:8]}",
@@ -61,9 +58,6 @@ def third_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(EventInvestigator).filter(EventInvestigator.user_id == user_id).delete(
-        synchronize_session=False
-    )
     db.query(EventGeolocator).filter(EventGeolocator.user_id == user_id).delete(
         synchronize_session=False
     )

@@ -259,16 +259,6 @@ def resend_confirmation(
     )
 
 
-@router.get("/invites/{code}/check")
-def check_invite_code(code: str, db: Session = Depends(get_db)):
-    from app.services.auth import validate_invite_code
-
-    invite = validate_invite_code(db, code)
-    if invite is None:
-        raise HTTPException(status_code=404, detail="Invalid or expired invite code")
-    return {"valid": True}
-
-
 # ── Login / logout / me ───────────────────────────────────────────────────
 
 

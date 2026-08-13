@@ -50,13 +50,13 @@ _SIGNATURE_PREFIX = "sha256="
 _CRC_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
 
 # An Account Activity delivery is small (a bounded batch of tweet objects);
-# a few hundred KB is generous. Enforced by a streaming read that aborts once
-# the cap is passed (see ``_read_body_capped``), so an oversized delivery never
-# gets fully buffered pre-auth. That covers the chunked / no-Content-Length
-# path a lone header check would miss. Public so the body-size middleware
-# ([`app.main`]) can pin this same small cap on the webhook path, keeping the
-# route's own streaming cap the binding pre-auth bound rather than the much
-# larger upload ceiling the middleware applies everywhere else.
+# a few hundred KB is generous. Public because the body-size middleware
+# (``app.main.enforce_request_body_size``) pins this cap on the webhook path
+# and is what enforces it: it runs ahead of this route on both the
+# Content-Length and the chunked / no-Content-Length path, so an oversized
+# delivery 413s before the handler ever sees a byte. That keeps the pre-auth
+# memory bound at this small cap rather than the much larger upload ceiling
+# the middleware applies everywhere else.
 MAX_BODY_BYTES = 512 * 1024
 
 # Belt-and-suspenders bound on the per-delivery batch: X batches far fewer
@@ -67,24 +67,6 @@ _MAX_EVENTS_PER_DELIVERY = 100
 def _sign(secret: str, payload: bytes) -> str:
     digest = hmac.new(secret.encode(), payload, hashlib.sha256).digest()
     return _SIGNATURE_PREFIX + base64.b64encode(digest).decode("ascii")
-
-
-async def _read_body_capped(request: Request, limit: int) -> bytes:
-    """Read the request body via ``request.stream()``, aborting past ``limit``.
-
-    A plain ``Content-Length`` check misses a chunked (or otherwise
-    length-less) request: nothing announces the size up front, so the only
-    way to bound memory is to stop consuming the stream the moment the
-    running total crosses the cap, before the body is ever fully buffered.
-    """
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > limit:
-            raise HTTPException(status_code=413, detail="Payload too large")
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 @router.get("/x")
@@ -159,7 +141,9 @@ async def receive_account_activity(request: Request, db: Session = Depends(get_d
         # for_user_id ever matches ""); 503 like the missing secret so a
         # misconfigured deployment is loud, not a black hole.
         raise HTTPException(status_code=503, detail="X webhook credentials not configured")
-    raw = await _read_body_capped(request, MAX_BODY_BYTES)
+    # The body-size middleware already 413'd anything past ``MAX_BODY_BYTES``
+    # on this path, so by here the body is within cap.
+    raw = await request.body()
     provided = request.headers.get(_SIGNATURE_HEADER, "")
     expected = _sign(settings.x_api_consumer_secret, raw)
     # Compared as bytes: header values decode as latin-1, and a non-ASCII

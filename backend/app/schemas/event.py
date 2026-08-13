@@ -271,10 +271,6 @@ class EventRead(BaseModel):
     requested_by: AuthorRef | None
     # Durable geolocation credit, oldest first. Empty until ``geolocated``.
     geolocators: list[AuthorRef]
-    # "I'm working on this" signals, newest first, with the full list on the
-    # detail read (the list card carries a capped sample instead).
-    investigator_count: int
-    investigators: list[AuthorRef]
     # ONLY the ``source`` rows: proof images travel inside the proof JSON as
     # URLs, so surfacing their rows here would double-render them.
     media: list[MediaRead]
@@ -310,11 +306,6 @@ class EventList(BaseModel):
     media: MediaRead | None
     tags: list[TagRead]
     conflicts: list[ConflictRead]
-    # Investigator aggregates, populated on the requested view only (count +
-    # newest-first capped sample) so the card renders "N working" without N+1;
-    # None on the located view.
-    investigator_count: int | None = None
-    investigators_sample: list[AuthorRef] | None = None
 
     model_config = {"from_attributes": True}
 

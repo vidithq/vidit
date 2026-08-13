@@ -809,22 +809,28 @@ async function prepareRequestUpload(auth) {
   await page.waitForURL(/\/requests\/[0-9a-f-]+(?:$|\?)/i, { timeout: 10000 });
   await wait(1800); // beat on detail to read it
 
-  console.log("→ click 'I'm working on this' (signal participation)");
-  // The button label flips to "Stop signaling" once clicked — capture
-  // BOTH states by holding briefly after the click.
-  const workingBtn = page
-    .getByRole("button", { name: /^I'm working on this$/i })
+  console.log("→ read down the request (proof + the Geolocate this CTA)");
+  // Scroll to the action panel at the pace of the other scrolls, then hold,
+  // so the viewer reads the request body and lands on "Geolocate this"
+  // without leaving the page (clicking it would navigate to /submit and
+  // break the back-to-/requests beat below). Timed to match the beat it
+  // replaced, so the caption anchors in src/Demo.tsx stay valid.
+  const geolocateCta = page
+    .getByRole("link", { name: /^Geolocate this$/i })
     .first();
-  // Slow scroll the action panel into view instead of the snappy
-  // scrollIntoViewIfNeeded — matches the pace of the other scrolls.
-  const workingY = await workingBtn.evaluate((el) => {
+  const ctaY = await geolocateCta.evaluate((el) => {
     const r = el.getBoundingClientRect();
     return Math.max(0, window.scrollY + r.top - window.innerHeight / 2);
   });
-  await slowScrollToY(page, workingY, 1500);
+  await slowScrollToY(page, ctaY, 1500);
   await wait(400);
-  await glideAndClick(page, workingBtn, { steps: 45, settle: 400 });
-  await wait(1600); // hold so the new "Stop signaling" + worker count are visible
+  const ctaBox = await geolocateCta.boundingBox();
+  if (ctaBox) {
+    await glideTo(page, ctaBox.x + ctaBox.width / 2, ctaBox.y + ctaBox.height / 2, {
+      steps: 45,
+    });
+  }
+  await wait(2000);
 
   console.log("→ click ← back arrow → /requests");
   // Use the visible back arrow (PageShell's aria-label="Back") instead

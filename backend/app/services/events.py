@@ -27,7 +27,7 @@ from typing import cast
 from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
@@ -41,7 +41,6 @@ from app.models.event import (
     BeforeClosedStatus,
     Event,
     EventGeolocator,
-    EventInvestigator,
     EventSourceLink,
 )
 from app.models.tag import Tag
@@ -930,48 +929,3 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     db.refresh(geo)
     points_cache.invalidate()
     return geo
-
-
-def investigate(db: Session, *, geo: Event, current_user: User) -> None:
-    """Record a public "I'm working on this" signal. Idempotent: re-signalling
-    is a no-op, not a conflict. Only an open ``requested`` event accepts a
-    signal; off ``requested`` it raises :class:`EventStateError` (409).
-
-    The ``EventInvestigator`` composite PK ``(event_id, user_id)`` is the race
-    backstop, staged in a SAVEPOINT so the loser lands on the idempotent no-op.
-    Mechanism: ``services/social.follow_user``.
-    """
-    if geo.status != STATUS_REQUESTED:
-        raise EventStateError(f"Cannot investigate an event with status {geo.status}")
-    existing = (
-        db.query(EventInvestigator)
-        .filter(
-            EventInvestigator.event_id == geo.id,
-            EventInvestigator.user_id == current_user.id,
-        )
-        .first()
-    )
-    if existing is not None:
-        return
-    try:
-        with db.begin_nested():
-            db.add(EventInvestigator(event_id=geo.id, user_id=current_user.id))
-    except IntegrityError:
-        # Loser of the race: the row already exists, which IS the post-condition.
-        pass
-    db.commit()
-
-
-def uninvestigate(db: Session, *, geo: Event, current_user: User) -> None:
-    """Drop the caller's investigate signal. Idempotent: a no-op when the caller
-    wasn't signalling (the post-condition is "caller not in the working set", not
-    "exactly one row deleted"). Gated to ``requested`` like :func:`investigate`:
-    a terminated event's signals are frozen history.
-    """
-    if geo.status != STATUS_REQUESTED:
-        raise EventStateError(f"Cannot investigate an event with status {geo.status}")
-    db.query(EventInvestigator).filter(
-        EventInvestigator.event_id == geo.id,
-        EventInvestigator.user_id == current_user.id,
-    ).delete(synchronize_session=False)
-    db.commit()

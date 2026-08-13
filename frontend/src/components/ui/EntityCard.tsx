@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { MapPin, Users } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
@@ -18,7 +18,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   stretched link. The author byline sits above it (`relative z-20`) and
 //   stays independently clickable. No nested <a>.
 // - It renders the slots that carry data; an entity without `coords` (a request)
-//   or without `working` (a geolocation) simply omits that bit. No `kind` flag.
+//   simply omits that bit. No `kind` flag.
 // - The thumbnail is the private `MediaThumb` below: the real media when
 //   `media` is present, its marked "no media" box otherwise.
 
@@ -87,7 +87,6 @@ interface EntityCardBaseProps {
   /** ``url`` is null on a sourceless machine draft; `SourceLabel` renders the
    *  muted "To confirm" label for it. */
   source?: { url: string | null };
-  working?: number;
   tags?: { id: string; name: string }[];
   variant?: "feed" | "compact";
 }
@@ -105,15 +104,6 @@ function CoordsMeta({ coords }: { coords: { lat: number; lng: number } }) {
     <span className="inline-flex items-center gap-1">
       <MapPin size={10} />
       {formatCoord(coords.lat, coords.lng)}
-    </span>
-  );
-}
-
-function WorkingMeta({ count }: { count: number }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-neutral-400">
-      <Users size={10} />
-      {count} working
     </span>
   );
 }
@@ -144,7 +134,6 @@ export function EntityCard({
   date,
   coords,
   source,
-  working,
   tags,
   variant = "compact",
 }: EntityCardProps) {
@@ -223,9 +212,6 @@ export function EntityCard({
               <span className="relative z-20">
                 <SourceLabel url={source.url} variant="inline" />
               </span>
-            )}
-            {typeof working === "number" && working > 0 && (
-              <WorkingMeta count={working} />
             )}
           </div>
           {tags && tags.length > 0 && (
