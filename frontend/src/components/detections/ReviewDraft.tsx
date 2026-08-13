@@ -81,8 +81,9 @@ interface ReviewDraftProps {
 }
 
 /**
- * One draft under review: the evidence on the left, the point on the map on the
- * right, then the handful of fields a publish needs.
+ * One draft under review, laid out in the submit form's order: the title, the
+ * evidence on the left with the point on the map on the right, the handful of
+ * fields a publish needs, then the proof.
  *
  * Publishing runs the single-row `POST /events/{id}/geolocate` transition, so
  * the server floor, the geolocator credit and the archival enqueue are the ones
@@ -226,27 +227,23 @@ export function ReviewDraft({
 
   return (
     <div className="space-y-4">
+      {/* The review reads in the submit form's order: title, source media,
+          location, details, proof. Two forms over the same event, so the
+          analyst finds each field where the other one puts it. */}
+      <TitleField value={title} onChange={setTitle} invalid={invalidKeys.has("title")} />
+
       {/* Evidence on one side, the point on the other. One column on a phone:
           the review is a desktop-first surface, and stacking is what keeps it
           usable rather than broken at 375px. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <div>
-            <SectionEyebrow title="Source media" />
-            <MediaGallery
-              media={draft.media}
-              alt={draft.title}
-              isGraphic={draft.is_graphic}
-              variant="panel"
-            />
-          </div>
-          <ProofSection>
-            {proofBody ? (
-              <div className="max-h-96 overflow-y-auto">{proofBody}</div>
-            ) : (
-              <p className="text-sm text-neutral-500">This draft carries no proof.</p>
-            )}
-          </ProofSection>
+        <div>
+          <SectionEyebrow title="Source media" />
+          <MediaGallery
+            media={draft.media}
+            alt={draft.title}
+            isGraphic={draft.is_graphic}
+            variant="panel"
+          />
         </div>
 
         <Card as="section">
@@ -275,10 +272,10 @@ export function ReviewDraft({
         </Card>
       </div>
 
+      {/* Event date leads, then the two classification picks in the order the
+          submit form's Classification block uses: conflict, capture source. */}
       <Card as="section">
-        <SectionHeading title="Publish this draft" concept="section_review" />
-
-        <TitleField value={title} onChange={setTitle} invalid={invalidKeys.has("title")} />
+        <SectionHeading title="Details" concept="section_review" />
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1.5">
@@ -293,24 +290,6 @@ export function ReviewDraft({
               className={eventDate ? "has-value" : ""}
             />
           </div>
-          <div className="space-y-1.5">
-            <label htmlFor="capture_source" className={FORM_LABEL}>
-              Capture source <FieldHelp concept="capture_source" />
-            </label>
-            <Select
-              id="capture_source"
-              value={captureSourceId}
-              invalid={invalidKeys.has("capture_source_tag")}
-              onChange={(e) => setCaptureSourceId(e.target.value)}
-            >
-              <option value="">Pick one…</option>
-              {captureSources.map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.name}
-                </option>
-              ))}
-            </Select>
-          </div>
         </div>
 
         <div className="space-y-2">
@@ -323,10 +302,37 @@ export function ReviewDraft({
             setSelectedIds={setConflictIds}
           />
         </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="capture_source" className={FORM_LABEL}>
+            Capture source <FieldHelp concept="capture_source" />
+          </label>
+          <Select
+            id="capture_source"
+            value={captureSourceId}
+            invalid={invalidKeys.has("capture_source_tag")}
+            onChange={(e) => setCaptureSourceId(e.target.value)}
+          >
+            <option value="">Pick one…</option>
+            {captureSources.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))}
+          </Select>
+        </div>
         <p className="text-xs text-neutral-500">
           The conflict and capture source you pick here carry to the next draft.
         </p>
       </Card>
+
+      <ProofSection>
+        {proofBody ? (
+          <div className="max-h-96 overflow-y-auto">{proofBody}</div>
+        ) : (
+          <p className="text-sm text-neutral-500">This draft carries no proof.</p>
+        )}
+      </ProofSection>
 
       {blockers.length > 0 && (
         <div className={FORM_ERROR_BANNER} role="alert">

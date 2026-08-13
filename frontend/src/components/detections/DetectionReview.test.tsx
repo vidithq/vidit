@@ -142,6 +142,33 @@ describe("DetectionReview", () => {
     ).toBeTruthy();
   });
 
+  it("orders the fields like the submit form", () => {
+    renderReview([draftFixture()]);
+    // Title, source media, location, details, proof: the same sequence
+    // /submit renders, so the two forms read alike.
+    const order = [
+      titleField(),
+      screen.getByText("Source media"),
+      screen.getByText("Location"),
+      screen.getByText("Details"),
+      screen.getByText("Proof"),
+    ];
+    for (let i = 0; i < order.length - 1; i += 1) {
+      expect(
+        order[i].compareDocumentPosition(order[i + 1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+    // Conflict comes before capture source inside the details card, as on
+    // /submit.
+    expect(
+      screen
+        .getByText("Conflict")
+        .compareDocumentPosition(captureSourceField()) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("publishes through the single-row geolocate transition and advances", async () => {
     renderReview([draftFixture(), draftFixture({ id: "d2", title: "Second draft" })]);
     pickConflictAndCaptureSource();
