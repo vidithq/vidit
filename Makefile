@@ -1,20 +1,18 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-demo seed-detections seed-timeline typology-weights mock-admin mock-demo-user promo gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
 	@echo "  make init          - Full initialization (install + env + db-up + migrate)"
 	@echo "  make install       - Install backend (uv) and frontend (npm) dependencies"
 	@echo "  make env           - Initialize .env files from templates (.env and .env.local)"
-	@echo "  make db-up         - Start custom PostgreSQL 18.3 container (PostGIS, pgvector, AGE, cron)"
-	@echo "  make db-build      - Force rebuild the custom database image"
+	@echo "  make db-up         - Start the PostgreSQL + PostGIS container"
 	@echo "  make db-down       - Stop the database container"
 	@echo "  make migrate       - Apply database migrations via Alembic"
-	@echo "  make seed          - mock-admin + 50 demo geolocations + admin follows every demo analyst"
-	@echo "  make seed-demo     - Just the 50 demo geolocations (no admin, no follows)"
+	@echo "  make seed          - mock-admin + machine detections from the synthetic archive"
 	@echo "  make seed-detections - Backfill machine 'detected' geolocations from the synthetic archive"
-	@echo "  make seed-timeline - Make the admin user follow every demo analyst"
+	@echo "  make import-prod   - Restore the latest production backup into the local dev database"
 	@echo "  make typology-weights - Recompute weights.json + golden fixtures from the local corpus (gitignored)"
 	@echo "  make mock-admin    - Create a mock admin user (admin@vidit.app / admin)"
 	@echo "  make dev-backend   - Run FastAPI dev server (port 8000)"
@@ -30,14 +28,8 @@ help:
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
 
-seed-demo:
-	cd backend && uv run python scripts/seed_demo.py
-
 seed-detections:
 	cd backend && uv run python scripts/seed_detections.py
-
-seed-timeline:
-	cd backend && uv run python scripts/seed_timeline.py
 
 # Typology QA harness: distils the local corpus under backend/datasets/
 # (gitignored, rebuilt by the tooling that lives there) into the committed
@@ -48,13 +40,17 @@ typology-weights:
 mock-admin:
 	cd backend && uv run python scripts/mock_admin.py
 
-mock-demo-user:
-	cd backend && uv run python scripts/mock_demo_user.py
+# Replace the local dev database with the most recent production backup. Reads
+# the daily dump the backup cron writes to S3; see docs/backups.md. Needs
+# BACKUP_S3_BUCKET and AWS_PROFILE in the environment. Pass ARGS=--yes to skip
+# the confirmation.
+import-prod:
+	./backend/scripts/import_prod.sh $(ARGS)
 
 # End-to-end promo render. Requires `make dev` running in another shell.
-# Also assumes `make seed` has been executed at least once for curated tags
-# + the demo geolocations that make the map look populated — the deps
-# below only cover the user accounts the pipeline mints itself.
+# Also assumes the local database already carries a populated catalog, so
+# the map reads as populated on camera: `make import-prod` or an archive
+# import covers that.
 #
 # Two outputs stage off one capture run:
 #   - `promo-master.mp4` — 2560×1440 / 60fps comp / CRF 16, +faststart
@@ -66,10 +62,10 @@ mock-demo-user:
 # Master is rendered at Remotion `--scale 2` (4K canvas) so the
 # rasterised captions / brand chrome are crisp, then ffmpeg downscales
 # to 2K. A 1080p intermediate isn't worth maintaining at beta
-# traffic — the master streams fine over CloudFront and the browser
+# traffic: the master streams fine over CloudFront and the browser
 # downscales for free.
 # See video/README.md for the breakdown of each step.
-promo: mock-admin mock-demo-user
+promo: mock-admin
 	cd video && node seed-requests.js
 	cd video && node record-submit.js
 	cp video/out/recording-submit.mp4 video/public/recording-submit.mp4
@@ -79,8 +75,8 @@ promo: mock-admin mock-demo-user
 	@ls -lh video/out/promo-master.mp4 video/out/promo-readme.mp4
 	@echo "Done. Master 2K (S3) → video/out/promo-master.mp4 | README 720p → video/out/promo-readme.mp4"
 
-seed: mock-admin seed-demo seed-timeline
-	@echo "Done. admin@vidit.app exists, 50 demo geolocations seeded, admin follows every demo analyst."
+seed: mock-admin seed-detections
+	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."
 
 install:
 	cd backend && uv sync
@@ -94,9 +90,6 @@ db-up:
 	docker-compose up -d
 	@echo "Waiting for database to be ready..."
 	@sleep 3
-
-db-build:
-	docker-compose build db
 
 db-down:
 	docker-compose down

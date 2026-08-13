@@ -192,7 +192,6 @@ def create_invite_code(
     expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
     invite = InviteCode(
         code=generate_invite_code(),
-        created_by=actor_id,
         max_uses=1,
         expires_at=expires_at,
         x_handle=x_handle,
@@ -479,9 +478,8 @@ def hard_delete_user(
        is left below one geolocator.
     3. Delete the user. ``auth_tokens`` and their contributor rows on other
        people's events cascade-drop; ``admin_events.actor_id`` and
-       ``invite_codes.created_by`` / ``.used_by`` flip to NULL via
-       migration f1a3b5c7d9e0 — invite-code rows are audit trail and
-       should outlive the user.
+       ``invite_codes.used_by`` flip to NULL via migration f1a3b5c7d9e0:
+       invite-code rows are audit trail and should outlive the user.
     4. Commit, *then* sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()
@@ -574,8 +572,8 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
     See :class:`AdminDetectionStatsRead` for the exact definitions. Two cheap
     aggregate queries, each one grouped pass with conditional counts:
 
-    1. Reject-rate over every machine detection (``detected_from_url`` set,
-       demo rows excluded): the ``count(*) FILTER (WHERE ...)`` of dismissed
+    1. Reject-rate over every machine detection (``detected_from_url`` set):
+       the ``count(*) FILTER (WHERE ...)`` of dismissed
        drafts over the total. A machine detection dismissed while still a draft
        counts as a reject whichever door it left through: an owner close off
        ``detected`` or an admin soft-delete that never left ``detected``. A
@@ -583,13 +581,11 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        removal). This mirrors :func:`app.services.detection._reimportable`,
        where soft-delete and owner close are the same judged-and-thrown-out
        shape.
-    2. The live ``detected`` queue (``deleted_at IS NULL``, demo rows and
-       human rows excluded), counting the drafts missing a source media, a
-       proof image, or a source URL, the pieces the geolocate floor will
-       demand.
+    2. The live ``detected`` queue (``deleted_at IS NULL``, human rows
+       excluded), counting the drafts missing a source media, a proof image,
+       or a source URL, the pieces the geolocate floor will demand.
     """
-    not_demo = Event.is_demo.is_(False)
-    machine = and_(Event.detected_from_url.isnot(None), not_demo)
+    machine = Event.detected_from_url.isnot(None)
     rejected = or_(
         and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_DETECTED),
         and_(Event.deleted_at.isnot(None), Event.status == STATUS_DETECTED),
@@ -607,7 +603,6 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
         Event.status == STATUS_DETECTED,
         Event.deleted_at.is_(None),
         Event.detected_from_url.isnot(None),
-        not_demo,
     )
     has_source = Event.media.any(Media.role == "source")
     has_proof = Event.media.any(and_(Media.role == "proof", Media.media_type == "image"))

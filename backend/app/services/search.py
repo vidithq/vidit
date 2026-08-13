@@ -32,7 +32,6 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
-    EventInvestigator,
 )
 from app.models.user import User
 from app.services.event_filters import EventFilters, visible_events
@@ -210,7 +209,6 @@ def search_geolocations(
                 "lat": row.lat,
                 "lng": row.lng,
                 "event_date": geo.event_date,
-                "is_demo": geo.is_demo,
                 "is_graphic": geo.is_graphic,
                 "status": geo.status,
                 "owner": geo.owner,
@@ -228,9 +226,7 @@ def search_requests(
 
     The requested view: ``status = 'requested'`` (withdrawn requests stay out
     of search, unlike the list view's audit trail). Same FTS path as the
-    located view via :func:`_search_events`; carries ``claimer_count``
-    (investigator count, reader vocabulary) so the result card renders the
-    same "N working" badge as the index.
+    located view via :func:`_search_events`.
     """
     ids, highlight_by_id, total = _search_events(
         db,
@@ -255,16 +251,6 @@ def search_requests(
     )
     geo_by_id = {g.id: g for g in geos}
 
-    # One grouped count for the result set, same shape as the requested-view
-    # list aggregate so the card renders the same badge.
-    counts: dict[uuid.UUID, int] = {
-        gid: int(c)
-        for gid, c in db.query(EventInvestigator.event_id, func.count("*"))
-        .filter(EventInvestigator.event_id.in_(ids))
-        .group_by(EventInvestigator.event_id)
-        .all()
-    }
-
     out: list[dict] = []
     for hit_id in ids:
         geo = geo_by_id.get(hit_id)
@@ -279,12 +265,10 @@ def search_requests(
                 "source_url": geo.source_url,
                 "status": geo.status,
                 "created_at": geo.created_at,
-                "is_demo": geo.is_demo,
                 "is_graphic": geo.is_graphic,
                 "owner": geo.owner,
                 "media": [thumb] if thumb is not None else [],
                 "tags": geo.tags,
-                "claimer_count": counts.get(geo.id, 0),
             }
         )
     return out, total

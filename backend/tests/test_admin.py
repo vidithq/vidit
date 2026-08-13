@@ -63,12 +63,12 @@ def admin_user(db):
     db.commit()
     user_id = user.id
     yield user
-    # Reap this actor's admin events + invite codes so the row deletes without
-    # FK violations. invite_codes FKs are ON DELETE SET NULL (migration
-    # f1a3b5c7d9e0); dropped explicitly anyway to keep test data clean.
+    # Reap this actor's admin events + the invite codes they redeemed so the row
+    # deletes without FK violations. The invite_codes FK is ON DELETE SET NULL
+    # (migration f1a3b5c7d9e0); dropped explicitly anyway to keep test data clean.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.created_by == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -298,10 +298,6 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     assert body["status"] == "revoked"
     assert body["revoked_at"] is not None
 
-    code = create_response.json()["code"]
-    check_response = client.get(f"/api/v1/auth/invites/{code}/check")
-    assert check_response.status_code == 404
-
 
 def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
     response = client.delete(
@@ -316,7 +312,6 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     regular_user.x_handle = handle
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        created_by=admin_user.id,
         used_by=regular_user.id,
         used_at=datetime.now(UTC),
         max_uses=1,
@@ -1054,7 +1049,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     db.commit()
     user_id = user.id
 
-    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", created_by=user_id)
+    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", used_by=user_id)
     db.add(invite)
     db.commit()
     invite_id = invite.id
@@ -1069,7 +1064,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     assert db.query(User).filter(User.id == user_id).first() is None
     surviving = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     assert surviving is not None
-    assert surviving.created_by is None
+    assert surviving.used_by is None
 
     db.delete(surviving)
     db.commit()
@@ -1553,31 +1548,6 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
     after = _detection_stats(admin_user)
     assert after["machine_total"] == before["machine_total"] + 1
     assert after["machine_rejected"] == before["machine_rejected"]
-
-
-def test_detection_stats_exclude_demo_rows(admin_user, regular_user, events_cleanup, db):
-    """A demo machine row moves neither aggregate: excluded from the machine and
-    the pending queries alike so seeded fixtures don't pollute the metric."""
-    before = _detection_stats(admin_user)
-
-    now = datetime.now(UTC)
-    demo_draft = Event(
-        owner_id=regular_user.id,
-        title=f"Demo draft {uuid.uuid4().hex[:8]}",
-        status=STATUS_DETECTED,
-        detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        is_demo=True,
-    )
-    db.add(demo_draft)
-    db.commit()
-    events_cleanup.append(demo_draft.id)
-
-    after = _detection_stats(admin_user)
-    assert after["machine_total"] == before["machine_total"]
-    assert after["machine_rejected"] == before["machine_rejected"]
-    assert after["pending"] == before["pending"]
-    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
 
 
 def test_pending_proof_video_counts_as_missing_proof_image(

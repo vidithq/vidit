@@ -200,7 +200,6 @@ function DraftPanel({ fields }: { fields: DraftFields }) {
               do not exist, and the mocks already hold that line. */}
           <DetailRow label="Detected from" compact className="gap-4">
             <SourceLabel
-              isDemo={false}
               url={fields.detectedFrom}
               variant="inline"
               className="text-neutral-200"

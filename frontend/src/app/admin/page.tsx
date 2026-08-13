@@ -5,8 +5,6 @@ import { useEffect } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
-import { DemoRequestsPanel } from "@/components/admin/DemoRequestsPanel";
-import { DemoDataPanel } from "@/components/admin/DemoDataPanel";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { EventModerationPanel } from "@/components/admin/EventModerationPanel";
@@ -49,8 +47,6 @@ export default function AdminPage() {
       <ReportsPanel />
       <EventModerationPanel />
       <EventDeletePanel />
-      <DemoDataPanel />
-      <DemoRequestsPanel />
       <MaintenancePanel />
     </PageShell>
   );

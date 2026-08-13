@@ -188,7 +188,6 @@ async def _persist_one(
     owner: User,
     dto: DetectedGeoloc,
     fetch_media: MediaFetcher,
-    is_demo: bool,
     media_cache: _MediaCache,
 ) -> Event:
     uploaded_keys: list[str] = []
@@ -209,7 +208,6 @@ async def _persist_one(
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
             detected_from_url=dto.detected_from_url,
-            is_demo=is_demo,
         )
         # The mirrors the post also linked. Already normalized + capped by the
         # resolution, so no second pass here.
@@ -307,7 +305,6 @@ async def assemble_detections(
     owner: User,
     detections: list[DetectedGeoloc],
     fetch_media: MediaFetcher,
-    is_demo: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
     """Persist each detection as a ``detected`` ``Event`` owned by ``owner``.
@@ -354,7 +351,6 @@ async def assemble_detections(
                 owner=owner,
                 dto=dto,
                 fetch_media=fetch_media,
-                is_demo=is_demo,
                 media_cache=media_cache,
             )
         except Exception:
@@ -377,7 +373,6 @@ async def backfill_from_archive(
     *,
     owner: User,
     archive_dir: Path,
-    is_demo: bool = False,
     chase: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
@@ -385,9 +380,8 @@ async def backfill_from_archive(
 
     Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
     ``tweets_media/``), rebuilds self-threads, detects coordinates, and persists
-    the detections as ``detected`` rows owned by ``owner`` — the account whose
-    verified handle the archive belongs to. ``is_demo`` marks the rows wipeable
-    (the dev/admin seed path passes it).
+    the detections as ``detected`` rows owned by ``owner``, the account whose
+    verified handle the archive belongs to.
     """
     handle = owner.x_handle or owner.username
     records = read_tweets(archive_dir, handle=handle, chase=chase)
@@ -398,5 +392,4 @@ async def backfill_from_archive(
         on_progress=on_progress,
         detections=detections,
         fetch_media=archive_media_fetcher(archive_dir),
-        is_demo=is_demo,
     )

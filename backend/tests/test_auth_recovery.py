@@ -7,10 +7,10 @@ pre-creation cutover and so are not exercised here.
 
 We exercise the wired-up endpoints rather than the auth_tokens service in
 isolation: the mint/consume contract is the primitive, but the endpoints
-are where wrong-purpose / wrong-token / replay safety actually has to
-hold. A test on the service alone wouldn't catch a router misuse like
-"register hands a verification token but reset_password calls consume(_,
-PURPOSE_PASSWORD_RESET) anyway".
+are where wrong-token / replay safety actually has to hold. A test on the
+service alone wouldn't catch a router that consumes with the wrong purpose.
+The purpose match itself is the one case pinned at the service level, since
+the CHECK constraint allows a single stored value.
 
 The email service is monkeypatched with a recorder rather than mocked at
 the HTTP layer — we want to assert that the right *Email* object went to
@@ -28,7 +28,6 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models.auth_token import (
-    PURPOSE_EMAIL_VERIFICATION,
     PURPOSE_PASSWORD_RESET,
     AuthToken,
 )
@@ -302,30 +301,27 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
     assert response.status_code == 400
 
 
-def test_reset_password_rejects_token_with_wrong_purpose(client, user_factory, db):
-    """A token minted for any other purpose must NOT pass for /reset-password.
+def test_consume_rejects_a_token_minted_for_another_purpose(user_factory, db):
+    """``consume`` must match on ``purpose``, not on the token hash alone.
 
-    Pins the consume() purpose check — the shared auth_tokens table
-    makes it easy to mix purposes up at the call site, so this test
-    is the regression line. We mint with ``email_verification`` (a
-    legacy purpose still allowed by the DB CHECK constraint, retained
-    precisely so this regression test has a non-``password_reset``
-    value to use).
+    The shared auth_tokens table makes it easy to mix purposes up at the call
+    site, so this is the regression line. Asserted from the consume side (a
+    live ``password_reset`` token redeemed against a different purpose): the
+    CHECK constraint pins the column to the one purpose the app mints, so a
+    second stored value cannot exist to assert from the mint side.
     """
     user, _ = user_factory()
     raw = auth_tokens.mint(
         db,
         user_id=user.id,
-        purpose=PURPOSE_EMAIL_VERIFICATION,
+        purpose=PURPOSE_PASSWORD_RESET,
         ttl_minutes=60,
     )
     db.commit()
 
-    response = client.post(
-        "/api/v1/auth/reset-password",
-        json={"token": raw, "new_password": "newpassword2"},
-    )
-    assert response.status_code == 400
+    assert auth_tokens.consume(db, raw, "email_verification") is None
+    # Still live: a mismatched purpose must not burn the token either.
+    assert auth_tokens.consume(db, raw, PURPOSE_PASSWORD_RESET) is not None
 
 
 # ── Race-safety regression ────────────────────────────────────────────────

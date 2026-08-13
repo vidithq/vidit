@@ -2,7 +2,6 @@
 payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
-import uuid
 
 import orjson
 from fastapi import (
@@ -14,7 +13,6 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
@@ -24,7 +22,6 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -33,7 +30,6 @@ from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
 )
-from app.schemas.user import AuthorRef
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     VIEWS,
@@ -56,9 +52,6 @@ from app.services.pagination import (
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
-# Detail page lists every investigator; the list card only needs a few
-# avatars + a count. Tune if the avatar strip grows.
-LIST_INVESTIGATOR_SAMPLE_SIZE = 3
 
 
 def _build_points_cache_key(
@@ -73,7 +66,6 @@ def _build_points_cache_key(
     submitted_to: str | None,
     author: str | None,
     media: list[str] | None = None,
-    hide_demo: bool = False,
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
 
@@ -107,42 +99,9 @@ def _build_points_cache_key(
             submitted_to,
             author,
             sorted(media) if media else None,
-            hide_demo,
         ]
     )
     return f"points:{hashlib.sha256(payload).hexdigest()}"
-
-
-def investigator_aggregates(
-    db: Session, event_ids: list[uuid.UUID]
-) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, list[AuthorRef]]]:
-    """Per-event investigator count + newest-first capped sample, without N+1.
-
-    Detail can afford eager-loading every row on its one event; a list runs
-    two grouped queries: one for the per-row count, one for the sample.
-    A Postgres window function would be tidier for the sample, but joined
-    order_by + a Python-side cap is simpler and the working set is small.
-    """
-    counts: dict[uuid.UUID, int] = {
-        eid: int(count)
-        for eid, count in db.query(EventInvestigator.event_id, func.count("*"))
-        .filter(EventInvestigator.event_id.in_(event_ids))
-        .group_by(EventInvestigator.event_id)
-        .all()
-    }
-    sample: dict[uuid.UUID, list[AuthorRef]] = {}
-    rows = (
-        db.query(EventInvestigator)
-        .options(joinedload(EventInvestigator.user))
-        .filter(EventInvestigator.event_id.in_(event_ids))
-        .order_by(EventInvestigator.event_id, EventInvestigator.created_at.desc())
-        .all()
-    )
-    for row in rows:
-        bucket = sample.setdefault(row.event_id, [])
-        if len(bucket) < LIST_INVESTIGATOR_SAMPLE_SIZE:
-            bucket.append(AuthorRef.model_validate(row.user))
-    return counts, sample
 
 
 @router.get("/points")
@@ -170,11 +129,10 @@ def list_points(
     # ``media`` accepts multiple values (``?media=image&media=video``); an event
     # matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
-    hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
-    ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
+    ``[[id, lat, lng, event_date, added_date, detected], ...]``.
     No joins, designed for map display with client-side clustering.
     ``bbox`` (``south,west,north,east``) is required and bounds the payload
     by the area asked for rather than by catalog size; a missing or malformed
@@ -186,10 +144,9 @@ def list_points(
     (the column is optional) and the frontend then leaves that point out of
     the event-date scrubber instead of hiding it. The frontend buckets the
     dates for the two timeline scrubbers and filters the windows client-side
-    (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
-    ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
-    panel offers its hide-demo toggle only when one is present). Flags, not
-    strings, to keep the payload small. Cached in-memory for 60s per unique
+    (no refetch per drag). ``detected`` is ``1`` for a machine detection
+    (rendered marked), ``0`` for a geolocated row: a flag, not a status string,
+    to keep the payload small. Cached in-memory for 60s per unique
     bbox + filter combination, the bbox first snapped outward onto a fixed
     server-side grid (see :func:`snap_bbox`).
     """
@@ -210,7 +167,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        hide_demo=hide_demo,
     )
 
     cached_bytes = points_cache.get(cache_key)
@@ -228,7 +184,6 @@ def list_points(
         Event.event_date,
         Event.created_at,
         Event.status,
-        Event.is_demo,
     )
     q = apply_filters(
         q,
@@ -241,7 +196,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        hide_demo=hide_demo,
     )
     # Map-only narrowing on top of the located view: a closed detection stays
     # on the list (audit trail) but comes off the map, a coordinate is
@@ -253,10 +207,9 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 7-tuple: [id, lat, lng, event_date, added_date, detected, demo].
-    # ``detected`` / ``demo`` are 1/0 flags (not strings) so the no-LIMIT
-    # payload stays small; the map colours the marker off ``detected``
-    # and the filter panel shows its hide-demo toggle off ``demo``.
+    # Compact 6-tuple: [id, lat, lng, event_date, added_date, detected].
+    # ``detected`` is a 1/0 flag (not a status string) so the no-LIMIT payload
+    # stays small; the map colours the marker off it.
     result = [
         [
             str(r.id),
@@ -265,7 +218,6 @@ def list_points(
             r.event_date.isoformat() if r.event_date else None,
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
-            1 if r.is_demo else 0,
         ]
         for r in rows
     ]
@@ -307,9 +259,8 @@ def list_events(
     """Newest-first cards for one lifecycle view.
 
     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-    queue (ex ``/requests``), whose cards additionally carry the investigator
-    aggregates (count + a small newest-first sample). Two-step "ids then full
-    rows" shape so eager-loads can't inflate the LIMIT count.
+    queue (ex ``/requests``). Two-step "ids then full rows" shape so eager-loads
+    can't inflate the LIMIT count.
 
     Capped at 100 rows however large ``limit`` is; a caller reading past the
     first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
@@ -381,23 +332,7 @@ def list_events(
         .all()
     )
 
-    # The requested queue renders "N working" per card, so aggregate once for
-    # the page, not per row.
-    counts: dict[uuid.UUID, int] = {}
-    sample: dict[uuid.UUID, list[AuthorRef]] = {}
-    if view == "requested":
-        counts, sample = investigator_aggregates(db, ids)
-
-    return [
-        build_event_list(
-            geo,
-            lat=lat,
-            lng=lng,
-            investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
-            investigators_sample=sample.get(geo.id, []) if view == "requested" else None,
-        )
-        for geo, lat, lng in rows
-    ]
+    return [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
@@ -405,10 +340,8 @@ def list_events(
 @limiter.limit("120/minute")
 def list_detections(
     request: Request,
-    response: Response,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -423,10 +356,8 @@ def list_detections(
     ``created_at DESC, id DESC``: the latest import is the first thing to
     triage.
 
-    Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
-    the supported one and is immune to rows landing mid-walk; ``page`` is the
-    offset path the queue's pager still uses, and a ``cursor`` supersedes it
-    when both arrive. Either way the page is capped at 100 rows.
+    Walked with the ``page`` / ``per_page`` offset pager the queue renders,
+    capped at 100 rows per page.
     """
     # A too-large page size is clamped (over-asking buys nothing, it isn't an
     # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
@@ -463,27 +394,18 @@ def list_detections(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
-            selectinload(Event.investigators).joinedload(EventInvestigator.user),
             selectinload(Event.archives),
             selectinload(Event.source_links),
         )
         .filter(*detected)
         .order_by(Event.created_at.desc(), Event.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     )
-    if cursor is not None:
-        window = window.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
-    else:
-        window = window.offset((page - 1) * per_page)
-
-    rows, has_next = take_page(window.limit(per_page + 1).all(), per_page)
-
-    if has_next:
-        last = rows[-1][0]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
 
     items = [
         build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
-        for geo, lat, lng, capture_lat, capture_lng in rows
+        for geo, lat, lng, capture_lat, capture_lng in window.all()
     ]
 
     return PaginatedEventDetails(items=items, total=total, page=page, per_page=per_page)

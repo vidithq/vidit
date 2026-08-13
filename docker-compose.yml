@@ -1,20 +1,19 @@
 services:
   db:
-    build:
-      context: ./docker
+    # The image production runs on Railway (see docs/engineering.md), so a
+    # production dump restores locally without an extension or archive-format
+    # mismatch. It ships postgis, postgis_topology, fuzzystrmatch, and
+    # postgis_tiger_geocoder: the only extensions the dump references.
+    image: postgis/postgis:16-3.4
     container_name: vidit-db
     environment:
       POSTGRES_DB: vision
       POSTGRES_USER: vision
       POSTGRES_PASSWORD: vision
-      # ``shared_preload_libraries = 'age, pg_cron'`` is baked into the
-      # image at build time (see ``docker/Dockerfile``) — the stock
-      # postgres image doesn't honour a ``POSTGRES_SHARED_PRELOAD_LIBRARIES``
-      # env var, so configuring it here would be a silent no-op.
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:

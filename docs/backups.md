@@ -42,7 +42,7 @@ aws --profile <s3-admin> s3 cp s3://<backup-bucket>/YYYY/MM/DD/vidit-<ts>.dump .
 pg_restore --clean --if-exists --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" ./vidit.dump
 ```
 
-The target database must have the same extensions installed as production. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, and `fuzzystrmatch`. Both the stock `postgis/postgis:16-3.4` image and the custom image in [`docker/Dockerfile`](../docker/Dockerfile) include these extensions. Adding `vector`, `pg_cron`, or `age` to production would break restores into stock Postgres.
+The target database must have the same extensions installed as production. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, and `fuzzystrmatch`. The stock `postgis/postgis:16-3.4` image includes all four, and [`docker-compose.yml`](../docker-compose.yml) runs that same image locally. Adding an extension to production that this image does not carry breaks restores into stock Postgres.
 
 ---
 
@@ -102,9 +102,29 @@ docker compose exec db rm -f /tmp/vidit.dump
 rm -f /tmp/vidit-drill.dump
 ```
 
-The drill works against either PG version locally. `pg_restore` is forward-compatible, so a PG-16 dump from the cron restores cleanly into a local PG 16 or PG 18 server.
+Local and production run the same PG 16 image, so the drill exercises the version pair production actually uses.
 
 If steps 4 and 5 return plausible counts and the PostGIS smoke test returns `t`, the dump is restorable. Record the date and dump filename in `CHANGELOG.md`, under `### Operations`. For example: "Restore drill verified YYYY-MM-DD against `vidit-<ts>.dump`".
+
+---
+
+## Import production into local dev
+
+`make import-prod` fills a local dev database with real data. It picks the most recent dump from the backup bucket, drops and recreates the local database, restores the dump into the running `vidit-db` container with the flags the [restore drill](#restore-drill) uses, and then runs `alembic upgrade head`, because a dump lags whatever migrations landed after it was taken. The script is [`backend/scripts/import_prod.sh`](../backend/scripts/import_prod.sh).
+
+The script recreates the database instead of restoring with `--clean`. `--clean` drops only the objects the dump contains, so a local migration that production does not have yet keeps foreign keys alive and the drops fail. The restore also skips the `postgis_tiger_geocoder` entries: the application never calls the tiger geocoder, and its install script fails on images where the extension set differs from production.
+
+The target is the whole local database, not a scratch one: every local row is dropped. The script prints the source object and the target database and waits for a confirmation. Pass `ARGS=--yes` to skip the prompt.
+
+Set two variables in the environment. The backend settings model rejects keys it does not declare, so `backend/.env` cannot carry them:
+
+```bash
+BACKUP_S3_BUCKET=<backup-bucket> AWS_PROFILE=<s3-admin> make import-prod
+```
+
+Start the database first (`make db-up`), and use the same `<s3-admin>` profile as the restore drill.
+
+Media is not in the dump. Imported rows keep the production media URLs they were stored with, and those resolve through the public CloudFront distribution, so images and video render in local dev without extra setup. Uploads you make locally still go to `LOCAL_STORAGE_DIR`.
 
 ---
 

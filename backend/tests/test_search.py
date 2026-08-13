@@ -10,7 +10,7 @@ located view (``geolocations`` group) filters ``location IS NOT NULL``; the
 requested view filters ``status = 'requested'``, so the two never overlap.
 
 We seed fresh rows per test with unique-suffix titles / usernames so
-matches are bounded to this test's data — the dev DB carries the demo
+matches are bounded to this test's data: the dev DB carries the imported
 seed, and an FTS query like "Donetsk" would otherwise pull in
 arbitrary neighbours. Suffix lookups also make the assertions
 deterministic without coupling to insertion order.
@@ -83,7 +83,7 @@ def _unique_token() -> str:
     """Highly unique alphanumeric token usable in titles / bios.
 
     We embed it in seeded text and query for it so the assertions
-    aren't contaminated by other rows in the dev DB (demo seeds,
+    aren't contaminated by other rows in the dev DB (imported archives,
     other tests' leftovers).
     """
     return f"vidqterm{uuid.uuid4().hex[:10]}"
@@ -317,7 +317,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
 # ── Requests ──────────────────────────────────────────────────────────────
 
 
-def test_search_matches_request_by_title_with_claimer_count(db, caller):
+def test_search_matches_request_by_title(db, caller):
     token = _unique_token()
     # A request is a ``requested`` event: no location (the requested-view search
     # filter is ``status = 'requested'``).
@@ -351,9 +351,6 @@ def test_search_matches_request_by_title_with_claimer_count(db, caller):
         assert body["total"]["requests"] == 1
         hit = body["requests"][0]
         assert hit["id"] == str(request_id)
-        # Mirrors the RequestList aggregate so the search card can reuse
-        # the same "N working" treatment.
-        assert hit["claimer_count"] == 0
         assert hit["status"] == STATUS_REQUESTED
         assert hit["is_graphic"] is False
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
@@ -523,7 +520,7 @@ def test_search_excludes_soft_deleted_users(db, caller):
 def test_search_type_all_returns_three_groups(db, caller):
     token = _unique_token()
     # Plant one matching row per entity so we can prove all three
-    # branches fire on type=all without depending on dev-DB demo data.
+    # branches fire on type=all without depending on pre-existing dev-DB rows.
     geo = Event(
         owner_id=caller.id,
         title=f"Geo {token} unique-token row",

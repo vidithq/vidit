@@ -8,13 +8,31 @@ import Image from "@tiptap/extension-image";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
+/** A link the proof pipeline carries end to end: an absolute http(s) URL.
+ *  Exported for its test. */
+export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url);
+
+// Links are http(s) only, for the same reason underline is off below. StarterKit
+// v3 registers the Link extension with linkify's default protocol set (mailto,
+// tel, ftp, sms, xmpp, …) and autolink on, while both sanitisers downstream take
+// http(s) only (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::
+// isSafeLinkHref`), so an autolinked `mailto:` would read as a link to the
+// analyst and be stripped at publish. The `protocols` option can only widen
+// linkify's set, so the narrowing goes through `isAllowedUri`, which the paste,
+// autolink and render paths all consult. Autolink survives for what the mirrors
+// accept: a typed or pasted `https://…` still links, a bare `example.com` and an
+// email address no longer do. Change this only together with those two mirrors.
+//
 // Underline is off: StarterKit v3 registers it by default (Cmd/Ctrl+U), but the
 // proof pipeline has no underline anywhere downstream. The backend sanitizer
 // drops the mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic /
 // strike / code / link) and the renderer can't paint it (`lib/proof.tsx`,
 // `applyMarks`), so an underlined run would silently lose its formatting at
 // publish. Change this only together with those two mirrors.
-const PROOF_STARTER_KIT = StarterKit.configure({ underline: false });
+const PROOF_STARTER_KIT = StarterKit.configure({
+  underline: false,
+  link: { isAllowedUri: isProofLinkUri },
+});
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
@@ -33,10 +51,6 @@ interface ProofEditorProps {
    *  local staging the "+ Image" control uses: a live preview plus a
    *  `proof_files[]` entry, so publish uploads them exactly once. */
   initialProofFiles?: File[];
-  // Drops the Image extension + upload button. A request's proof maps to
-  // the same `events.proof` column, in progress (else it'd be a
-  // geolocation), so it stays text + formatting only there.
-  allowImages?: boolean;
 }
 
 // `previewUrl` is a `blob:` URL for a manually picked "+ Image" file, or a
@@ -164,7 +178,6 @@ export default function ProofEditor({
   onProofFilesChange,
   initialContent,
   initialProofFiles,
-  allowImages = true,
 }: ProofEditorProps) {
   // Computed once at construction (the lazy `useState` initializer): pure
   // name-matching, no blob URLs yet, so nothing here needs cleanup and a
@@ -200,7 +213,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: allowImages ? [PROOF_STARTER_KIT, Image] : [PROOF_STARTER_KIT],
+    extensions: [PROOF_STARTER_KIT, Image],
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {
@@ -350,30 +363,26 @@ export default function ProofEditor({
         >
           List
         </button>
-        {allowImages && (
-          <>
-            <div className="w-px h-4 bg-neutral-700 mx-1" />
-            {/* Holds the picked file locally (blob preview + retained File);
-                the upload happens at publish via proof_files[]. */}
-            <label
-              className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 cursor-pointer"
-              title="Add a proof image (uploaded when you publish)"
-            >
-              + Image
-              <input
-                type="file"
-                accept={ACCEPTED_IMAGE_MIME}
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  // Reset so re-picking the same file still fires onChange.
-                  e.target.value = "";
-                  if (file) pickImage(file);
-                }}
-              />
-            </label>
-          </>
-        )}
+        <div className="w-px h-4 bg-neutral-700 mx-1" />
+        {/* Holds the picked file locally (blob preview + retained File);
+            the upload happens at publish via proof_files[]. */}
+        <label
+          className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 cursor-pointer"
+          title="Add a proof image (uploaded when you publish)"
+        >
+          + Image
+          <input
+            type="file"
+            accept={ACCEPTED_IMAGE_MIME}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Reset so re-picking the same file still fires onChange.
+              e.target.value = "";
+              if (file) pickImage(file);
+            }}
+          />
+        </label>
       </div>
 
       <EditorContent editor={editor} />

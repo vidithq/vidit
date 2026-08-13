@@ -50,16 +50,15 @@ export type Conflict = components["schemas"]["ConflictRead"];
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
 /** Compact point from /events/points:
- *  [id, lat, lng, event_date, added_date, detected, demo]. ``event_date`` and
+ *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings;
  *  ``event_date`` is null when unknown (optional column), and a null-dated
  *  point is skipped by the event-date scrubber rather than hidden. The
  *  timeline scrubbers bucket the dates for the histograms and filter their
  *  windows client-side. ``detected`` is 1 for a machine detection (marked on
- *  the map), 0 for a geolocated row; ``demo`` is 1 for a demo row (gates the
- *  filter panel's hide-demo toggle). The endpoint only returns located rows,
+ *  the map), 0 for a geolocated row. The endpoint only returns located rows,
  *  so every point has coordinates. */
-export type MapPoint = [string, number, number, string | null, string, 0 | 1, 0 | 1];
+export type MapPoint = [string, number, number, string | null, string, 0 | 1];
 
 /** Index of the ``detected`` flag in the `MapPoint` tuple. */
 export const POINT_DETECTED_FLAG = 5;
@@ -125,7 +124,7 @@ export type TweetImportResponse = components["schemas"]["TweetImportResponse"];
 export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
 
 /** A stored media row (image or video) on an event. `sha256` /
- *  `original_filename` are null on pre-column + demo-pool rows. */
+ *  `original_filename` are null on rows that predate those columns. */
 export type Media = components["schemas"]["MediaRead"];
 
 /** Full event detail (`GET /events/{id}`, `GET /events/detections`).
@@ -146,9 +145,7 @@ export type EventDetail = components["schemas"]["EventRead"];
  *  the link is not tracked at all (an unpublished draft, a source-less row). */
 export type ArchivedCopies = components["schemas"]["ArchivedCopiesRead"];
 
-/** Compact event card (`GET /events`). ``investigator_count`` /
- *  ``investigators_sample`` are populated only on the requested view (the
- *  requested queue); null on the located catalogue. */
+/** Compact event card (`GET /events`). */
 export type EventListItem = components["schemas"]["EventList"];
 
 /** The ``type=`` filter values, echoed back on the response. */
@@ -165,8 +162,7 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
 /** A requested-view search hit: an event card plus the
- *  ``title_highlight`` fragment; carries ``claimer_count`` so the card
- *  renders the same "N working" badge. ``source_url`` is required-nullable
+ *  ``title_highlight`` fragment. ``source_url`` is required-nullable
  *  (a ``requested`` hit always carries one today, per
  *  ``ck_events_source_url_status``). */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];

@@ -1,7 +1,7 @@
 """content reports + takedown
 
-Revision ID: w5y7a9c1e3g5
-Revises: v4x6z8b0d2f4
+Revision ID: z8b0d2f4h6j8
+Revises: y7a9c1e3g5i7
 Create Date: 2026-08-12 11:00:00.000000
 
 ``content_reports`` is the viewer-facing flag queue: anyone, signed in or not,
@@ -29,8 +29,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "w5y7a9c1e3g5"
-down_revision: Union[str, None] = "v4x6z8b0d2f4"
+revision: str = "z8b0d2f4h6j8"
+down_revision: Union[str, None] = "y7a9c1e3g5i7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

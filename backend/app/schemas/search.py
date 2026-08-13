@@ -9,8 +9,7 @@ highlights, so the result card reuses the same components.
 The geolocation + request groups are two views over the one ``events`` table
 (the located rows vs the ``requested`` ones), so both run through a single
 FTS query path in ``services.search``; the two hit shapes differ only in the
-fields each view surfaces (coordinates for the located view, claimer counts for
-the requested one).
+fields each view surfaces (the located view adds coordinates).
 """
 
 from __future__ import annotations
@@ -52,7 +51,6 @@ class SearchEventHit(BaseModel):
     # Nullable (a machine detection often has no known date) but always
     # serialised: ``services.search.search_geolocations`` sets the key on every hit.
     event_date: date | None
-    is_demo: bool
     # See ``EventRead.is_graphic``; the result card covers its thumbnail on it,
     # so the flag travels with the hit rather than costing a detail fetch.
     is_graphic: bool
@@ -79,7 +77,6 @@ class SearchRequestHit(BaseModel):
     # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
     status: EventStatus
     created_at: datetime
-    is_demo: bool
     # Same cover gate as ``SearchEventHit.is_graphic``: a request carries the
     # poster's footage, so its card needs the flag too.
     is_graphic: bool
@@ -87,10 +84,6 @@ class SearchRequestHit(BaseModel):
     # Same picked-thumbnail shape as ``SearchEventHit.media``.
     media: list[MediaRead]
     tags: list[TagRead]
-    # Denormalised so the card renders the "N working" badge without a
-    # per-result fetch. Mirrors ``EventList.investigator_count``; the "claimer"
-    # name is reader vocabulary kept stable on this wire shape.
-    claimer_count: int
 
     model_config = {"from_attributes": True}
 

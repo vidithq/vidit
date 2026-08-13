@@ -19,20 +19,16 @@
 
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
 # Populated from the DB row on every ORM load and set at construction; no line
-# reads them by name in app/. `claimed_at`'s only Python producer is the bot's
-# assembled-profile mint (services/bot inserts an explicit NULL); nothing in
-# app/ reads it back yet (the claim flow is a v0.5 item), so it still reads as
-# unused to vulture.
-created_by  # app/models/invite_code.py
+# reads them by name in app/.
 # Set positionally in build_source_link_rows and read only through the
 # relationship's string order_by ("EventSourceLink.position").
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
-claimed_at  # app/models/user.py
 processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
 # Stamped by services/reports.resolve_report and read on the wire only (the
 # column, the ContentReportRead field, and the assignment all collapse here).
 resolved_by  # app/models/content_report.py + app/schemas/report.py
+email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
@@ -47,11 +43,6 @@ bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 last_login_at  # schemas/admin.py AdminInviteRedeemerRead
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
-deleted_geos  # schemas/admin.py
-with_claims  # schemas/admin.py
-fulfilled  # schemas/admin.py
-closed  # schemas/admin.py
-deleted_requests  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
 events_scanned  # schemas/admin.py AdminMaintenanceResponse
 links_enqueued  # schemas/admin.py AdminMaintenanceResponse
@@ -70,10 +61,8 @@ pending  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_media  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_proof_image  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_url  # schemas/admin.py AdminDetectionStatsRead
+authors  # schemas/search.py AuthorSuggestions
 requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
-claimer_count  # schemas/search.py SearchRequestHit
-investigator_count  # schemas/event.py EventRead + EventList
-investigators_sample  # schemas/event.py EventList
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
@@ -90,9 +79,6 @@ finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobR
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 
-# ── Retired column kept to skip a drop migration; nothing writes or reads it ──
-liked_at  # models/bot_mention.py BotMention
-
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc
 in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
@@ -100,6 +86,8 @@ in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
+_.get_bytes  # services/storage.py, both backends
+_.put_bytes_sync  # services/storage.py, both backends
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
 # The body-size middleware caches the streamed body onto ``request._body`` so

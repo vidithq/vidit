@@ -42,7 +42,6 @@ from app.ratelimit import (
     AUTHENTICATED_READ_SCOPE,
     authenticated_read_key,
 )
-from app.services import seed as seed_service
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import SESSION_COOKIE
 from tests.conftest import login_as
@@ -99,15 +98,11 @@ def admin_user(db):
     yield u
     # Reap what the admin cases below leave behind, so the row deletes without
     # FK violations and no case depends on a later one to clean up after it:
-    # the audit rows every admin action writes, the invite codes the create
-    # case mints, and any demo population the seed cases produced (the wipe
-    # cases run only if parametrize order puts them after the seeds, which is
-    # not a guarantee a fixture should lean on).
+    # the audit rows every admin action writes and the invite codes the create
+    # case mints.
     db.expire_all()
-    seed_service.wipe_demo_requests(db)
-    seed_service.wipe_demo(db)
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.created_by == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -433,9 +428,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # * `PATCH /users/me` writes a bio onto the throwaway `user` row;
 # * every admin action writes an `admin_events` row, and
 #   `POST /admin/invite-codes` mints 30 codes;
-# * `POST /admin/seed-demo[-requests]` seeds demo rows whenever the
-#   `demo-pool/` prefix holds templates, and the `reap-*` maintenance cases
-#   delete expired `auth_tokens` / `pending_registrations` rows.
+# * the `reap-*` maintenance cases delete expired `auth_tokens` /
+#   `pending_registrations` rows.
 
 _MISSING_ID = uuid.UUID(int=0)
 
@@ -592,8 +586,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"close_reason": "probe"}},
     ),
-    _Case("post", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
-    _Case("delete", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
     # Reporting is open to anonymous viewers, so the per-IP limit is the only
     # abuse floor it has; 10/hour is the tightest write limit on the surface.
     _Case(
@@ -641,10 +633,6 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"hidden": True}},
     ),
-    _Case("post", "/api/v1/admin/seed-demo", 10, "admin", {"json": {"count": 1}}),
-    _Case("delete", "/api/v1/admin/seed-demo", 10, "admin"),
-    _Case("post", "/api/v1/admin/seed-demo-requests", 10, "admin", {"json": {"count": 1}}),
-    _Case("delete", "/api/v1/admin/seed-demo-requests", 10, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-auth-tokens", 30, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-pending-registrations", 30, "admin"),
 ]

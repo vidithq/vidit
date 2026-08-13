@@ -76,8 +76,8 @@ export function DetectionStatsPanel() {
           vouched into{" "}
           <code className="text-neutral-400">geolocated</code>, or still
           awaiting review, is not a reject. The pending counts profile the live
-          review queue (machine drafts, demo rows excluded) for drafts missing a
-          piece the geolocate floor will demand.
+          review queue (machine drafts only) for drafts missing a piece the
+          geolocate floor will demand.
         </p>
       </header>
 

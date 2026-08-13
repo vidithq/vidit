@@ -32,7 +32,6 @@ export default function HomePage() {
     setSelectedId,
     filters,
     dateWindows,
-    hideDemo,
   } = useMapState();
 
   const [points, setPoints] = useState<MapPoint[]>([]);
@@ -74,7 +73,6 @@ export default function HomePage() {
     filters.captureSources.forEach((s) => params.append("capture_source", s));
     filters.tags.forEach((t) => params.append("tag", t));
     filters.mediaTypes.forEach((m) => params.append("media", m));
-    if (hideDemo) params.set("hide_demo", "true");
     // The commit-style Author section only applies gated values, but the
     // context could carry a stale one; the shared gate (same source as the
     // section's commit) keeps an ineligible value from 422ing the fetch.
@@ -111,7 +109,6 @@ export default function HomePage() {
     filters.tags,
     filters.mediaTypes,
     filters.author,
-    hideDemo,
   ]);
 
   useEffect(() => {

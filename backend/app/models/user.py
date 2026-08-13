@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,8 +16,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     # Nullable for historical credential-less rows (the retired assembled-
     # profile mechanism minted users from an X handle alone); every account
-    # created today carries both, set by the registration flow, and
-    # `claimed_at IS NULL` marks the legacy unclaimed state.
+    # created today carries both, set by the registration flow.
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # The X handle the bot attributes mentions to, stored lowercased without
@@ -29,11 +28,11 @@ class User(Base):
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Set to created_at by the pre-creation registration flow — a ``users`` row
-    # exists only because the analyst clicked the confirmation link, so this is
-    # non-NULL for any row minted after the pending_registrations migration.
-    # Legacy rows (pre-cutover, never verified) may hold NULL; nothing branches
-    # on it today, but the column documents the moment of email control.
+    # Deliberate audit stamp: written once by the registration flow, read by no
+    # code path. A ``users`` row exists only because the analyst clicked the
+    # confirmation link, so this is non-NULL for any row minted after the
+    # pending_registrations migration; legacy rows (pre-cutover, never verified)
+    # may hold NULL. Keep it: it is the record of when email control was proven.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -42,26 +41,10 @@ class User(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
-    # When an owner took control. Defaults to insert time via `server_default`,
-    # so every account that's owned at creation (self-registration, the demo
-    # seeder, the mock scripts, a future public sign-up) is correct without
-    # each path remembering to stamp it. NULL only on legacy rows from the
-    # retired assembled-profile mechanism, which inserted an explicit
-    # `claimed_at=None` for a credential-less unclaimed profile; no current
-    # path writes NULL. A timestamp, not a boolean / credential-nullness,
-    # because a profile claimed via OAuth has no password yet still counts as
-    # claimed.
-    claimed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=True
-    )
     # Soft-delete: NULL = live, timestamp = removed. Login + auth checks reject
     # soft-deleted users; public reads filter `deleted_at IS NULL`. Soft-
     # deleting a user cascade-soft-deletes every geolocation they authored.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # TRUE iff created by the admin "Demo data" seeder. Demo users have an
-    # unloggable password and a synthetic `@vidit.invalid` email; the wipe
-    # button drops every is_demo=TRUE row.
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Monotonic session-invalidation counter. The session JWT embeds it as a
     # `tv` claim at mint time and `get_current_user` 401s on mismatch. Bumped on
     # logout, password change, password reset, and soft-delete so all

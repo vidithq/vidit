@@ -298,10 +298,11 @@ const RECORDING_TWEET_URL =
   const admin = await mintAuth("admin@vidit.app", "admin");
   await wipeTweetDuplicatesAs(admin, RECORDING_TWEET_URL);
 
-  // The request author has to be someone OTHER than the recording
-  // viewer — the request detail page only shows "I'm working on this"
-  // when the viewer is NOT the request's author. The recording logs in
-  // as `analyst`, so `demo-analyst` owns the seeded requests.
+  // The request author is someone OTHER than the recording viewer, so the
+  // detail page reads as a request you could pick up rather than one you
+  // own (an owner sees "Close this request" instead of "Geolocate this").
+  // The recording logs in as `analyst`, so `demo-analyst` owns the seeded
+  // requests.
   const author = await mintAuth("demo-analyst@vidit.app", "demo-analyst");
   await wipeUserRequests(author);
 
@@ -372,24 +373,5 @@ const RECORDING_TWEET_URL =
     console.log(`  ✓ ${request.id}`);
   }
 
-  // Pre-seed a single "I'm working on this" claim from analyst-helper
-  // (a separate non-admin user) so the list visibly shows "1 working"
-  // on one request when the recording viewer opens the page. The
-  // recording then clicks "I'm working on this" on a *different*
-  // request to demonstrate the action live.
-  const helper = await mintAuth("analyst-helper@vidit.app", "analyst-helper");
-  const all = await fetch(`${API}/events?view=requested&limit=${PAGE_LIMIT}`, {
-    headers: { cookie: helper.cookieHeader },
-  }).then((r) => r.json());
-  // Pick the second-newest so the newest still reads as "fresh" (and
-  // gets the recording's live click).
-  if (all.length >= 2) {
-    const target = all[1];
-    const res = await fetch(`${API}/events/${target.id}/investigate`, {
-      method: "POST",
-      headers: { cookie: helper.cookieHeader, "X-CSRF-Token": helper.csrf },
-    });
-    console.log(`✓ analyst-helper claimed ${target.id} (${res.status})`);
-  }
   console.log("done");
 })();

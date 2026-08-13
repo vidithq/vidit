@@ -101,10 +101,8 @@ def drafts_awaiting_completion(
     The digest's selection rule, split out so it is readable and testable on
     its own. Who is in: an account that still exists (not soft-deleted), is
     active, and has an address to write to. What counts: live drafts (never a
-    soft-deleted row, never a published or closed one) that are real work, so
-    seeded demo rows are excluded and an analyst holding only demo drafts is
-    not written to at all. Ordered by count, biggest backlog first, and cut at
-    ``limit``.
+    soft-deleted row, never a published or closed one). Ordered by count,
+    biggest backlog first, and cut at ``limit``.
 
     The address rides in the tuple rather than being re-read off the user: the
     ``email IS NOT NULL`` filter is what makes it a ``str``, and returning it
@@ -120,7 +118,6 @@ def drafts_awaiting_completion(
             # apply: a takedown freezes a draft for its owner, so nagging them
             # to complete one they cannot publish is a dead-end prompt.
             *visible_events(),
-            Event.is_demo.is_(False),
             User.deleted_at.is_(None),
             User.is_active.is_(True),
             User.email.isnot(None),

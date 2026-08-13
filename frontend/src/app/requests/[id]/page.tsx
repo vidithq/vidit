@@ -1,7 +1,6 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useApiResource } from "@/hooks/useApiResource";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -9,19 +8,17 @@ import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { useEventActions } from "@/components/event/useEventActions";
 import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { TEXT_LINK } from "@/components/ui/styles";
 import { DetailRow } from "@/components/ui/DetailRow";
 
 /**
  * A request is a ``requested`` event (see ``docs/data-model.md`` → ``events``),
  * served by the same ``GET /events/{id}`` a located row uses; this page renders
  * the shared ``EventDetailBody`` under the shared action cluster. The request
- * surface is the one that carries all three tiers: the geolocate and signal
- * flow actions, the author's close and delete behind the ``⋯`` menu, and the
- * share and report utilities. ``useEventActions`` owns every one of them, so
- * this page holds only the two request-only detail rows. The status badge tells
- * a withdrawn request from a rejected detection through
- * ``before_closed_status``.
+ * surface is the one that carries all three tiers: the geolocate flow action,
+ * the author's close and delete behind the ``⋯`` menu, and the share and report
+ * utilities. ``useEventActions`` owns every one of them, so this page holds only
+ * the request-only detail row. The status badge tells a withdrawn request from a
+ * rejected detection through ``before_closed_status``.
  */
 export default function RequestDetailPage() {
   const params = useParams();
@@ -65,35 +62,14 @@ export default function RequestDetailPage() {
 
         {/* A request is an event with no coordinates, so the body renders with
             an empty Location and the missing detected-from / requested-by rows
-            simply drop out. Its two request-only rows slot in via detailExtras. */}
+            simply drop out. Its request-only row slots in via detailExtras. */}
         <EventDetailBody
           geo={request}
           variant="page"
           detailExtras={
-            <>
-              {request.status === "requested" && (
-                <DetailRow label="Working on" concept="working_on" align="start">
-                  {request.investigators.length > 0 ? (
-                    <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
-                      {request.investigators.map((c) => (
-                        <Link
-                          key={c.id}
-                          href={`/profile/${c.username}`}
-                          className={`text-sm ${TEXT_LINK}`}
-                        >
-                          @{c.username}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-neutral-600">—</span>
-                  )}
-                </DetailRow>
-              )}
-              {request.closed_at && (
-                <DetailRow label="Closed" value={formatDate(request.closed_at)} />
-              )}
-            </>
+            request.closed_at ? (
+              <DetailRow label="Closed" value={formatDate(request.closed_at)} />
+            ) : null
           }
         />
     </PageShell>

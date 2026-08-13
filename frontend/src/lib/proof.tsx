@@ -16,7 +16,12 @@ const intAttr = (v: unknown): number | undefined =>
 const stringAttr = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
 
-/** Mirrors backend `sanitize._safe_link_href`: only an explicit http(s)://
+/** The dev backend's static media mount, mirroring
+ * `storage.LOCAL_STORAGE_URL_PREFIX`: the one non-https origin a proof image
+ * may carry, and only in a build that pins no media host. */
+const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
+
+/** Mirrors backend `sanitize.safe_link_href`: only an explicit http(s)://
  * URL with a hostname is safe to render as an anchor href. The backend
  * sanitizer is the source of truth (it strips anything else before the
  * doc is ever persisted); this is defense-in-depth in case a doc reaches
@@ -35,29 +40,37 @@ function isSafeLinkHref(href: string): boolean {
   );
 }
 
-/** Mirrors the spirit of backend `sanitize._safe_image_src` (relative path,
- * or an https:// / local-dev host): the FE can't read the backend's
- * `storage_backend` / CDN settings, so this is conservative rather than an
- * exact mirror. The point is to never let a `javascript:`, `data:`, or
- * protocol-relative (`//host`) src reach the DOM. Normalise the value the way a
- * browser will first (WHATWG): strip ASCII tab/CR/LF from anywhere and treat a
+/** Mirrors backend `sanitize._safe_image_src`: a proof image is a relative
+ * path or an https URL on the host this deployment serves media from, so a
+ * persisted `<image src="https://attacker/pixel.gif">` can't exfiltrate a
+ * viewer's IP / UA. `NEXT_PUBLIC_MEDIA_HOST` is that host (the same value
+ * `next.config.mjs` pins `next/image` to; NEXT_PUBLIC_ vars are inlined at
+ * build, so reading it here is the client's own copy of the pin). A build
+ * that sets no media host keeps the dev shape instead of failing closed: any
+ * https host plus the backend's local-storage prefix, which is what a
+ * `STORAGE_BACKEND=local` backend mints and what the backend itself accepts
+ * with no CDN configured.
+ *
+ * The backend sanitizer is the source of truth (it applies its own host pin
+ * before the doc is persisted); this is defense in depth for a doc that
+ * reaches the renderer unsanitized. Normalise the value the way a browser
+ * will first (WHATWG): strip ASCII tab/CR/LF from anywhere and treat a
  * backslash as a slash, so `/\host`, `/<TAB>/host` and `//host` all reduce to
  * the network path `//host`. */
 function isSafeImageSrc(src: string): boolean {
   const normalized = src.replace(/[\t\r\n]/g, "").replace(/\\/g, "/");
   if (normalized.slice(0, 2) === "//") return false;
   if (src.startsWith("/")) return true;
+  const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
+  if (!mediaHost && src.startsWith(LOCAL_STORAGE_URL_PREFIX)) return true;
   let parsed: URL;
   try {
     parsed = new URL(src);
   } catch {
     return false;
   }
-  if (parsed.protocol === "https:") return true;
-  if (parsed.protocol === "http:" && parsed.hostname === "localhost") {
-    return true;
-  }
-  return false;
+  if (parsed.protocol !== "https:") return false;
+  return mediaHost ? parsed.hostname === mediaHost.toLowerCase() : true;
 }
 
 function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {

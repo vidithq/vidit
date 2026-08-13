@@ -4,10 +4,10 @@ import type { MapPoint } from "@/types";
 import { hasFiniteCoords, pointsBounds } from "./bounds";
 
 function point(lat: number, lng: number): MapPoint {
-  return ["id", lat, lng, null, "2026-01-01", 0, 0];
+  return ["id", lat, lng, null, "2026-01-01", 0];
 }
 
-const BROKEN = ["id", Number.NaN, Number.NaN, null, "2026-01-01", 0, 0] as MapPoint;
+const BROKEN = ["id", Number.NaN, Number.NaN, null, "2026-01-01", 0] as MapPoint;
 
 describe("pointsBounds", () => {
   it("returns null for an empty set", () => {

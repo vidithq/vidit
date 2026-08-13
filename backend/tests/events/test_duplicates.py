@@ -153,7 +153,7 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
     )
     assert response.status_code == 200
     # Tighter than ``== []``: assert this *specific* distant row is
-    # absent. If a previously-seeded demo geolocation happens to sit
+    # absent. If a pre-existing dev-DB geolocation happens to sit
     # inside the 500 m radius AND share the source host or the
     # event_date, the response can legitimately be non-empty without
     # invalidating the invariant under test.
@@ -313,7 +313,7 @@ def test_possible_duplicates_orders_by_distance(db, author):
     )
     assert response.status_code == 200
     body = response.json()
-    # Two-stage assertion so a seeded-demo bleed (the LIMIT 10 cutting
+    # Two-stage assertion so a dev-DB bleed (the LIMIT 10 cutting
     # `near` off the response entirely) surfaces as "row absent" rather
     # than as a confusing ordering mismatch. The "both present" line
     # guards against silently testing ordering on a single-row list.

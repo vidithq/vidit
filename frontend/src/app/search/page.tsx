@@ -543,8 +543,7 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
       author={hit.owner}
-      source={{ url: hit.source_url, isDemo: hit.is_demo }}
-      working={hit.claimer_count}
+      source={{ url: hit.source_url }}
     />
   );
 }

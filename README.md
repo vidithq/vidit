@@ -59,7 +59,7 @@ vidit/
 ├── backend/          FastAPI service (uv)
 │   ├── app/          routers → services → models, Pydantic schemas
 │   ├── alembic/      migrations
-│   ├── scripts/      one-off ops scripts (mock admin, demo seeders)
+│   ├── scripts/      one-off ops scripts (mock admin, detection seeder, prod import)
 │   └── tests/
 ├── frontend/         Next.js 16 app (npm)
 │   └── src/
@@ -73,7 +73,7 @@ vidit/
 ├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
 ├── docs/             api, backups, data-model, design, engineering (technical reference)
 ├── planning/         roadmap + next (project planning, not user docs)
-├── docker/           custom PG image (PostGIS + AGE + pg_cron) + daily backup cron
+├── docker/           daily backup cron image
 ├── AGENTS.md            project context for AI tools (CLAUDE.md is a one-line `@AGENTS.md` pointer for Claude Code)
 ├── CHANGELOG.md         release history
 ├── CODE_OF_CONDUCT.md   Contributor Covenant 2.1
@@ -108,7 +108,8 @@ The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.
 
 ```bash
 make init        # install + env + db-up + migrate (one-shot bootstrap)
-make seed        # mock-admin + 50 demo geolocations + admin follows every demo analyst
+make seed        # mock-admin + machine detections from the committed synthetic archive
+make import-prod # replace the local DB with the latest production backup (see docs/backups.md)
 make dev         # FastAPI :8000 + Next.js :3000 in parallel
 make dev-worker  # archive-import worker (optional; without it, archive uploads stay queued)
 make test        # backend pytest
@@ -118,7 +119,7 @@ make test        # backend pytest
 
 ### Prerequisites
 
-- Docker (for PostgreSQL + PostGIS; prod runs PG 16 on Railway, local is PG 18, see [`docs/backups.md`](docs/backups.md) for restore implications)
+- Docker (for PostgreSQL + PostGIS; local and prod both run `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
 - Python 3.12+ and [uv](https://github.com/astral-sh/uv)
 - Node.js 20+ and npm
 
@@ -177,4 +178,4 @@ Licensed under the [GNU Affero General Public License v3.0](LICENSE). See [`CONT
 
 ## Acknowledgements
 
-The demo content shipped on the landing video and in the seed requests uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.
+The content shown in the landing video uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.

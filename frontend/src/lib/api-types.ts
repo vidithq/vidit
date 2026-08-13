@@ -281,63 +281,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/seed-demo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Seed Demo
-         * @description Generate `count` synthetic demo geolocations attributed to the demo
-         *     author pool. Reads templates from the `demo-pool/` storage prefix; if
-         *     the prefix is empty or missing the expected layout, returns 422 so
-         *     the admin can populate the pool before retrying.
-         */
-        post: operations["seed_demo_api_v1_admin_seed_demo_post"];
-        /**
-         * Wipe Demo
-         * @description Drop every is_demo=True geolocation + user. The `demo-pool/` S3
-         *     objects are NOT touched — they're shared assets for re-seeding.
-         */
-        delete: operations["wipe_demo_api_v1_admin_seed_demo_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/seed-demo-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Seed Demo Requests
-         * @description Generate ``count`` synthetic demo requests attributed to the same
-         *     fixed pool of demo authors as the geolocation seeder. Reads templates
-         *     from the same ``demo-pool/`` S3 prefix — requests only need media,
-         *     not coordinates, so the template imagery is reused unchanged.
-         */
-        post: operations["seed_demo_requests_api_v1_admin_seed_demo_requests_post"];
-        /**
-         * Wipe Demo Requests
-         * @description Drop every is_demo=True request. Demo users and demo geolocations
-         *     are NOT touched — they live behind the separate ``Demo data`` panel
-         *     and an admin may want to keep one population while wiping the other.
-         */
-        delete: operations["wipe_demo_requests_api_v1_admin_seed_demo_requests_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -503,23 +446,6 @@ export interface paths {
          *     enumeration; the timing fix kills the oracle.
          */
         post: operations["forgot_password_api_v1_auth_forgot_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/invites/{code}/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Check Invite Code */
-        get: operations["check_invite_code_api_v1_auth_invites__code__check_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -693,9 +619,8 @@ export interface paths {
          * @description Newest-first cards for one lifecycle view.
          *
          *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-         *     queue (ex ``/requests``), whose cards additionally carry the investigator
-         *     aggregates (count + a small newest-first sample). Two-step "ids then full
-         *     rows" shape so eager-loads can't inflate the LIMIT count.
+         *     queue (ex ``/requests``). Two-step "ids then full rows" shape so eager-loads
+         *     can't inflate the LIMIT count.
          *
          *     Capped at 100 rows however large ``limit`` is; a caller reading past the
          *     first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
@@ -776,10 +701,8 @@ export interface paths {
          *     ``created_at DESC, id DESC``: the latest import is the first thing to
          *     triage.
          *
-         *     Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
-         *     the supported one and is immune to rows landing mid-walk; ``page`` is the
-         *     offset path the queue's pager still uses, and a ``cursor`` supersedes it
-         *     when both arrive. Either way the page is capped at 100 rows.
+         *     Walked with the ``page`` / ``per_page`` offset pager the queue renders,
+         *     capped at 100 rows per page.
          */
         get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
@@ -927,7 +850,7 @@ export interface paths {
         /**
          * List Points
          * @description Return the map's events inside ``bbox`` as a compact array:
-         *     ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
+         *     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
          *     No joins, designed for map display with client-side clustering.
          *     ``bbox`` (``south,west,north,east``) is required and bounds the payload
          *     by the area asked for rather than by catalog size; a missing or malformed
@@ -939,10 +862,9 @@ export interface paths {
          *     (the column is optional) and the frontend then leaves that point out of
          *     the event-date scrubber instead of hiding it. The frontend buckets the
          *     dates for the two timeline scrubbers and filters the windows client-side
-         *     (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
-         *     ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
-         *     panel offers its hide-demo toggle only when one is present). Flags, not
-         *     strings, to keep the payload small. Cached in-memory for 60s per unique
+         *     (no refetch per drag). ``detected`` is ``1`` for a machine detection
+         *     (rendered marked), ``0`` for a geolocated row: a flag, not a status string,
+         *     to keep the payload small. Cached in-memory for 60s per unique
          *     bbox + filter combination, the bbox first snapped outward onto a fixed
          *     server-side grid (see :func:`snap_bbox`).
          */
@@ -1108,36 +1030,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/investigate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Investigate Event
-         * @description Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
-         *     not a 409. Only open requests accept new signals; off ``requested`` the
-         *     signal is rejected with 409. The rules and the race backstop live in the
-         *     service.
-         */
-        post: operations["investigate_event_api_v1_events__geolocation_id__investigate_post"];
-        /**
-         * Uninvestigate Event
-         * @description Stop signalling. 204 even if the caller wasn't signalling: the
-         *     user-observable post-condition (caller not in the working set) is what we
-         *     promise, not "exactly one row was deleted". Gated to ``requested`` like the
-         *     POST: a terminated event's signals are frozen history. Rules in the service.
-         */
-        delete: operations["uninvestigate_event_api_v1_events__geolocation_id__investigate_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}/report": {
         parameters: {
             query?: never;
@@ -1274,9 +1166,8 @@ export interface paths {
          *     instead of falling back to a global firehose, so the page stays a
          *     deliberate signal rather than a noisy default feed.
          *
-         *     Newest submission first, capped at 100 rows per page. ``cursor`` (from the
-         *     ``Link: rel="next"`` header) is the supported way to read on; ``page`` is
-         *     the offset path the feed's pager still uses.
+         *     Newest submission first, walked with the ``page`` / ``per_page`` offset
+         *     pager and capped at 100 rows per page.
          */
         get: operations["get_timeline_api_v1_timeline_get"];
         put?: never;
@@ -1464,8 +1355,6 @@ export interface components {
          *
          *     A machine detection is a row imported from X, ``detected_from_url`` set
          *     (the archive backfill / the bot); a human submit always carries NULL there.
-         *     Demo rows (``is_demo``) are excluded from both aggregates so seeded fixtures
-         *     don't pollute the metric.
          *
          *     Reject-rate: of every machine detection, the fraction dismissed while still
          *     a draft, whichever door they left through. A machine detection counts as a
@@ -1479,8 +1368,8 @@ export interface components {
          *     ``services/detection._reimportable``, where soft-delete and owner close are
          *     the same judged-and-thrown-out shape. ``reject_rate`` is
          *     ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
-         *     machine detections. Counted over all (non-demo) machine rows, soft-deleted
-         *     or not: the metric measures what the pipeline produced.
+         *     machine detections. Counted over all machine rows, soft-deleted or not: the
+         *     metric measures what the pipeline produced.
          *
          *     Two counting edges the metric accepts, both favouring over-counting
          *     dismissals over under-counting them: an owner hard-delete
@@ -1489,9 +1378,9 @@ export interface components {
          *     pending drafts as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-         *     review, ``deleted_at IS NULL``, machine rows only, demo excluded): how many
-         *     drafts are missing a piece the geolocate floor will demand, so a
-         *     low-quality extraction run is visible before an analyst opens the queue.
+         *     review, ``deleted_at IS NULL``, machine rows only): how many drafts are
+         *     missing a piece the geolocate floor will demand, so a low-quality
+         *     extraction run is visible before an analyst opens the queue.
          */
         AdminDetectionStatsRead: {
             /** Machine Rejected */
@@ -1730,61 +1619,6 @@ export interface components {
             username: string;
         };
         /**
-         * AdminSeedDemoRequest
-         * @description Body for `POST /admin/seed-demo`.
-         *
-         *     Capped at 50 000 per click. The seeder commits in batches so memory stays
-         *     bounded; large seeds take time (~1 min per 10 k locally) but don't blow up.
-         *     Re-running is additive on geos and idempotent on the demo authors.
-         */
-        AdminSeedDemoRequest: {
-            /**
-             * Count
-             * @default 100
-             */
-            count: number;
-        };
-        /**
-         * AdminSeedDemoRequestsRequest
-         * @description Body for ``POST /admin/seed-demo-requests``.
-         *
-         *     Capped lower than the geolocation seeder: requests are an inbox, not a
-         *     catalog, and 5000 covers the queue UI.
-         */
-        AdminSeedDemoRequestsRequest: {
-            /**
-             * Count
-             * @default 20
-             */
-            count: number;
-        };
-        /** AdminSeedDemoRequestsResponse */
-        AdminSeedDemoRequestsResponse: {
-            /** Authors */
-            authors: number;
-            /** Closed */
-            closed: number;
-            /** Created */
-            created: number;
-            /** Fulfilled */
-            fulfilled: number;
-            /** Open */
-            open: number;
-            /** Templates */
-            templates: number;
-            /** With Claims */
-            with_claims: number;
-        };
-        /** AdminSeedDemoResponse */
-        AdminSeedDemoResponse: {
-            /** Authors */
-            authors: number;
-            /** Created */
-            created: number;
-            /** Templates */
-            templates: number;
-        };
-        /**
          * AdminUserDeleteResponse
          * @description Response for `DELETE /admin/users/{id}`.
          *
@@ -1844,18 +1678,6 @@ export interface components {
             username: string;
             /** X Handle */
             x_handle: string | null;
-        };
-        /** AdminWipeDemoRequestsResponse */
-        AdminWipeDemoRequestsResponse: {
-            /** Deleted Requests */
-            deleted_requests: number;
-        };
-        /** AdminWipeDemoResponse */
-        AdminWipeDemoResponse: {
-            /** Deleted Geos */
-            deleted_geos: number;
-            /** Deleted Users */
-            deleted_users: number;
         };
         /**
          * ArchiveImportEnqueue
@@ -1953,7 +1775,7 @@ export interface components {
          * @description Compact author handle used wherever one payload references another.
          *
          *     The public ``User`` fields other schemas need for the byline: handle and
-         *     avatar (geolocation card, request claimers, search hit).
+         *     avatar (geolocation card, geolocator credit, search hit).
          *     ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
          *     directly, no field-by-field build, so ``avatar_url`` flows off the column.
          */
@@ -2372,12 +2194,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Investigator Count */
-            investigator_count?: number | null;
-            /** Investigators Sample */
-            investigators_sample?: components["schemas"]["AuthorRef"][] | null;
-            /** Is Demo */
-            is_demo: boolean;
             /** Is Graphic */
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
@@ -2431,12 +2247,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Investigator Count */
-            investigator_count: number;
-            /** Investigators */
-            investigators: components["schemas"]["AuthorRef"][];
-            /** Is Demo */
-            is_demo: boolean;
             /** Is Graphic */
             is_graphic: boolean;
             /** Media */
@@ -2681,8 +2491,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Is Demo */
-            is_demo: boolean;
             /** Is Graphic */
             is_graphic: boolean;
             /** Lat */
@@ -2706,8 +2514,6 @@ export interface components {
         };
         /** SearchRequestHit */
         SearchRequestHit: {
-            /** Claimer Count */
-            claimer_count: number;
             /**
              * Created At
              * Format: date-time
@@ -2718,8 +2524,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Is Demo */
-            is_demo: boolean;
             /** Is Graphic */
             is_graphic: boolean;
             /** Media */
@@ -3503,138 +3307,6 @@ export interface operations {
             };
         };
     };
-    seed_demo_api_v1_admin_seed_demo_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminSeedDemoRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminSeedDemoResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    wipe_demo_api_v1_admin_seed_demo_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminWipeDemoResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    seed_demo_requests_api_v1_admin_seed_demo_requests_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminSeedDemoRequestsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminSeedDemoRequestsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    wipe_demo_requests_api_v1_admin_seed_demo_requests_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminWipeDemoRequestsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_users_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -3858,37 +3530,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_invite_code_api_v1_auth_invites__code__check_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
             };
             /** @description Validation Error */
             422: {
@@ -4228,8 +3869,6 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
-                /** @description Opaque cursor from a Link: rel=next header */
-                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -4440,7 +4079,6 @@ export interface operations {
                 submitted_to?: string | null;
                 author?: string | null;
                 media?: string[] | null;
-                hide_demo?: boolean;
             };
             header?: never;
             path?: never;
@@ -4677,68 +4315,6 @@ export interface operations {
             };
         };
     };
-    investigate_event_api_v1_events__geolocation_id__investigate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    uninvestigate_event_api_v1_events__geolocation_id__investigate_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     report_event_api_v1_events__geolocation_id__report_post: {
         parameters: {
             query?: never;
@@ -4796,7 +4372,6 @@ export interface operations {
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
-                hide_demo?: boolean;
             };
             header?: never;
             path?: never;
@@ -4928,8 +4503,6 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
-                /** @description Opaque cursor from a Link: rel=next header */
-                cursor?: string | null;
             };
             header?: never;
             path?: never;

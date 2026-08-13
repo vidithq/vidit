@@ -2,7 +2,7 @@
 
 `/events`, `/events/points` and `/search` all accept the same filter
 vocabulary (status / conflict / capture source / tag / dates / author /
-media / demo). Single-sourcing the predicates here keeps the surfaces from
+media). Single-sourcing the predicates here keeps the surfaces from
 drifting; the anti-injection author pattern lives here for the same reason
 (it is a security boundary).
 
@@ -262,7 +262,6 @@ def apply_filters(
     submitted_to: str | None = None,
     author: str | None = None,
     media: list[str] | None = None,
-    hide_demo: bool = False,
     bbox: str | None = None,
 ) -> SAQuery:
     """Apply the standard event filter set to a query.
@@ -332,8 +331,6 @@ def apply_filters(
         # ``.media.any(...)`` → EXISTS, so an event with several attachments
         # isn't row-multiplied. Values are ``Media.media_type`` (image / video).
         query = query.filter(Event.media.any(Media.media_type.in_(media)))
-    if hide_demo:
-        query = query.filter(Event.is_demo.is_(False))
 
     if bbox:
         query = query.filter(bbox_predicate(parse_bbox(bbox)))
@@ -359,7 +356,6 @@ class EventFilters:
     submitted_to: str | None = None
     author: str | None = None
     media: list[str] | None = None
-    hide_demo: bool = False
 
     def apply(self, query: SAQuery, *, view: str) -> SAQuery:
         return apply_filters(

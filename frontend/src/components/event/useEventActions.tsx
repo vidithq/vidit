@@ -3,17 +3,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Users } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
-import {
-  deleteEvent,
-  investigateEvent,
-  uninvestigateEvent,
-} from "@/lib/events";
-import { loginNext } from "@/lib/navigation";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { deleteEvent } from "@/lib/events";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/OverflowMenu";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -34,8 +29,7 @@ import type { EventDetail } from "@/types";
  *    flag. On every surface, because reading an event and passing it on or
  *    flagging it needs no standing in the row.
  * 2. **The flow action**, at most one, filled: what this surface exists to move
- *    forward. Only an open request carries one (geolocate it, or signal that
- *    you are working on it).
+ *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**, behind one `⋯` `<OverflowMenu>`: the controls only
  *    the author holds. Only the request page carries any.
  *
@@ -69,7 +63,7 @@ export interface EventActionsOptions {
   /** The row to act on. Null while it loads: both nodes come back null. */
   event: EventDetail | null;
   surface: ActionSurface;
-  /** Runs after a write that changes the row (the investigate toggle, close). */
+  /** Runs after a write that changes the row (close). */
   onChanged?: () => void;
 }
 
@@ -95,35 +89,6 @@ export function useEventActions({
   const report = useReportEvent(event?.id ?? "");
   // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
-  // Optimistic "I'm working on this": flip locally on click so the button
-  // reflects the toggle instantly (mirrors FollowButton), then let the surface
-  // refetch to reconcile the "Working on" list. Null = follow the server value.
-  const [optimisticInvestigating, setOptimisticInvestigating] = useState<
-    boolean | null
-  >(null);
-  // The investigate + delete actions share one error + one pending flag, so
-  // each mutation resets the other.
-  const toggleInvestigateMutation = useMutation(
-    (next: boolean) =>
-      next ? investigateEvent(event!.id) : uninvestigateEvent(event!.id),
-    {
-      fallback: "Action failed",
-      // Refetch first, then drop the override so the fresh server value takes
-      // back over. Clearing it here and not from the caller is what makes it
-      // run at all: both endpoints resolve `void`, so `run` returns `undefined`
-      // on success exactly as it does on failure and the caller cannot tell
-      // the two apart.
-      onSuccess: () => {
-        onChanged?.();
-        setOptimisticInvestigating(null);
-      },
-      // Roll the optimistic flip back to the server value on failure.
-      onError: (err) => {
-        setOptimisticInvestigating(null);
-        return err instanceof Error ? err.message : undefined;
-      },
-    }
-  );
   // `deleted` stays true through the post-delete navigation so the actions
   // don't re-enable in the unmount window (the row is gone; a second click
   // would 404).
@@ -139,49 +104,28 @@ export function useEventActions({
   // Same leak the report form had: this hook survives a client navigation from
   // one request to the next, so per-event state has to follow the row rather
   // than the mount. Without it the next request opens with the previous one's
-  // close panel open, its optimistic investigate state, or permanently
-  // disabled actions inherited from a delete that already navigated away.
+  // close panel open, or permanently disabled actions inherited from a delete
+  // that already navigated away.
   useEffect(() => {
     // Guarded on a real id: `event` also goes null while a row loads and
     // during the post-delete navigation, and resetting `deleted` there would
     // re-enable the actions in exactly the unmount window it exists to cover.
     if (!event?.id) return;
-    setOptimisticInvestigating(null);
     setClosing(false);
     setDeleted(false);
   }, [event?.id]);
 
-  const pending =
-    toggleInvestigateMutation.loading || deleteMutation.loading || deleted;
-  const error = toggleInvestigateMutation.error ?? deleteMutation.error;
+  const pending = deleteMutation.loading || deleted;
+  const error = deleteMutation.error;
 
   if (!event) return { actions: null, panels: null, error };
 
   const tiers = TIERS[surface];
   const isAuthor = user?.id === event.owner.id;
   const isOpenRequest = event.status === "requested";
-  const serverInvestigatingMe =
-    !!user && event.investigators.some((c) => c.id === user.id);
-  // Optimistic value wins until the refetch lands and clears it.
-  const isInvestigatingMe = optimisticInvestigating ?? serverInvestigatingMe;
-
-  const handleToggleInvestigate = async () => {
-    // Signalling requires an account; the request page is public, so the
-    // proxy can't intercept. Route through login and land back here.
-    if (!user) {
-      router.push(loginNext(`/requests/${event.id}`));
-      return;
-    }
-    deleteMutation.reset();
-    const next = !isInvestigatingMe;
-    setOptimisticInvestigating(next);
-    // The override is cleared by the mutation's own callbacks, both ways.
-    await toggleInvestigateMutation.run(next);
-  };
 
   const handleDelete = async () => {
     if (!confirm("Delete this request? This cannot be undone.")) return;
-    toggleInvestigateMutation.reset();
     await deleteMutation.run();
   };
 
@@ -222,20 +166,6 @@ export function useEventActions({
             <MapPin size={14} />
             Geolocate
           </Link>
-        )}
-        {tiers.flow && isOpenRequest && !isAuthor && (
-          // Active (signalling) reads as a filled, on state; the call to
-          // action reads as a quieter outline, mirroring FollowButton's
-          // variant swap so the toggle state is unambiguous.
-          <Button
-            variant={isInvestigatingMe ? "primary" : "secondary"}
-            onClick={handleToggleInvestigate}
-            disabled={pending}
-            aria-pressed={isInvestigatingMe}
-          >
-            <Users size={14} />
-            {isInvestigatingMe ? "Investigating" : "Investigate"}
-          </Button>
         )}
         <OverflowMenu items={ownerItems} />
         {/* The utilities tier, one unit so it stays together when the row

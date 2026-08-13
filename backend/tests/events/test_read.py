@@ -242,7 +242,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
         "avatar_url",
     }
     assert [g["username"] for g in body["geolocators"]] == []
-    assert body["investigator_count"] == 0
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
 
 
@@ -378,13 +377,12 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 7  # [id, lat, lng, event_date, submitted_date, detected, demo]
+    assert len(row) == 6  # [id, lat, lng, event_date, submitted_date, detected]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
     assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
     assert row[5] == 0  # submitted row → not marked detected
-    assert row[6] == 0  # not a demo row
 
 
 def test_points_null_event_date_serialises_as_null(db, author):
@@ -485,8 +483,8 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     assert len(filtered.json()) < len(unfiltered.json())
 
 
-def test_points_filters_media_and_demo(db, author):
-    """``media`` and ``hide_demo`` each narrow the point set."""
+def test_points_filters_media(db, author):
+    """``media`` narrows the point set to events carrying that attachment type."""
     from app.models.media import Media
 
     plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
@@ -494,8 +492,6 @@ def test_points_filters_media_and_demo(db, author):
     db.add(
         Media(event_id=with_video.id, role="source", storage_url="s3://x/v.mp4", media_type="video")
     )
-    demo = _make_geo(db, author=author, lat=42.0, lng=42.0)
-    demo.is_demo = True
     db.commit()
 
     def ids(query: str) -> set[str]:
@@ -505,16 +501,6 @@ def test_points_filters_media_and_demo(db, author):
     media_ids = ids("media=video")
     assert str(with_video.id) in media_ids
     assert str(plain.id) not in media_ids
-
-    nodemo_ids = ids("hide_demo=true")
-    assert str(plain.id) in nodemo_ids
-    assert str(demo.id) not in nodemo_ids
-
-    # The unfiltered payload marks the demo row so the filter panel knows
-    # whether to offer its hide-demo toggle at all.
-    all_rows = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
-    assert next(r for r in all_rows if r[0] == str(demo.id))[6] == 1
-    assert next(r for r in all_rows if r[0] == str(plain.id))[6] == 0
 
     # A junk media value is rejected (422), not silently treated as "no match".
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&media=bogus").status_code == 422

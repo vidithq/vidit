@@ -15,7 +15,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
-    is_demo: false,
     is_graphic: false,
     status: "geolocated",
     close_reason: null,
@@ -75,8 +74,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       username: "poster",
     },
     geolocators: [],
-    investigator_count: 0,
-    investigators: [],
     ...overrides,
   };
 }

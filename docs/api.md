@@ -23,7 +23,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Auth** | | | |
 | POST | `/auth/register` | 🌐 | Stage a pending registration; sends confirmation email |
 | POST | `/auth/confirm-registration` | 🌐 | Confirm a pending registration (creates user, signs in) |
-| GET | `/auth/invites/{code}/check` | 🌐 | Advisory invite-code probe for the registration form |
 | POST | `/auth/resend-confirmation` | 🌐 | Resend the confirmation email and invalidate the previous token |
 | POST | `/auth/login` | 🌐 | Email + password → session + CSRF cookies |
 | POST | `/auth/logout` | 🌐 | Clear session cookies (idempotent) |
@@ -48,8 +47,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
-| POST | `/events/{id}/investigate` | 🔒 | "I'm working on this" (idempotent, multi-analyst) |
-| DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -83,7 +80,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
-| POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
@@ -120,7 +116,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
 | `POST /events/{id}/geolocate` | 30/min |
 | `POST /events/batch-complete` | 10/min |
-| `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
+| `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (anonymous allowed; reporting has no per-account tier, only the per-IP one) |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -135,10 +131,11 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` | 60/hour |
-| `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+| `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
+
 
 ### Per-user read quota
 
@@ -208,22 +205,6 @@ Anonymous. Consumes the token that `POST /auth/register` emailed, creates the `u
 | 409 | Email or username was taken in the gap between register and confirm |
 
 Rate-limited to 30/hour per IP.
-
----
-
-### `GET /auth/invites/{code}/check`
-
-Anonymous. A preflight invite-code probe for the registration form. It mirrors the `validate_invite_code` check that `POST /auth/register` runs, so a `200 {"valid": true}` response does not reserve the code. A concurrent registration can still consume it between the check and the submit.
-
-**Response 200:**
-```json
-{ "valid": true }
-```
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Invalid, exhausted, or expired invite code |
 
 ---
 
@@ -379,7 +360,6 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "title": "Strike on depot, Donetsk",
     "event_coords": { "lat": 48.123, "lng": 37.456 },
     "event_date": "2026-03-15",
-    "is_demo": false,
     "is_graphic": false,
     "status": "geolocated",
     "before_closed_status": null,
@@ -400,21 +380,19 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "conflicts": [
       { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
     ],
-    "investigator_count": null,
-    "investigators_sample": null
   }
 ]
 ```
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists. Ordering is `created_at DESC, id DESC`; see [Pagination](#pagination).
 
-`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `is_graphic` is `true` when the author (or an admin, overriding the author) flagged the footage as showing death, injury or human remains; the frontend covers the card's `media` thumbnail behind [`GraphicContentGate`](design.md#components) when it is. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears in this list. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
+`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `is_graphic` is `true` when the author (or an admin, overriding the author) flagged the footage as showing death, injury or human remains; the frontend covers the card's `media` thumbnail behind [`GraphicContentGate`](design.md#components) when it is. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears in this list. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
+Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one: a flag, not a status string. Located rows only, so `requested` events never appear here.
 
 `bbox` is **required**. The payload tracks the area you request, and the map's own
 calls are viewport-sized. Nothing caps that area: the map legitimately requests
@@ -436,7 +414,6 @@ contains the box requested.
 |-------|------|-------------|
 | `bbox` | string, **required** | `south,west,north,east` (four comma-separated floats), same shape and validation as on `GET /events`: latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. Missing, empty, or malformed → 422. Boxes crossing the antimeridian are not modeled: the map widens such a viewport to the full longitude range rather than splitting it into two calls. |
 | `media` | string (repeatable) | `?media=image&media=video`, matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `hide_demo` | bool | Exclude demo rows. |
 | `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | See `GET /events` for semantics. The date params are accepted, and the map filters dates client-side off the payload instead of sending them. |
 
 | Status | Meaning |
@@ -630,7 +607,7 @@ Step one of the archive import: mint a staging key and a presigned direct-to-sto
 
 Step two: enqueue the staged archive for the backfill worker. The upload **is the consent**: every geolocation lands `detected`, attributed to you (no handle-ownership check in this version). The request verifies the staged object (your own `upload_key`, present, under the size guard; a storage HEAD, the zip is never opened here) and returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails you the outcome. Poll the job (below) for the counts. A malformed zip therefore surfaces as a `failed` job plus a failure email, not a synchronous 4xx. The browser strip catches the common shapes before upload.
 
-**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. Extraction is hardened against zip-slip and zip-bombs; the per-media caps at assemble time are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
+**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. The allowlist is anchored on the export root the `tweets.js` sits in, so a sibling directory whose name contains `tweets_media/` (`deleted_tweets_media/`, the media of deleted posts) and the media of a second export nested in the same zip stay outside it. The browser strip anchors the same way before upload. Extraction is hardened against zip-slip and zip-bombs; the per-media caps at assemble time are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
 
 Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete; you add media before submitting.
 
@@ -714,7 +691,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "detected_at": null,
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
-  "is_demo": false,
   "is_graphic": false,
   "status": "geolocated",
   "close_reason": null,
@@ -729,8 +705,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "geolocators": [
     { "id": "uuid", "username": "kalush" }
   ],
-  "investigator_count": 0,
-  "investigators": [],
   "media": [
     {
       "id": "uuid",
@@ -758,7 +732,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` (carried in the payload alongside `is_demo`, not shown separately above) is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
@@ -865,9 +839,6 @@ Your "Detections" queue: your machine-`detected` events awaiting a geolocate, ne
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
-
-**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -1044,34 +1015,6 @@ Close an event: withdraw a `requested` row or reject a `detected` draft, owner-o
 
 ---
 
-### `POST /events/{id}/investigate` 🔒
-
-Signal "I'm working on this" on a `requested` event. Multi-analyst: several investigators can hold the signal on one event at once. It's a coordination hint, not a single-claimer reservation. Idempotent: re-signaling is a 204 no-op, not a 409.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Event not found (incl. soft-deleted) |
-| 409 | Event status is not `requested` |
-
----
-
-### `DELETE /events/{id}/investigate` 🔒
-
-Leave the working set. Idempotent: returns 204 even if you weren't signaling.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Event not found (incl. soft-deleted) |
-| 409 | Event status is not `requested` (a terminated event's signals are frozen history) |
-
----
-
 ## Requests, geolocations, and detections are `/events` views
 
 There is no `/requests` router. A **request** is a `requested` event, a **geolocation** is a `geolocated` event, and a **detection** is a `detected` event, all rows on the one `events` table, distinguished only by `status`. Every read and write above already covers all three:
@@ -1080,10 +1023,9 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 - **Open a request**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
 - **Fulfil a request, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
 - **Withdraw a request, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
-- **"I'm working on this"** on a request: [`POST`](#post-eventsidinvestigate) / [`DELETE /events/{id}/investigate`](#delete-eventsidinvestigate).
 - **Remove**: [`DELETE /events/{id}`](#delete-eventsid) (owner hard delete) or `DELETE /admin/events/{id}` (admin soft/hard delete).
 
-`GET /events?view=requested` cards additionally carry `investigator_count` / `investigators_sample`; `GET /events/{id}` always carries the full `investigators` list and `geolocators`. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
+`GET /events/{id}` always carries the `geolocators` list. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
 
 ---
 
@@ -1101,7 +1043,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
 | `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `hide_demo`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
+| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
 Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry point). Typing then narrows within it.
 
@@ -1121,7 +1063,6 @@ Any active filter empties the users group: the filters are event predicates, and
       "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
-      "is_demo": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
@@ -1136,11 +1077,9 @@ Any active filter empties the users group: the filters are event predicates, and
       "source_url": "https://twitter.com/…",
       "status": "requested",
       "created_at": "2026-04-12T08:00:00Z",
-      "is_demo": false,
       "owner": { "…": "…" },
       "media": [{ "id": "uuid", "storage_url": "…", "media_type": "image" }],
-      "tags": [],
-      "claimer_count": 3
+      "tags": []
     }
   ],
   "users": [
@@ -1433,9 +1372,6 @@ Activity feed of geolocations submitted by analysts you follow, newest submissio
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
-
-**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** same `PaginatedEvents` shape as `GET /users/{username}/events`.
 
@@ -1451,7 +1387,7 @@ Activity feed of geolocations submitted by analysts you follow, newest submissio
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>21 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, content reports, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
+<summary>17 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, content reports, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1464,13 +1400,13 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 ### `GET /admin/detection-stats` 🛡️
 
-Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Demo rows (`is_demo`) are excluded from both aggregates. Read-only, no audit row (a metric read is not an administrative act).
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every (non-demo) machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
 Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own draft) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending drafts as rejects.
 
-The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only, demo excluded): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
 **Response 200:**
 ```json
@@ -1749,71 +1685,6 @@ Set an event's moderation state directly, with no report behind it. The one verb
 
 Rate-limited to 60/hour.
 
-### `POST /admin/seed-demo-requests` 🛡️
-
-Generate `count` synthetic demo requests attributed to the same fixed pool of demo authors as `POST /admin/seed-demo`. Reads templates from the shared `demo-pool/` storage prefix. If the prefix is empty or missing the expected layout, the endpoint returns 422 so you can populate the pool before retrying. A fraction of requests get 1-3 random demo-author claims attached. Audited as `demo_requests_seeded`.
-
-**Request body:**
-```json
-{ "count": 20 }
-```
-Capped at 5000 per click.
-
-**Response 200:**
-```json
-{
-  "created": 20,
-  "templates": 3,
-  "authors": 5,
-  "with_claims": 11,
-  "open": 12,
-  "fulfilled": 5,
-  "closed": 3
-}
-```
-
-`open` / `fulfilled` / `closed` are the per-status breakdown across the generated batch (`requested` / `geolocated` / `closed` under the hood), proving the status-filter chips have data to render. `with_claims` counts requests that got 1-3 random demo-analyst `event_investigators` rows attached (the field name predates the claim → investigate rename; the wire shape is unchanged).
-
----
-
-### `DELETE /admin/seed-demo-requests` 🛡️
-
-Drop every `is_demo=true` request in one bulk DELETE. Demo users and demo geolocations are NOT touched; those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_requests_wiped`.
-
-**Response 200:**
-```json
-{ "deleted_requests": 20 }
-```
-
----
-
-### `POST /admin/seed-demo` 🛡️
-
-Generate synthetic demo geolocations attributed to the demo author pool (`demo-analyst-1` … `-5`, `is_demo=true`). Reads templates from the `demo-pool/` storage prefix populated by the admin outside the codebase; each generated geo references (does not copy) a random subset of the template's media and proof imagery via CloudFront URLs. Region split (weights, integer percent): Ukraine 50, Middle East 20, Sahel 8, Western Europe 7, Balkans 4, North America 4, South America 3, East Asia 2, Sub-Saharan Africa 2. Audited as `demo_seeded`. Invalidates the points cache.
-
-**Request body:**
-```json
-{ "count": 100 }
-```
-
-`count` is `1 ≤ count ≤ 50000`; default 100. Re-running is additive on geos and idempotent on demo authors.
-
-**Response 200:**
-```json
-{ "created": 100, "templates": 10, "authors": 5 }
-```
-
-**Response 422:** the `demo-pool/` prefix is empty or has no `geo-XX/media/<file>` entries.
-
-### `DELETE /admin/seed-demo` 🛡️
-
-Drop every `is_demo=true` geolocation + user. The `demo-pool/` S3 objects are NOT touched; they're shared assets for re-seeding. Audited as `demo_wiped`. Invalidates the points cache.
-
-**Response 200:**
-```json
-{ "deleted_geos": 100, "deleted_users": 5 }
-```
-
 ### `POST /admin/maintenance/reap-auth-tokens` 🛡️
 
 Drop expired and old-consumed `auth_tokens` rows. Replaces the cron that previously lived in `scripts/reap_auth_tokens.py`. Audited as `maintenance_reap_auth_tokens`.
@@ -1834,7 +1705,7 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 
 ### `POST /admin/maintenance/enqueue-source-archival` 🛡️
 
-Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live non-demo events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
+Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
 
 **Response 200:**
 ```json
@@ -1843,7 +1714,7 @@ Queue Wayback archival for every live event that has no [`source_archives`](data
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
 
 **Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
 ```json
@@ -1900,9 +1771,7 @@ Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTE
 
 The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and it's not a value you need to construct.
 
-Cursor-paged: [`GET /events`](#get-events), `GET /events/detections`, `GET /timeline`, `GET /admin/invite-codes`. All four order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
-
-`page` / `per_page` still work on the endpoints that had them, and a `cursor` supersedes `page` when both arrive.
+Cursor-paged: [`GET /events`](#get-events) and `GET /admin/invite-codes`. Both order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
 Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
@@ -1914,11 +1783,11 @@ Endpoints that page return this envelope, `total` being the pre-cap match count:
 }
 ```
 
-`page` echoes what you sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at whatever `page` the request carried (`1` by default) on every page of the walk. Read `Link` for position, not `page`. `total` is the match count either way.
+`page` echoes what you sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at `1`. Read `Link` for position, not `page`. `total` is the match count either way.
 
-Three kinds of list sit outside the cursor scheme:
+The other lists sit outside the cursor scheme:
 
-- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor. `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common.
+- [`GET /users/{username}/events`](#get-usersusernameevents), [`GET /events/detections`](#get-eventsdetections), and [`GET /timeline`](#get-timeline) are offset-paged and capped. `GET /users/{username}/events` orders by `event_date`, which is nullable and editable and so cannot key a cursor; `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common. The other two are owner- or follow-scoped queues whose clients render a page number, not a walk.
 - [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
 - [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
 

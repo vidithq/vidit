@@ -9,13 +9,12 @@
  *   uploads/<geo>/abc_thumb.jpg   ← max-dim 400 px, JPEG q80
  *
  * The naming convention is the single source of truth shared between
- * `derivative_key` (backend) and `mediaUrls` here — rename one, rename both.
+ * `derivative_key` (backend) and `mediaUrls` here: rename one, rename both.
  *
- * Deriving in the frontend rather than carrying explicit URLs is a
- * beta-stage shortcut: every Media row has derivatives by construction
- * (demo data is wiped + re-seeded on deploy, no real analyst uploads yet).
- * Once that no longer holds, a follow-up adds `hero_url` / `thumbnail_url`
- * columns and the frontend reads them — same helper signature.
+ * Deriving in the frontend rather than carrying explicit URLs is a beta-stage
+ * shortcut: every image Media row gets its derivatives at upload. Once that no
+ * longer holds, a follow-up adds `hero_url` / `thumbnail_url` columns and the
+ * frontend reads them, with the same helper signature.
  *
  * Video Media rows have no derivatives; callers skip this helper for them
  * via `media.media_type` (see `displayUrlsFor`).

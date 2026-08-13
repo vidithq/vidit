@@ -107,7 +107,7 @@ def _safe_storage_extension(content_type: str | None) -> str:
 
 # The other direction, derived from the same table so the two can't drift.
 # ``.jpeg`` is aliased in: keys we mint always carry ``.jpg``, but names that
-# arrive from outside (an X archive's ``tweets_media/`` files, a demo-pool
+# arrive from outside (an X archive's ``tweets_media/`` files, a pool
 # object) spell it either way.
 _CONTENT_TYPE_FOR_EXTENSION = {
     extension: content_type for content_type, extension in _EXTENSION_FOR_CONTENT_TYPE.items()
@@ -118,10 +118,9 @@ def image_content_type_for_extension(extension: str) -> str | None:
     """Return the accepted image MIME a filename suffix implies, else ``None``.
 
     Takes the suffix with its dot (``".JPG"`` reads as ``".jpg"``). Video
-    suffixes answer ``None``: both callers (the X archive parser's photo
-    branch, the demo seeder's pool prep) are asking specifically whether a
-    name is an image this codebase accepts, and an unknown suffix is a skip
-    rather than a guess.
+    suffixes answer ``None``: the caller (the X archive parser's photo branch)
+    is asking specifically whether a name is an image this codebase accepts,
+    and an unknown suffix is a skip rather than a guess.
     """
     content_type = _CONTENT_TYPE_FOR_EXTENSION.get(extension.lower())
     return content_type if content_type in ALLOWED_IMAGE_TYPES else None
@@ -179,7 +178,6 @@ class Storage(Protocol):
     def public_url(self, key: str) -> str: ...
     def key_from_url(self, url: str) -> str | None: ...
     def delete_many(self, keys: list[str]) -> None: ...
-    def list_keys(self, prefix: str) -> list[str]: ...
     def get_bytes(self, key: str) -> bytes: ...
     def get_to_path(self, key: str, dest: Path) -> None: ...
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None: ...
@@ -241,22 +239,6 @@ class LocalStorage:
                     break
                 parent = parent.parent
 
-    def list_keys(self, prefix: str) -> list[str]:
-        """List every key whose path starts with `prefix` (recursive).
-
-        Mirrors S3's list_objects_v2 semantics (recursive walk, keys
-        relative to the storage root) so the demo seeder discovers
-        `demo-pool/` templates the same way against either backend.
-        """
-        base = self.root / prefix
-        if not base.exists():
-            return []
-        keys: list[str] = []
-        for path in base.rglob("*"):
-            if path.is_file():
-                keys.append(str(path.relative_to(self.root)).replace("\\", "/"))
-        return sorted(keys)
-
     def get_bytes(self, key: str) -> bytes:
         """Read the raw bytes at ``key``. Raises ``FileNotFoundError`` on
         miss; callers handle.
@@ -264,8 +246,8 @@ class LocalStorage:
         return self._path(key).read_bytes()
 
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None:
-        """Sync sibling of ``upload_bytes`` for callers (seed) that don't
-        need the sha256 / UploadResult shape.
+        """Sync sibling of ``upload_bytes`` for callers that don't need the
+        sha256 / UploadResult shape.
         """
         # ``content_type`` accepted to match the protocol, but local-disk
         # storage carries no MIME metadata — FastAPI's StaticFiles infers
@@ -392,20 +374,6 @@ class S3Storage:
         if all_errors:
             raise StorageDeleteError(all_errors)
 
-    def list_keys(self, prefix: str) -> list[str]:
-        """List every key under `prefix` via paginated list_objects_v2.
-
-        Returns keys exactly as S3 stores them.
-        """
-        keys: list[str] = []
-        paginator = self.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
-            for obj in page.get("Contents", []):
-                key = obj.get("Key")
-                if key:
-                    keys.append(key)
-        return sorted(keys)
-
     def get_bytes(self, key: str) -> bytes:
         """Read the raw bytes at ``key`` from S3. Raises whatever
         ``get_object`` raises on miss (boto3 ``NoSuchKey`` / 404).
@@ -422,8 +390,8 @@ class S3Storage:
         self.client.download_file(self.bucket, key, str(dest))
 
     def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None:
-        """Sync sibling of ``upload_bytes`` for callers (seed) that don't
-        need the sha256 / UploadResult.
+        """Sync sibling of ``upload_bytes`` for callers that don't need the
+        sha256 / UploadResult.
         """
         self.client.put_object(
             Bucket=self.bucket,
@@ -544,11 +512,11 @@ def derivative_key(original_key: str, suffix: str) -> str:
     'uploads/abc/xyz_hero.jpg'
     >>> derivative_key("uploads/abc/xyz.png", "thumb")
     'uploads/abc/xyz_thumb.jpg'
-    >>> derivative_key("demo-pool/geo-01/media/photo.webp", "hero")
-    'demo-pool/geo-01/media/photo_hero.jpg'
+    >>> derivative_key("detected/geo-01/media/photo.webp", "hero")
+    'detected/geo-01/media/photo_hero.jpg'
 
-    The frontend mirrors this convention in ``mediaUrls()`` — the two
-    layers must agree on the naming or nothing renders.
+    The frontend mirrors this convention in ``mediaUrls()``: the two layers
+    must agree on the naming or nothing renders.
     """
     # ``PurePosixPath`` because S3 keys are always forward-slash separated;
     # ``Path`` on Windows would render the stem with backslashes and break

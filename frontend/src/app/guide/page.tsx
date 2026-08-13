@@ -152,7 +152,7 @@ const STEPS: NumberedStep[] = [
         <Link href="/requests" className={TEXT_LINK}>
           requests board
         </Link>
-        , where analysts can signal they are working on it. Fulfilling one does
+        , where any analyst can pick it up. Fulfilling one does
         not create a second entry: the request becomes a full geolocation, owned
         by the analyst who located it and still crediting the analyst who opened
         it.

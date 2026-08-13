@@ -65,11 +65,6 @@ interface MapState {
   addedPlaying: boolean;
   setAddedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
 
-  /** Global toggle, not part of the shared vocabulary: the map is the only
-   *  surface that serves demo rows. */
-  hideDemo: boolean;
-  setHideDemo: (v: boolean | ((prev: boolean) => boolean)) => void;
-
   filtersOpen: boolean;
   setFiltersOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
@@ -83,7 +78,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [dateWindows, setDateWindows] = useState<DateWindows>(EMPTY_DATE_WINDOWS);
   const [eventPlaying, setEventPlaying] = useState(false);
   const [addedPlaying, setAddedPlaying] = useState(false);
-  const [hideDemo, setHideDemo] = useState(false);
   // Collapsed by default: the map leads with the catalogue, and the pills row
   // (ActiveFilterPills) still surfaces any active filter while collapsed.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -106,8 +100,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setEventPlaying,
       addedPlaying,
       setAddedPlaying,
-      hideDemo,
-      setHideDemo,
       filtersOpen,
       setFiltersOpen,
     }),
@@ -118,7 +110,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       dateWindows,
       eventPlaying,
       addedPlaying,
-      hideDemo,
       filtersOpen,
     ]
   );

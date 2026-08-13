@@ -135,8 +135,7 @@ const MOCK_TAGS = [
   { id: "2", name: "Drone" },
 ];
 
-// A full geolocation, for the detail body + detection card. `is_demo` so the
-// source renders as "synthetic" rather than a link that 404s.
+// A full geolocation, for the detail body + detection card.
 const MOCK_DETAIL: EventDetail = {
   id: "demo",
   title: "Strike on a depot, Donetsk",
@@ -144,7 +143,6 @@ const MOCK_DETAIL: EventDetail = {
   capture_source_coords: null,
   archived_source: null,
   event_date: "2026-05-09",
-  is_demo: true,
   is_graphic: false,
   status: "geolocated",
   close_reason: null,
@@ -169,11 +167,11 @@ const MOCK_DETAIL: EventDetail = {
       tier: "major",
     },
   ],
-  source_url: "synthetic://demo",
+  source_url: "https://t.me/channel/4242",
   // Two mirrors so the detail body's collapsed Secondary sources row shows.
   secondary_source_urls: [
     "https://t.me/mirror/1",
-    "https://www.youtube.com/watch?v=demo",
+    "https://www.youtube.com/watch?v=mirror2",
   ],
   archived_secondary_sources: [null, null],
   event_time: "15:45:00",
@@ -191,17 +189,13 @@ const MOCK_DETAIL: EventDetail = {
   thumbnail: null,
   requested_by: null,
   geolocators: [],
-  investigator_count: 0,
-  investigators: [],
 };
 
-// The same detail body with a real source captured at both providers, plus one
-// mirror captured at one provider only and one whose archiving failed for
-// good: the archived pair is suppressed on a synthetic demo source, so the
-// mock above can never show it.
+// The same detail body with its source captured at both providers, plus one
+// mirror captured at one provider only and one whose archiving failed for good,
+// so the icon pair shows all three of its states.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
-  is_demo: false,
   source_url: "https://t.me/channel/12345",
   archived_source: {
     wayback: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
@@ -223,7 +217,6 @@ const MOCK_CARD_GEO = {
   id: "demo",
   title: "Strike on a depot near Donetsk",
   event_date: "2026-05-09",
-  is_demo: true,
   status: "detected" as EventStatus,
   lat: 48.0159,
   lng: 37.8024,
@@ -401,7 +394,7 @@ export default function PalettePage() {
             <PaletteChipBucket />
           </Item>
 
-          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter (the map's Hide demo): the whole row is the switch (role + click), the <Switch> rendering as its visual span. Shared by the map overlay and the search filter area.">
+          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter: the whole row is the switch (role + click), the <Switch> rendering as its visual span.">
             <PaletteToggleRow />
           </Item>
 
@@ -452,7 +445,7 @@ export default function PalettePage() {
           <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
             <div className="space-y-3">
               <SegmentedControl
-                aria-label="Demo mode"
+                aria-label="Preview mode"
                 options={[
                   { value: "single", label: "Single" },
                   { value: "bulk", label: "Bulk import" },
@@ -461,7 +454,7 @@ export default function PalettePage() {
                 onChange={setSegSel}
               />
               <SegmentedControl
-                aria-label="Demo delete mode"
+                aria-label="Preview delete mode"
                 options={[
                   { value: "soft", label: "Soft delete" },
                   { value: "hard", label: "Hard delete", tone: "danger" },
@@ -474,10 +467,10 @@ export default function PalettePage() {
 
           <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles). disabled reads the state but refuses the toggle, for a value this surface cannot change (the edit form's ratcheted graphic-content flag).">
             <Variant label='size="md"'>
-              <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch" />
+              <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Preview switch" />
             </Variant>
             <Variant label='size="sm"'>
-              <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch small" />
+              <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Preview switch small" />
             </Variant>
             <Variant label="disabled">
               <Switch on disabled aria-label="Demo switch locked" />
@@ -547,7 +540,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling; `locked` renders the list read-only (the <Input> locked variant, no add / remove). Blank rows are the caller's to drop at assembly.">
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput
@@ -556,15 +549,6 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Secondary source"
                   placeholder="https://x.com/user/status/12345"
-                />
-              </Variant>
-              <Variant label="locked (inherited list)">
-                <LinkListInput
-                  values={["https://t.me/channel/12345"]}
-                  onChange={() => {}}
-                  max={3}
-                  itemLabel="Secondary source"
-                  locked
                 />
               </Variant>
             </div>
@@ -651,9 +635,9 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display (shortened host, or synthetic in demo)">
-            <SourceLabel isDemo={false} url="https://t.me/some_channel/4242" variant="inline" />
-            <SourceLabel isDemo url="synthetic://demo" variant="inline" />
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+            <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
+            <SourceLabel url={null} variant="inline" />
           </Item>
 
           <Item
@@ -955,7 +939,7 @@ export default function PalettePage() {
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
             <Variant label="no concept">
-              <SectionEyebrow title="Working on" />
+              <SectionEyebrow title="Geolocators" />
             </Variant>
           </Item>
         </section>
@@ -1091,8 +1075,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="requested" />}
                 author={{ username: "analyst" }}
                 date="2026-05-01"
-                source={{ url: "https://t.me/channel/4242", isDemo: false }}
-                working={3}
+                source={{ url: "https://t.me/channel/4242" }}
                 tags={MOCK_TAGS}
               />
             </div>
@@ -1115,10 +1098,10 @@ export default function PalettePage() {
 
           <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
             <div className="w-full max-w-2xl space-y-4">
-              <Variant label="demo source (synthetic, no archived copies)">
+              <Variant label="source with no archival record yet (the icon pair renders nothing)">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
-              <Variant label="real source + archived copies (expand Secondary sources for the one-provider and failed mirrors)">
+              <Variant label="source + archived copies (expand Secondary sources for the one-provider and failed mirrors)">
                 <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
               </Variant>
             </div>
@@ -1241,7 +1224,7 @@ function PaletteToggleRow() {
   const [on, setOn] = useState(true);
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <ToggleRow label="Hide demo rows" on={on} onToggle={() => setOn((v) => !v)} />
+      <ToggleRow label="Hide closed rows" on={on} onToggle={() => setOn((v) => !v)} />
     </div>
   );
 }

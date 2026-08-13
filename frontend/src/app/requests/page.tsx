@@ -97,7 +97,6 @@ export default function RequestsPage() {
                 author={r.owner}
                 date={r.event_date ?? undefined}
                 coords={r.event_coords}
-                working={r.investigator_count ?? undefined}
                 tags={r.tags}
               />
             ))}

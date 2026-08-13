@@ -77,10 +77,6 @@ export const FIELD_HELP = {
     text: "The analyst who owns this entry on Vidit: the geolocation's submitter, or the analyst who opened it while it is a request. Not necessarily whoever filmed or posted the source.",
     label: "Who is the author?",
   },
-  working_on: {
-    text: "Analysts who signalled they are investigating this request. A public hint to coordinate, not a reservation: several analysts can hold it at once, and anyone can still geolocate it.",
-    label: "What does working on mean?",
-  },
   // Section-level concepts (the `?` next to a section heading).
   section_location: {
     text: "The footage being located, and the coordinates of the subject it shows. A request has just the footage; whoever picks it up adds the coordinates.",
