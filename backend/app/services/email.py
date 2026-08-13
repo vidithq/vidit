@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 import httpx
@@ -254,6 +255,65 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
             "the selection, set the capture source per row, publish.\n"
             "\n"
             f"  {link}\n"
+            "\n"
+            "— Vidit\n"
+        ),
+    )
+
+
+def admin_reports_link() -> str:
+    """The absolute URL of the admin console, where the report queue lives."""
+    return f"{settings.frontend_url.rstrip('/')}/admin"
+
+
+def event_link(event_id: str) -> str:
+    """The absolute URL of one event's page.
+
+    Every event answers here whatever its status: the page serves a
+    ``requested`` row by id too and simply omits the location module when the
+    row carries no point.
+    """
+    return f"{settings.frontend_url.rstrip('/')}/events/{event_id}"
+
+
+def content_report_email(
+    *,
+    to: str,
+    event_id: str,
+    event_title: str,
+    reason: str,
+    details: str | None,
+    reporter: str,
+    created_at: datetime,
+) -> Email:
+    """Tell the moderation address that a report just landed.
+
+    Carries the whole report rather than a bare link, so the operator can
+    judge from the message whether it needs opening now. ``reporter`` is a
+    username or the word ``anonymous``: reporting needs no account, and which
+    of the two it was changes how much weight the report carries.
+    """
+    detail_block = f"Details:\n\n{details}\n\n" if details else ""
+    return Email(
+        to=to,
+        subject=f"Vidit content report: {reason}",
+        text=(
+            "A viewer reported an event on Vidit.\n"
+            "\n"
+            f"Event:    {event_title}\n"
+            f"Event id: {event_id}\n"
+            f"Reason:   {reason}\n"
+            f"Reporter: {reporter}\n"
+            f"Filed:    {created_at.isoformat()}\n"
+            "\n"
+            f"{detail_block}"
+            "Resolve it from the admin console:\n"
+            "\n"
+            f"  {admin_reports_link()}\n"
+            "\n"
+            "The reported event:\n"
+            "\n"
+            f"  {event_link(event_id)}\n"
             "\n"
             "— Vidit\n"
         ),

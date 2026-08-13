@@ -15,18 +15,24 @@ mapping both routers read, the shape ``evidence_intake`` uses.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.content_report import (
     ContentReport,
     ContentReportReason,
     ContentReportResolution,
 )
 from app.models.event import Event
+from app.models.user import User
+from app.services import email
 from app.services.admin import log_admin_event
+
+logger = logging.getLogger(__name__)
 
 
 class ReportError(Exception):
@@ -72,6 +78,40 @@ REPORT_ERROR_STATUS: dict[str, int] = {
 }
 
 
+def _notify_new_report(db: Session, *, report: ContentReport, event_title: str) -> None:
+    """Tell the moderation address a report landed, best effort.
+
+    Unset ``REPORT_NOTIFY_EMAIL`` sends nothing and costs nothing: the report
+    is already recorded and already in the admin queue, so the notification is
+    a heads-up rather than the delivery mechanism. The report is committed by
+    the time this runs, so a provider outage is logged and swallowed on the
+    same terms as the auth mailers: losing the heads-up must not lose the
+    report.
+    """
+    address = settings.report_notify_email
+    if not address:
+        return
+    reporter = "anonymous"
+    if report.reporter_user_id is not None:
+        user = db.get(User, report.reporter_user_id)
+        if user is not None:
+            reporter = user.username
+    try:
+        email.send(
+            email.content_report_email(
+                to=address,
+                event_id=str(report.event_id),
+                event_title=event_title,
+                reason=report.reason,
+                details=report.details,
+                reporter=reporter,
+                created_at=report.created_at,
+            )
+        )
+    except email.EmailSendError as exc:
+        logger.warning("content report notification send failed for report %s: %s", report.id, exc)
+
+
 def create_report(
     db: Session,
     *,
@@ -90,9 +130,12 @@ def create_report(
     An event that does not exist, is soft-deleted, or is already withheld reads
     as :class:`EventNotFoundError` (404): all three are invisible to the caller,
     so all three answer the same way rather than confirming which.
+
+    A successful report notifies the moderation address when one is configured
+    (see :func:`_notify_new_report`), after the commit and never at its expense.
     """
     visible = (
-        db.query(Event.id)
+        db.query(Event.id, Event.title)
         .filter(Event.id == event_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
         .first()
     )
@@ -108,6 +151,7 @@ def create_report(
     db.add(report)
     db.commit()
     db.refresh(report)
+    _notify_new_report(db, report=report, event_title=visible.title)
     return report
 
 

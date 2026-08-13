@@ -13,9 +13,11 @@ import uuid
 
 import pytest
 
+from app.config import settings
 from app.models.content_report import ContentReport
 from app.models.follow import Follow
 from app.models.user import User
+from app.services import email
 from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import WORLD_BBOX, _make_geo, client
@@ -36,6 +38,26 @@ def admin_user(db):
     db.expire_all()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
+
+
+@pytest.fixture
+def email_recorder(monkeypatch):
+    """Capture every ``email.send()`` call in order, like the auth suite."""
+    sent: list[email.Email] = []
+    monkeypatch.setattr(email, "send", sent.append)
+    return sent
+
+
+@pytest.fixture
+def notify_address(monkeypatch):
+    """Point the report notification at an address for the duration of a test.
+
+    Unset is the shipped default, so the tests that assert a send have to opt
+    in the same way an operator does.
+    """
+    address = "support@vidit.app"
+    monkeypatch.setattr(settings, "report_notify_email", address)
+    return address
 
 
 # ── POST /events/{id}/report ──────────────────────────────────────────────
@@ -109,6 +131,93 @@ def test_report_404_for_hidden_event(db, author):
         json={"reason": "other"},
     )
     assert response.status_code == 404
+
+
+# ── The moderation notification ───────────────────────────────────────────
+
+
+def test_notification_carries_the_report_for_an_anonymous_reporter(
+    db, author, email_recorder, notify_address
+):
+    geo = _make_geo(db, author=author, title="Shelling on Market Street")
+    response = client.post(
+        f"/api/v1/events/{geo.id}/report",
+        json={"reason": "illegal_content", "details": "This footage is unlawful to host."},
+    )
+    assert response.status_code == 201, response.text
+
+    assert len(email_recorder) == 1, "expected exactly one notification per report"
+    message = email_recorder[0]
+    assert message.to == notify_address
+    assert "illegal_content" in message.subject
+    text = message.text
+    assert str(geo.id) in text
+    assert "Shelling on Market Street" in text
+    assert "illegal_content" in text
+    assert "This footage is unlawful to host." in text
+    # No account behind the report, so the operator is told so in as many words.
+    assert "anonymous" in text
+    assert response.json()["created_at"][:10] in text
+    # Both ways in: the queue that resolves it, and the event it is about.
+    assert f"{settings.frontend_url}/admin" in text
+    assert f"{settings.frontend_url}/events/{geo.id}" in text
+
+
+def test_notification_names_a_signed_in_reporter(
+    db, author, second_user, email_recorder, notify_address
+):
+    geo = _make_geo(db, author=author)
+    response = client.post(
+        f"/api/v1/events/{geo.id}/report",
+        json={"reason": "privacy"},
+        headers=login_as(client, second_user),
+    )
+    assert response.status_code == 201, response.text
+
+    assert len(email_recorder) == 1
+    text = email_recorder[0].text
+    assert second_user.username in text
+    assert "anonymous" not in text
+    # An absent ``details`` leaves the block out rather than printing "None".
+    assert "None" not in text
+
+
+def test_no_notification_when_no_address_is_configured(db, author, email_recorder, monkeypatch):
+    """The shipped default sends nothing, and reporting is unaffected: the row
+    is still written and still reaches the admin queue."""
+    monkeypatch.setattr(settings, "report_notify_email", None)
+    geo = _make_geo(db, author=author)
+
+    response = client.post(
+        f"/api/v1/events/{geo.id}/report",
+        json={"reason": "other"},
+    )
+    assert response.status_code == 201, response.text
+    assert email_recorder == []
+
+    db.expire_all()
+    assert db.query(ContentReport).filter(ContentReport.id == response.json()["id"]).one()
+
+
+def test_report_survives_a_notification_send_failure(db, author, monkeypatch, notify_address):
+    """The report is committed before the mail goes out, so a provider outage
+    costs the heads-up, never the report."""
+
+    def _boom(_message: email.Email) -> None:
+        raise email.EmailSendError("simulated outage")
+
+    monkeypatch.setattr(email, "send", _boom)
+    geo = _make_geo(db, author=author)
+
+    response = client.post(
+        f"/api/v1/events/{geo.id}/report",
+        json={"reason": "copyright"},
+    )
+    assert response.status_code == 201, response.text
+
+    db.expire_all()
+    stored = db.query(ContentReport).filter(ContentReport.id == response.json()["id"]).one()
+    assert stored.reason == "copyright"
 
 
 # ── Hidden events leave the public read surface ───────────────────────────
