@@ -117,45 +117,34 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Newest deployment for the service as "<id> <status>", or empty.
-          # The jq walk tolerates either a bare array of deployments or a
-          # wrapped shape, and picks the most recent by ``createdAt``.
-          newest_deployment() {
-            railway deployment list --service "$SERVICE" --json --limit 20 \
-              | jq -r '[.. | objects | select(has("id") and has("status"))]
-                       | (sort_by(.createdAt // "") | last) // empty
-                       | "\(.id) \(.status)"'
+          # ``railway deployment list --json`` returns a bare array, newest
+          # first, each entry carrying ``id`` and ``status`` at its root.
+          # Prints "<id> <status>", or nothing when the service has none.
+          newest() {
+            railway deployment list --service "$SERVICE" --json --limit 1 \
+              | jq -r '.[0] | select(. != null) | "\(.id) \(.status)"'
           }
 
-          BEFORE_ID=$(newest_deployment | cut -d' ' -f1 || true)
-          echo "Newest deployment before this run: ${BEFORE_ID:-none}"
-
+          # ``railway up --detach`` doesn't report the id it just created, so
+          # the newest id from before the upload is what tells the new
+          # deployment from the previous one: the new one is not registered
+          # the instant the upload returns.
+          BEFORE_ID=$(newest | cut -d' ' -f1 || true)
           railway up --service "$SERVICE" --detach
 
           DEADLINE=$(( $(date +%s) + POLL_TIMEOUT_SECONDS ))
           LAST_STATUS=""
-          DEPLOY_ID=""
-          STATUS=""
           while :; do
-            LINE=$(newest_deployment || true)
-            ID=$(printf '%s' "$LINE" | cut -d' ' -f1)
-            STATUS=$(printf '%s' "$LINE" | cut -d' ' -f2)
-
-            # Ignore the pre-existing deployment: the new one is not
-            # registered the instant the upload returns.
+            read -r ID STATUS <<<"$(newest || true)"
             if [ -n "$ID" ] && [ "$ID" != "$BEFORE_ID" ]; then
-              DEPLOY_ID="$ID"
+              # One line per transition, not one per poll.
               if [ "$STATUS" != "$LAST_STATUS" ]; then
-                echo "Deployment $DEPLOY_ID: $STATUS"
+                echo "$SERVICE deployment $ID: $STATUS"
                 LAST_STATUS="$STATUS"
               fi
               case "$STATUS" in
-                SUCCESS)
-                  echo "$SERVICE deployment $DEPLOY_ID finished with status $STATUS"
-                  exit 0
-                  ;;
+                SUCCESS) exit 0 ;;
                 FAILED|CRASHED|REMOVED|SKIPPED)
-                  echo "$SERVICE deployment $DEPLOY_ID finished with status $STATUS"
                   echo "Build logs: railway logs --build --service $SERVICE"
                   exit 1
                   ;;
@@ -164,7 +153,7 @@ jobs:
 
             if [ "$(date +%s)" -ge "$DEADLINE" ]; then
               echo "Timed out after ${POLL_TIMEOUT_SECONDS}s waiting for $SERVICE to reach a terminal status."
-              echo "Last seen deployment: ${DEPLOY_ID:-none} status ${STATUS:-unknown}"
+              echo "Last seen deployment: ${ID:-none} status ${STATUS:-unknown}"
               exit 1
             fi
             sleep "$POLL_INTERVAL_SECONDS"
