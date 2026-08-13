@@ -43,8 +43,8 @@ class User(Base):
         nullable=False,
     )
     # When an owner took control. Defaults to insert time via `server_default`,
-    # so every account that's owned at creation (self-registration, the demo
-    # seeder, the mock scripts, a future public sign-up) is correct without
+    # so every account that's owned at creation (self-registration, the mock
+    # scripts, a future public sign-up) is correct without
     # each path remembering to stamp it. NULL only on legacy rows from the
     # retired assembled-profile mechanism, which inserted an explicit
     # `claimed_at=None` for a credential-less unclaimed profile; no current
@@ -58,10 +58,6 @@ class User(Base):
     # soft-deleted users; public reads filter `deleted_at IS NULL`. Soft-
     # deleting a user cascade-soft-deletes every geolocation they authored.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # TRUE iff created by the admin "Demo data" seeder. Demo users have an
-    # unloggable password and a synthetic `@vidit.invalid` email; the wipe
-    # button drops every is_demo=TRUE row.
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Monotonic session-invalidation counter. The session JWT embeds it as a
     # `tv` claim at mint time and `get_current_user` 401s on mismatch. Bumped on
     # logout, password change, password reset, and soft-delete so all

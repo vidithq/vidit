@@ -1,6 +1,5 @@
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { EntityCard } from "@/components/ui/EntityCard";
-import { sourceIsSynthetic } from "@/lib/events";
 import type { EventDetail } from "@/types";
 
 /**
@@ -20,11 +19,7 @@ export default function DetectionCard({ geo }: { geo: EventDetail }) {
       media={geo.thumbnail ?? undefined}
       date={geo.event_date ?? undefined}
       coords={geo.event_coords}
-      source={
-        geo.detected_from_url
-          ? { url: geo.detected_from_url, isDemo: sourceIsSynthetic(geo) }
-          : undefined
-      }
+      source={geo.detected_from_url ? { url: geo.detected_from_url } : undefined}
       tags={geo.tags}
     />
   );

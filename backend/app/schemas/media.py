@@ -10,9 +10,8 @@ class MediaRead(BaseModel):
     role: MediaRole
     storage_url: str
     media_type: MediaType
-    # Hex-encoded SHA-256 of the uploaded bytes. ``None`` for pre-column rows
-    # and demo-pool references with no upload pass (full rationale in
-    # ``models/media.py::Media.sha256``).
+    # Hex-encoded SHA-256 of the uploaded bytes. ``None`` for rows that predate
+    # the column (full rationale in ``models/media.py::Media.sha256``).
     sha256: str | None = None
     # Original filename the browser sent at upload. Exposed publicly because
     # investigators sometimes trace evidence to a source post by filename

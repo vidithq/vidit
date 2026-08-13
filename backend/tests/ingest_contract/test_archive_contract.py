@@ -108,7 +108,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     archive = tmp_path / "consolidated"
     loader.build_consolidated_archive(_DISK_TYPOLOGIES, archive)
 
-    outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, is_demo=True)
+    outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive)
 
     # One row per coordinate-bearing typology, two for multi_coord, none for
     # no_coord: 7 single + 2 (multi) + 0 = 9.
@@ -118,7 +118,6 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert len(rows) == 9
     assert all(r.status == STATUS_DETECTED for r in rows)
-    assert all(r.is_demo for r in rows)
     assert all(r.proof and r.proof["content"] for r in rows)
 
     assert _rows_for(db, owner, "no_coord") == []
@@ -205,7 +204,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         assert _proof_image_count(row) == 1
 
     # Re-running the same archive is a no-op (idempotent on permalink + coord).
-    again = await backfill_from_archive(db, owner=owner, archive_dir=archive, is_demo=True)
+    again = await backfill_from_archive(db, owner=owner, archive_dir=archive)
     assert again.created == [] and again.skipped == 9
 
 
@@ -251,7 +250,6 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         owner=owner,
         detections=detections,
         fetch_media=archive_media_fetcher(archive),
-        is_demo=True,
     )
     assert len(outcome.created) == 1
 
@@ -302,7 +300,6 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
         owner=owner,
         detections=detections,
         fetch_media=archive_media_fetcher(archive),
-        is_demo=True,
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
     [row] = db.query(Event).filter(Event.owner_id == owner.id).all()

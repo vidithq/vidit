@@ -52,7 +52,6 @@ class SearchEventHit(BaseModel):
     # Nullable (a machine detection often has no known date) but always
     # serialised: ``services.search.search_geolocations`` sets the key on every hit.
     event_date: date | None
-    is_demo: bool
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
     owner: AuthorRef
@@ -76,7 +75,6 @@ class SearchRequestHit(BaseModel):
     # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
     status: EventStatus
     created_at: datetime
-    is_demo: bool
     owner: AuthorRef
     # Same picked-thumbnail shape as ``SearchEventHit.media``.
     media: list[MediaRead]

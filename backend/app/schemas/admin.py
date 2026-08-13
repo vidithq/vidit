@@ -204,54 +204,6 @@ class UserXHandleUpdate(BaseModel):
         return normalize_x_handle(v)
 
 
-class AdminSeedDemoRequest(BaseModel):
-    """Body for `POST /admin/seed-demo`.
-
-    Capped at 50 000 per click. The seeder commits in batches so memory stays
-    bounded; large seeds take time (~1 min per 10 k locally) but don't blow up.
-    Re-running is additive on geos and idempotent on the demo authors.
-    """
-
-    count: int = Field(default=100, ge=1, le=50000)
-
-
-class AdminSeedDemoResponse(BaseModel):
-    created: int
-    templates: int
-    authors: int
-
-
-class AdminWipeDemoResponse(BaseModel):
-    deleted_geos: int
-    deleted_users: int
-
-
-class AdminSeedDemoRequestsRequest(BaseModel):
-    """Body for ``POST /admin/seed-demo-requests``.
-
-    Capped lower than the geolocation seeder: requests are an inbox, not a
-    catalog, and 5000 covers the queue UI.
-    """
-
-    count: int = Field(default=20, ge=1, le=5000)
-
-
-class AdminSeedDemoRequestsResponse(BaseModel):
-    created: int
-    templates: int
-    authors: int
-    with_claims: int
-    # Per-status breakdown — mirrors the lifecycle the seeder spreads across
-    # and proves the status-filter chips have data to render.
-    open: int
-    fulfilled: int
-    closed: int
-
-
-class AdminWipeDemoRequestsResponse(BaseModel):
-    deleted_requests: int
-
-
 class AdminMaintenanceResponse(BaseModel):
     """Single shape for every Maintenance-panel action.
 
@@ -278,8 +230,6 @@ class AdminDetectionStatsRead(BaseModel):
 
     A machine detection is a row imported from X, ``detected_from_url`` set
     (the archive backfill / the bot); a human submit always carries NULL there.
-    Demo rows (``is_demo``) are excluded from both aggregates so seeded fixtures
-    don't pollute the metric.
 
     Reject-rate: of every machine detection, the fraction dismissed while still
     a draft, whichever door they left through. A machine detection counts as a
@@ -293,8 +243,8 @@ class AdminDetectionStatsRead(BaseModel):
     ``services/detection._reimportable``, where soft-delete and owner close are
     the same judged-and-thrown-out shape. ``reject_rate`` is
     ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
-    machine detections. Counted over all (non-demo) machine rows, soft-deleted
-    or not: the metric measures what the pipeline produced.
+    machine detections. Counted over all machine rows, soft-deleted or not: the
+    metric measures what the pipeline produced.
 
     Two counting edges the metric accepts, both favouring over-counting
     dismissals over under-counting them: an owner hard-delete
@@ -303,9 +253,9 @@ class AdminDetectionStatsRead(BaseModel):
     pending drafts as rejects.
 
     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-    review, ``deleted_at IS NULL``, machine rows only, demo excluded): how many
-    drafts are missing a piece the geolocate floor will demand, so a
-    low-quality extraction run is visible before an analyst opens the queue.
+    review, ``deleted_at IS NULL``, machine rows only): how many drafts are
+    missing a piece the geolocate floor will demand, so a low-quality
+    extraction run is visible before an analyst opens the queue.
     """
 
     machine_total: int

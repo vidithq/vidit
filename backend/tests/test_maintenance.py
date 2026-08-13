@@ -252,9 +252,8 @@ def test_digest_selects_analysts_by_live_draft_count(db, draft_owner):
 
 def test_digest_counts_only_unpublished_real_work(db, draft_owner):
     """What the count is about: drafts still awaiting a decision. A published
-    row, a soft-deleted one, and a seeded demo row are all out."""
+    row and a soft-deleted one are both out."""
     _draft(db, draft_owner)
-    _draft(db, draft_owner, is_demo=True)
     _draft(db, draft_owner, deleted_at=datetime.now(UTC))
     published = _draft(db, draft_owner)
     published.status = STATUS_GEOLOCATED

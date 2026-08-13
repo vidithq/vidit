@@ -3,9 +3,8 @@
 A dev/admin trigger (no analyst-facing UI — that ships with the onboarding
 flow). Runs the real backfill pipeline (acquire archive -> stitch -> detect ->
 assemble) over the committed synthetic archive, attributing the detections to a
-deterministic backfiller user so they render marked on the map. Idempotent —
-re-running skips what already exists. Rows are ``is_demo`` so the demo-wipe
-clears them.
+deterministic backfiller user so they render marked on the map. Idempotent:
+re-running skips what already exists.
 """
 
 import asyncio
@@ -47,9 +46,7 @@ def main() -> None:
     try:
         owner = _get_or_create_owner(db)
         print(f"Backfilling detections from {ARCHIVE.name} as @{owner.x_handle}...")
-        outcome = asyncio.run(
-            backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
-        )
+        outcome = asyncio.run(backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE))
         print(
             f"Success: {len(outcome.created)} detected geolocation(s) created, "
             f"{outcome.skipped} skipped, {outcome.recreated} recreated."

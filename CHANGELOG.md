@@ -8,6 +8,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Removed
+- **Synthetic demo data** ([`backend/alembic/versions/v4x6z8b0d2f4_drop_demo_flags.py`](backend/alembic/versions/v4x6z8b0d2f4_drop_demo_flags.py), [`docs/api.md`](docs/api.md), [`docs/data-model.md`](docs/data-model.md)). The demo seeder service, the four `POST`/`DELETE /admin/seed-demo[-requests]` endpoints and their two admin panels, the `seed_demo` / `mock_demo_user` / `seed_timeline` scripts, and the `users.is_demo` / `events.is_demo` flags are gone, along with everything that read them: the map's hide-demo toggle, the `hide_demo` query parameter on `/events`, `/events/points` and `/search`, the `demo` flag in the `/events/points` tuple (now six elements), the **Demo** badge on the event share card, and the italic `synthetic` source label. A migration drops both columns and their partial indexes. Local test data comes from a production import or an X archive import instead.
+
+### Added
+- **`make import-prod` fills a local database from the latest production backup** ([`backend/scripts/import_prod.sh`](backend/scripts/import_prod.sh), [`docs/backups.md`](docs/backups.md#import-production-into-local-dev)). The target picks the newest dump the daily backup cron wrote to S3, restores it into the local container with the flags the restore drill uses, and runs `alembic upgrade head`, since a dump lags whatever migrations landed after it. It reads `BACKUP_S3_BUCKET` and `AWS_PROFILE` from the environment, prints the source object and the target database, and asks for a confirmation before replacing every local row. Media is not in the dump: imported rows keep their production media URLs, which resolve through the public CloudFront distribution, so images and video render without extra setup.
+
 ### Changed
 - **The event share card's locator panel draws a coastline** ([`frontend/src/app/_og/landmass.ts`](frontend/src/app/_og/landmass.ts), [`docs/design.md`](docs/design.md#share-cards)). A simplified Natural Earth world outline sits under the graticule, so the marker reads as a place instead of as a point on a grid, and the card still fetches nothing at request time.
 

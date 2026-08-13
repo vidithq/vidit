@@ -108,6 +108,24 @@ If steps 4 and 5 return plausible counts and the PostGIS smoke test returns `t`,
 
 ---
 
+## Import production into local dev
+
+`make import-prod` fills a local dev database with real data. It picks the most recent dump from the backup bucket, restores it into the running `vidit-db` container with the flags the [restore drill](#restore-drill) uses, and then runs `alembic upgrade head`, because a dump lags whatever migrations landed after it was taken. The script is [`backend/scripts/import_prod.sh`](../backend/scripts/import_prod.sh).
+
+The target is the whole local database, not a scratch one: the restore drops every local row. The script prints the source object and the target database and waits for a confirmation. Pass `ARGS=--yes` to skip the prompt.
+
+Set two variables in the environment. The backend settings model rejects keys it does not declare, so `backend/.env` cannot carry them:
+
+```bash
+BACKUP_S3_BUCKET=<backup-bucket> AWS_PROFILE=<s3-admin> make import-prod
+```
+
+Start the database first (`make db-up`), and use the same `<s3-admin>` profile as the restore drill.
+
+Media is not in the dump. Imported rows keep the production media URLs they were stored with, and those resolve through the public CloudFront distribution, so images and video render in local dev without extra setup. Uploads you make locally still go to `LOCAL_STORAGE_DIR`.
+
+---
+
 ## Manual snapshot and rollback
 
 Follow this procedure for a deploy that ships a migration. Migrations run as a Railway pre-deploy step (`uv run alembic upgrade head`). A failed migration retries three times, then leaves the service failed with the schema half-applied. **Get a fresh backup before any deploy that includes a migration.**

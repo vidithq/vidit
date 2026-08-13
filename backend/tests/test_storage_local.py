@@ -164,8 +164,8 @@ def test_derivative_key_appends_suffix_and_forces_jpeg_extension():
     assert derivative_key("uploads/abc/xyz.jpg", "hero") == "uploads/abc/xyz_hero.jpg"
     assert derivative_key("uploads/abc/xyz.png", "thumb") == "uploads/abc/xyz_thumb.jpg"
     assert (
-        derivative_key("demo-pool/geo-01/media/photo.webp", "hero")
-        == "demo-pool/geo-01/media/photo_hero.jpg"
+        derivative_key("detected/geo-01/media/photo.webp", "hero")
+        == "detected/geo-01/media/photo_hero.jpg"
     )
 
 

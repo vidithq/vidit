@@ -331,15 +331,12 @@ def _backfill_chunk(
 
     ``NOT EXISTS`` is also what makes the sweep converge: an event whose links
     are all queued drops out of the scan, so a second click covers the next
-    page instead of re-reading the same head of the catalog. Demo rows are
-    excluded outright (their sentinel source resolves nowhere and a capture
-    attempt would spend real Wayback budget), and the keyset cursor is
-    ``(created_at, id)`` so an event that yields no links still advances the
+    page instead of re-reading the same head of the catalog. The keyset cursor
+    is ``(created_at, id)`` so an event that yields no links still advances the
     walk.
     """
     query = db.query(Event.id, Event.source_url, Event.proof, Event.created_at).filter(
         Event.deleted_at.is_(None),
-        Event.is_demo.is_(False),
         _PUBLISHED,
         or_(~Event.archives.any(), _SOURCE_URL_UNQUEUED, _SECONDARY_LINK_UNQUEUED),
     )
@@ -352,8 +349,8 @@ def enqueue_catalog(db: Session, *, limit: int | None = None) -> dict[str, int]:
     """Enqueue archival for live published events with an unqueued link.
 
     The backfill over the existing catalog, exposed as an admin Maintenance
-    action. Walks live non-demo published events oldest first (the ones whose
-    sources have had the longest to die), enqueues whatever they carry, and
+    action. Walks live published events oldest first (the ones whose sources
+    have had the longest to die), enqueues whatever they carry, and
     returns the counts. No HTTP happens here: the rows are queue entries the
     worker drains at its own paced rate. ``limit`` caps one click's scan, and
     because a fully queued event leaves the scan, the next click continues past

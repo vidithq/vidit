@@ -26,11 +26,10 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * opens on the region the analyst covers instead of a default camera.
  *
  * Only published work is mapped. The endpoint also serves `detected` rows
- * (machine drafts nobody has vouched for) and demo rows, neither of which is
- * portfolio evidence, and counting them here contradicted the Submitted tile
- * above. Demo rows are dropped by the endpoint's own `hide_demo`; the status
- * narrowing has no server-side parameter, so it runs on the payload through
- * the shared `filterPointsByStatus`.
+ * (machine drafts nobody has vouched for), which are not portfolio evidence
+ * and contradicted the Submitted tile above. The status narrowing has no
+ * server-side parameter, so it runs on the payload through the shared
+ * `filterPointsByStatus`.
  *
  * Renders nothing until the points arrive and nothing at all for an analyst
  * with no located events (a requests-only profile gets no empty world map);
@@ -44,7 +43,7 @@ export function ProfileMap({ username }: { username: string }) {
   // (`useApiResource`), so an ineligible handle makes no request.
   const path = AUTHOR_FILTER_RE.test(username)
     ? `/events/points?author=${encodeURIComponent(username)}` +
-      `&hide_demo=true&bbox=${toBboxParam(WORLD_BOUNDS)}`
+      `&bbox=${toBboxParam(WORLD_BOUNDS)}`
     : null;
   const { data } = useApiResource<MapPoint[]>(path);
   // One subset drives the camera and the count, so the two can never report

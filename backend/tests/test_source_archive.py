@@ -449,22 +449,6 @@ def test_enqueue_catalog_leaves_a_rejected_draft_alone(db, owner):
     assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
 
 
-def test_enqueue_catalog_skips_demo_rows(db, owner):
-    """Seeded demo events carry a sentinel source that resolves nowhere;
-    submitting it would spend real Wayback budget on nothing."""
-    row = Event(
-        owner_id=owner.id,
-        title="Demo event",
-        source_url="https://vidit.app/demo-data",
-        is_demo=True,
-        status=STATUS_REQUESTED,
-    )
-    db.add(row)
-    db.commit()
-    source_archive.enqueue_catalog(db)
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
-
-
 def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, published_event):
     """An event whose stored source the allowlist refuses yields nothing to
     enqueue, so it never leaves the scan; the keyset cursor still advances, or

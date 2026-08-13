@@ -1,6 +1,6 @@
 """Backfill tags + a conflict onto live, untagged geolocations.
 
-The demo seeder creates geolocations without tags, so the map's filter
+An imported archive lands geolocations without tags, so the map's filter
 buckets (which only surface values used by a live geolocation) stay empty.
 This assigns each untagged geolocation one conflict + one ``capture_source``
 tag (the curated pair every real submission must carry) plus a couple of

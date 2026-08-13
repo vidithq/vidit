@@ -541,7 +541,7 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
       author={hit.owner}
-      source={{ url: hit.source_url, isDemo: hit.is_demo }}
+      source={{ url: hit.source_url }}
       working={hit.claimer_count}
     />
   );

@@ -7,7 +7,6 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ArchivedCopies as ArchivedCopiesPayload, EventDetail } from "@/types";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
-import { sourceIsSynthetic } from "@/lib/events";
 import { conflictLabel } from "@/lib/conflicts";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -178,18 +177,15 @@ function DetailRows({
       <DetailRow label="Source" concept="source_url" compact={compact}>
         <span className="flex min-w-0 items-baseline justify-end">
           <SourceLabel
-            isDemo={sourceIsSynthetic(geo)}
             url={geo.source_url}
             variant="link"
             maxWidthClass={sourceMaxWidth}
             className={sourceClass}
           />
-          {!sourceIsSynthetic(geo) && (
-            <ArchivedCopies
-              copies={geo.archived_source}
-              describes={PRIMARY_SOURCE_DESCRIPTION}
-            />
-          )}
+          <ArchivedCopies
+            copies={geo.archived_source}
+            describes={PRIMARY_SOURCE_DESCRIPTION}
+          />
         </span>
       </DetailRow>
       {/* Mirrors of the same media, directly under the primary they mirror.
@@ -199,7 +195,6 @@ function DetailRows({
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
-          isDemo={sourceIsSynthetic(geo)}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -210,10 +205,8 @@ function DetailRows({
         <DetailRow label="Detected from" concept="detected_from" compact={compact}>
           {/* Same display nature as Source: SourceLabel reduces the URL to its
               host, so the two provenance rows read alike rather than one
-              host-reduced, one truncated-full. A detected row's provenance link
-              shows even in demo data (see sourceIsSynthetic). */}
+              host-reduced, one truncated-full. */}
           <SourceLabel
-            isDemo={sourceIsSynthetic(geo)}
             url={geo.detected_from_url}
             variant="link"
             maxWidthClass={sourceMaxWidth}
@@ -316,13 +309,11 @@ function DetailRows({
 function SecondarySourcesRow({
   urls,
   archived,
-  isDemo,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
   archived: (ArchivedCopiesPayload | null)[];
-  isDemo: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -360,7 +351,6 @@ function SecondarySourcesRow({
             // is paired by position anyway.
             <span key={index} className="flex min-w-0 items-baseline justify-end">
               <SourceLabel
-                isDemo={isDemo}
                 url={url}
                 variant="link"
                 maxWidthClass={maxWidthClass}
@@ -371,12 +361,10 @@ function SecondarySourcesRow({
                   announced. `mirrorDescription` owns that name, including the
                   two cases a bare host cannot carry (mirrors sharing a host, a
                   URL with no host to show). */}
-              {!isDemo && (
-                <ArchivedCopies
-                  copies={archived[index] ?? null}
-                  describes={mirrorDescription(safeHostname(url), index, urls.length)}
-                />
-              )}
+              <ArchivedCopies
+                copies={archived[index] ?? null}
+                describes={mirrorDescription(safeHostname(url), index, urls.length)}
+              />
             </span>
           ))}
       </div>

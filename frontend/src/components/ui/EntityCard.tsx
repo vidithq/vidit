@@ -85,7 +85,7 @@ interface EntityCardBaseProps {
   coords?: { lat: number; lng: number } | null;
   /** ``url`` is null on a sourceless machine draft; `SourceLabel` renders the
    *  muted "To confirm" label for it. */
-  source?: { url: string | null; isDemo: boolean };
+  source?: { url: string | null };
   working?: number;
   tags?: { id: string; name: string }[];
   variant?: "feed" | "compact";
@@ -220,11 +220,7 @@ export function EntityCard({
             {coords && <CoordsMeta coords={coords} />}
             {source && (
               <span className="relative z-20">
-                <SourceLabel
-                  isDemo={source.isDemo}
-                  url={source.url}
-                  variant="inline"
-                />
+                <SourceLabel url={source.url} variant="inline" />
               </span>
             )}
             {typeof working === "number" && working > 0 && (

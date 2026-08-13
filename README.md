@@ -59,7 +59,7 @@ vidit/
 ├── backend/          FastAPI service (uv)
 │   ├── app/          routers → services → models, Pydantic schemas
 │   ├── alembic/      migrations
-│   ├── scripts/      one-off ops scripts (mock admin, demo seeders)
+│   ├── scripts/      one-off ops scripts (mock admin, detection seeder, prod import)
 │   └── tests/
 ├── frontend/         Next.js 16 app (npm)
 │   └── src/
@@ -108,7 +108,8 @@ The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.
 
 ```bash
 make init        # install + env + db-up + migrate (one-shot bootstrap)
-make seed        # mock-admin + 50 demo geolocations + admin follows every demo analyst
+make seed        # mock-admin + machine detections from the committed synthetic archive
+make import-prod # replace the local DB with the latest production backup (see docs/backups.md)
 make dev         # FastAPI :8000 + Next.js :3000 in parallel
 make dev-worker  # archive-import worker (optional; without it, archive uploads stay queued)
 make test        # backend pytest
@@ -177,4 +178,4 @@ Licensed under the [GNU Affero General Public License v3.0](LICENSE). See [`CONT
 
 ## Acknowledgements
 
-The demo content shipped on the landing video and in the seed requests uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.
+The content shown in the landing video uses real geolocation work from [`@geo27752`](https://x.com/geo27752), reproduced with their consent. Thanks for letting Vidit show the platform the way analysts actually use it.

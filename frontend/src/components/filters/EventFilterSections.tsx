@@ -23,8 +23,7 @@ import type { Concept } from "@/lib/fieldHelp";
  * Source media → the surface's date sections → Tags → Author), so a change to the
  * filter vocabulary lands on both surfaces at once. The surfaces differ only
  * in their date controls (the map's timeline scrubbers vs the search page's
- * date inputs), injected as data via `dateSections`, and in surface-only
- * toggles appended via `extraToggles` (the map's hide-demo).
+ * date inputs), injected as data via `dateSections`.
  *
  * State stays surface-owned (the map's context survives navigation, the
  * search page syncs the URL): this component receives one `values` object and
@@ -192,8 +191,7 @@ export function buildDateWindowPills(
 
 /** True when anything in the shared vocabulary narrows the view. The author
  *  counts even though it carries no pill (its chip lives in the Author
- *  section), so a filtered surface can never read as unfiltered. Surface-only
- *  toggles (the map's hide-demo) are the surface's to add on top. */
+ *  section), so a filtered surface can never read as unfiltered. */
 export function hasAnyFilter(
   values: EventFilterValues,
   windows: DateWindows
@@ -216,7 +214,6 @@ export function EventFilterSections({
   values,
   onPatch,
   dateSections = [],
-  extraToggles,
   showStatus = true,
 }: {
   /** Live tag taxonomy driving the capture-source + free chip buckets. */
@@ -226,8 +223,6 @@ export function EventFilterSections({
   values: EventFilterValues;
   onPatch: EventFilterPatch;
   dateSections?: InjectedSection[];
-  /** Surface-only toggle rows appended after Author (the map's hide-demo). */
-  extraToggles?: ReactNode;
   /** Whether to render the Status section. Default on; a surface scoped to a
    *  view where neither offered status can match (the search page's legacy
    *  request scope) hides it rather than offering chips that can only empty
@@ -467,7 +462,6 @@ export function EventFilterSections({
         </div>
       </FilterSection>
 
-      {extraToggles}
     </div>
   );
 }
