@@ -8,13 +8,31 @@ import Image from "@tiptap/extension-image";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
+/** A link the proof pipeline carries end to end: an absolute http(s) URL.
+ *  Exported for its test. */
+export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url);
+
+// Links are http(s) only, for the same reason underline is off below. StarterKit
+// v3 registers the Link extension with linkify's default protocol set (mailto,
+// tel, ftp, sms, xmpp, …) and autolink on, while both sanitisers downstream take
+// http(s) only (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::
+// isSafeLinkHref`), so an autolinked `mailto:` would read as a link to the
+// analyst and be stripped at publish. The `protocols` option can only widen
+// linkify's set, so the narrowing goes through `isAllowedUri`, which the paste,
+// autolink and render paths all consult. Autolink survives for what the mirrors
+// accept: a typed or pasted `https://…` still links, a bare `example.com` and an
+// email address no longer do. Change this only together with those two mirrors.
+//
 // Underline is off: StarterKit v3 registers it by default (Cmd/Ctrl+U), but the
 // proof pipeline has no underline anywhere downstream. The backend sanitizer
 // drops the mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic /
 // strike / code / link) and the renderer can't paint it (`lib/proof.tsx`,
 // `applyMarks`), so an underlined run would silently lose its formatting at
 // publish. Change this only together with those two mirrors.
-const PROOF_STARTER_KIT = StarterKit.configure({ underline: false });
+const PROOF_STARTER_KIT = StarterKit.configure({
+  underline: false,
+  link: { isAllowedUri: isProofLinkUri },
+});
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
