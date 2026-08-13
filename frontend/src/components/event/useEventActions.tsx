@@ -199,7 +199,7 @@ export function useEventActions({
             className={buttonClasses("primary")}
           >
             <MapPin size={14} />
-            Geolocate this
+            Geolocate
           </Link>
         )}
         {tiers.flow && isOpenRequest && !isAuthor && (
@@ -213,7 +213,7 @@ export function useEventActions({
             aria-pressed={isInvestigatingMe}
           >
             <Users size={14} />
-            {isInvestigatingMe ? "Working on this" : "I'm working on this"}
+            {isInvestigatingMe ? "Investigating" : "Investigate"}
           </Button>
         )}
         <OverflowMenu items={ownerItems} />
