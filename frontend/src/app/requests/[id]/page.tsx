@@ -72,7 +72,7 @@ export default function RequestDetailPage() {
           detailExtras={
             <>
               {request.status === "requested" && (
-                <DetailRow label="Working on" align="start">
+                <DetailRow label="Working on" concept="working_on" align="start">
                   {request.investigators.length > 0 ? (
                     <div className="flex flex-wrap gap-x-2 gap-y-1 justify-end max-w-[400px]">
                       {request.investigators.map((c) => (

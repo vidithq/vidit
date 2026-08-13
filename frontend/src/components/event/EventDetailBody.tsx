@@ -244,7 +244,7 @@ function DetailRows({
           a lifecycle move on this same row, so the trace is who opened the
           request (``requested_by``), not a link to a separate request. */}
       {!compact && geo.requested_by && (
-        <DetailRow label="Requested by" compact={compact}>
+        <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <Link
             href={`/profile/${geo.requested_by.username}`}
             className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
@@ -254,7 +254,7 @@ function DetailRows({
         </DetailRow>
       )}
       {!compact && (
-        <DetailRow label="Author" compact={compact}>
+        <DetailRow label="Author" concept="author" compact={compact}>
           <AuthorByline author={geo.owner} prefix={false} className="text-sm" />
         </DetailRow>
       )}
