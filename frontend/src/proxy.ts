@@ -32,6 +32,13 @@ const PUBLIC_PREFIXES = [
   // about page and the landing, and read by analysts sizing up the platform
   // before they have a session.
   "/guide",
+  // The legal notice: the publisher and host identification the law asks for,
+  // which has to be reachable by anyone, an authority included, with no
+  // account.
+  "/legal",
+  // The privacy policy: what is collected and how to have it removed, read
+  // before signing up as often as after, so it sits outside the wall too.
+  "/privacy",
   // The proof methodology guide: linked from the about page and from the
   // proof section of the submit / edit forms, and read by analysts sizing
   // up the platform before they have a session.

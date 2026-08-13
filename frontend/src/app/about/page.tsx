@@ -12,6 +12,8 @@ import {
   Crosshair,
   Bot,
   FileArchive,
+  FileLock,
+  Scale,
   type LucideIcon,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
@@ -118,6 +120,24 @@ const GUIDES = [
     label: "Archive guide",
     value: "Import your X archive",
     href: "/archive",
+  },
+];
+
+// The two published legal pages. In French, unlike the rest of the app: they
+// are the notices French law asks a publisher established in France to serve.
+// The row labels stay English, like every other label outside those pages.
+const LEGAL = [
+  {
+    icon: Scale,
+    label: "Legal notice",
+    value: "Mentions légales",
+    href: "/legal",
+  },
+  {
+    icon: FileLock,
+    label: "Privacy policy",
+    value: "Politique de confidentialité",
+    href: "/privacy",
   },
 ];
 
@@ -257,6 +277,24 @@ export default function AboutPage() {
             the OSINT/GEOINT community for years on Twitter and Discord. As
             Vidit grows, so will the team.
           </p>
+        </Section>
+
+        <Section
+          icon={Scale}
+          title="Legal"
+        >
+          <div className="space-y-2">
+            {LEGAL.map(({ icon, label, value, href }) => (
+              <LinkRow
+                key={label}
+                icon={icon}
+                label={label}
+                value={value}
+                href={href}
+                external={false}
+              />
+            ))}
+          </div>
         </Section>
 
         <Section

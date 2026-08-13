@@ -5,6 +5,7 @@ import Image from "next/image";
 
 import type { Media } from "@/types";
 import { displayUrlsFor } from "@/lib/mediaUrls";
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { TileNotice } from "@/components/ui/TileNotice";
@@ -37,16 +38,24 @@ import { HOVER_REVEAL } from "@/components/ui/styles";
  * there is no hover to reveal it with).
  *
  * No media renders one marked empty box (no generated stand-ins).
+ *
+ * `isGraphic` covers the whole block with `GraphicContentGate`: the author
+ * declared the footage graphic, so the gate goes around the tiles rather than
+ * around each one, and the reader answers once per gallery. The lightbox stays
+ * outside it, since a gated tile takes no clicks and cannot open one.
  */
 export function MediaGallery({
   media,
   alt,
   variant = "page",
+  isGraphic = false,
 }: {
   media: Media[];
   /** Alt text for image media (the entity title). */
   alt: string;
   variant?: "page" | "panel";
+  /** The event's `is_graphic` flag: blur the tiles behind an age confirmation. */
+  isGraphic?: boolean;
 }) {
   const compact = variant === "panel";
   const itemHeight = compact ? "h-40" : "h-48";
@@ -115,18 +124,18 @@ export function MediaGallery({
     <MediaLightbox source={viewing} alt={alt} onClose={() => setViewing(null)} />
   ) : null;
 
-  if (compact) {
-    return (
-      <div className="space-y-2">
-        {items}
-        {viewer}
-      </div>
-    );
-  }
+  const tiles = compact ? (
+    <div className="space-y-2">{items}</div>
+  ) : (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
+  );
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {items}
+    <>
+      {/* The full interstitial in both variants: even the 380px panel stacks
+          160px tiles, so the whole sentence fits. */}
+      {isGraphic ? <GraphicContentGate>{tiles}</GraphicContentGate> : tiles}
       {viewer}
-    </div>
+    </>
   );
 }

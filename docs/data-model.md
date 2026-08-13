@@ -92,8 +92,22 @@ erDiagram
         TEXT close_reason "nullable, free-text"
         VARCHAR before_closed_status "nullable, status before closed"
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
+        TIMESTAMPTZ hidden_at "nullable, admin takedown"
+        BOOLEAN is_graphic "death, injury or human remains"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
+    }
+
+    content_reports {
+        UUID id PK
+        UUID event_id FK "nullable, NULL once the event is hard-deleted"
+        VARCHAR reason "illegal_content | graphic_not_flagged | copyright | privacy | other"
+        TEXT details "nullable, capped at 2000 chars by the schema"
+        UUID reporter_user_id FK "nullable, anonymous reports leave this NULL"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ resolved_at "nullable"
+        VARCHAR resolution "nullable, marked_graphic | hidden | dismissed"
+        UUID resolved_by FK "nullable"
     }
 
     event_geolocators {
@@ -167,6 +181,9 @@ erDiagram
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_source_links : "event_id"
+    events |o--o{ content_reports : "event_id"
+    users ||--o{ content_reports : "reporter_user_id"
+    users ||--o{ content_reports : "resolved_by"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -335,7 +352,9 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine draft, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and froze it; always has a location) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate` and `close` transitions are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the status badge and the requested-view routing, and lets re-import treat a closed detection as re-importable. |
-| `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin takedown (soft-delete): public reads filter the row out, but the row still exists. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
+| `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
+| `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -412,6 +431,33 @@ Composite PK: `(event_id, position)`. `position` sits in the key, so the stored 
 There is no secondary index: every read is "this event's links, in order", served by the PK's leading `event_id`. `MAX_SECONDARY_SOURCE_LINKS = 10` (`backend/app/models/event.py`) caps how many rows an event carries. The write forms normalize and enforce this cap before insert: they strip whitespace, drop blanks, drop duplicates, and drop the entry equal to `source_url`, preserving order.
 
 The system writes this list wholesale, not row by row. A create sets the full ordered list once, and a geolocate replaces the whole list with whatever the fulfiller submits, including for requested events. Unlike `source_url`, there is no requester protection here. Hard-deleting the event cascades to the rows.
+
+---
+
+### `content_reports`
+
+One viewer's report against one event. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same event, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided. Resolved rows stay in the table.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. An orphaned report accepts only the `dismissed` verdict; the other two mutate an event row that is gone, and answer 409 `report_event_gone`. |
+| `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
+| `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
+| `reporter_user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
+| `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
+| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the event from every public read via `events.hidden_at`, `dismissed` closes the report and leaves the event untouched. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
+| `resolved_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
+
+**Check constraints:**
+- `ck_content_reports_reason_valid`: pins the `reason` domain at the database, mirroring the `ContentReportReason` alias so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
+- `ck_content_reports_resolution_valid`: pins the `resolution` domain the same way, mirroring `ContentReportResolution`.
+- `ck_content_reports_resolution_stamp`: `(resolution IS NULL AND resolved_at IS NULL) OR (resolution IS NOT NULL AND resolved_at IS NOT NULL)`. The verdict and its timestamp travel together in both directions: a resolved row can't forget what was decided, and an open row can't carry a stale verdict.
+
+**Indexes:**
+- `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
+- `ix_content_reports_queue`: expression index on `((resolved_at IS NOT NULL), created_at DESC, id DESC)`. Backs the admin queue's read, open reports first then newest first, with the id breaking ties so the offset walk is total. The index repeats the query's `ORDER BY` expression for expression, so Postgres walks it instead of sorting the table. Change the sort and you change this index.
 
 ---
 

@@ -38,10 +38,10 @@ export default function BetaBanner() {
           href={REPORT_URL}
           target="_blank"
           rel="noopener noreferrer"
-          title="Report a problem in our Discord"
+          title="Report a bug in our Discord"
           className="pointer-events-auto text-orange-300 hover:text-orange-100 transition-colors border-l border-orange-500/30 pl-2 -mr-0.5"
         >
-          Report a problem
+          Report a bug
         </a>
       </Pill>
     </div>

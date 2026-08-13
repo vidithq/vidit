@@ -12,6 +12,8 @@ from app.routers._errors import raise_typed_error
 from app.schemas.admin import (
     AdminDetectionStatsRead,
     AdminEventDeleteResponse,
+    AdminEventModerationRead,
+    AdminEventModerationUpdate,
     AdminInviteCodeCreate,
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
@@ -21,9 +23,11 @@ from app.schemas.admin import (
     AdminUserRead,
     UserXHandleUpdate,
 )
+from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import registration as registration_service
+from app.services import reports as reports_service
 from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
 
 router = APIRouter()
@@ -272,6 +276,94 @@ def delete_geolocation_admin(
         mode="soft",
         deleted_at=geo.deleted_at,
     )
+
+
+# ── Content reports ──────────────────────────────────────────────────────
+
+
+@router.get("/reports", response_model=ContentReportList)
+def list_reports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ContentReportList:
+    """The moderation queue: open reports first, newest first within each group.
+
+    Resolved rows stay in the list rather than dropping out of it: a report is
+    never deleted, so the queue doubles as the record of what was reported and
+    what was decided. Offset-paged (see ``ContentReportList``), capped at 100
+    rows per page.
+    """
+    per_page = page_size(per_page)
+    rows, total = reports_service.list_reports(db, page=page, per_page=per_page)
+    return ContentReportList(
+        items=[ContentReportRead.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.post("/reports/{report_id}/resolve", response_model=ContentReportRead)
+@limiter.limit("60/hour")
+def resolve_report(
+    request: Request,
+    report_id: uuid.UUID,
+    body: ContentReportUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ContentReportRead:
+    """Close one report with a verdict, applying it to the reported event.
+
+    404 on an unknown report, 409 on one that already carries a verdict
+    (reports are resolved once, never reopened). The service owns the event
+    mutation and the audit trail; the points cache is dropped here, and only
+    when the event actually left the map.
+    """
+    try:
+        report, hidden_changed = reports_service.resolve_report(
+            db,
+            report_id=report_id,
+            resolution=body.resolution,
+            actor_id=current_user.id,
+        )
+    except reports_service.ReportError as exc:
+        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    if hidden_changed:
+        points_cache.invalidate()
+    return ContentReportRead.model_validate(report)
+
+
+@router.patch("/events/{geolocation_id}/moderation", response_model=AdminEventModerationRead)
+@limiter.limit("60/hour")
+def set_event_moderation(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    body: AdminEventModerationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminEventModerationRead:
+    """Set an event's moderation state directly, with no report behind it.
+
+    Both fields are optional and independent; a field left out, or sent equal
+    to what the row already holds, changes nothing and writes no audit row. The
+    one verb that also UNDOES a takedown. 404 for an unknown or soft-deleted
+    event.
+    """
+    try:
+        event, hidden_changed = reports_service.set_event_moderation(
+            db,
+            geolocation_id=geolocation_id,
+            is_graphic=body.is_graphic,
+            hidden=body.hidden,
+            actor_id=current_user.id,
+        )
+    except reports_service.ReportError as exc:
+        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    if hidden_changed:
+        points_cache.invalidate()
+    return AdminEventModerationRead.model_validate(event)
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────

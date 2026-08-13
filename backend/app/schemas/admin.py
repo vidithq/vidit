@@ -172,6 +172,35 @@ class AdminEventDeleteResponse(BaseModel):
     media_count: int = 0
 
 
+class AdminEventModerationUpdate(BaseModel):
+    """Body for ``PATCH /admin/events/{id}/moderation``.
+
+    Two independent axes, both optional: ``is_graphic`` overrides the author's
+    graphic declaration, ``hidden`` withholds the event from every public read
+    or restores it. ``None`` leaves that axis exactly as it is, so a client can
+    move one without knowing the other.
+    """
+
+    is_graphic: bool | None = None
+    hidden: bool | None = None
+
+
+class AdminEventModerationRead(BaseModel):
+    """The moderation state of one event after the PATCH.
+
+    Deliberately narrow: the endpoint moves two fields, and answering with the
+    full ``EventRead`` would make an admin toggle pay for every eager load the
+    detail read needs. ``hidden_at`` (not a boolean) so the response also says
+    when the takedown landed.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    is_graphic: bool
+    hidden_at: datetime | None
+
+
 class AdminPurgeDetectedResponse(BaseModel):
     """Response for `DELETE /admin/users/{id}/detected-events`.
 

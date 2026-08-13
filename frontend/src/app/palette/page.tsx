@@ -52,6 +52,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Dot } from "@/components/ui/Dot";
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
@@ -75,6 +76,7 @@ import {
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { OverflowMenu } from "@/components/ui/OverflowMenu";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -141,6 +143,7 @@ const MOCK_DETAIL: EventDetail = {
   capture_source_coords: null,
   archived_source: null,
   event_date: "2026-05-09",
+  is_graphic: false,
   status: "geolocated",
   close_reason: null,
   before_closed_status: null,
@@ -343,13 +346,14 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive, no grey button. `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
                 <Button variant="secondary">Secondary</Button>
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="danger">Danger</Button>
+                <Button variant="dangerGhost">Danger ghost</Button>
                 <Button icon variant="ghost" aria-label="Locate">
                   <MapPin size={15} />
                 </Button>
@@ -367,6 +371,15 @@ export default function PalettePage() {
 
           <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose copy glyph flips to a check for the flash window (useCopyToClipboard). Used by the profile share control and the event share row. `value` is a getter so the call site can read window at click time; `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
             <CopyButton value={() => "https://vidit.app/profile/demo"} label="Copy profile link" />
+          </Item>
+
+          <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick, danger, disabled, controls}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
+            <OverflowMenu
+              items={[
+                { label: "Close this request", onClick: () => {} },
+                { label: "Delete this request", danger: true, onClick: () => {} },
+              ]}
+            />
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -452,12 +465,15 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles).">
+          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles). disabled reads the state but refuses the toggle, for a value this surface cannot change (the edit form's ratcheted graphic-content flag).">
             <Variant label='size="md"'>
               <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Preview switch" />
             </Variant>
             <Variant label='size="sm"'>
               <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Preview switch small" />
+            </Variant>
+            <Variant label="disabled">
+              <Switch on disabled aria-label="Demo switch locked" />
             </Variant>
           </Item>
 
@@ -699,6 +715,26 @@ export default function PalettePage() {
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
+          </Item>
+
+          <Item
+            name="<GraphicContentGate>"
+            usage="The age gate over media an author flagged as graphic (events.is_graphic). Wraps the media it covers: the children render blurred, inert and aria-hidden behind an interstitial that names what is underneath and asks the reader to confirm they are 18 or older. One confirmation reveals every gated instance for the rest of the browser session (a sessionStorage key plus the primitive's own subscriber set, since sessionStorage fires no storage event in the tab that wrote it). variant=full on the detail surfaces (MediaGallery on the event page and the map side panel, a proof body's inline images), variant=compact on the fixed-ratio card slots (MediaThumb on every catalogue card and the map pin preview), where the whole tile becomes the one labelled control. Painted from WARNING_CALLOUT, the heads-up register, and the confirm is a <Button>. Confirming in this demo reveals it everywhere else on the page too, which is the behaviour, not a demo artefact: reload to see the covered state again."
+          >
+            <Variant label="full (detail surfaces)">
+              <div className="w-full max-w-sm">
+                <GraphicContentGate>
+                  <div className="h-40 rounded-lg border border-neutral-700 bg-neutral-800" />
+                </GraphicContentGate>
+              </div>
+            </Variant>
+            <Variant label="compact (card media slot)">
+              <div className="relative w-28 aspect-video overflow-hidden rounded-md bg-neutral-800">
+                <GraphicContentGate variant="compact">
+                  <div className="h-full w-full bg-neutral-700" />
+                </GraphicContentGate>
+              </div>
+            </Variant>
           </Item>
 
           <Item name="<VideoPlayer>" usage="The one video player: media-chrome's web components around a native <video>, mounted by MediaGallery's video tiles and by MediaLightboxBody, so playback chrome is identical on every surface and in every browser (the controls are custom elements, so they owe nothing to the React version). The bar holds exactly play, scrub, time, mute, volume, download and one big-view control, and nothing else (no casting, PiP, speed or captions); it fades out after two undisturbed seconds of playback and returns on pointer move, hover or focus. Big view is per context: a tile gets an expand control opening the shared lightbox, the lightbox itself gets real fullscreen. The download is MediaDownloadButton, since a plain <a download> is ignored cross-origin. Fills its container and letterboxes, so a portrait clip keeps its shape, and posters its first frame through the #t=0.1 media fragment. The skin is CSS variables set on the controller (neutral-100 glyphs, transparent controls on a translucent dark bar), so nothing reaches inside a shadow root and nothing fights Tailwind. A source the browser refuses swaps to TileNotice, keeping a download beside it so an undecodable original stays saveable, and that notice is what this demo shows unless NEXT_PUBLIC_DEMO_VIDEO_URL points at a real .mp4 (no sample ships with the repo).">

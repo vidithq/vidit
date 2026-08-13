@@ -25,7 +25,10 @@
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
 processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
-email_verified_at  # app/models/user.py — audit stamp, written at registration only
+# Stamped by services/reports.resolve_report and read on the wire only (the
+# column, the ContentReportRead field, and the assignment all collapse here).
+resolved_by  # app/models/content_report.py + app/schemas/report.py
+email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.

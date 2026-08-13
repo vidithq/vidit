@@ -49,6 +49,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/events/{geolocation_id}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Event Moderation
+         * @description Set an event's moderation state directly, with no report behind it.
+         *
+         *     Both fields are optional and independent; a field left out, or sent equal
+         *     to what the row already holds, changes nothing and writes no audit row. The
+         *     one verb that also UNDOES a takedown. 404 for an unknown or soft-deleted
+         *     event.
+         */
+        patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/invite-codes": {
         parameters: {
             query?: never;
@@ -200,6 +225,56 @@ export interface paths {
         get: operations["admin_me_api_v1_admin_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reports
+         * @description The moderation queue: open reports first, newest first within each group.
+         *
+         *     Resolved rows stay in the list rather than dropping out of it: a report is
+         *     never deleted, so the queue doubles as the record of what was reported and
+         *     what was decided. Offset-paged (see ``ContentReportList``), capped at 100
+         *     rows per page.
+         */
+        get: operations["list_reports_api_v1_admin_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reports/{report_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Report
+         * @description Close one report with a verdict, applying it to the reported event.
+         *
+         *     404 on an unknown report, 409 on one that already carries a verdict
+         *     (reports are resolved once, never reopened). The service owns the event
+         *     mutation and the audit trail; the points cache is dropped here, and only
+         *     when the event actually left the map.
+         */
+        post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -872,7 +947,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Event */
+        /**
+         * Get Event
+         * @description The detail read.
+         *
+         *     A withheld event (``hidden_at``) answers 404 for everyone but an admin, who
+         *     still needs to read what was taken down in order to judge the report that
+         *     took it down.
+         */
         get: operations["get_event_api_v1_events__geolocation_id__get"];
         put?: never;
         post?: never;
@@ -929,8 +1011,9 @@ export interface paths {
          * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
          *
          *     The one generalized fulfil / submit transition. The caller posts the whole
-         *     form (title, coordinates, source URL, dates, proof + its images, tags, and
-         *     the source media: ``files`` added, ``remove_media_ids`` dropped), and on
+         *     form (title, coordinates, source URL, dates, the graphic-content flag,
+         *     proof + its images, tags, and the source media: ``files`` added,
+         *     ``remove_media_ids`` dropped), and on
          *     success the row is written and frozen as ``geolocated``, with the caller
          *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
          *     ``status`` carry no field. A ``detected`` draft is owner-only (403
@@ -941,6 +1024,34 @@ export interface paths {
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Event
+         * @description Report an event for moderation.
+         *
+         *     Open to anonymous viewers: the people a piece of footage harms rarely hold
+         *     an account here, so requiring one would close the door on the reports that
+         *     matter most. A signed-in reporter is recorded on the row; an anonymous one
+         *     leaves ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+         *
+         *     An unknown, soft-deleted or already-withheld event answers 404: all three
+         *     are invisible to the caller, so all three read the same.
+         */
+        post: operations["report_event_api_v1_events__geolocation_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1314,6 +1425,41 @@ export interface components {
             mode: "soft" | "hard";
             /** Title */
             title: string;
+        };
+        /**
+         * AdminEventModerationRead
+         * @description The moderation state of one event after the PATCH.
+         *
+         *     Deliberately narrow: the endpoint moves two fields, and answering with the
+         *     full ``EventRead`` would make an admin toggle pay for every eager load the
+         *     detail read needs. ``hidden_at`` (not a boolean) so the response also says
+         *     when the takedown landed.
+         */
+        AdminEventModerationRead: {
+            /** Hidden At */
+            hidden_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+        };
+        /**
+         * AdminEventModerationUpdate
+         * @description Body for ``PATCH /admin/events/{id}/moderation``.
+         *
+         *     Two independent axes, both optional: ``is_graphic`` overrides the author's
+         *     graphic declaration, ``hidden`` withholds the event from every public read
+         *     or restores it. ``None`` leaves that axis exactly as it is, so a client can
+         *     move one without knowing the other.
+         */
+        AdminEventModerationUpdate: {
+            /** Hidden */
+            hidden?: boolean | null;
+            /** Is Graphic */
+            is_graphic?: boolean | null;
         };
         /**
          * AdminInviteCodeCreate
@@ -1731,6 +1877,11 @@ export interface components {
             event_time?: string | null;
             /** File */
             file: string;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -1767,6 +1918,11 @@ export interface components {
             event_time?: string | null;
             /** File */
             file: string;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
@@ -1803,6 +1959,11 @@ export interface components {
             event_time?: string | null;
             /** Files */
             files?: string[] | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -1883,6 +2044,94 @@ export interface components {
             wikidata_id: string | null;
         };
         /**
+         * ContentReportCreate
+         * @description Body for ``POST /events/{id}/report``.
+         *
+         *     ``reason`` picks one of the five buckets (see ``ContentReportReason``);
+         *     ``details`` is the reporter's own words, optional because the bucket alone
+         *     is often the whole report.
+         */
+        ContentReportCreate: {
+            /** Details */
+            details?: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
+        };
+        /**
+         * ContentReportList
+         * @description One page of the admin report queue.
+         *
+         *     Offset-paged rather than cursor-paged: the queue reads open reports first
+         *     and then newest first within each group, and that leading group flag is not
+         *     a column a keyset cursor can walk (the same reason
+         *     ``GET /users/{username}/events`` pages by offset). ``total`` counts every
+         *     report, resolved ones included, so the pager knows how far the queue runs.
+         */
+        ContentReportList: {
+            /** Items */
+            items: components["schemas"]["ContentReportRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ContentReportRead
+         * @description One report as the admin queue reads it.
+         *
+         *     ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while the
+         *     report is open and all set once it is resolved (the DB holds them together),
+         *     so ``resolved_at is None`` is the open test on the wire too.
+         */
+        ContentReportRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details: string | null;
+            /** Event Id */
+            event_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
+            /** Reporter User Id */
+            reporter_user_id: string | null;
+            /** Resolution */
+            resolution: ("marked_graphic" | "hidden" | "dismissed") | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolved By */
+            resolved_by: string | null;
+        };
+        /**
+         * ContentReportUpdate
+         * @description Body for ``POST /admin/reports/{id}/resolve``: the verdict.
+         *
+         *     One of the three values of ``ContentReportResolution``. There is no
+         *     re-resolve: a report already carrying a verdict is a 409.
+         */
+        ContentReportUpdate: {
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "marked_graphic" | "hidden" | "dismissed";
+        };
+        /**
          * CoordsRead
          * @description One WGS84 point on the wire. Nesting (instead of flat ``lat`` / ``lng``
          *     pairs) lets a payload carry two independent points, the subject and the
@@ -1945,6 +2194,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
             owner: components["schemas"]["AuthorRef"];
             /**
@@ -1996,6 +2247,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
@@ -2238,6 +2491,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -2269,6 +2524,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
@@ -2684,6 +2941,43 @@ export interface operations {
             };
         };
     };
+    set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminEventModerationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEventModerationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_invite_codes_api_v1_admin_invite_codes_get: {
         parameters: {
             query?: {
@@ -2929,6 +3223,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_admin_reports_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_report_api_v1_admin_reports__report_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
                 };
             };
             /** @description Validation Error */
@@ -3819,7 +4184,9 @@ export interface operations {
             path: {
                 geolocation_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3935,6 +4302,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_event_api_v1_events__geolocation_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
                 };
             };
             /** @description Validation Error */

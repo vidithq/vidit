@@ -34,7 +34,7 @@ from app.models.event import (
     Event,
 )
 from app.models.user import User
-from app.services.event_filters import EventFilters
+from app.services.event_filters import EventFilters, visible_events
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -209,6 +209,7 @@ def search_geolocations(
                 "lat": row.lat,
                 "lng": row.lng,
                 "event_date": geo.event_date,
+                "is_graphic": geo.is_graphic,
                 "status": geo.status,
                 "owner": geo.owner,
                 "media": [thumb] if thumb is not None else [],
@@ -264,6 +265,7 @@ def search_requests(
                 "source_url": geo.source_url,
                 "status": geo.status,
                 "created_at": geo.created_at,
+                "is_graphic": geo.is_graphic,
                 "owner": geo.owner,
                 "media": [thumb] if thumb is not None else [],
                 "tags": geo.tags,
@@ -417,7 +419,7 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
         return []
     like = q.replace("_", r"\_")
     has_live_event = (
-        db.query(Event.id).filter(Event.owner_id == User.id, Event.deleted_at.is_(None)).exists()
+        db.query(Event.id).filter(Event.owner_id == User.id, *visible_events()).exists()
     )
     rows = (
         db.query(User.username)

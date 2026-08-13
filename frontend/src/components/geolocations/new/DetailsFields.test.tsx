@@ -16,6 +16,8 @@ const baseProps = {
   setEventTime: () => {},
   sourcePostedAt: "",
   setSourcePostedAt: () => {},
+  isGraphic: false,
+  setIsGraphic: () => {},
   sourceUrlLocked: false,
 };
 
@@ -137,5 +139,37 @@ describe("DetailsFields", () => {
     expect(row).not.toHaveAttribute("readonly");
     fireEvent.change(row, { target: { value: "https://t.me/c/9" } });
     expect(setSecondarySourceUrls).toHaveBeenCalledWith(["https://t.me/c/9"]);
+  });
+
+  it("offers the graphic switch on a fresh form", () => {
+    const setIsGraphic = vi.fn();
+    render(<DetailsFields {...baseProps} setIsGraphic={setIsGraphic} />);
+    const toggle = screen.getByRole("switch", { name: "Graphic content" });
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    expect(setIsGraphic).toHaveBeenCalledWith(true);
+  });
+
+  it("locks the graphic switch on an already-flagged event", () => {
+    // The flag ratchets on the backend, so the edit form reads it rather than
+    // offering a change the geolocate write would discard.
+    const setIsGraphic = vi.fn();
+    render(
+      <DetailsFields
+        {...baseProps}
+        isGraphic
+        graphicLocked
+        setIsGraphic={setIsGraphic}
+      />
+    );
+    const toggle = screen.getByRole("switch", { name: "Graphic content" });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(setIsGraphic).not.toHaveBeenCalled();
+    expect(screen.getByText("admin only")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Removing the flag requires an admin/)
+    ).toBeInTheDocument();
   });
 });

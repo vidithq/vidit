@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 /**
  * The pin + dismiss + placement machinery shared by the anchored popovers
- * (`FieldHelp`): shown from JS hover state on the anchor (not a
+ * (`FieldHelp`, `OverflowMenu`): shown from JS hover state on the anchor (not a
  * CSS `group-hover`, so a surrounding `.group` can't trigger it), pinned on
  * click (touch devices don't hover), closed by outside-click, Escape, scroll,
- * resize, or pointer-leave.
+ * resize, or pointer-leave. Pass `hover: false` for a click-only popover
+ * (`OverflowMenu`: a menu holding a delete must not open under a passing
+ * pointer, and must not open on a tab through the trigger either), which drops
+ * the hover and focus handlers and leaves the click toggle, `close`, and every
+ * dismissal path in place.
  *
  * The popover is meant to render in a portal with `position: fixed`
  * (`popoverStyle`) so an `overflow` ancestor (e.g. the map detail side panel)
@@ -19,7 +29,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
  * Callers spread `wrapperProps` / `anchorProps` / `popoverProps` on their own
  * markup and keep full control of icon, content, and classes.
  */
-export function usePinnedPopover() {
+export function usePinnedPopover({ hover = true }: { hover?: boolean } = {}) {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -29,6 +39,14 @@ export function usePinnedPopover() {
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const open = pinned || hovered;
+
+  // The one dismissal: the effect below runs it for outside-click / Escape /
+  // scroll / resize, and a caller runs it for its own reasons (a menu item that
+  // acts and closes).
+  const close = useCallback(() => {
+    setPinned(false);
+    setHovered(false);
+  }, []);
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -70,10 +88,6 @@ export function usePinnedPopover() {
   // pin).
   useEffect(() => {
     if (!open) return;
-    const close = () => {
-      setPinned(false);
-      setHovered(false);
-    };
     const onPointer = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!wrapperRef.current?.contains(t) && !popoverRef.current?.contains(t)) close();
@@ -91,7 +105,7 @@ export function usePinnedPopover() {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
     };
-  }, [open]);
+  }, [open, close]);
 
   useEffect(() => () => cancelClose(), []);
 
@@ -106,25 +120,34 @@ export function usePinnedPopover() {
   return {
     open,
     pinned,
+    close,
     wrapperProps: {
       ref: wrapperRef,
       // Hover lives on the wrapper (just the anchor, the popover is portaled
       // out). Leaving un-pins so a desktop click-then-move-away dismisses
       // naturally; touch never fires mouseleave, so a tapped pin stays until
       // an outside tap.
-      onMouseEnter: () => {
-        cancelClose();
-        setHovered(true);
-      },
-      onMouseLeave: () => {
-        setPinned(false);
-        scheduleClose();
-      },
+      ...(hover
+        ? {
+            onMouseEnter: () => {
+              cancelClose();
+              setHovered(true);
+            },
+            onMouseLeave: () => {
+              setPinned(false);
+              scheduleClose();
+            },
+          }
+        : {}),
     },
     anchorProps: {
       ref: anchorRef,
-      onFocus: () => setHovered(true),
-      onBlur: () => setHovered(false),
+      ...(hover
+        ? {
+            onFocus: () => setHovered(true),
+            onBlur: () => setHovered(false),
+          }
+        : {}),
       onClick: (e: React.MouseEvent) => {
         // The anchor often sits inside a clickable card / label, so do not let
         // the click bubble to the parent.

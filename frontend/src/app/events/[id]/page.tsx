@@ -7,8 +7,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { formatCoordinates } from "@/lib/coordinates";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { CoordinateActions } from "@/components/event/CoordinateActions";
-import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
+import { useEventActions } from "@/components/event/useEventActions";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -17,9 +17,14 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function EventPage() {
   const params = useParams();
+  const eventId = typeof params.id === "string" ? params.id : "";
   const { data: geo, error } = useApiResource<EventDetail>(
-    typeof params.id === "string" ? `/events/${params.id}` : null
+    eventId ? `/events/${eventId}` : null
   );
+  // A geolocated event is finished work, so its cluster is the utilities tier
+  // alone: share, copy, report. Called before the early returns, as every hook
+  // here must be.
+  const { actions, panels } = useEventActions({ event: geo, surface: "event" });
 
   if (error)
     return (
@@ -32,18 +37,11 @@ export default function EventPage() {
       back
       title={geo.title}
       subtitle={<AuthorByline author={geo.owner} avatar />}
-      actions={
-        <ShareButtons
-          id={geo.id}
-          title={geo.title}
-          author={geo.owner.username}
-          eventDate={geo.event_date}
-          lat={geo.event_coords?.lat ?? null}
-          lng={geo.event_coords?.lng ?? null}
-          status={geo.status}
-        />
-      }
+      actions={actions}
     >
+        {/* Directly under the header, where the trigger that opened it is. */}
+        {panels}
+
         <EventDetailBody geo={geo} variant="page">
           {/* A located row (``geolocated`` / ``detected`` with coords) gets the
               Location module; a coordless event (a ``requested`` row served here

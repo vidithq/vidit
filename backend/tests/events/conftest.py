@@ -15,6 +15,7 @@ import pytest
 from app.cache import points_cache
 from app.database import SessionLocal
 from app.models.conflict import Conflict
+from app.models.content_report import ContentReport
 from app.models.event import Event, EventGeolocator
 from app.models.tag import Tag
 from app.models.user import User
@@ -64,6 +65,12 @@ def _delete_user_and_events(db, user_id) -> None:
     )
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
+    # A report survives the event it was filed against (``event_id`` is SET
+    # NULL, not CASCADE), so reap what those deletes just orphaned. Otherwise
+    # one suite's reports pile up in the admin queue another suite reads.
+    db.query(ContentReport).filter(ContentReport.event_id.is_(None)).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 

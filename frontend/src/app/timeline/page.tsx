@@ -63,6 +63,7 @@ export default function TimelinePage() {
                   entry.status ? <StatusBadge status={entry.status} /> : undefined
                 }
                 media={entry.media ?? undefined}
+                isGraphic={entry.is_graphic}
                 author={entry.owner}
                 date={entry.event_date ?? undefined}
                 coords={entry.event_coords}

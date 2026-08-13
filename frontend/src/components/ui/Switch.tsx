@@ -15,6 +15,7 @@ export function Switch({
   onToggle,
   size = "md",
   as = "button",
+  disabled = false,
   "aria-label": ariaLabel,
 }: {
   on: boolean;
@@ -23,12 +24,17 @@ export function Switch({
   /** `md`: settings rows; `sm`: dense filter rows. */
   size?: "sm" | "md";
   as?: "button" | "span";
+  /** Reads its state but refuses the toggle (button mode only): the value is
+   *  set and this surface is not the one that can change it. Dimmed, and out
+   *  of the tab order via the native `disabled`. */
+  disabled?: boolean;
   "aria-label"?: string;
 }) {
   const track = cn(
     "relative inline-flex shrink-0 items-center rounded-full transition-colors",
     size === "md" ? "h-5 w-9" : "h-4 w-7",
     on ? "bg-orange-500/60" : "bg-neutral-700",
+    disabled && "opacity-50 cursor-not-allowed",
   );
   const knob = cn(
     "inline-block transform rounded-full bg-neutral-100 transition-transform",
@@ -52,6 +58,7 @@ export function Switch({
       role="switch"
       aria-checked={on}
       aria-label={ariaLabel}
+      disabled={disabled}
       onClick={onToggle}
       className={track}
     >

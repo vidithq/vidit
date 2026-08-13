@@ -173,6 +173,9 @@ export interface EventEditInput {
   /** Replaces the conflict set wholesale (the conflicts referential, separate
    *  from tags). */
   conflict_ids: string[];
+  /** The author's declaration that the footage shows death, injury or human
+   *  remains. Blurs the media behind an age confirmation for readers. */
+  is_graphic?: boolean;
   /** Ids of existing media to drop. */
   remove_media_ids: string[];
   /** New source media to upload. */
@@ -202,9 +205,13 @@ function appendSharedEventFields(
     event_time?: string;
     tag_ids?: string[];
     conflict_ids?: string[];
+    is_graphic?: boolean;
   }
 ): void {
   fd.append("title", input.title);
+  // Always sent, never conditional: the geolocate path posts the whole state,
+  // so an omitted field would clear a flag the draft already carried.
+  fd.append("is_graphic", String(input.is_graphic ?? false));
   fd.append("source_url", input.source_url);
   // One append per link: the backend reads `secondary_source_urls` as a
   // repeated form field, not a JSON blob (unlike the id lists below, whose
@@ -320,6 +327,8 @@ export interface EventRequestInput {
   event_time?: string;
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
   source_posted_at: string;
+  /** Same author declaration a geolocation carries (see `EventEditInput`). */
+  is_graphic?: boolean;
   tag_ids?: string[];
   conflict_ids?: string[];
   files: File[];
@@ -591,6 +600,54 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   return apiFetch<EventDetail>(`/events/${id}/close`, {
     method: "POST",
     body: JSON.stringify({ close_reason: closeReason }),
+  });
+}
+
+/** The five buckets a report picks from, and the body of the call. Aliased
+ *  from the generated spec rather than restated, so a backend rename fails
+ *  `tsc` instead of drifting. */
+export type ContentReportReason =
+  components["schemas"]["ContentReportCreate"]["reason"];
+
+/** One report as the admin queue reads it: the bucket, the reporter's own
+ *  words, and the verdict once one lands (`resolved_at === null` is the open
+ *  test on the wire). */
+export type ContentReport = components["schemas"]["ContentReportRead"];
+
+/** How long the reporter's own words may run. Mirrors
+ *  `schemas/report.DETAILS_MAX_LENGTH`: the form stops at the cap instead of
+ *  letting the server 422 a report someone just typed out. */
+export const REPORT_DETAILS_MAX_LEN = 2000;
+
+/**
+ * The human label per report bucket, in the reporter's own register: the
+ * report form offers them and the admin queue reads them back, so one map
+ * serves both and the two surfaces cannot name the same bucket differently.
+ * Keyed by the generated union, so a new backend reason fails `tsc` here
+ * instead of rendering as a raw enum value.
+ */
+export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
+  illegal_content: "Illegal content",
+  graphic_not_flagged: "Graphic content, not flagged",
+  copyright: "Copyright",
+  privacy: "Privacy",
+  other: "Something else",
+};
+
+/**
+ * Report an event: `POST /events/{id}/report`. Open to anyone, signed in or
+ * not: the people who most need to flag illegal or mislabelled footage are the
+ * least likely to hold an account here. `apiFetch` omits the CSRF header when
+ * no session cookie is present, so the same call works logged out; the backend
+ * caps it per IP.
+ */
+export function reportEvent(
+  id: string,
+  body: components["schemas"]["ContentReportCreate"]
+): Promise<ContentReport> {
+  return apiFetch<ContentReport>(`/events/${id}/report`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
+import { EventModerationPanel } from "@/components/admin/EventModerationPanel";
+import { ReportsPanel } from "@/components/admin/ReportsPanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
@@ -40,6 +42,10 @@ export default function AdminPage() {
       <OnboardingPanel />
       <DetectionStatsPanel />
       <ManageAnalystsPanel />
+      {/* Moderation reads top to bottom: the queue says what was reported,
+          the panel under it is the same two axes moved by hand. */}
+      <ReportsPanel />
+      <EventModerationPanel />
       <EventDeletePanel />
       <MaintenancePanel />
     </PageShell>

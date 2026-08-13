@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Plus, Upload, X } from "lucide-react";
 
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
 export interface FileManagerItem {
@@ -23,6 +24,10 @@ export interface FileManagerItem {
   /** Extra controls for the open lightbox (a download for a persisted row),
    *  placed beside its close button. */
   viewActions?: ReactNode;
+  /** Cover this item with `GraphicContentGate`, for media on an event flagged
+   *  `is_graphic`. The gate wraps the whole tile, view trigger included, so the
+   *  lightbox is unreachable (pointer and keyboard) until the reader confirms. */
+  gated?: boolean;
 }
 
 interface FileManagerProps {
@@ -87,8 +92,8 @@ export function FileManager({
 
   // A viewable tile's content sits behind a full-size transparent button so a
   // click opens the lightbox; a non-viewable tile renders its content as-is.
-  const tileBody = (it: FileManagerItem) =>
-    it.viewContent ? (
+  const tileBody = (it: FileManagerItem) => {
+    const body = it.viewContent ? (
       <button
         type="button"
         onClick={() => setViewingKey(it.key)}
@@ -100,6 +105,16 @@ export function FileManager({
     ) : (
       it.content
     );
+    // Outside the view trigger, never inside it: the gate's reveal control is
+    // itself a button, and nesting one in the other is invalid markup whose
+    // click would land on the wrong control. Wrapping the trigger is also what
+    // lets `inert` take it out of the tab order while the gate stands.
+    return it.gated ? (
+      <GraphicContentGate variant="compact">{body}</GraphicContentGate>
+    ) : (
+      body
+    );
+  };
 
   // The overlay shell is the shared <MediaOverlay>, so a staged file in this
   // picker and a persisted one on a detail page open into the same viewer.

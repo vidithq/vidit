@@ -25,6 +25,11 @@ interface MediaManagerProps {
   onRemoveStaged?: (index: number) => void;
   /** Read-only (request fulfilment): show existing media, no add / remove. */
   locked?: boolean;
+  /** The event's `is_graphic` flag. Covers the persisted tiles with the age
+   *  gate, so fulfilling a flagged request does not paint the requester's
+   *  footage at the analyst before they confirm. Staged files are the
+   *  analyst's own pick and stay ungated: they chose the file. */
+  isGraphic?: boolean;
 }
 
 /**
@@ -49,6 +54,7 @@ export function MediaManager({
   onAddFiles,
   onRemoveStaged,
   locked = false,
+  isGraphic = false,
 }: MediaManagerProps) {
   const [stagedUrls, setStagedUrls] = useState<string[]>([]);
   useEffect(() => {
@@ -96,6 +102,7 @@ export function MediaManager({
       viewActions:
         m.media_type === "image" ? <MediaDownloadButton source={m} /> : undefined,
       viewLabel: m.media_type === "image" ? "View image" : "Play video",
+      gated: isGraphic,
     })),
     // Render staged tiles only once their object URLs line up 1:1, else a brief
     // mismatch flashes a broken preview.

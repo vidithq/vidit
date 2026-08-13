@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Expand } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
@@ -45,15 +46,20 @@ export function ProofImage({
   src,
   alt,
   title,
+  isGraphic = false,
 }: {
   src: string;
   alt: string;
   title?: string;
+  /** The event's `is_graphic` flag, threaded here by `renderProof`. A proof
+   *  body shows the same footage the source media does, so it takes the same
+   *  age confirmation. */
+  isGraphic?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
-  return (
-    <span className="group relative inline-block">
+  const figure = (
+    <>
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -88,6 +94,18 @@ export function ProofImage({
           <Expand size={16} />
         </Button>
       </span>
+    </>
+  );
+
+  return (
+    <span className="group relative inline-block">
+      {/* The full interstitial rather than the compact one: a proof image runs
+          the width of the body, so the whole sentence fits. The gate's own
+          wrapper is `relative` too, so the hover cluster keeps positioning
+          against the picture either way. */}
+      {isGraphic ? <GraphicContentGate>{figure}</GraphicContentGate> : figure}
+      {/* Outside the gate: the viewer only opens from a click the gate blocks,
+          and a `fixed` overlay must not sit under the blur filter. */}
       {open &&
         createPortal(
           <MediaLightbox

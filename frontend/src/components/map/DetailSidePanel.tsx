@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import ShareButtons from "@/components/event/ShareButtons";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
+import { useEventActions } from "@/components/event/useEventActions";
 
 interface DetailSidePanelProps {
   /** Null while the selected geolocation is still loading. */
@@ -24,6 +24,12 @@ interface DetailSidePanelProps {
  * + 3.5rem clearance to keep the bottom pill off the panel even on hover.
  */
 export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelProps) {
+  // The panel is a reading surface, so it takes the utilities tier only: the
+  // share pair and the report flag, in the same order and the same spot the
+  // detail pages put them. Called before the loading branch, as every hook must
+  // be; `detail` is null until the row lands.
+  const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
+
   return (
     <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
       <Button
@@ -42,39 +48,46 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
         </div>
       ) : (
         <div className="p-4 space-y-4">
-          <div className="pr-6 space-y-2">
-            <h2 className="text-lg font-medium text-neutral-100">
-              {detail.title}
+          <div className="space-y-2">
+            {/* `pr-6` on the heading alone: it is the line the absolute close
+                button overlaps, and keeping the inset off the block below lets
+                the action row sit flush with the panel's content edge. The
+                title is the permalink to the event page, an explicit TEXT_LINK
+                like every other in-app link in this rich preview (the byline
+                below, requested-by in the body); no external glyph, since that
+                marks external destinations only (ArchivedCopies). */}
+            <h2 className="text-lg font-medium pr-6">
+              <Link
+                href={`/events/${detail.id}`}
+                className={`text-neutral-100 ${TEXT_LINK}`}
+              >
+                {detail.title}
+                {/* ArrowRight, the in-app navigation glyph (detections entry,
+                    landing CTAs); the external ↗ stays reserved for external
+                    destinations. Inline so it rides the last line of a
+                    wrapped title instead of breaking the wrap. */}
+                <ArrowRight size={14} className="ml-1 inline align-[-2px]" />
+              </Link>
             </h2>
+            {/* The panel's actions ride the byline row, right-aligned under the
+                title and clear of the close button, so this surface puts its
+                controls in the same top-right spot the two detail pages do.
+                The same shared cluster as those pages, so tweet and clipboard
+                output and the report form stay in sync across every surface.
+                Navigation lives on the title permalink above, so the row
+                carries actions only. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
                 <AuthorByline author={detail.owner} size="xs" avatar />
               </p>
+              <div className="flex items-center gap-3 shrink-0">{actions}</div>
             </div>
           </div>
 
-          <EventDetailBody geo={detail} variant="panel" />
+          {/* Under the byline row, where the trigger that opened it is. */}
+          {panels}
 
-          {/* Same ShareButtons as the detail page so tweet/clipboard
-              output stays in sync across both share surfaces. */}
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-800">
-            <ShareButtons
-              id={detail.id}
-              title={detail.title}
-              author={detail.owner.username}
-              eventDate={detail.event_date}
-              lat={detail.event_coords?.lat ?? null}
-              lng={detail.event_coords?.lng ?? null}
-              status={detail.status}
-            />
-            <Link
-              href={`/events/${detail.id}`}
-              className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
-            >
-              Full page
-              <ExternalLink size={11} />
-            </Link>
-          </div>
+          <EventDetailBody geo={detail} variant="panel" />
         </div>
       )}
     </div>

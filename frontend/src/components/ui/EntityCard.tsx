@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -29,7 +30,41 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // `object-contain` on the slot's backdrop, so a portrait clip letterboxes in
 // the 16:9 slot rather than showing a cropped band of itself. Consumers: this
 // card and the map's pin preview (the detail surfaces use MediaGallery).
-export function MediaThumb({ media, className }: { media?: Media; className?: string }) {
+//
+// `isGraphic` covers the slot with the compact `GraphicContentGate`, the same
+// per-session confirmation the detail gallery asks for, so a flagged event
+// never paints its footage on a card the reader was only scrolling past. The
+// gate wraps the picture and not the slot, so the "no media" box is never
+// covered (there is nothing to cover).
+export function MediaThumb({
+  media,
+  className,
+  isGraphic = false,
+}: {
+  media?: Media;
+  className?: string;
+  /** The event's `is_graphic` flag. */
+  isGraphic?: boolean;
+}) {
+  const picture = media ? (
+    media.media_type === "image" ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={displayUrlsFor(media).thumbnail}
+        alt=""
+        className="w-full h-full object-cover"
+      />
+    ) : (
+      <video
+        src={posterFrameUrl(media.storage_url)}
+        className="w-full h-full object-contain"
+        preload="metadata"
+        playsInline
+        muted
+      />
+    )
+  ) : null;
+
   return (
     <div
       className={cn(
@@ -40,22 +75,15 @@ export function MediaThumb({ media, className }: { media?: Media; className?: st
         className,
       )}
     >
-      {media ? (
-        media.media_type === "image" ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={displayUrlsFor(media).thumbnail}
-            alt=""
-            className="w-full h-full object-cover"
-          />
+      {picture ? (
+        // The compact gate lifts its own reveal control above the card's
+        // stretched link (`z-20`, the lift `AuthorLink` gets), so the control
+        // takes the click; once revealed nothing is left above the link and
+        // the thumbnail navigates like any other card surface.
+        isGraphic ? (
+          <GraphicContentGate variant="compact">{picture}</GraphicContentGate>
         ) : (
-          <video
-            src={posterFrameUrl(media.storage_url)}
-            className="w-full h-full object-contain"
-            preload="metadata"
-            playsInline
-            muted
-          />
+          picture
         )
       ) : (
         <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
@@ -79,6 +107,8 @@ interface EntityCardBaseProps {
   /** A rendered status pill: `<StatusBadge>` (any lifecycle state). */
   badge?: ReactNode;
   media?: Media;
+  /** The event's `is_graphic` flag, forwarded to the card's media slot. */
+  isGraphic?: boolean;
   /** Always shown: every card carries its author for a uniform byline. */
   author: { username: string };
   date?: string;
@@ -129,6 +159,7 @@ export function EntityCard({
   titleText,
   badge,
   media,
+  isGraphic = false,
   author,
   date,
   coords,
@@ -147,7 +178,9 @@ export function EntityCard({
   // real media or its own "no media" box. Narrower on a phone, where the
   // desktop 112px slot plus the status badge left the title column no width at
   // all and the heading rendered as an empty strip.
-  const thumb = <MediaThumb media={media} className="w-20 sm:w-28" />;
+  const thumb = (
+    <MediaThumb media={media} isGraphic={isGraphic} className="w-20 sm:w-28" />
+  );
 
   if (variant === "feed") {
     return (
@@ -170,7 +203,11 @@ export function EntityCard({
         </div>
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
-          <MediaThumb media={media} className="w-full border border-neutral-800" />
+          <MediaThumb
+            media={media}
+            isGraphic={isGraphic}
+            className="w-full border border-neutral-800"
+          />
         </div>
         {tags && tags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap text-[11px]">

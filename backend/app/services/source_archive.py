@@ -334,6 +334,12 @@ def _backfill_chunk(
     page instead of re-reading the same head of the catalog. The keyset cursor
     is ``(created_at, id)`` so an event that yields no links still advances the
     walk.
+
+    Deletion is the only takedown this scan honours, matching
+    :func:`claim_next`: ``deleted_at`` excludes a row, ``hidden_at`` does not,
+    so a hidden event's unqueued links are still backfilled. A takedown
+    withdraws the event and its archive links from what this service serves
+    publicly; it does not withdraw them from the archives.
     """
     query = db.query(Event.id, Event.source_url, Event.proof, Event.created_at).filter(
         Event.deleted_at.is_(None),
@@ -425,10 +431,13 @@ def claim_next(db: Session) -> SourceArchive | None:
     ``running`` stamp and releases the lock, and the stale window is what
     guards a crash after that point.
 
-    Rows whose event has been soft-deleted are skipped: an admin taking an
-    event down must not be followed by this queue pushing its links to a
-    public archive. ``OF source_archives`` keeps the join from locking the
-    ``events`` row alongside the queue row.
+    Rows whose event has been soft-deleted are skipped: deletion is what stops
+    the queue. A takedown does not. ``hidden_at`` is filtered neither here nor
+    in the backfill, so a hidden event's queued and backfilled links keep
+    archiving; what the takedown withdraws is the public serving of that event
+    and of its archive links, not the captures themselves. ``OF
+    source_archives`` keeps the join from locking the ``events`` row alongside
+    the queue row.
     """
     now = datetime.now(UTC)
     row = (

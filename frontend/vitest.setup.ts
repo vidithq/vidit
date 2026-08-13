@@ -85,15 +85,16 @@ window.matchMedia ??= ((query: string) => ({
   dispatchEvent: () => false,
 })) as typeof window.matchMedia;
 
-// The runner's jsdom exposes no `localStorage`: Node ships its own global,
-// which stays `undefined` unless the process is started with
-// `--localstorage-file`, and it shadows jsdom's on the shared `globalThis`.
-// Anything touching the store then throws, whether it reads `window.localStorage`
-// (the display-preference libs, and their tests) or the bare global, so the
-// environment gets a minimal in-memory `Storage` instead.
-if (!globalThis.localStorage) {
+// The runner's jsdom exposes neither web storage area: Node ships its own
+// globals, which stay `undefined` unless the process is started with
+// `--localstorage-file`, and they shadow jsdom's on the shared `globalThis`.
+// Anything touching a store then throws, whether it reads `window.localStorage`
+// (the display-preference libs, and their tests), `window.sessionStorage` (the
+// graphic-content gate's acknowledgement) or the bare global, so the
+// environment gets a minimal in-memory `Storage` for each instead.
+function memoryStorage(): Storage {
   const store = new Map<string, string>();
-  const storage: Storage = {
+  return {
     get length() {
       return store.size;
     },
@@ -107,10 +108,15 @@ if (!globalThis.localStorage) {
     },
     clear: () => store.clear(),
   };
-  Object.defineProperty(globalThis, "localStorage", {
-    value: storage,
-    configurable: true,
-  });
+}
+
+for (const area of ["localStorage", "sessionStorage"] as const) {
+  if (!globalThis[area]) {
+    Object.defineProperty(globalThis, area, {
+      value: memoryStorage(),
+      configurable: true,
+    });
+  }
 }
 
 // Testing Library's automatic between-test cleanup registers on a global

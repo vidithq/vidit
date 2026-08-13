@@ -17,6 +17,7 @@ export default function DetectionCard({ geo }: { geo: EventDetail }) {
       author={geo.owner}
       badge={<StatusBadge status={geo.status} />}
       media={geo.thumbnail ?? undefined}
+      isGraphic={geo.is_graphic}
       date={geo.event_date ?? undefined}
       coords={geo.event_coords}
       source={geo.detected_from_url ? { url: geo.detected_from_url } : undefined}

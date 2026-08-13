@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     email_from: str = "noreply@vidit.app"
     email_from_name: str = "Vidit"
 
+    # Where a "new content report" notification is sent, one message per report
+    # filed. Unset (the default) sends nothing: reporting still works and the
+    # row is still queued for the admin console, the operator just learns about
+    # it by opening the queue. A single address rather than a list: the
+    # moderation inbox is one destination, and fanning out is the mail
+    # provider's job, not this setting's.
+    report_notify_email: str | None = None
+
     # Public frontend origin for links in transactional emails. Fully-qualified
     # URL, no trailing slash. Prod deploy workflow sets this to https://vidit.app.
     frontend_url: str = "http://localhost:3000"
