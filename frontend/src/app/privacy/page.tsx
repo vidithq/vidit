@@ -9,7 +9,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // Public privacy policy, reachable without an account (see `PUBLIC_PREFIXES`
 // in `proxy.ts`). Linked from the about page, the legal notice and the auth
 // screens. Server component, same PageShell + Card composition as the legal
-// notice, and French for the same reason.
+// notice.
 //
 // Every claim below is checked against the code that writes the data:
 // `models/user.py` for the account, `models/auth_event.py` and
@@ -20,9 +20,9 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // `models/content_report.py` for the reports. Change the code, change this
 // page.
 
-const TITLE = "Politique de confidentialité";
+const TITLE = "Privacy policy";
 const DESCRIPTION =
-  "Données collectées par Vidit, finalités, durées de conservation et exercice de vos droits.";
+  "Data Vidit collects, purposes, retention periods and how to exercise your rights.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     siteName: "Vidit",
     title: TITLE,
     description: DESCRIPTION,
-    locale: "fr_FR",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
@@ -53,150 +53,136 @@ const LIST = "list-disc pl-5 space-y-2 text-sm text-neutral-300 leading-relaxed"
 export default function PrivacyPage() {
   return (
     <PageShell title={TITLE} back backFallback="/about">
-      <div lang="fr" className="space-y-6">
+      <div className="space-y-6">
         <Card as="section">
-          <SectionEyebrow title="Données collectées" margin="none" />
+          <SectionEyebrow title="Data collected" margin="none" />
           <ul className={LIST}>
             <li>
-              <span className="text-neutral-100">Compte</span> : adresse
-              électronique, nom d&apos;utilisateur, empreinte du mot de passe,
-              date de création. Le nom d&apos;utilisateur peut être un
-              pseudonyme : aucune identité civile n&apos;est demandée.
+              <span className="text-neutral-100">Account</span>: email address,
+              username, password hash, creation date. The username can be a
+              pseudonym: no legal identity is requested.
             </li>
             <li>
-              <span className="text-neutral-100">Profil</span> : biographie,
-              adresse d&apos;image de profil et liens externes, tous
-              facultatifs et renseignés par vous.
+              <span className="text-neutral-100">Profile</span>: bio, profile
+              image URL and external links, all optional and provided by you.
             </li>
             <li>
-              <span className="text-neutral-100">Contenus soumis</span> :
-              géolocalisations, médias, preuves, sources et étiquettes, publiés
-              sous votre nom d&apos;utilisateur. Les métadonnées EXIF des images
-              sont supprimées à la réception.
+              <span className="text-neutral-100">Submitted content</span>:
+              geolocations, media, proofs, sources and tags, published under
+              your username. EXIF metadata is stripped from images on receipt.
             </li>
             <li>
-              <span className="text-neutral-100">Journal
-              d&apos;authentification</span> : identifiant de compte, type
-              d&apos;évènement (connexion, échec de connexion, déconnexion,
-              demande de réinitialisation du mot de passe, réinitialisation
-              effectuée, changement de mot de passe et évènements
-              d&apos;inscription) et horodatage. Ni adresse IP ni agent
-              utilisateur n&apos;y figurent.
+              <span className="text-neutral-100">Authentication log</span>:
+              account identifier, event type (login, failed login, logout,
+              password reset request, completed reset, password change and
+              registration events) and timestamp. Neither IP address nor user
+              agent appears in it.
             </li>
             <li>
-              <span className="text-neutral-100">Signalements</span> : le motif,
-              le texte éventuel du signalement et, si le signalement provient
-              d&apos;un compte, l&apos;identifiant de ce compte. Un signalement
-              anonyme n&apos;est rattaché à personne.
+              <span className="text-neutral-100">Reports</span>: the reason,
+              the optional report text and, if the report comes from an
+              account, that account&apos;s identifier. An anonymous report is
+              not linked to anyone.
             </li>
             <li>
-              <span className="text-neutral-100">Données de connexion</span> :
-              votre adresse IP sert uniquement, et sans être enregistrée, de
-              clé de limitation du débit des requêtes. Aucune table de la
-              plateforme ne la conserve.
+              <span className="text-neutral-100">Connection data</span>: your
+              IP address is used only, and without being stored, as a request
+              rate-limiting key. No table on the platform keeps it.
             </li>
             <li>
-              <span className="text-neutral-100">Cookies</span> : un cookie de
-              session et un cookie anti-CSRF, tous deux nécessaires au
-              fonctionnement du site. Aucun cookie publicitaire ni traceur
-              inter-sites.
+              <span className="text-neutral-100">Cookies</span>: a session
+              cookie and an anti-CSRF cookie, both required for the site to
+              work. No advertising cookies, no cross-site trackers.
             </li>
           </ul>
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Finalités" margin="none" />
+          <SectionEyebrow title="Purposes" margin="none" />
           <ul className={LIST}>
             <li>
-              Tenir votre compte, vous authentifier et vous envoyer les courriels
-              de service (confirmation d&apos;inscription, réinitialisation du
-              mot de passe).
+              Maintain your account, authenticate you and send you service
+              emails (registration confirmation, password reset).
             </li>
             <li>
-              Publier les contenus que vous soumettez et les attribuer à leur
-              auteur.
+              Publish the content you submit and attribute it to its author.
             </li>
             <li>
-              Traiter les signalements et modérer les contenus illicites ou non
-              signalés comme sensibles.
+              Handle reports and moderate content that is illegal or was not
+              flagged as sensitive.
             </li>
             <li>
-              Protéger la plateforme des abus : limitation du débit des requêtes
-              et journal d&apos;authentification, qui sert à constater une
-              activité anormale sur un compte.
+              Protect the platform from abuse: request rate limiting and the
+              authentication log, which serves to detect unusual activity on an
+              account.
             </li>
           </ul>
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Durées de conservation" margin="none" />
+          <SectionEyebrow title="Retention periods" margin="none" />
           <ul className={LIST}>
             <li>
-              Les données de compte et les contenus publiés sont conservés tant
-              que le compte existe.
+              Account data and published content are kept for as long as the
+              account exists.
             </li>
             <li>
-              Une inscription non confirmée expire au bout de 24 heures et sa
-              ligne est supprimée.
+              An unconfirmed registration expires after 24 hours and its row is
+              deleted.
             </li>
             <li>
-              Les jetons de confirmation et de réinitialisation expirés sont
-              supprimés dès leur expiration ; les jetons déjà utilisés le sont
-              au bout de 30 jours.
+              Expired confirmation and reset tokens are deleted as soon as they
+              expire; used tokens are deleted after 30 days.
             </li>
             <li>
-              Le journal d&apos;authentification et les signalements sont
-              conservés sans limite de durée : ce sont les traces qui permettent
-              de constater ce qui s&apos;est passé sur un compte et ce qui a été
-              décidé sur un contenu.
+              The authentication log and the reports are kept without a time
+              limit: they are the records that establish what happened on an
+              account and what was decided about a content item.
             </li>
             <li>
-              La suppression d&apos;un compte retire le compte et ses
-              contributions de toute consultation publique ; la suppression
-              définitive, qui efface aussi les fichiers stockés, est effectuée
-              sur demande.
+              Deleting an account removes the account and its contributions
+              from all public view; permanent deletion, which also erases the
+              stored files, is carried out on request.
             </li>
           </ul>
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Destinataires" margin="none" />
+          <SectionEyebrow title="Recipients" margin="none" />
           <p className={PARAGRAPH}>
-            Les données ne sont ni vendues ni cédées. Elles sont traitées par
-            les prestataires techniques nécessaires au fonctionnement du site :
-            hébergement de l&apos;application et de la base de données, stockage
-            des fichiers, envoi des courriels de service, mesure d&apos;audience
-            agrégée et rapports d&apos;erreur. Les contenus que vous publiez
-            sont, eux, publics par nature.
+            Data is neither sold nor transferred. It is processed by the
+            technical providers the site needs to run: application and database
+            hosting, file storage, service email delivery, aggregate audience
+            measurement and error reporting. The content you publish is, by
+            nature, public.
           </p>
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Vos droits" margin="none" />
+          <SectionEyebrow title="Your rights" margin="none" />
           <p className={PARAGRAPH}>
-            Vous disposez d&apos;un droit d&apos;accès, de rectification et de
-            suppression de vos données, ainsi que d&apos;un droit
-            d&apos;opposition et à la limitation du traitement. Le nom
-            d&apos;utilisateur, la biographie, l&apos;image de profil et les
-            liens externes se modifient directement depuis vos réglages.
+            You have the right to access, rectify and delete your data, as well
+            as the right to object to and to restrict processing. The username,
+            bio, profile image and external links can be edited directly from
+            your settings.
           </p>
           <p className={PARAGRAPH}>
-            Pour tout le reste, écrivez à{" "}
+            For everything else, write to{" "}
             <a href={`mailto:${CONTACT_EMAIL}`} className={TEXT_LINK}>
               {CONTACT_EMAIL}
             </a>{" "}
-            depuis l&apos;adresse rattachée au compte. Vous pouvez également
-            introduire une réclamation auprès de la CNIL.
+            from the address linked to the account. You can also lodge a
+            complaint with the CNIL, the French data protection authority.
           </p>
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Éditeur et hébergeurs" margin="none" />
+          <SectionEyebrow title="Publisher and hosting providers" margin="none" />
           <p className={PARAGRAPH}>
-            L&apos;identification des hébergeurs et les modalités de
-            signalement figurent dans les{" "}
+            The identity of the hosting providers and how to send notices are
+            set out in the{" "}
             <Link href="/legal" className={TEXT_LINK}>
-              mentions légales
+              legal notice
             </Link>
             .
           </p>

@@ -123,20 +123,18 @@ const GUIDES = [
   },
 ];
 
-// The two published legal pages. In French, unlike the rest of the app: they
-// are the notices French law asks a publisher established in France to serve.
-// The row labels stay English, like every other label outside those pages.
+// The two published legal pages.
 const LEGAL = [
   {
     icon: Scale,
     label: "Legal notice",
-    value: "Mentions légales",
+    value: "Publisher, hosts and contact",
     href: "/legal",
   },
   {
     icon: FileLock,
     label: "Privacy policy",
-    value: "Politique de confidentialité",
+    value: "Your data and your rights",
     href: "/privacy",
   },
 ];
