@@ -247,13 +247,31 @@ def resolve_report(
     ``dismissed`` only: the other two verdicts mutate an event row that is no
     longer there.
 
+    Concurrency: the report is fetched ``with_for_update()`` FIRST and its
+    verdict re-checked under the lock, so two admins resolving the same report
+    serialize and the loser sees the 409 rather than overwriting the first
+    verdict. The event the verdict mutates is locked the same way.
+
     Returns ``(report, hidden_changed)``; the flag is the router's cue to drop
     the points cache. Raises :class:`ReportNotFoundError` (404) on an unknown
     id, :class:`ReportAlreadyResolvedError` (409) on a report that already
     carries a verdict, and :class:`ReportEventGoneError` (409) on an
     event-mutating verdict against a deleted event.
     """
-    report = db.query(ContentReport).filter(ContentReport.id == report_id).first()
+    # Lock the report row FIRST, then re-check the verdict under the lock, the
+    # ``_publish_draft`` pattern: two admins resolving the same report
+    # serialize here and the loser reads the winner's verdict, so the
+    # documented 409 holds under concurrency instead of both writes landing.
+    # ``populate_existing()`` is load-bearing whenever the row is already in
+    # the session's identity map, where the locked SELECT would otherwise be
+    # answered from a stale Python object.
+    report = (
+        db.query(ContentReport)
+        .filter(ContentReport.id == report_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
     if report is None:
         raise ReportNotFoundError("Report not found")
     if report.resolved_at is not None:
@@ -268,9 +286,18 @@ def resolve_report(
                 "The reported event was deleted, so this report can only be dismissed"
             )
     else:
-        # Soft-deleted and already-hidden rows are reachable on purpose: a
-        # report filed before the removal still deserves a verdict.
-        event = db.query(Event).filter(Event.id == report.event_id).one()
+        # Locked too, since the verdict mutates it: a resolve racing the
+        # direct moderation endpoint over the same event serializes on this
+        # row rather than interleaving the two writes. Soft-deleted and
+        # already-hidden rows are reachable on purpose: a report filed before
+        # the removal still deserves a verdict.
+        event = (
+            db.query(Event)
+            .filter(Event.id == report.event_id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
         if resolution == "marked_graphic":
             _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
         elif resolution == "hidden":
@@ -311,10 +338,22 @@ def set_event_moderation(
     can also UNDO a takedown, which is why it does not go through
     ``_resolve_live_event`` (that helper hides withheld rows by design).
 
+    Concurrency: the event is fetched ``with_for_update()``, like the one a
+    report verdict mutates, so the two admin doors onto the same two columns
+    serialize.
+
     Returns ``(event, hidden_changed)``. Raises :class:`EventNotFoundError`
     (404) for an unknown or soft-deleted event.
     """
-    event = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
+    # Locked like the event a report verdict mutates, so the two admin doors
+    # onto the same two columns serialize instead of interleaving.
+    event = (
+        db.query(Event)
+        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
     if event is None:
         raise EventNotFoundError("Event not found")
 
