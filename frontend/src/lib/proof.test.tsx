@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { proofHasImage, renderProof } from "./proof";
 
 const doc = (...content: Record<string, unknown>[]) => ({
@@ -135,7 +135,7 @@ describe("renderProof", () => {
     expect(imgs[0]).toHaveAttribute("referrerpolicy", "no-referrer");
   });
 
-  it("renders a valid https:// image src", () => {
+  it("renders any https:// image src when no media host is pinned", () => {
     const container = renderDoc(
       doc({
         type: "image",
@@ -225,6 +225,47 @@ describe("renderProof", () => {
     );
     expect(container.querySelector("iframe")).toBeNull();
     expect(container).toHaveTextContent("safe");
+  });
+});
+
+describe("image host pinning (NEXT_PUBLIC_MEDIA_HOST)", () => {
+  // The build's media host is the client's copy of the backend's CDN pin
+  // (`sanitize._safe_image_src`), so a foreign https host is a tracking pixel
+  // rather than evidence, whichever side of the wire it reaches.
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_MEDIA_HOST", "cdn.example.net");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("renders an image served by the pinned host", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "https://cdn.example.net/proof/p.jpg" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("drops an image served by any other https host", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "https://attacker.example/pixel.gif" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("still renders a relative src", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "/media/proof/p.jpg" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("drops the local-storage dev src, which a pinned build never mints", () => {
+    const container = renderDoc(
+      doc({ type: "image", attrs: { src: "http://localhost:8000/local-storage/p.jpg" } })
+    );
+    expect(container.querySelectorAll("img")).toHaveLength(0);
   });
 });
 
