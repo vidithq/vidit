@@ -247,7 +247,6 @@ class EventRead(BaseModel):
     detected_at: datetime | None
     geolocated_at: datetime | None
     closed_at: datetime | None
-    is_demo: bool
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
@@ -298,7 +297,6 @@ class EventList(BaseModel):
     # so the key is always serialised.
     event_coords: CoordsRead | None
     event_date: date | None
-    is_demo: bool
     # See ``EventRead.status``; a list card marks ``detected`` too.
     status: EventStatus
     # Lets the card tell a withdrawn request from a rejected detection.

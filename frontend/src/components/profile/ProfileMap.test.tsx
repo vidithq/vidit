@@ -22,7 +22,7 @@ import type { MapPoint } from "@/types";
 
 import { ProfileMap } from "./ProfileMap";
 
-// [id, lat, lng, event_date, added_date, detected, demo]
+// [id, lat, lng, event_date, added_date, detected]
 const point = (id: string, detected: 0 | 1): MapPoint => [
   id,
   48.1,
@@ -30,7 +30,6 @@ const point = (id: string, detected: 0 | 1): MapPoint => [
   "2026-01-01",
   "2026-01-02",
   detected,
-  0,
 ];
 
 describe("ProfileMap", () => {

@@ -254,7 +254,7 @@ export function ReviewDraft({
           <div className="h-64 overflow-hidden rounded-md sm:h-80">
             <Map
               points={
-                point ? [[draft.id, point.lat, point.lng, "", "", 1, 0]] : []
+                point ? [[draft.id, point.lat, point.lng, "", "", 1]] : []
               }
               center={point ?? undefined}
               zoom={9}

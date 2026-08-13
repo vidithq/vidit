@@ -342,13 +342,12 @@ async def test_geolocated_pair_is_skipped(db, owner):
 
 async def test_backfill_from_archive_end_to_end(db, owner):
     # Full chain: read the synthetic X export -> stitch -> detect -> assemble.
-    outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
+    outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
     assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
 
     geos = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert len(geos) == 6
     assert all(g.status == STATUS_DETECTED for g in geos)
-    assert all(g.is_demo for g in geos)  # dev/admin seed marks them wipeable
     assert all(g.proof and g.proof["content"] for g in geos)
     # No tweet in the synthetic archive quotes or links footage: every row is
     # honestly source-less, nothing deduced from the tweets' own permalinks.
@@ -368,7 +367,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     assert all(m.role == "proof" for m in media_rows)
 
     # Re-running the same archive is a no-op (idempotent on the permalink+coord).
-    again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE, is_demo=True)
+    again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
     assert again.created == [] and again.skipped == 6
 
 

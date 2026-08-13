@@ -1,7 +1,7 @@
 """detected_from archival origin
 
-Revision ID: v4x6z8b0d2f4
-Revises: u3w5y7a9c1e3
+Revision ID: y7a9c1e3g5i7
+Revises: v4x6z8b0d2f4
 Create Date: 2026-08-12 16:00:00.000000
 
 The post a machine draft was detected from (``events.detected_from_url``) is
@@ -23,8 +23,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "v4x6z8b0d2f4"
-down_revision: Union[str, None] = "u3w5y7a9c1e3"
+revision: str = "y7a9c1e3g5i7"
+down_revision: Union[str, None] = "v4x6z8b0d2f4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -7,7 +7,6 @@ import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
-import { ToggleRow } from "@/components/ui/ToggleRow";
 import { Dot } from "@/components/ui/Dot";
 import {
   EMPTY_DATE_WINDOWS,
@@ -29,9 +28,7 @@ interface FilterPanelProps {
    *  Conflict chip bucket. Server-ordered: ongoing first, then name. */
   conflicts: Conflict[];
   /** Boundary-filtered points, pre-window. The histograms read them through
-   *  the status pick (below) so they only count points a scrub can reveal;
-   *  the hide-demo gate reads them raw so an active filter can't strand the
-   *  toggle. */
+   *  the status pick (below) so they only count points a scrub can reveal. */
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
@@ -43,9 +40,8 @@ interface FilterPanelProps {
  * The map's filter overlay: the header button, the shared removable-pill row
  * (`ActiveFilterPills`, visible even while the panel is collapsed), and the
  * shared section stack (`EventFilterSections`, the same panel the search page
- * renders). Map-specific: the two timeline scrubbers as the date sections
- * (fed by the points histogram; the windows filter client-side) and the
- * hide-demo toggle (gated on demo rows being on the map). Filter state lives
+ * renders). Map-specific: the two timeline scrubbers as the date sections, fed
+ * by the points histogram, whose windows filter client-side. Filter state lives
  * in MapStateContext so it survives navigation.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
@@ -58,8 +54,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setEventPlaying,
     addedPlaying,
     setAddedPlaying,
-    hideDemo,
-    setHideDemo,
     filtersOpen,
     setFiltersOpen,
   } = useMapState();
@@ -102,7 +96,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setDateWindows(EMPTY_DATE_WINDOWS);
     setEventPlaying(false);
     setAddedPlaying(false);
-    setHideDemo(false);
   };
 
   // The scrubbers histogram the same set the status chips leave on the map:
@@ -113,13 +106,10 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     [points, filters.statuses]
   );
 
-  // The shared value + window pill entries plus the map's own demo entry.
+  // The shared value + window pill entries.
   const activeFilters: ActiveFilter[] = [
     ...buildActiveFilterPills(filters, onPatch),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
-    ...(hideDemo
-      ? [{ key: "hide-demo", label: "Demo hidden", onRemove: () => setHideDemo(false) }]
-      : []),
   ];
   // The author narrows the view without carrying a pill (its chip lives in
   // the Author section), so the badge counts it on top of the pill entries:
@@ -209,20 +199,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 ),
               },
             ]}
-            extraToggles={
-              /* Offered only when a demo row is actually on the map (the
-                 payload flags them), like `?used=true` narrows the conflict
-                 list: a toggle that can't change anything is noise. Kept
-                 while active even though the filtered payload then carries
-                 no demo rows, else it couldn't be switched off. */
-              (hideDemo || points.some((p) => p[6] === 1)) && (
-                <ToggleRow
-                  label="Hide demo data"
-                  on={hideDemo}
-                  onToggle={() => setHideDemo((v) => !v)}
-                />
-              )
-            }
           />
         </div>
       )}

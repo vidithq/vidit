@@ -166,9 +166,12 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
  * because nothing parses the local data stream.
  *
  * Sensitive entries (DMs, account data, …) are never read at all; only
- * their directory records are. Media is rebased by basename under
- * `tweets_media/`; the tweets.js match is anchored so `deleted-tweets.js`
- * is not picked up. Throws an `ApiError` carrying the same `code` the
+ * their directory records are. Both matches are anchored the way the backend
+ * anchors them: `tweets.js` by whole path segment, so `deleted-tweets.js` is
+ * not picked up, and media by the `tweets_media/` directory sitting beside
+ * that `tweets.js`, so `deleted_tweets_media/` and a second nested export are
+ * not either. Kept media is rebased by basename under `tweets_media/`, the
+ * flat shape the backend expects. Throws an `ApiError` carrying the same `code` the
  * backend would (`archive_malformed` / `archive_no_tweets` /
  * `archive_too_large`) so the page maps it to one message.
  *
@@ -205,10 +208,24 @@ export async function stripArchive(
     );
   }
 
+  // The prefix the export nests under (`data/`, `""`, or a top folder),
+  // derived from the chosen `tweets.js` exactly as the backend derives it.
+  // The media match is anchored on it: a substring match would also keep
+  // `data/deleted_tweets_media/1.jpg` (the media of deleted posts, whose path
+  // literally contains `tweets_media/`) and any second nested export, and
+  // rebasing those under `tweets_media/` puts them past the backend's own
+  // allowlist, which only ever sees the rebased names.
+  const root = tweetsEntry.name.slice(0, -TWEETS_FILE.length);
+  const mediaPrefix = `${root}${MEDIA_DIR}`;
+  // Basename dedup: the output is flat, so two members of the one kept media
+  // directory sharing a basename (a nested subdirectory, or a zip carrying the
+  // same name twice) would otherwise be written twice under one output name.
+  // The backend resolves that collision by overwriting; the re-zip has no such
+  // resolution, so the first member of a name wins here.
   const seenMedia = new Set<string>();
   const kept: { entry: CdEntry; outName: string }[] = [{ entry: tweetsEntry, outName: TWEETS_FILE }];
   for (const entry of entries) {
-    if (!entry.name.includes(MEDIA_DIR)) continue;
+    if (!entry.name.startsWith(mediaPrefix)) continue;
     const base = entry.name.slice(entry.name.lastIndexOf("/") + 1);
     if (!base || entry.name.endsWith("/") || seenMedia.has(base)) continue;
     seenMedia.add(base);

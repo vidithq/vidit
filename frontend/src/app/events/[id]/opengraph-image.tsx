@@ -19,9 +19,7 @@ import { ogFetch } from "../../_og/data";
 // `og:image` for `/events/{id}`: the geolocation as a share card. One read of
 // `GET /events/{id}`, the same anonymous payload the page renders from, so the
 // card can only ever show what a signed-out visitor already sees; a
-// soft-deleted event 404s upstream and lands on the fallback below. A demo row
-// carries its badge here exactly as it does on the page, so a synthetic event
-// stays labelled once its link leaves the site.
+// soft-deleted event 404s upstream and lands on the fallback below.
 
 export const runtime = "nodejs";
 export const size = OG_SIZE;
@@ -44,9 +42,6 @@ function EventBadges({ event }: { event: EventDetail }) {
   const { label, tone } = EVENT_STATUS_META[event.status];
   return (
     <div style={{ display: "flex", gap: "12px" }}>
-      {/* Synthetic rows are labelled first: a demo link that leaves the site
-          must not read as catalog evidence. */}
-      {event.is_demo ? <OgBadge label="Demo" /> : null}
       <OgBadge label={label} tone={tone} />
     </div>
   );

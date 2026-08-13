@@ -53,17 +53,6 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
  *  media has uploaded. */
 export const MAX_SECONDARY_SOURCE_LINKS = 10;
 
-/** Whether a row's source renders as the inert "synthetic" placeholder instead
- *  of its real link. Demo rows carry a non-resolving `source_url`, so it's
- *  hidden. A `detected` row is the exception: its source IS its provenance post
- *  (the imported tweet), a realistic link worth showing even in demo data. */
-export function sourceIsSynthetic(g: {
-  is_demo: boolean;
-  status: EventStatus;
-}): boolean {
-  return g.is_demo && g.status !== "detected";
-}
-
 /** Page size for the owner Detections queue. Kept below the backend default
  *  (`per_page=20`, capped at 100) so the source-media previews on each row
  *  load faster. */

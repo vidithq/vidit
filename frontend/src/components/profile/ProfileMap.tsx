@@ -28,8 +28,7 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * Both live statuses are mapped: `geolocated` submissions and the `detected`
  * machine drafts behind them, which the shared `<Map>` already paints in its
  * own shade from the point tuple's `detected` flag, so the two read apart on a
- * profile exactly as they do on `/map`. Demo rows stay out, dropped by the
- * endpoint's own `hide_demo`.
+ * profile exactly as they do on `/map`.
  *
  * The count beside the heading splits on the same statuses, under the status
  * names the Insights card above uses (`Geolocated`, `Detected`), so a reader
@@ -50,7 +49,7 @@ export function ProfileMap({ username }: { username: string }) {
   // (`useApiResource`), so an ineligible handle makes no request.
   const path = AUTHOR_FILTER_RE.test(username)
     ? `/events/points?author=${encodeURIComponent(username)}` +
-      `&hide_demo=true&bbox=${toBboxParam(WORLD_BOUNDS)}`
+      `&bbox=${toBboxParam(WORLD_BOUNDS)}`
     : null;
   const { data } = useApiResource<MapPoint[]>(path);
   // One set drives the camera and the counts, so the two can never report

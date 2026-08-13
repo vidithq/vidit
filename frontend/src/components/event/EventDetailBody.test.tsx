@@ -38,7 +38,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_date: "2026-06-01",
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
-    is_demo: false,
     status: "geolocated",
     close_reason: null,
     before_closed_status: null,

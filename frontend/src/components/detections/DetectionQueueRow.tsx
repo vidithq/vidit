@@ -4,7 +4,7 @@ import { MediaThumb } from "@/components/ui/EntityCard";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
-import { batchCompletionBlockers, sourceIsSynthetic } from "@/lib/events";
+import { batchCompletionBlockers } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
@@ -67,11 +67,7 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
             <span>
               {draft.event_date ? formatDate(draft.event_date) : "No event date"}
             </span>
-            <SourceLabel
-              variant="inline"
-              url={draft.source_url}
-              isDemo={sourceIsSynthetic(draft)}
-            />
+            <SourceLabel variant="inline" url={draft.source_url} />
           </div>
         </div>
         {/* Nothing on the row takes a pointer of its own, so the badge sits

@@ -72,7 +72,6 @@ def _build_points_cache_key(
     submitted_to: str | None,
     author: str | None,
     media: list[str] | None = None,
-    hide_demo: bool = False,
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
 
@@ -106,7 +105,6 @@ def _build_points_cache_key(
             submitted_to,
             author,
             sorted(media) if media else None,
-            hide_demo,
         ]
     )
     return f"points:{hashlib.sha256(payload).hexdigest()}"
@@ -169,11 +167,10 @@ def list_points(
     # ``media`` accepts multiple values (``?media=image&media=video``); an event
     # matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
-    hide_demo: bool = False,
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
-    ``[[id, lat, lng, event_date, added_date, detected, demo], ...]``.
+    ``[[id, lat, lng, event_date, added_date, detected], ...]``.
     No joins, designed for map display with client-side clustering.
     ``bbox`` (``south,west,north,east``) is required and bounds the payload
     by the area asked for rather than by catalog size; a missing or malformed
@@ -185,10 +182,9 @@ def list_points(
     (the column is optional) and the frontend then leaves that point out of
     the event-date scrubber instead of hiding it. The frontend buckets the
     dates for the two timeline scrubbers and filters the windows client-side
-    (no refetch per drag). ``detected`` is ``1`` for a machine detection (rendered marked),
-    ``0`` for a geolocated row; ``demo`` is ``1`` for a demo row (the filter
-    panel offers its hide-demo toggle only when one is present). Flags, not
-    strings, to keep the payload small. Cached in-memory for 60s per unique
+    (no refetch per drag). ``detected`` is ``1`` for a machine detection
+    (rendered marked), ``0`` for a geolocated row: a flag, not a status string,
+    to keep the payload small. Cached in-memory for 60s per unique
     bbox + filter combination, the bbox first snapped outward onto a fixed
     server-side grid (see :func:`snap_bbox`).
     """
@@ -209,7 +205,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        hide_demo=hide_demo,
     )
 
     cached_bytes = points_cache.get(cache_key)
@@ -227,7 +222,6 @@ def list_points(
         Event.event_date,
         Event.created_at,
         Event.status,
-        Event.is_demo,
     )
     q = apply_filters(
         q,
@@ -240,7 +234,6 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        hide_demo=hide_demo,
     )
     # Map-only narrowing on top of the located view: a closed detection stays
     # on the list (audit trail) but comes off the map, a coordinate is
@@ -252,10 +245,9 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 7-tuple: [id, lat, lng, event_date, added_date, detected, demo].
-    # ``detected`` / ``demo`` are 1/0 flags (not strings) so the no-LIMIT
-    # payload stays small; the map colours the marker off ``detected``
-    # and the filter panel shows its hide-demo toggle off ``demo``.
+    # Compact 6-tuple: [id, lat, lng, event_date, added_date, detected].
+    # ``detected`` is a 1/0 flag (not a status string) so the no-LIMIT payload
+    # stays small; the map colours the marker off it.
     result = [
         [
             str(r.id),
@@ -264,7 +256,6 @@ def list_points(
             r.event_date.isoformat() if r.event_date else None,
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
-            1 if r.is_demo else 0,
         ]
         for r in rows
     ]

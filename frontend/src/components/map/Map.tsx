@@ -79,7 +79,7 @@ const FADE_IN_END = CLUSTER_MAX_ZOOM + 1.25;
 const CLUSTER_OVERSHOOT_ZOOM = CLUSTER_MAX_ZOOM + 1.3;
 
 /** Named view over the compact MapPoint tuple from /events/points:
- *  [id, lat, lng, event_date, added_date, detected, demo]. The map only
+ *  [id, lat, lng, event_date, added_date, detected]. The map only
  *  needs these four fields; naming them here keeps every use site
  *  self-verifying instead of destructuring blind tuple positions. */
 function mapPointFields(p: MapPoint): {

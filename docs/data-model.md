@@ -14,7 +14,6 @@ erDiagram
         BOOLEAN is_admin
         TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
-        BOOLEAN is_demo "synthetic demo author"
         INTEGER token_version "session-invalidation counter"
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
@@ -95,7 +94,6 @@ erDiagram
         TEXT close_reason "nullable, free-text"
         VARCHAR before_closed_status "nullable, status before closed"
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
-        BOOLEAN is_demo "synthetic demo row"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
@@ -201,19 +199,17 @@ erDiagram
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable. The pre-creation registration flow sets this to `created_at`. Every row created after the `pending_registrations` migration exists because the analyst clicked the confirmation link, so this field is non-NULL for new accounts. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events they own, and their contributor rows, and sweeps S3. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
-| `is_demo` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` only for accounts the admin Demo data seeder creates: 5 fixed `demo-analyst-N` accounts with unloggable password hashes and `@vidit.invalid` emails. The wipe button drops every flagged user and their geolocations in one action. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. Pre-migration cookies, which carry no `tv` claim, also return 401. The migration's one-time forced logout is intentional. |
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
 | `avatar_url` | `TEXT` | nullable. A public avatar URL. The API layer validates it as http(s) to keep `javascript:` URLs out of the `<img src>` render path. There is no upload pipeline: it is a free-form URL, and analysts paste a Gravatar or CDN link. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. A Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`). The default `{}` means the value is never NULL, so the read path always gets a dict. `PATCH /users/me` replaces the whole column. A partial merge would conflict with the whole-panel form submit. |
-| `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()`. The moment an owner took control of the account. It defaults to insert time, so owned-at-creation paths (registration, the seeder, future sign-up flows) are correct without explicitly setting it. It is NULL only on legacy rows from the retired assembled-profile mechanism, which inserted an explicit NULL for a credential-less unclaimed profile. No current path writes NULL. Existing rows were backfilled to `created_at`. |
+| `claimed_at` | `TIMESTAMPTZ` | nullable, `DEFAULT now()`. The moment an owner took control of the account. It defaults to insert time, so owned-at-creation paths (registration, the mock scripts, future sign-up flows) are correct without explicitly setting it. It is NULL only on legacy rows from the retired assembled-profile mechanism, which inserted an explicit NULL for a credential-less unclaimed profile. No current path writes NULL. Existing rows were backfilled to `created_at`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
 - `users_x_handle_key`: UNIQUE on `(x_handle)`. Enforces one account per X handle. Postgres allows unlimited NULLs, so handle-less rows are unaffected.
 - `ix_users_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Admin search and the auth path both filter on `deleted_at IS NULL`.
-- `ix_users_demo`: partial index on `(id) WHERE is_demo = true`. The wipe sweep runs `WHERE is_demo = true`; without this index, it would full-scan the table.
 - `ix_users_search_fts`: GIN index on `to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))`. Backs `GET /search` (the analyst branch). `bio` is part of the indexed expression so `ts_headline` can return a fragment highlight.
 
 The nullable `email`, `password_hash`, and `claimed_at` columns are the footprint of the retired credential-less assembled-profile model, which minted rows from an X handle alone and left `claimed_at IS NULL`. No path creates such rows anymore. `x_handle` is now the admin-linked bot-attribution anchor. See the [CHANGELOG](../CHANGELOG.md) for the rationale behind a claim flag over a separate `authors` table.
@@ -353,7 +349,6 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the requested-view routing, and lets re-import treat a closed detection as re-importable. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin takedown (soft-delete): public reads filter the row out, but the row still exists. |
-| `is_demo` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` only for rows the admin Demo data panel seeds. Surfaced through the always-attached `demo` free tag, filterable in the map UI, and dropped in bulk by the wipe button. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -387,7 +382,6 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `(event_date)` and `(created_at)`. Support time-based queries.
 - `(owner_id, created_at DESC)`. A composite index for profile listing. Single-author reads stay on `owner_id` until they re-home onto `event_geolocators`.
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
-- `ix_events_demo`: partial index on `(id) WHERE is_demo = true`. The demo-wipe sweep runs `WHERE is_demo = true`; without this index, it would full-scan the table.
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view (formerly the request list), the map, and the detection queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events`, `GET /events/detections`, and `GET /timeline` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
 - `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the assemble idempotency lookup, one per detection during a backfill. Human rows are always NULL here.
@@ -486,14 +480,14 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 | `role` | `VARCHAR` | NOT NULL. `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
 | `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
-| `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. NULL on rows that predate this column. Demo-seeder rows carry the hash too. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
+| `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. NULL on rows that predate this column. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 `uploaded_ip` and `uploaded_user_agent` are **not stored**. Vidit drops them for privacy; network context lives only at the Cloudflare edge.
 
 **Indexes:**
-- `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the populated cohort, so demo rows do not bloat it.
+- `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the populated cohort, so rows that predate the column do not bloat it.
 - unique `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
 
 Each request and each `geolocated` event requires at least one `source` media row. The `geolocate` transition requires at least one `proof` image. A `requested` event carries the poster's evidence from the start.
@@ -510,7 +504,7 @@ Each request and each `geolocated` event requires at least one `source` media ro
 | `name` | `VARCHAR(100)` | UNIQUE, NOT NULL |
 | `category` | `VARCHAR(20)` | NOT NULL, `'capture_source'` or `'free'` |
 
-Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Migration `s5n7p9r1t3v5` seeds them in production. The demo seeder is local-only, but the category is required on the submit form, so the options must exist on a fresh production database.
+Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Migration `s5n7p9r1t3v5` seeds them in production, since the category is required on the submit form and the options must exist on a fresh database.
 Tags with category `free` are user-created and free-form.
 
 Conflicts were formerly a third category. They now live in the dedicated [`conflicts`](#conflicts) table; migration `j2l4n6p8r0t2` moved the rows and their event links.
@@ -714,4 +708,4 @@ You can map a third-party KMZ export locally to generate test data. The files ar
 | "Geolocation(s)" URLs in `description` | → | `events.proof` |
 | `styleUrl` (icon color) | → | `tags` (side / event type) |
 
-This repo no longer scripts local KMZ import. The prior `seed_external.py` and `enrich_media.py` scripts were deleted. The admin Demo data panel replaces them with a synthetic-data flow that references a curated `demo-pool/` S3 prefix. This mapping is kept for a future agreement-bound import.
+This repo does not script local KMZ import. Local databases are filled from a production restore (`make import-prod`, see [`backups.md`](backups.md#import-production-into-local-dev)) or from an X archive import. This mapping is kept for a future agreement-bound import.

@@ -57,8 +57,8 @@ class Media(Base):
     __table_args__ = (
         # Mirror of ``MediaRole``; keep the two in step.
         CheckConstraint("role IN ('source', 'proof')", name="ck_media_role_valid"),
-        # Non-unique partial index on the populated cohort — "find every row with
-        # this hash" cheaply, skipping demo rows (always NULL ``sha256``).
+        # Non-unique partial index on the populated cohort: "find every row with
+        # this hash" cheaply, skipping rows that predate the column.
         Index("ix_media_sha256", "sha256", postgresql_where="sha256 IS NOT NULL"),
         # The "at most one source media per event" cap, database-enforced.
         Index(

@@ -105,65 +105,6 @@ export function purgeDetectedEvents(
   );
 }
 
-// ── Demo data ─────────────────────────────────────────────────────────
-
-export interface SeedDemoResponse {
-  created: number;
-  templates: number;
-  authors: number;
-}
-
-export function seedDemo(count: number): Promise<SeedDemoResponse> {
-  return apiFetch<SeedDemoResponse>("/admin/seed-demo", {
-    method: "POST",
-    body: JSON.stringify({ count }),
-  });
-}
-
-export interface WipeDemoResponse {
-  deleted_geos: number;
-  deleted_users: number;
-}
-
-export function wipeDemo(): Promise<WipeDemoResponse> {
-  return apiFetch<WipeDemoResponse>("/admin/seed-demo", {
-    method: "DELETE",
-  });
-}
-
-// ── Demo requests ─────────────────────────────────────────────────────
-
-export interface SeedDemoRequestsResponse {
-  created: number;
-  templates: number;
-  authors: number;
-  with_claims: number;
-  // Per-status breakdown so the admin can confirm the mix used; drives the
-  // lifecycle UI (status chips + trace banner).
-  open: number;
-  fulfilled: number;
-  closed: number;
-}
-
-export function seedDemoRequests(
-  count: number
-): Promise<SeedDemoRequestsResponse> {
-  return apiFetch<SeedDemoRequestsResponse>("/admin/seed-demo-requests", {
-    method: "POST",
-    body: JSON.stringify({ count }),
-  });
-}
-
-export interface WipeDemoRequestsResponse {
-  deleted_requests: number;
-}
-
-export function wipeDemoRequests(): Promise<WipeDemoRequestsResponse> {
-  return apiFetch<WipeDemoRequestsResponse>("/admin/seed-demo-requests", {
-    method: "DELETE",
-  });
-}
-
 // ── Detection quality stats ───────────────────────────────────────────
 
 /** Machine-extraction quality signal (admin-only). Definitions live on the
