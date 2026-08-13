@@ -167,6 +167,10 @@ export function VideoPlayer({
         preload="metadata"
         className="h-full w-full object-contain"
         onError={() => setFailedSrc(src)}
+        // media-chrome stamps tabindex="-1" on the slotted media element when
+        // the custom element upgrades, which can beat React to hydration; the
+        // controller wrapper already suppresses the same mismatch on itself.
+        suppressHydrationWarning
       />
       <MediaControlBar className="w-full bg-black/60 backdrop-blur-sm">
         <MediaPlayButton className={BAR_CONTROL} />
