@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 import { DownloadSourceMedia } from "@/components/geolocations/DownloadSourceMedia";
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
@@ -11,11 +10,13 @@ import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import {
   TaxonomyFields,
   useTaxonomy,
@@ -35,6 +36,9 @@ import {
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
+// Ties Reject to the reason panel it opens, which is not its DOM sibling.
+const REJECT_PANEL_ID = "reject-detection-form";
+
 /**
  * Owner edit + submit of a machine-`detected` geolocation. Built like the create
  * form (same field bricks, same `MediaManager` staging): the owner curates the
@@ -47,39 +51,46 @@ import type { EventDetail } from "@/types";
  * form mounts only after the row loaded), so the Tiptap editor gets its
  * `initialContent` on first paint.
  *
- * The detections review flow mounts this same surface, header and all: `review`
- * adds its position row above the fields, sends a finished draft to the next one
- * instead of back to the queue, and drops the Cancel link, since leaving a
- * review session is the back arrow.
+ * Reviewing a queue of drafts is this same surface with `queue` set: the header
+ * gains the position and a Skip, and a finished draft hands over to the next one
+ * instead of returning to the queue list. Nothing else differs, so a draft opened
+ * from a queue row and a draft under review are one form.
  */
 export function EventEditForm({
   geo,
   redirectTo,
-  review,
+  queue,
 }: {
   geo: EventDetail;
   redirectTo: string;
-  /** Set by the review flow, which hosts this form one draft at a time. */
-  review?: {
-    /** The position and Skip row, rendered above the fields. */
-    chrome: ReactNode;
-    /** Advance to the next draft, after a submit or a rejection. */
-    onDone: () => void;
-    /** Where the back arrow lands with no session history to pop. */
-    backFallback: string;
+  /** Set when this draft is one step of a review pass over the queue. */
+  queue?: {
+    /** Where this draft sits in the queue, as `Draft n of m`. */
+    position: string;
+    /** Open the next draft, or leave for `redirectTo` past the last one. Runs
+     *  on Skip, and after a submit or a rejection. */
+    onAdvance: () => void;
   };
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
-  // The utilities tier only: this page's flow action is the form's own
+  // Where a write that finishes with this row goes: back to the queue list on
+  // its own, on to the next draft during a review pass.
+  const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
+
+  // The utilities tier only: this surface's flow action is the form's own
   // "Confirm & submit", which stays at the bottom where the fields it applies
   // end. The header still shares and reports the draft like every other detail
   // surface.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
-  // Where a write that finishes with this row goes: back to the queue on the
-  // edit page, on to the next draft in the review flow.
-  const finish = review?.onDone ?? (() => router.push(redirectTo));
+  // Reject the draft: the confirm step is the inline `CloseEventForm` (a
+  // required, publicly visible reason), so this flag only opens the panel. It
+  // sits in the open beside Skip rather than behind the `⋯` menu: the menu is
+  // for the rare management action on a reading surface, while working a draft
+  // has three verbs (submit it, skip it, reject it) and hiding one of them
+  // behind a disclosure costs a click on every pass.
+  const [rejecting, setRejecting] = useState(false);
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
@@ -185,12 +196,6 @@ export function EventEditForm({
     },
   });
 
-  // Reject (close) the detection: a detection card is just a click, like every
-  // other card. The reason is captured in an inline `CloseEventForm` (required
-  // + publicly visible), which owns its own close mutation; this flag just
-  // toggles the panel.
-  const [rejecting, setRejecting] = useState(false);
-
   const busy = submitMutation.loading;
   const actionError = submitMutation.error;
 
@@ -255,17 +260,57 @@ export function EventEditForm({
   return (
     <PageShell
       back
-      backFallback={review?.backFallback}
+      backFallback={redirectTo}
       title="Submit detection"
-      subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
-      actions={actions}
+      actions={
+        // Everything that disposes of this draft rather than filling it in,
+        // in the header's own cluster: the position and the way past it during
+        // a review pass, then Reject, then the utilities. Submit is the only
+        // action left at the foot of the fields.
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+          {queue && (
+            <>
+              <span className={LABEL_TEXT}>{queue.position}</span>
+              <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+                Skip
+              </Button>
+            </>
+          )}
+          <Button
+            variant="danger"
+            onClick={() => setRejecting(true)}
+            disabled={busy || rejecting}
+            aria-controls={REJECT_PANEL_ID}
+            aria-expanded={rejecting}
+          >
+            Reject
+          </Button>
+          {actions}
+        </div>
+      }
     >
-      {/* The review's position and Skip row, above the fields it steps through.
-          The rest of the surface is the edit page's, unchanged. */}
-      {review?.chrome}
-
       {/* Under the header, where the trigger that opened it is. */}
       {panels}
+
+      {/* The reason panel Reject opens, in the same slot the shared action
+          row's own panels use: under the header, below its trigger. */}
+      {rejecting && (
+        <div id={REJECT_PANEL_ID}>
+          <Card as="section">
+            <SectionEyebrow title="Reject this detection" margin="none" />
+            <CloseEventForm
+              eventId={geo.id}
+              status={geo.status}
+              disabled={busy}
+              onClosed={() => {
+                refreshDetectionCount();
+                finish();
+              }}
+              onCancel={() => setRejecting(false)}
+            />
+          </Card>
+        </div>
+      )}
 
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
@@ -363,6 +408,9 @@ export function EventEditForm({
         />
         {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
 
+        {/* The flow action, alone at the foot of the fields it applies, as on
+            the create form. Disposing of the draft is not a form action: it
+            sits in the header's ⋯ menu. */}
         <div className="flex flex-wrap items-center gap-3">
           {confirmingSubmit ? (
             <span className="inline-flex items-center gap-2">
@@ -396,46 +444,7 @@ export function EventEditForm({
               <FieldHelp concept="action_submit" />
             </span>
           )}
-
-          {/* In review, leaving is the back arrow and moving on is Skip, so the
-              form carries no exit of its own. */}
-          {!review && (
-            <Link href={redirectTo} className={buttonClasses("ghost")}>
-              Cancel
-            </Link>
-          )}
-
-          {/* Reject (close) lives here now, not on the queue card. It opens the
-              inline reason panel below rather than closing on a fixed reason. */}
-          {!rejecting && (
-            <Button
-              variant="danger"
-              onClick={() => setRejecting(true)}
-              disabled={busy}
-              className="ml-auto"
-            >
-              Reject detection
-            </Button>
-          )}
         </div>
-
-        {/* The reason panel for rejecting the detection: a required free-text
-            reason (kept publicly visible on the closed row). On success it
-            refreshes the detection count and returns to the queue. */}
-        {rejecting && (
-          <div className="pt-4 border-t border-neutral-800">
-            <CloseEventForm
-              eventId={geo.id}
-              status={geo.status}
-              disabled={busy}
-              onClosed={() => {
-                refreshDetectionCount();
-                finish();
-              }}
-              onCancel={() => setRejecting(false)}
-            />
-          </div>
-        )}
       </form>
     </PageShell>
   );

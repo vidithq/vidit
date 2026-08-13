@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { EventEditForm } from "@/components/geolocations/edit/EventEditForm";
@@ -8,15 +8,43 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import {
+  detectionsReviewPath,
+  draftEditPath,
+  QUEUE_PARAM,
+  type PaginatedEventDetails,
+} from "@/lib/events";
 import type { EventDetail } from "@/types";
 
+/**
+ * Owner edit of one machine draft, and one step of a review pass over the
+ * queue when the URL carries `?queue=1`.
+ *
+ * The flag makes a review a walk over real URLs rather than a session in
+ * component state: each draft is its own address, so a reload keeps its place
+ * and the browser's Back steps back one draft. The page reads the owner's queue
+ * (the list the queue page reads), places this draft in it, and hands the form
+ * the position plus where to go next. Past the last draft, the walk ends on the
+ * queue list.
+ */
 export default function EditEventPage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useRequireAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
   const { data: geo, error } = useApiResource<EventDetail>(
     user && id ? `/events/${id}` : null
+  );
+
+  // The queue is read only for a draft the viewer owns and asked to review, so
+  // an ordinary edit costs no extra request.
+  const inQueue = searchParams.get(QUEUE_PARAM) === "1";
+  const isOwnDraft =
+    !!geo && !!user && user.id === geo.owner.id && geo.status === "detected";
+  const { data: queueData } = useApiResource<PaginatedEventDetails>(
+    inQueue && isOwnDraft ? detectionsReviewPath() : null
   );
 
   if (authLoading || !user) {
@@ -68,10 +96,24 @@ export default function EditEventPage() {
     );
   }
 
+  const queueHref = `/profile/${user.username}/detections`;
+
+  // The position is read off the live queue, so a draft published or rejected
+  // a moment ago is out of both the count and the walk. A draft the queue no
+  // longer holds carries no position: the page is a plain edit again.
+  const items = queueData?.items ?? [];
+  const index = items.findIndex((e) => e.id === geo.id);
+  const next = items[index + 1];
+  const queue =
+    index >= 0
+      ? {
+          position: `Draft ${index + 1} of ${queueData?.total ?? items.length}`,
+          onAdvance: () =>
+            router.push(next ? draftEditPath(next.id, true) : queueHref),
+        }
+      : undefined;
+
   return (
-    <EventEditForm
-      geo={geo}
-      redirectTo={`/profile/${user.username}/detections`}
-    />
+    <EventEditForm geo={geo} redirectTo={queueHref} queue={queue} />
   );
 }

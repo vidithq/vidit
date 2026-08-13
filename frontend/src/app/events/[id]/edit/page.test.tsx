@@ -1,0 +1,301 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The two surfaces jsdom can't mount: the map canvas needs WebGL and the Tiptap
+// editor needs DOM APIs it lacks. Both keep a marker, since "the review is the
+// whole edit form, proof editor included" is one of the things this covers.
+vi.mock("@/components/map/Map", () => ({
+  default: () => <div data-testid="map" />,
+}));
+vi.mock("@/components/editor/ProofEditor", () => ({
+  default: () => <div data-testid="proof-editor" />,
+}));
+
+const push = vi.fn();
+let queryParam: string | null = null;
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace: vi.fn(), back: vi.fn() }),
+  useParams: () => ({ id: "d1" }),
+  useSearchParams: () => new URLSearchParams(queryParam ? "queue=1" : ""),
+}));
+
+vi.mock("@/hooks/useRequireAuth", () => ({
+  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
+}));
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
+}));
+
+vi.mock("@/contexts/DetectionsContext", () => ({
+  useDetectionsCount: () => ({ count: 2, refresh: vi.fn() }),
+}));
+
+// Every read the surface makes, answered by path: the row itself, the queue it
+// is being reviewed in, and the taxonomy the Classification block offers.
+vi.mock("@/hooks/useApiResource", () => ({
+  useApiResource: (path: string | null) => ({
+    data: path === null ? null : resource(path),
+    error: null,
+    refetch: () => {},
+  }),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/events")>()),
+  geolocateEvent: vi.fn(),
+  closeEvent: vi.fn(),
+}));
+
+import { closeEvent, geolocateEvent } from "@/lib/events";
+import type { Conflict, EventDetail, Tag } from "@/types";
+
+import EditEventPage from "./page";
+
+const geolocateMock = vi.mocked(geolocateEvent);
+const closeMock = vi.mocked(closeEvent);
+
+const CONFLICTS: Conflict[] = [
+  {
+    id: "c1",
+    name: "Russian invasion of Ukraine",
+    wikidata_id: "Q110999040",
+    start_year: 2022,
+    end_year: null,
+    ongoing: true,
+    tier: "major",
+  },
+];
+
+const CURATED_TAGS: Tag[] = [
+  { id: "t-drone", name: "Drone", category: "capture_source" },
+];
+
+function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+  return {
+    id: "d1",
+    title: "Strike near Bakhmut",
+    event_coords: { lat: 48.5, lng: 37.8 },
+    capture_source_coords: null,
+    archived_source: null,
+    archived_detected_from: null,
+    event_date: "2026-06-01",
+    event_time: null,
+    source_posted_at: "2026-05-30T14:32:00Z",
+    status: "detected",
+    is_graphic: false,
+    close_reason: null,
+    before_closed_status: null,
+    detected_from_url: "https://x.com/analyst/status/1",
+    detected_post_at: "2026-05-30T15:00:00Z",
+    owner: { id: "u1", username: "ana" },
+    tags: [],
+    conflicts: [],
+    source_url: "https://t.me/channel/12345",
+    secondary_source_urls: [],
+    archived_secondary_sources: [],
+    proof: {
+      type: "doc",
+      content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
+    },
+    created_at: "2026-06-02T10:00:00Z",
+    updated_at: "2026-06-02T10:00:00Z",
+    requested_at: null,
+    detected_at: "2026-06-02T10:00:00Z",
+    geolocated_at: null,
+    closed_at: null,
+    media: [
+      {
+        id: "m1",
+        storage_url: "/local-storage/evidence.jpg",
+        media_type: "image",
+        role: "source",
+      },
+    ],
+    thumbnail: null,
+    requested_by: null,
+    geolocators: [],
+    ...overrides,
+  };
+}
+
+/** The queue this draft is being walked through: itself, then two more. */
+let queueItems: EventDetail[] = [];
+
+function resource(path: string) {
+  if (path.startsWith("/events/d1")) return draftFixture();
+  if (path.startsWith("/events/detections"))
+    return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
+  if (path === "/tags?curated=true") return CURATED_TAGS;
+  if (path === "/conflicts") return CONFLICTS;
+  return null;
+}
+
+/** Make the two curated picks the publish floor asks for, then submit through
+ *  the form's confirm step. */
+async function submitDraft() {
+  fireEvent.click(
+    screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Drone" }));
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Confirm & submit" })
+  );
+}
+
+/** Reject the draft on screen, through its confirm-with-reason panel. */
+function rejectDraft(reason: string) {
+  fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+  fireEvent.change(screen.getByLabelText(/Reject reason/), {
+    target: { value: reason },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Reject this detection" }));
+}
+
+beforeEach(() => {
+  push.mockReset();
+  geolocateMock.mockReset();
+  closeMock.mockReset();
+  geolocateMock.mockResolvedValue(draftFixture({ status: "geolocated" }));
+  queryParam = null;
+  queueItems = [
+    draftFixture(),
+    draftFixture({ id: "d2", title: "Second" }),
+    draftFixture({ id: "d3", title: "Third" }),
+  ];
+});
+
+describe("the draft edit surface", () => {
+  it("renders the form under a bare title, with Submit alone at the foot", () => {
+    render(<EditEventPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Submit detection" })
+    ).toBeInTheDocument();
+    // No description line under the title: the fields say what they are.
+    expect(screen.queryByText(/Submitting freezes the row/)).toBeNull();
+    // The flow action stands alone at the foot: no Cancel, and no Reject
+    // beside it.
+    const submit = screen.getByRole("button", { name: "Submit" });
+    expect(submit).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
+
+    // Reject is a plain button up in the action area, ahead of the fields, and
+    // never a menu entry behind a ⋯ disclosure.
+    const reject = screen.getByRole("button", { name: "Reject" });
+    expect(
+      reject.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
+  it("rejects the draft behind its reason panel", async () => {
+    closeMock.mockResolvedValue(draftFixture({ status: "closed" }));
+    render(<EditEventPage />);
+
+    rejectDraft("Not a strike.");
+    // Off a review pass, a disposed draft leaves for the queue list.
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/profile/ana/detections")
+    );
+  });
+
+  it("carries no queue position or Skip when it is not a review pass", () => {
+    render(<EditEventPage />);
+    expect(screen.queryByText(/Draft \d+ of/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+
+  it("returns to the queue list after a submit made outside a pass", async () => {
+    render(<EditEventPage />);
+    await submitDraft();
+    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/profile/ana/detections")
+    );
+  });
+});
+
+describe("a review pass over the queue", () => {
+  beforeEach(() => {
+    queryParam = "queue=1";
+  });
+
+  it("is the same form, proof editor included, plus its position", async () => {
+    render(<EditEventPage />);
+
+    expect(screen.getByText("Draft 1 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Title/ })).toHaveValue(
+      "Strike near Bakhmut"
+    );
+    expect(await screen.findByTestId("proof-editor")).toBeInTheDocument();
+  });
+
+  it("skips to the next draft's own URL, flag kept", () => {
+    render(<EditEventPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(geolocateMock).not.toHaveBeenCalled();
+    // A real address per draft: a reload keeps the place, and Back steps back
+    // one draft.
+    expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
+  });
+
+  it("hands over to the next draft after a submit", async () => {
+    render(<EditEventPage />);
+    await submitDraft();
+
+    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
+    expect(geolocateMock.mock.calls[0][0]).toBe("d1");
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
+    );
+  });
+
+  it("hands over to the next draft after a rejection", async () => {
+    closeMock.mockResolvedValue(draftFixture({ status: "closed" }));
+    render(<EditEventPage />);
+
+    rejectDraft("Duplicate of an earlier draft.");
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
+    );
+  });
+
+  it("starts where the queue row was clicked", () => {
+    queueItems = [
+      draftFixture({ id: "d0", title: "Earlier" }),
+      draftFixture(),
+      draftFixture({ id: "d2", title: "Second" }),
+    ];
+    render(<EditEventPage />);
+    // A row deep in the queue opens at its own position and walks on from
+    // there, rather than restarting the pass at the head.
+    expect(screen.getByText("Draft 2 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
+  });
+
+  it("ends the pass on the queue list once this was the last draft", () => {
+    queueItems = [draftFixture()];
+    render(<EditEventPage />);
+    expect(screen.getByText("Draft 1 of 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(push).toHaveBeenCalledWith("/profile/ana/detections");
+  });
+
+  it("drops the position for a draft the queue no longer holds", () => {
+    queueItems = [draftFixture({ id: "d9", title: "Someone else's turn" })];
+    render(<EditEventPage />);
+    // Published or rejected in another tab: the flag is stale, so the page is
+    // a plain edit again rather than claiming a position it doesn't have.
+    expect(screen.queryByText(/Draft \d+ of/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+});

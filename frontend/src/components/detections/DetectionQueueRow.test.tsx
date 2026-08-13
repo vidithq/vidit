@@ -71,10 +71,10 @@ describe("DetectionQueueRow", () => {
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
-    // One click, to the full form.
+    // One click, to the form, inside a review pass starting at this draft.
     expect(screen.getByRole("link", { name: "Strike near Bakhmut" })).toHaveAttribute(
       "href",
-      "/events/d1/edit"
+      "/events/d1/edit?queue=1"
     );
   });
 

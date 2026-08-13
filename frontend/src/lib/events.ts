@@ -80,9 +80,20 @@ export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string 
   return `/events/detections?page=${page}&per_page=${perPage}`;
 }
 
-/** The queue a review session steps through: one batch, newest first. */
+/** The queue a review pass steps through: one batch, newest first. */
 export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
+}
+
+/** Marks an edit URL as one step of a review pass over the detections queue.
+ *  The edit page reads it to decide whether to place the draft in the queue;
+ *  every hop of a pass carries it, so the walk survives a reload and the
+ *  browser's Back. */
+export const QUEUE_PARAM = "queue";
+
+/** The owner's edit surface for one draft, optionally inside a review pass. */
+export function draftEditPath(id: string, inQueue = false): string {
+  return `/events/${id}/edit${inQueue ? `?${QUEUE_PARAM}=1` : ""}`;
 }
 
 /** The two read views over the one `events` table: `located` (the catalogue,

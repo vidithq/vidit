@@ -3,22 +3,25 @@
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { DetectionReview } from "@/components/detections/DetectionReview";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   detectionsReviewPath,
+  draftEditPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
 
 /**
- * The focused review flow: `/profile/{username}/detections/review`, one draft
- * at a time. A route of its own rather than a mode on the queue, so it is a
- * link an analyst can keep and the browser's Back leaves it for the queue.
+ * The entry to a review pass: `/profile/{username}/detections/review` opens the
+ * first draft of the queue and hands the walk over to that draft's own URL.
  *
- * The draft itself renders on the shared edit surface, which owns its own
- * header; this page's shell covers the states where there is no draft to show.
+ * A pass lives on the edit route, one address per draft, so this page holds no
+ * state of its own. It stays as the entry because it is the link the queue's
+ * *Start reviewing* and any kept bookmark point at, and it always resolves to
+ * whatever is at the head of the queue now. It replaces itself in history, so
+ * Back from the first draft lands on the queue rather than bouncing through the
+ * redirect.
  */
 export default function DetectionReviewPage() {
   const params = useParams();
@@ -35,23 +38,20 @@ export default function DetectionReviewPage() {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  const { data, error, refetch } = useApiResource<PaginatedEventDetails>(
+  const { data, error } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsReviewPath() : null
   );
 
+  // An empty queue has nothing to open, so the pass ends where it would have
+  // ended: the queue list, which says so itself.
+  useEffect(() => {
+    if (!data) return;
+    const first = data.items[0];
+    router.replace(first ? draftEditPath(first.id, true) : queueHref);
+  }, [data, router, queueHref]);
+
   if (authLoading || !user || !isOwn) {
     return <PageLoading />;
-  }
-
-  if (data && !error) {
-    return (
-      <DetectionReview
-        drafts={data.items}
-        total={data.total}
-        queueHref={queueHref}
-        onReload={refetch}
-      />
-    );
   }
 
   return (

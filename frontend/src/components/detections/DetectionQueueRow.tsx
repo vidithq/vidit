@@ -4,7 +4,7 @@ import { MediaThumb } from "@/components/ui/EntityCard";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
-import { batchCompletionBlockers } from "@/lib/events";
+import { batchCompletionBlockers, draftEditPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
@@ -46,9 +46,11 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
       className={`group relative flex gap-3 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 ${TAPPABLE_HOVER}`}
     >
       {/* Stretched link, same click model as every other catalogue row: the
-          whole row navigates, and nothing inside it competes for the click. */}
+          whole row navigates, and nothing inside it competes for the click. It
+          opens the draft inside a review pass, starting where it was clicked,
+          since reaching a draft through the queue is reviewing the queue. */}
       <Link
-        href={`/events/${draft.id}/edit`}
+        href={draftEditPath(draft.id, true)}
         aria-label={draft.title}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
