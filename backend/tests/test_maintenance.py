@@ -264,6 +264,14 @@ def test_digest_counts_only_unpublished_real_work(db, draft_owner):
     assert _counts(db, draft_owner) == 1
 
 
+def test_digest_does_not_count_a_withheld_draft(db, draft_owner):
+    """A takedown freezes the draft for its owner, so the digest must not nag
+    them to complete one they are not allowed to publish."""
+    _draft(db, draft_owner)
+    _draft(db, draft_owner, hidden_at=datetime.now(UTC))
+    assert _counts(db, draft_owner) == 1
+
+
 def test_digest_skips_an_analyst_with_no_drafts(db, draft_owner):
     assert _counts(db, draft_owner) is None
 

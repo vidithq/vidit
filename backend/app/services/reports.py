@@ -19,6 +19,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from fastapi import BackgroundTasks
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -29,7 +30,6 @@ from app.models.content_report import (
     ContentReportResolution,
 )
 from app.models.event import Event
-from app.models.user import User
 from app.services import email
 from app.services.admin import log_admin_event
 from app.services.event_filters import visible_events
@@ -93,38 +93,43 @@ REPORT_ERROR_STATUS: dict[str, int] = {
 }
 
 
-def _notify_new_report(db: Session, *, report: ContentReport, event_title: str) -> None:
+def _notify_new_report(
+    *,
+    address: str,
+    report_id: uuid.UUID,
+    event_id: uuid.UUID | None,
+    event_title: str,
+    reason: ContentReportReason,
+    details: str | None,
+    reporter: str,
+    created_at: datetime,
+) -> None:
     """Tell the moderation address a report landed, best effort.
 
-    Unset ``REPORT_NOTIFY_EMAIL`` sends nothing and costs nothing: the report
-    is already recorded and already in the admin queue, so the notification is
-    a heads-up rather than the delivery mechanism. The report is committed by
-    the time this runs, so a provider outage is logged and swallowed on the
-    same terms as the auth mailers: losing the heads-up must not lose the
-    report.
+    Runs as a background task, after the response: the report is already
+    recorded and already in the admin queue, so the notification is a heads-up
+    rather than the delivery mechanism, and a reporter must not wait on a
+    Resend round trip to learn their report landed. A provider outage is
+    logged and swallowed on the same terms as the auth mailers.
+
+    Plain values rather than the ``ContentReport`` row: the request's session
+    is gone by the time this runs, so an ORM instance would be detached with
+    expired attributes.
     """
-    address = settings.report_notify_email
-    if not address:
-        return
-    reporter = "anonymous"
-    if report.reporter_user_id is not None:
-        user = db.get(User, report.reporter_user_id)
-        if user is not None:
-            reporter = user.username
     try:
         email.send(
             email.content_report_email(
                 to=address,
-                event_id=str(report.event_id),
+                event_id=str(event_id),
                 event_title=event_title,
-                reason=report.reason,
-                details=report.details,
+                reason=reason,
+                details=details,
                 reporter=reporter,
-                created_at=report.created_at,
+                created_at=created_at,
             )
         )
     except email.EmailSendError as exc:
-        logger.warning("content report notification send failed for report %s: %s", report.id, exc)
+        logger.warning("content report notification send failed for report %s: %s", report_id, exc)
 
 
 def create_report(
@@ -134,6 +139,8 @@ def create_report(
     reason: ContentReportReason,
     details: str | None,
     reporter_user_id: uuid.UUID | None,
+    reporter_username: str | None,
+    background_tasks: BackgroundTasks,
 ) -> ContentReport:
     """File one report against a live event.
 
@@ -147,7 +154,12 @@ def create_report(
     so all three answer the same way rather than confirming which.
 
     A successful report notifies the moderation address when one is configured
-    (see :func:`_notify_new_report`), after the commit and never at its expense.
+    (see :func:`_notify_new_report`), enqueued after the commit and run after
+    the response, so the send is never on the reporter's critical path and
+    never at the report's expense. ``reporter_username`` comes from the
+    caller's session rather than a lookup: the commit expires the row, so
+    re-reading it here would cost a second query for a name the router
+    already holds.
     """
     visible = (
         db.query(Event.id, Event.title).filter(Event.id == event_id, *visible_events()).first()
@@ -164,7 +176,20 @@ def create_report(
     db.add(report)
     db.commit()
     db.refresh(report)
-    _notify_new_report(db, report=report, event_title=visible.title)
+
+    address = settings.report_notify_email
+    if address:
+        background_tasks.add_task(
+            _notify_new_report,
+            address=address,
+            report_id=report.id,
+            event_id=report.event_id,
+            event_title=visible.title,
+            reason=report.reason,
+            details=report.details,
+            reporter=reporter_username or "anonymous",
+            created_at=report.created_at,
+        )
     return report
 
 

@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -122,6 +123,7 @@ def report_event(
     request: Request,
     geolocation_id: uuid.UUID,
     body: ContentReportCreate,
+    background_tasks: BackgroundTasks,
     current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> ContentReport:
@@ -142,6 +144,8 @@ def report_event(
             reason=body.reason,
             details=body.details,
             reporter_user_id=current_user.id if current_user is not None else None,
+            reporter_username=current_user.username if current_user is not None else None,
+            background_tasks=background_tasks,
         )
     except reports_service.ReportError as exc:
         raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
