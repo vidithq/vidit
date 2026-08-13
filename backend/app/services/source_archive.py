@@ -40,22 +40,42 @@ Rate limits shape the drain rather than the other way round: the services cap
 captures per minute and answer a burst with 429, so one pass takes at most
 :data:`PASS_BUDGET` rows, stops claiming past :data:`PASS_MAX_SECONDS`, and
 spaces every submission by :data:`REQUEST_SPACING`, between one row's two
-providers as much as between two rows. A failed attempt goes back to ``queued``
-with an exponential ``next_attempt_at`` (:data:`BASE_BACKOFF` doubling per
-attempt, capped at :data:`MAX_BACKOFF`); :data:`MAX_ATTEMPTS` bounds the retries
-so a permanently uncapturable link (a login wall, a robots block) lands
-``failed`` instead of consuming budget forever.
+providers as much as between two rows. archive.today pays a second, much wider
+gap on top (:data:`ARCHIVE_TODAY_SPACING`, held process-wide), since it has no
+API and answers a burst by banning the submitting host. A failed attempt goes
+back to ``queued`` with an exponential ``next_attempt_at``
+(:data:`BASE_BACKOFF` doubling per attempt, capped at :data:`MAX_BACKOFF`);
+:data:`MAX_ATTEMPTS` bounds the retries so a permanently uncapturable link (a
+login wall, a robots block) lands ``failed`` instead of consuming budget
+forever.
+
+Being throttled is not a verdict on the link, so it does not consume that
+ladder: a 429 or a 5xx raises :class:`ArchiveThrottledError`, the row gives the
+claim's attempt back and waits out :data:`THROTTLE_COOLDOWN` instead. Only a
+refusal or an error the service actually judged the link on spends an attempt.
+
+Two capture rules make the submitted URL differ from the stored one. A provider
+that structurally refuses a host is dropped for that link rather than retried
+(Save Page Now and X, see :func:`_providers_for`), and a link whose crawlable
+form differs from its human form is submitted in the crawlable one
+(``t.me/<channel>/<id>``, see :func:`_capture_url`). ``original_url`` is
+untouched by both: it is half the row's identity and what the read surface
+matches against.
 """
 
 from __future__ import annotations
 
 import logging
+import random
+import re
+import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from sqlalchemy import and_, exists, or_, tuple_
@@ -78,6 +98,8 @@ from app.models.source_archive import (
     SourceArchiveProvider,
 )
 from app.services.sanitize import extract_link_hrefs, safe_link_href
+from app.services.tweet_ingest.syndication import _TELEGRAM_HOST_RE, _TWITTER_URL_HOST_RE
+from app.services.tweet_ingest.telegram import _TELEGRAM_POST_PATH_RE
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +116,21 @@ PASS_MAX_SECONDS = 300.0
 # ceiling is well above this; the gap is what keeps a backfill from reading as
 # a burst.
 REQUEST_SPACING = timedelta(seconds=6)
+# The gap archive.today gets on top of REQUEST_SPACING, held for the whole
+# process rather than for one pass. The service has no API and no published
+# ceiling; it tolerates slow steady traffic and answers a burst by banning the
+# submitting host for hours, which a run of 8 links proved in the field. A
+# minute between submissions is the pace it accepts.
+ARCHIVE_TODAY_SPACING = timedelta(seconds=60)
+# Jitter on top of that gap, so a steady queue does not submit on an exact
+# cadence.
+ARCHIVE_TODAY_SPACING_JITTER = timedelta(seconds=15)
+# What a throttled attempt waits instead of the retry ladder's backoff. Wider
+# than BASE_BACKOFF on purpose: a 429 says the host is over its budget for a
+# while, so coming back on the ladder's timetable only spends the next attempt
+# on another 429.
+THROTTLE_COOLDOWN = timedelta(minutes=30)
+THROTTLE_COOLDOWN_JITTER = timedelta(minutes=15)
 # Attempts and cap are set together: the delay doubles from BASE_BACKOFF and
 # the last attempts sit at MAX_BACKOFF, so the ladder spans about 28 hours
 # (15 min, 30 min, 1 h, 2 h, 4 h, 8 h, 12 h). Long enough to ride out a
@@ -109,6 +146,9 @@ IF_NOT_ARCHIVED_WITHIN = "30d"
 
 _SPN_SUBMIT_URL = "https://web.archive.org/save"
 _SPN_STATUS_URL = "https://web.archive.org/save/status"
+# The read-only availability API: what a submit refusal is checked against
+# before it is counted as a failed attempt.
+_WAYBACK_AVAILABLE_URL = "https://archive.org/wayback/available"
 _WAYBACK_REPLAY = "https://web.archive.org/web"
 _ARCHIVE_TODAY_SUBMIT = "https://archive.ph/submit/"
 _HTTP_TIMEOUT_S = 30.0
@@ -124,9 +164,46 @@ _STATUS_POLL_INTERVAL_S = 3.0
 class ArchiveUnavailableError(Exception):
     """The archiving service did not produce a capture for this attempt.
 
-    Always retryable: a 429, a 5xx, a network error, or a job still pending
-    when the poll budget ran out. The caller schedules the backoff.
+    Always retryable: a refusal, a network error, or a job still pending when
+    the poll budget ran out. The caller schedules the backoff, and the attempt
+    counts against :data:`MAX_ATTEMPTS`.
     """
+
+
+class ArchiveThrottledError(ArchiveUnavailableError):
+    """The service asked for less traffic instead of judging the link.
+
+    An HTTP 429, or a 5xx while the host sheds load. Retryable like its parent,
+    but it does not consume the attempt ladder: a burst of these would
+    otherwise walk a perfectly capturable link to ``failed`` on rate limiting
+    alone, which is what a night of archive.today 429s did in the field. The
+    row waits out :data:`THROTTLE_COOLDOWN` instead.
+    """
+
+
+_archive_today_gate = threading.Lock()
+_archive_today_last_submit: float | None = None
+
+
+def _pace_archive_today() -> None:
+    """Block until this process may submit to archive.today again.
+
+    The gap is held under the lock rather than measured under it, so two rows
+    drained in parallel queue behind each other instead of both waking to
+    submit at once. Process-wide state, because the ceiling belongs to the
+    service and not to one pass: :func:`run_once` spacing rows apart would
+    still let a second archival thread submit alongside it.
+    """
+    global _archive_today_last_submit
+    with _archive_today_gate:
+        if _archive_today_last_submit is not None:
+            gap = ARCHIVE_TODAY_SPACING.total_seconds() + random.uniform(
+                0, ARCHIVE_TODAY_SPACING_JITTER.total_seconds()
+            )
+            remaining = gap - (time.monotonic() - _archive_today_last_submit)
+            if remaining > 0:
+                time.sleep(remaining)
+        _archive_today_last_submit = time.monotonic()
 
 
 def _is_archivable(url: str) -> bool:
@@ -511,13 +588,14 @@ def _spn_json(response: httpx.Response) -> dict:
     """The JSON body of a Save Page Now response, or a retryable failure.
 
     Save Page Now answers an over-quota submit with 429 and an outage with
-    5xx / HTML; either way there is no capture to store, so both fold into the
-    one retryable error the caller backs off on.
+    5xx / HTML; either way there is no capture to store. The first two are the
+    service asking for less traffic rather than refusing the link, so they
+    raise the throttle subclass and the row keeps its attempt.
     """
     if response.status_code == 429:
-        raise ArchiveUnavailableError("rate limited")
+        raise ArchiveThrottledError("rate limited")
     if response.status_code >= 500:
-        raise ArchiveUnavailableError(f"service error {response.status_code}")
+        raise ArchiveThrottledError(f"service error {response.status_code}")
     try:
         body = response.json()
     except ValueError as exc:
@@ -554,9 +632,16 @@ def _archive_wayback(url: str, *, client: httpx.Client) -> str:
         return _replay_url(str(body["timestamp"]), str(body["original_url"]))
     job_id = body.get("job_id")
     if not job_id:
-        # A refusal with a reason (robots-blocked, a host SPN cannot reach) is
-        # still counted retryable: the reasons are frequently transient, and
-        # MAX_ATTEMPTS is what stops a permanent one.
+        # One refusal means the opposite of a failure: Save Page Now declines a
+        # re-submit of a URL it captured inside its own re-capture window ("The
+        # same snapshot had been made 286 hours, 44 minutes ago. You can make
+        # new capture of this URL after 720 hours."). A copy exists, so it is
+        # asked for rather than the row spending an attempt to be told again.
+        if (existing := _existing_snapshot(url, client=client)) is not None:
+            return _validated_snapshot(existing)
+        # Any other refusal with a reason (robots-blocked, a host SPN cannot
+        # reach) is still counted retryable: the reasons are frequently
+        # transient, and MAX_ATTEMPTS is what stops a permanent one.
         raise ArchiveUnavailableError(str(body.get("message") or "submit refused"))
 
     for _ in range(_STATUS_POLL_ATTEMPTS):
@@ -579,6 +664,34 @@ def _replay_url(timestamp: str, original: str) -> str:
     return f"{_WAYBACK_REPLAY}/{timestamp}/{original}"
 
 
+def _existing_snapshot(url: str, *, client: httpx.Client) -> str | None:
+    """The snapshot the availability API holds for ``url``, or ``None``.
+
+    Read-only and cheap, so it costs a submit refusal one extra request rather
+    than costing every capture one. Fail-soft in every direction: a transport
+    failure, an unparseable body, or an answer carrying no snapshot all read as
+    ``None``, and the refusal that triggered the lookup stands as the attempt's
+    outcome. The URL it returns is a candidate the caller validates like any
+    other stored link.
+    """
+    try:
+        body = client.get(
+            _WAYBACK_AVAILABLE_URL, params={"url": url}, headers=_spn_headers()
+        ).json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    snapshots = body.get("archived_snapshots")
+    if not isinstance(snapshots, dict):
+        return None
+    closest = snapshots.get("closest")
+    if not isinstance(closest, dict) or not closest.get("available"):
+        return None
+    snapshot = closest.get("url")
+    return str(snapshot) if snapshot else None
+
+
 def _archive_today(url: str, *, client: httpx.Client) -> str:
     """Capture one URL through archive.today; return its snapshot URL.
 
@@ -594,6 +707,11 @@ def _archive_today(url: str, *, client: httpx.Client) -> str:
         headers={"User-Agent": _USER_AGENT},
         follow_redirects=False,
     )
+    # Same reading as the Save Page Now leg, off the status code alone since
+    # there is no body contract: 429 is the ceiling, 5xx is the host shedding
+    # load or refusing an egress it has decided to ban. Neither judged the link.
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ArchiveThrottledError(f"throttled {response.status_code}")
     refresh = response.headers.get("refresh", "")
     if "url=" in refresh:
         return _validated_snapshot(refresh.split("url=", 1)[1].strip())
@@ -630,6 +748,68 @@ _PROVIDER_LABELS: dict[SourceArchiveProvider, str] = {
     "archive_today": "archive.today",
 }
 
+# A t.me path naming a channel and nothing else. The single-post shape is
+# ``telegram._TELEGRAM_POST_PATH_RE``, reused rather than restated; the host
+# match reuses ``syndication._TELEGRAM_HOST_RE`` the same way. Both exclude the
+# private ``/c/<n>/<m>`` and invite forms, which have no server-rendered view.
+_TELEGRAM_CHANNEL_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/?$")
+# The path prefix Telegram serves server-rendered.
+_TELEGRAM_PREVIEW_SEGMENT = "s"
+
+
+def _capture_url(url: str) -> str:
+    """The URL a provider is handed for this link, which is not always the link.
+
+    Only Telegram diverges today. ``t.me/<channel>/<id>`` serves a crawler the
+    JavaScript fallback, so a capture of it stores the "Telegram: Contact
+    @channel" page instead of the post; ``t.me/s/<channel>/<id>`` is the
+    server-rendered view and captures the post itself. The rewrite covers the
+    submission only: ``original_url`` stays the analyst's link, which is half
+    the row's identity and what the read surface matches against.
+
+    A channel with web preview disabled answers the ``/s/`` form with a
+    redirect or a 404, which is an ordinary failed capture on the usual ladder.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if _TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
+        return url
+    match = _TELEGRAM_POST_PATH_RE.match(parsed.path) or _TELEGRAM_CHANNEL_PATH_RE.match(
+        parsed.path
+    )
+    if match is None or match.group(1) == _TELEGRAM_PREVIEW_SEGMENT:
+        return url
+    path = f"/{_TELEGRAM_PREVIEW_SEGMENT}{match.group(0).rstrip('/')}"
+    return urlunparse(parsed._replace(path=path))
+
+
+def _providers_for(
+    url: str, providers: Sequence[SourceArchiveProvider]
+) -> list[SourceArchiveProvider]:
+    """The providers a pass actually submits ``url`` to.
+
+    One home for every reason a named provider is dropped, so a caller narrows
+    a pass to the captures a row is missing and this decides what of that is
+    worth spending. Two reasons today: ``archive_today_enabled``, the operator
+    kill switch, and a host a provider structurally refuses.
+
+    Save Page Now answers every ``x.com`` / ``twitter.com`` submission with "We
+    are currently facing some limitations when it comes to archiving this
+    site". That is a standing refusal rather than a transient one, so the leg is
+    dropped and an X link spends its whole budget on archive.today instead of
+    paying an attempt to be refused again.
+    """
+    wanted = [p for p in providers if p != "archive_today" or settings.archive_today_enabled]
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    if _TWITTER_URL_HOST_RE.match(host):
+        wanted = [p for p in wanted if p != "wayback"]
+    return wanted
+
 
 @dataclass
 class CaptureOutcome:
@@ -643,6 +823,9 @@ class CaptureOutcome:
 
     captures: dict[SourceArchiveProvider, str] = field(default_factory=dict)
     errors: dict[SourceArchiveProvider, str] = field(default_factory=dict)
+    # The subset of ``errors`` that was a throttle rather than a verdict, which
+    # is what the caller reads to decide whether the attempt counts.
+    throttled: set[SourceArchiveProvider] = field(default_factory=set)
 
 
 def capture(
@@ -664,11 +847,13 @@ def capture(
     both land in :attr:`CaptureOutcome.errors` under their provider, so one
     provider being down cannot cost the other its attempt.
 
-    ``archive_today_enabled`` is an operator kill switch rather than a feature
-    flag: it is on by default, and turning it off drops that leg from every
-    pass, leaving the Wayback capture the only one a row can get.
+    Which providers a pass really submits to is :func:`_providers_for`, and
+    what it submits is :func:`_capture_url`: the operator kill switch and a
+    host a provider structurally refuses narrow the first, and a link whose
+    crawlable form differs from its human form is rewritten for the second.
     """
-    wanted = [p for p in providers if p != "archive_today" or settings.archive_today_enabled]
+    wanted = _providers_for(url, providers)
+    target = _capture_url(url)
 
     def run(c: httpx.Client) -> CaptureOutcome:
         outcome = CaptureOutcome()
@@ -677,8 +862,13 @@ def capture(
             # it between two rows: the ceiling counts submissions, not links.
             if index:
                 time.sleep(REQUEST_SPACING.total_seconds())
+            if provider == "archive_today":
+                _pace_archive_today()
             try:
-                outcome.captures[provider] = _PROVIDER_LEGS[provider](url, client=c)
+                outcome.captures[provider] = _PROVIDER_LEGS[provider](target, client=c)
+            except ArchiveThrottledError as exc:
+                outcome.throttled.add(provider)
+                outcome.errors[provider] = str(exc)
             except ArchiveUnavailableError as exc:
                 outcome.errors[provider] = str(exc)
             except httpx.HTTPError as exc:
@@ -723,6 +913,18 @@ def _backoff(attempts: int) -> timedelta:
     return min(BASE_BACKOFF * (2**steps), MAX_BACKOFF)
 
 
+def _throttle_cooldown() -> timedelta:
+    """How long a throttled row waits before it is claimable again.
+
+    Flat rather than exponential, because the wait is not a judgment on the
+    link: the row comes back at the same pace however many times it is turned
+    away. Jittered so a batch throttled together does not return together.
+    """
+    return THROTTLE_COOLDOWN + timedelta(
+        seconds=random.uniform(0, THROTTLE_COOLDOWN_JITTER.total_seconds())
+    )
+
+
 def process(db: Session, row: SourceArchive, *, client: httpx.Client | None = None) -> bool:
     """Run one claimed row to a terminal or retry state; ``True`` on capture.
 
@@ -761,20 +963,43 @@ def process(db: Session, row: SourceArchive, *, client: httpx.Client | None = No
         row.finished_at = datetime.now(UTC)
         db.commit()
         return True
-    return _reschedule(db, row, _error_note(outcome.errors) or "no provider attempted")
+    # An attempt only counts when a provider judged the link. Every refusal
+    # being a throttle means none of them did, so the row is rescheduled
+    # without spending an attempt; one genuine refusal alongside a throttle
+    # still spends one, since that provider did answer about this link.
+    throttled_only = bool(outcome.throttled) and not set(outcome.errors) - outcome.throttled
+    return _reschedule(
+        db,
+        row,
+        _error_note(outcome.errors) or "no provider attempted",
+        throttled=throttled_only,
+    )
 
 
-def _reschedule(db: Session, row: SourceArchive, reason: str) -> bool:
+def _reschedule(db: Session, row: SourceArchive, reason: str, *, throttled: bool = False) -> bool:
     """Send an attempt that captured nothing back to ``queued``, or bury it.
 
     Buried means ``failed``, once the attempt budget is spent. That is a
     displayed state, not a swept-up one: the event page shows the link as not
     archived, so a reader can tell "no copy exists" from "no copy yet".
 
+    ``throttled`` is the attempt every provider declined to spend on the link.
+    It gives back the increment :func:`claim_next` stamped and waits out
+    :func:`_throttle_cooldown` rather than the ladder's backoff, so a night of
+    429s costs the row time and no attempts. The increment lives on the claim
+    rather than here because it is also what buries a row whose capture kills
+    the worker, so the refund is taken here rather than the claim being made
+    conditional on an outcome it cannot see.
+
     Always returns ``False`` so a caller can ``return`` it directly as the
     "no capture" outcome.
     """
-    if row.attempts >= MAX_ATTEMPTS:
+    if throttled:
+        row.attempts = max(row.attempts - 1, 0)
+        row.status = "queued"
+        row.next_attempt_at = datetime.now(UTC) + _throttle_cooldown()
+        row.started_at = None
+    elif row.attempts >= MAX_ATTEMPTS:
         row.status = "failed"
         row.finished_at = datetime.now(UTC)
     else:
@@ -802,8 +1027,10 @@ def run_once(db: Session, *, budget: int = PASS_BUDGET, client: httpx.Client | N
     first. The :data:`REQUEST_SPACING` gap is paid before each row except the
     first, and :func:`capture` pays it again between one row's two providers,
     so every submission is spaced and a pass never sleeps after its last one.
-    One HTTP client is reused across the pass so connection setup isn't repaid
-    per capture.
+    An archive.today submission waits on :func:`_pace_archive_today` on top of
+    that, which is process-wide rather than per pass, so the wall clock of a
+    pass is not the budget alone. One HTTP client is reused across the pass so
+    connection setup isn't repaid per capture.
     """
     deadline = time.monotonic() + PASS_MAX_SECONDS
 
@@ -846,6 +1073,7 @@ def archive_row_for(event: Event, url: str | None) -> SourceArchive | None:
 
 __all__ = [
     "PROVIDERS",
+    "ArchiveThrottledError",
     "ArchiveUnavailableError",
     "CaptureOutcome",
     "archive_row_for",

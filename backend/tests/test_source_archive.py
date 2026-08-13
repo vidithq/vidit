@@ -31,12 +31,18 @@ from app.services import source_archive
 from app.services.auth import hash_password
 from app.services.sanitize import extract_link_hrefs
 
-SOURCE = "https://x.com/analyst/status/1234567890"
+# A host neither provider treats specially, so a test that says nothing about
+# providers exercises the ordinary two-leg path. The hosts that do get special
+# treatment are named per test: ``X_SOURCE`` (Save Page Now refuses X
+# structurally) and ``MIRROR`` (Telegram's crawlable form is not its link).
+SOURCE = "https://newsdesk.example/post/1234567890"
 PROOF_LINK = "https://example.org/report"
 MIRROR = "https://t.me/channel/42"
 DETECTED_FROM = "https://x.com/analyst/status/9876543210"
+X_SOURCE = "https://x.com/analyst/status/1234567890"
 CAPTURE_TS = "20260811120000"
 ARCHIVE_TODAY_SNAPSHOT = f"https://archive.ph/abcde/{SOURCE}"
+EXISTING_SNAPSHOT = f"https://web.archive.org/web/20260101000000/{SOURCE}"
 
 
 @pytest.fixture
@@ -153,6 +159,12 @@ def _deterministic_pacing_and_providers(db, monkeypatch):
     """
     monkeypatch.setattr(source_archive, "REQUEST_SPACING", timedelta(0))
     monkeypatch.setattr(source_archive, "_STATUS_POLL_INTERVAL_S", 0)
+    # archive.today's own gap is process-wide state, so it is both collapsed and
+    # reset: a submission one test made would otherwise make the next test sit
+    # through a real minute.
+    monkeypatch.setattr(source_archive, "ARCHIVE_TODAY_SPACING", timedelta(0))
+    monkeypatch.setattr(source_archive, "ARCHIVE_TODAY_SPACING_JITTER", timedelta(0))
+    monkeypatch.setattr(source_archive, "_archive_today_last_submit", None)
     monkeypatch.setattr(source_archive.settings, "archive_org_access_key", "")
     monkeypatch.setattr(source_archive.settings, "archive_org_secret_key", "")
     monkeypatch.setattr(source_archive.settings, "archive_today_enabled", True)
@@ -188,6 +200,23 @@ def _both_ok(request: httpx.Request) -> httpx.Response:
     if request.url.host == "web.archive.org":
         return _wayback_ok(request)
     return _archive_today_ok(request)
+
+
+def _both_refuse(request: httpx.Request) -> httpx.Response:
+    """Both providers judge the link and decline it.
+
+    A refusal, not a throttle: the job reports an error and archive.today
+    answers 403, so this is the shape that spends an attempt. A 429 or a 5xx
+    from either host is the other shape, and it does not.
+    """
+    if request.url.host != "web.archive.org":
+        return httpx.Response(403, text="blocked")
+    if request.url.path == "/save":
+        return httpx.Response(200, json={"job_id": "job-1"})
+    return httpx.Response(200, json={"status": "error", "message": "robots blocked"})
+
+
+BOTH_REFUSED_NOTE = "wayback: robots blocked; archive.today: no snapshot in response 403"
 
 
 WAYBACK_CAPTURE = f"https://web.archive.org/web/{CAPTURE_TS}/{SOURCE}"
@@ -673,9 +702,29 @@ def test_capture_records_a_rate_limit_rather_than_raising():
     assert outcome.captures == {}
     assert outcome.errors == {
         "wayback": "rate limited",
-        # archive.today has no status contract to read, so its refusal is named
-        # by what the response did not carry.
-        "archive_today": "no snapshot in response 429",
+        # archive.today has no status contract to read, so its answer is read
+        # off the status code alone.
+        "archive_today": "throttled 429",
+    }
+    # And both are marked as throttles, which is what keeps them off the ladder.
+    assert outcome.throttled == {"wayback", "archive_today"}
+
+
+def test_capture_marks_a_throttle_apart_from_a_refusal():
+    """The distinction the retry policy reads: a 5xx is the host shedding load,
+    a judged refusal is about the link."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "web.archive.org":
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(403, text="blocked")
+
+    with _spn_client(handler) as client:
+        outcome = source_archive.capture(SOURCE, client=client)
+    assert outcome.throttled == {"wayback"}
+    assert outcome.errors == {
+        "wayback": "service error 502",
+        "archive_today": "no snapshot in response 403",
     }
 
 
@@ -771,6 +820,155 @@ def test_capture_rejects_a_snapshot_url_that_is_not_a_link():
     assert "not an http" in outcome.errors["archive_today"]
 
 
+# ── the submitted URL ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("stored", "submitted"),
+    [
+        # A single post and a channel, the two shapes Telegram serves twice:
+        # the bare form gives a crawler the "Telegram: Contact @channel" page,
+        # the /s/ form the post itself.
+        ("https://t.me/DeepStateUA/23735", "https://t.me/s/DeepStateUA/23735"),
+        ("https://t.me/DeepStateUA", "https://t.me/s/DeepStateUA"),
+        ("https://t.me/DeepStateUA/", "https://t.me/s/DeepStateUA"),
+        ("https://www.t.me/DeepStateUA/23735", "https://www.t.me/s/DeepStateUA/23735"),
+        # Already server-rendered, so there is nothing to rewrite.
+        ("https://t.me/s/DeepStateUA/23735", "https://t.me/s/DeepStateUA/23735"),
+        ("https://t.me/s/DeepStateUA", "https://t.me/s/DeepStateUA"),
+        ("https://t.me/s/23735", "https://t.me/s/23735"),
+        # Shapes with no server-rendered view at all: a private channel, an
+        # invite, a sticker pack.
+        ("https://t.me/c/1234567/89", "https://t.me/c/1234567/89"),
+        ("https://t.me/joinchat/AAAAAEHbYw", "https://t.me/joinchat/AAAAAEHbYw"),
+        ("https://t.me/+AbCdEfGh", "https://t.me/+AbCdEfGh"),
+        # And every other host is submitted exactly as stored.
+        (SOURCE, SOURCE),
+        (X_SOURCE, X_SOURCE),
+        ("http://[::1", "http://[::1"),
+    ],
+)
+def test_the_capture_url_uses_telegrams_server_rendered_form(stored, submitted):
+    assert source_archive._capture_url(stored) == submitted
+
+
+def test_a_telegram_link_is_submitted_rewritten_and_stored_as_given(db, event):
+    """The rewrite covers the submission only: ``original_url`` stays the
+    analyst's link, which is half the row's identity and what the read surface
+    matches against."""
+    _with_mirrors(db, event, MIRROR)
+    source_archive.enqueue_event(db, event)
+    db.query(SourceArchive).filter(SourceArchive.original_url != MIRROR).delete(
+        synchronize_session=False
+    )
+    db.commit()
+    row = source_archive.claim_next(db)
+    submitted: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "archive.ph":
+            submitted.append(request.url.params["url"])
+            return _archive_today_ok(request)
+        return _wayback_ok(request)
+
+    with _spn_client(handler) as client:
+        assert source_archive.process(db, row, client=client) is True
+    db.refresh(row)
+    assert submitted == ["https://t.me/s/channel/42"]
+    assert row.original_url == MIRROR
+
+
+# ── an existing Wayback snapshot ───────────────────────────────────────
+
+
+def _availability(payload: dict):
+    """A handler where the submit refuses and the availability API answers."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "archive.org":
+            return httpx.Response(200, json=payload)
+        return httpx.Response(
+            200,
+            json={
+                "message": (
+                    "The same snapshot had been made 286 hours, 44 minutes ago. "
+                    "You can make new capture of this URL after 720 hours."
+                )
+            },
+        )
+
+    return handler
+
+
+def test_a_refused_resubmit_reuses_the_existing_snapshot():
+    """Save Page Now declines a re-submit of a URL it captured inside its own
+    re-capture window, with no job to poll. The refusal means a copy exists, so
+    it is read off the availability API instead of costing the row an attempt.
+    """
+    handler = _availability(
+        {
+            "archived_snapshots": {
+                "closest": {
+                    "available": True,
+                    "url": EXISTING_SNAPSHOT,
+                    "timestamp": "20260101000000",
+                }
+            }
+        }
+    )
+    with _spn_client(handler) as client:
+        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
+    assert outcome.captures == {"wayback": EXISTING_SNAPSHOT}
+    assert outcome.errors == {}
+
+
+def test_a_refusal_with_no_existing_snapshot_is_still_a_failed_attempt():
+    """The fallback only rescues a refusal that a copy explains. Nothing
+    archived means the refusal stands, with its own reason, on the ladder."""
+    with _spn_client(_availability({"archived_snapshots": {}})) as client:
+        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
+    assert outcome.captures == {}
+    assert "The same snapshot had been made" in outcome.errors["wayback"]
+
+
+def test_an_unavailable_existing_snapshot_is_not_taken():
+    """The availability API reports a snapshot it cannot serve as
+    ``available: false``; storing its URL would publish a dead link."""
+    handler = _availability(
+        {"archived_snapshots": {"closest": {"available": False, "url": EXISTING_SNAPSHOT}}}
+    )
+    with _spn_client(handler) as client:
+        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
+    assert outcome.captures == {}
+
+
+def test_an_existing_snapshot_that_is_not_a_link_is_not_stored():
+    """The fallback reads a URL off a third-party payload the detail surface
+    would render as an href, so it goes through the same predicate every stored
+    link does."""
+    handler = _availability(
+        {"archived_snapshots": {"closest": {"available": True, "url": "javascript:alert(1)"}}}
+    )
+    with _spn_client(handler) as client:
+        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
+    assert outcome.captures == {}
+    assert "not an http" in outcome.errors["wayback"]
+
+
+def test_the_availability_api_is_only_asked_after_a_refusal():
+    """It is a rescue for one refusal shape, not a leg every capture pays."""
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "archive.org":
+            asked.append(str(request.url))
+        return _both_ok(request)
+
+    with _spn_client(handler) as client:
+        source_archive.capture(SOURCE, providers=["wayback"], client=client)
+    assert asked == []
+
+
 # ── process + retry policy ─────────────────────────────────────────────
 
 
@@ -823,14 +1021,16 @@ def test_process_reschedules_when_both_providers_refuse(db, event):
     source_archive.enqueue_event(db, event)
     row = source_archive.claim_next(db)
     before = datetime.now(UTC)
-    with _spn_client(lambda _r: httpx.Response(429)) as client:
+    with _spn_client(_both_refuse) as client:
         assert source_archive.process(db, row, client=client) is False
     db.refresh(row)
     assert row.status == "queued"
     assert row.wayback_url is None
     assert row.archive_today_url is None
     # One clause per provider, so an operator reads why each one refused.
-    assert row.error == "wayback: rate limited; archive.today: no snapshot in response 429"
+    assert row.error == BOTH_REFUSED_NOTE
+    # Both providers judged the link, which is what the ladder is for.
+    assert row.attempts == 1
     assert row.next_attempt_at >= before + source_archive.BASE_BACKOFF
 
 
@@ -842,7 +1042,7 @@ def test_process_buries_a_row_once_the_attempt_budget_is_spent(db, event):
     row = source_archive.claim_next(db)
     row.attempts = source_archive.MAX_ATTEMPTS
     db.commit()
-    with _spn_client(lambda _r: httpx.Response(503)) as client:
+    with _spn_client(_both_refuse) as client:
         source_archive.process(db, row, client=client)
     db.refresh(row)
     assert row.status == "failed"
@@ -861,7 +1061,7 @@ def test_a_row_walks_the_whole_ladder_before_it_is_buried(db, event):
         synchronize_session=False
     )
     db.commit()
-    with _spn_client(lambda _r: httpx.Response(503)) as client:
+    with _spn_client(_both_refuse) as client:
         for attempt in range(1, source_archive.MAX_ATTEMPTS + 1):
             db.query(SourceArchive).filter(SourceArchive.status == "queued").update(
                 {"next_attempt_at": datetime.now(UTC)}, synchronize_session=False
@@ -915,6 +1115,164 @@ def test_reschedule_clears_the_claim_stamp(db, event):
     db.refresh(row)
     assert row.status == "queued"
     assert row.started_at is None
+
+
+# ── throttling ─────────────────────────────────────────────────────────
+
+
+def test_a_throttled_attempt_does_not_consume_the_ladder(db, event):
+    """The defect a night of archive.today 429s exposed: a rate limit is the
+    service asking for less traffic, not a verdict on the link, so counting it
+    walked capturable rows toward ``failed`` without one capture verdict.
+
+    The claim's increment is given back and the row waits out the throttle
+    cooldown instead of the ladder's backoff.
+    """
+    source_archive.enqueue_event(db, event)
+    row = source_archive.claim_next(db)
+    assert row.attempts == 1
+    before = datetime.now(UTC)
+    with _spn_client(lambda _r: httpx.Response(429, text="slow down")) as client:
+        assert source_archive.process(db, row, client=client) is False
+    db.refresh(row)
+    assert row.status == "queued"
+    assert row.attempts == 0
+    assert row.next_attempt_at >= before + source_archive.THROTTLE_COOLDOWN
+    assert row.error == "wayback: rate limited; archive.today: throttled 429"
+
+
+def test_a_service_error_is_read_as_a_throttle_too(db, event):
+    """A 5xx is the host shedding load, which is the same non-verdict as a 429:
+    an outage must not cost a link its retries."""
+    source_archive.enqueue_event(db, event)
+    row = source_archive.claim_next(db)
+    with _spn_client(lambda _r: httpx.Response(503)) as client:
+        source_archive.process(db, row, client=client)
+    db.refresh(row)
+    assert row.status == "queued"
+    assert row.attempts == 0
+
+
+def test_a_throttle_beside_a_refusal_still_spends_the_attempt(db, event):
+    """One provider judged the link, so the attempt counts. Only an attempt
+    where nobody judged it is free, or a single reachable provider refusing
+    every link would never bury the row."""
+    source_archive.enqueue_event(db, event)
+    row = source_archive.claim_next(db)
+    before = datetime.now(UTC)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "web.archive.org":
+            return httpx.Response(429)
+        return httpx.Response(403)
+
+    with _spn_client(handler) as client:
+        source_archive.process(db, row, client=client)
+    db.refresh(row)
+    assert row.attempts == 1
+    assert row.next_attempt_at >= before + source_archive.BASE_BACKOFF
+
+
+def test_throttling_never_buries_a_row(db, event):
+    """The end state of the field defect: a row throttled on every pass stays
+    on the queue for as long as the throttling lasts, however many passes that
+    is, instead of landing in a terminal state on rate limiting alone."""
+    source_archive.enqueue_event(db, event)
+    db.query(SourceArchive).filter(SourceArchive.original_url != SOURCE).delete(
+        synchronize_session=False
+    )
+    db.commit()
+    with _spn_client(lambda _r: httpx.Response(429)) as client:
+        for _ in range(source_archive.MAX_ATTEMPTS + 2):
+            db.query(SourceArchive).filter(SourceArchive.status == "queued").update(
+                {"next_attempt_at": datetime.now(UTC)}, synchronize_session=False
+            )
+            db.commit()
+            row = source_archive.claim_next(db)
+            assert row is not None
+            source_archive.process(db, row, client=client)
+            db.refresh(row)
+            assert row.status == "queued"
+            assert row.attempts == 0
+
+
+def test_the_throttle_cooldown_is_longer_than_the_ladder_and_jittered():
+    """Longer, because a 429 says the host is over budget for a while; jittered,
+    so a batch throttled together does not return together."""
+    waits = {source_archive._throttle_cooldown() for _ in range(20)}
+    assert min(waits) >= source_archive.THROTTLE_COOLDOWN > source_archive.BASE_BACKOFF
+    assert max(waits) <= source_archive.THROTTLE_COOLDOWN + source_archive.THROTTLE_COOLDOWN_JITTER
+    assert len(waits) > 1
+
+
+# ── archive.today pacing ───────────────────────────────────────────────
+
+
+def test_archive_today_submissions_are_spaced_a_minute_apart(monkeypatch):
+    """archive.today has no API and answers a burst by banning the submitting
+    host, so its submissions are spaced process-wide: the gap is held whoever
+    drains the row, not paid once per pass."""
+    slept: list[float] = []
+    monkeypatch.setattr(source_archive, "ARCHIVE_TODAY_SPACING", timedelta(seconds=60))
+    monkeypatch.setattr(source_archive.time, "sleep", lambda seconds: slept.append(seconds))
+
+    with _spn_client(_archive_today_ok) as client:
+        source_archive.capture(SOURCE, providers=["archive_today"], client=client)
+        # The first submission waits for nothing; the gap is between two of them.
+        assert slept == []
+        source_archive.capture(PROOF_LINK, providers=["archive_today"], client=client)
+    assert len(slept) == 1
+    assert 55 < slept[0] <= 60
+
+
+def test_the_wayback_leg_does_not_pay_the_archive_today_gap(monkeypatch):
+    """Save Page Now has keys and a real API, so it keeps the 6-second spacing.
+    Paying a minute per Wayback submission would stall the whole queue."""
+    slept: list[float] = []
+    monkeypatch.setattr(source_archive, "ARCHIVE_TODAY_SPACING", timedelta(seconds=60))
+    monkeypatch.setattr(source_archive.time, "sleep", lambda seconds: slept.append(seconds))
+
+    inline = lambda _r: httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})  # noqa: E731
+    with _spn_client(inline) as client:
+        source_archive.capture(SOURCE, providers=["wayback"], client=client)
+        source_archive.capture(PROOF_LINK, providers=["wayback"], client=client)
+    assert slept == []
+
+
+# ── provider selection ─────────────────────────────────────────────────
+
+
+def test_wayback_is_skipped_for_an_x_link():
+    """Every x.com submission answers "We're currently facing some limitations
+    when it comes to archiving this site". That is structural, not transient,
+    so the leg is dropped and the link spends its budget on archive.today."""
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        return _both_ok(request)
+
+    with _spn_client(handler) as client:
+        outcome = source_archive.capture(X_SOURCE, client=client)
+    assert hosts == ["archive.ph"]
+    assert outcome.captures == {"archive_today": ARCHIVE_TODAY_SNAPSHOT}
+    # Not an error either: a leg that was never attempted has nothing to report,
+    # so the row's ``error`` stays about the providers that did answer.
+    assert outcome.errors == {}
+
+
+def test_the_wayback_skip_covers_every_x_host_spelling():
+    for url in (
+        "https://x.com/analyst/status/1",
+        "https://www.x.com/analyst",
+        "http://twitter.com/analyst/status/2",
+        "https://www.twitter.com/analyst",
+    ):
+        assert source_archive._providers_for(url, source_archive.PROVIDERS) == ["archive_today"]
+    # And it is a host rule, not a substring one.
+    assert source_archive._providers_for(SOURCE, source_archive.PROVIDERS) == list(
+        source_archive.PROVIDERS
+    )
 
 
 def test_backoff_grows_and_is_capped():
