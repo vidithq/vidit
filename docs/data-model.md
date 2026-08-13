@@ -104,7 +104,7 @@ erDiagram
 
     content_reports {
         UUID id PK
-        UUID event_id FK
+        UUID event_id FK "nullable, NULL once the event is hard-deleted"
         VARCHAR reason "illegal_content | graphic_not_flagged | copyright | privacy | other"
         TEXT details "nullable, capped at 2000 chars by the schema"
         UUID reporter_user_id FK "nullable, anonymous reports leave this NULL"
@@ -194,7 +194,7 @@ erDiagram
     events ||--o{ event_investigators : "event_id"
     users ||--o{ event_investigators : "user_id"
     events ||--o{ event_source_links : "event_id"
-    events ||--o{ content_reports : "event_id"
+    events |o--o{ content_reports : "event_id"
     users ||--o{ content_reports : "reporter_user_id"
     users ||--o{ content_reports : "resolved_by"
     users ||--o{ follows : "follower_id"
@@ -480,7 +480,7 @@ One viewer's report against one event. Open to anonymous viewers: a takedown req
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. A hard-deleted event takes its reports with it: there is nothing left to moderate. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. An orphaned report accepts only the `dismissed` verdict; the other two mutate an event row that is gone, and answer 409 `report_event_gone`. |
 | `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `reporter_user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
@@ -495,7 +495,7 @@ One viewer's report against one event. Open to anonymous viewers: a takedown req
 - `ck_content_reports_resolution_stamp`: `(resolution IS NULL AND resolved_at IS NULL) OR (resolution IS NOT NULL AND resolved_at IS NOT NULL)`. The verdict and its timestamp travel together in both directions: a resolved row can't forget what was decided, and an open row can't carry a stale verdict.
 
 **Indexes:**
-- `ix_content_reports_event_id` on `(event_id)`. Backs the FK's cascade and a per-event report lookup.
+- `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
 - `ix_content_reports_open_created_at`: partial index on `(created_at) WHERE resolved_at IS NULL`. Backs the admin queue's read, open reports first then newest first; partial on the open cohort, which stays small because resolving is the whole point of the queue while the resolved rows accumulate forever.
 
 ---

@@ -55,10 +55,13 @@ class ContentReport(Base):
     __tablename__ = "content_reports"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # The reported event. CASCADE: a hard-deleted event takes its reports with
-    # it, since there is nothing left to moderate.
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
+    # The reported event, NULL once that event is hard-deleted. ``SET NULL``
+    # rather than ``CASCADE``: the report is the record that a complaint was
+    # filed and how it was answered, and destroying the event must not destroy
+    # that record. An orphaned report can only be resolved as ``dismissed``,
+    # since the other two verdicts mutate an event that is no longer there.
+    event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True
     )
     reason: Mapped[ContentReportReason] = mapped_column(String(30), nullable=False)
     # The reporter's own words. Optional, and bounded at the schema (2000

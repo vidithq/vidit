@@ -2274,11 +2274,8 @@ export interface components {
             created_at: string;
             /** Details */
             details: string | null;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
+            /** Event Id */
+            event_id: string | null;
             /**
              * Id
              * Format: uuid

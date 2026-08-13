@@ -69,12 +69,25 @@ class ReportAlreadyResolvedError(ReportError):
     code = "report_already_resolved"
 
 
+class ReportEventGoneError(ReportError):
+    """The reported event was hard-deleted, so this verdict has nothing to act on.
+
+    The report survives the deletion (``content_reports.event_id`` is SET NULL),
+    which keeps the record of the complaint, but ``marked_graphic`` and
+    ``hidden`` both mutate an event row that no longer exists. ``dismissed``
+    stays available: closing the report is still a verdict.
+    """
+
+    code = "report_event_gone"
+
+
 # Status per code, read by both the public report endpoint and the admin
 # router. One home, so the two cannot drift.
 REPORT_ERROR_STATUS: dict[str, int] = {
     "event_not_found": 404,
     "report_not_found": 404,
     "report_already_resolved": 409,
+    "report_event_gone": 409,
 }
 
 
@@ -230,10 +243,15 @@ def resolve_report(
     too, so the trail reads the same whether the change came from the queue or
     from the direct moderation endpoint.
 
+    A report whose event was hard-deleted since (``event_id`` is NULL) accepts
+    ``dismissed`` only: the other two verdicts mutate an event row that is no
+    longer there.
+
     Returns ``(report, hidden_changed)``; the flag is the router's cue to drop
     the points cache. Raises :class:`ReportNotFoundError` (404) on an unknown
-    id and :class:`ReportAlreadyResolvedError` (409) on a report that already
-    carries a verdict.
+    id, :class:`ReportAlreadyResolvedError` (409) on a report that already
+    carries a verdict, and :class:`ReportEventGoneError` (409) on an
+    event-mutating verdict against a deleted event.
     """
     report = db.query(ContentReport).filter(ContentReport.id == report_id).first()
     if report is None:
@@ -241,16 +259,22 @@ def resolve_report(
     if report.resolved_at is not None:
         raise ReportAlreadyResolvedError("This report is already resolved")
 
-    # The FK cascades on hard-delete, so a live report always has its event.
-    # Soft-deleted and already-hidden rows are reachable on purpose: a report
-    # filed before the removal still deserves a verdict.
-    event = db.query(Event).filter(Event.id == report.event_id).one()
-
     hidden_changed = False
-    if resolution == "marked_graphic":
-        _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
-    elif resolution == "hidden":
-        hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
+    if report.event_id is None:
+        # The event was hard-deleted; the report outlived it (SET NULL). There
+        # is nothing to mark or hide, so only closing the row is left.
+        if resolution != "dismissed":
+            raise ReportEventGoneError(
+                "The reported event was deleted, so this report can only be dismissed"
+            )
+    else:
+        # Soft-deleted and already-hidden rows are reachable on purpose: a
+        # report filed before the removal still deserves a verdict.
+        event = db.query(Event).filter(Event.id == report.event_id).one()
+        if resolution == "marked_graphic":
+            _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
+        elif resolution == "hidden":
+            hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
 
     report.resolved_at = datetime.now(UTC)
     report.resolution = resolution
@@ -261,7 +285,8 @@ def resolve_report(
         action="report_resolved",
         target={
             "report_id": str(report.id),
-            "event_id": str(report.event_id),
+            # NULL when the event was hard-deleted before the verdict landed.
+            "event_id": str(report.event_id) if report.event_id is not None else None,
             "resolution": resolution,
         },
     )

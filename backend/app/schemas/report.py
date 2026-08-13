@@ -34,7 +34,9 @@ class ContentReportRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    event_id: uuid.UUID
+    # NULL once the reported event is hard-deleted: the report outlives it, so
+    # the queue still shows what was complained about and what was decided.
+    event_id: uuid.UUID | None
     reason: ContentReportReason
     details: str | None
     # NULL for an anonymous report, and again once the reporter's account is

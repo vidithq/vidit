@@ -76,6 +76,11 @@ def regular_user(db):
     yield user
     db.expire_all()
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
+    # Reports outlive their event (``event_id`` is SET NULL), so reap what the
+    # delete above orphaned rather than leaving it in the next test's queue.
+    db.query(ContentReport).filter(ContentReport.event_id.is_(None)).delete(
+        synchronize_session=False
+    )
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -245,6 +250,80 @@ def test_resolve_403_for_regular_user(db, regular_user, event):
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
+
+
+# ── A report outlives the event it was filed against ──────────────────────
+
+
+def _hard_delete(db, event) -> None:
+    """Erase the event row itself, so the FK's SET NULL fires.
+
+    Not the soft delete every user-facing path performs: this is the row
+    leaving the table, which is what the report has to survive.
+    """
+    db.query(Event).filter(Event.id == event.id).delete(synchronize_session=False)
+    db.commit()
+    db.expire_all()
+
+
+def test_report_survives_a_hard_delete_of_its_event(db, admin_user, event):
+    """The report is the record that a complaint was handled, so destroying the
+    event leaves the row behind with a NULL ``event_id`` instead of taking it."""
+    report = _report(db, event, reason="illegal_content")
+
+    _hard_delete(db, event)
+
+    stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
+    assert stored.event_id is None
+    assert stored.reason == "illegal_content"
+
+    queue = client.get("/api/v1/admin/reports", headers=login_as(client, admin_user))
+    assert queue.status_code == 200, queue.text
+    row = next(item for item in queue.json()["items"] if item["id"] == str(report.id))
+    assert row["event_id"] is None
+    assert row["resolved_at"] is None
+
+
+@pytest.mark.parametrize("resolution", ["marked_graphic", "hidden"])
+def test_orphaned_report_refuses_an_event_mutating_verdict(db, admin_user, event, resolution):
+    """Both verdicts mutate an event row that is gone, so both are a 409 and
+    the report stays open."""
+    report = _report(db, event)
+    _hard_delete(db, event)
+
+    response = client.post(
+        f"/api/v1/admin/reports/{report.id}/resolve",
+        json={"resolution": resolution},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "report_event_gone"
+
+    db.expire_all()
+    assert db.query(ContentReport).filter(ContentReport.id == report.id).one().resolved_at is None
+
+
+def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
+    """Closing the row is the one verdict left, and it is still audited."""
+    report = _report(db, event)
+    _hard_delete(db, event)
+
+    response = client.post(
+        f"/api/v1/admin/reports/{report.id}/resolve",
+        json={"resolution": "dismissed"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["event_id"] is None
+    assert body["resolution"] == "dismissed"
+    assert body["resolved_by"] == str(admin_user.id)
+
+    assert _audit(db, admin_user, "report_resolved").target == {
+        "report_id": str(report.id),
+        "event_id": None,
+        "resolution": "dismissed",
+    }
 
 
 # ── PATCH /admin/events/{id}/moderation ───────────────────────────────────

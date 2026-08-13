@@ -30,6 +30,12 @@ import { TEXT_LINK } from "@/components/ui/styles";
  * Each open row carries the three verdicts. `hidden` withholds the event from
  * every public read, so it takes the two-click confirm the delete panel uses;
  * the other two are recoverable through the moderation panel beside this one.
+ *
+ * A report whose event was hard-deleted since carries a null `event_id`: the
+ * row survives the deletion, so the row says the event is gone instead of
+ * linking to it, and offers Dismiss alone. The other two verdicts would mutate
+ * an event that no longer exists, and the API answers them with 409
+ * `report_event_gone`.
  */
 
 const PER_PAGE = 20;
@@ -67,6 +73,8 @@ function ReportRow({
 
   const open = report.resolved_at === null;
   const busy = resolveMutation.loading;
+  // Hard-deleted since it was reported: nothing left to mark or hide.
+  const eventGone = report.event_id === null;
 
   return (
     <li className="border border-neutral-800 rounded-md p-3 space-y-2">
@@ -81,9 +89,13 @@ function ReportRow({
         <span className="text-neutral-500">
           {report.reporter_user_id ? "signed in" : "anonymous"}
         </span>
-        <Link href={`/events/${report.event_id}`} className={TEXT_LINK}>
-          Open the event
-        </Link>
+        {eventGone ? (
+          <span className="text-neutral-500">Event deleted</span>
+        ) : (
+          <Link href={`/events/${report.event_id}`} className={TEXT_LINK}>
+            Open the event
+          </Link>
+        )}
       </div>
 
       {report.details && (
@@ -100,28 +112,32 @@ function ReportRow({
 
       {open && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={() => {
-              confirmHide.cancel();
-              void resolveMutation.run("marked_graphic");
-            }}
-          >
-            Mark graphic
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busy}
-            className={confirmHide.armed ? DANGER_CONFIRM : ""}
-            onClick={() => confirmHide.trigger()}
-          >
-            {confirmHide.armed ? "Confirm" : "Hide the event"}
-          </Button>
-          {confirmHide.armed && (
-            <Button variant="ghost" onClick={() => confirmHide.cancel()}>
-              Cancel
-            </Button>
+          {!eventGone && (
+            <>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => {
+                  confirmHide.cancel();
+                  void resolveMutation.run("marked_graphic");
+                }}
+              >
+                Mark graphic
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                className={confirmHide.armed ? DANGER_CONFIRM : ""}
+                onClick={() => confirmHide.trigger()}
+              >
+                {confirmHide.armed ? "Confirm" : "Hide the event"}
+              </Button>
+              {confirmHide.armed && (
+                <Button variant="ghost" onClick={() => confirmHide.cancel()}>
+                  Cancel
+                </Button>
+              )}
+            </>
           )}
           <Button
             variant="ghost"
