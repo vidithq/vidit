@@ -31,7 +31,6 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client, proof_file_part, proof_form_field
@@ -286,47 +285,15 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
     assert response.status_code == 422
 
 
-# ── investigate: gated to `requested` for any other status, not only closed
-# `test_requests.py` covers the ``closed`` case; the router's guard is a
-# single ``geo.status != STATUS_REQUESTED`` check, so the narrow gap is
-# confirming the two other non-``requested`` statuses hit the same 409.
-
-
-def test_investigate_rejected_off_detected(db, author, second_user):
-    geo = _make_geo(db, author=author, status=STATUS_DETECTED)
-    response = client.post(
-        f"/api/v1/events/{geo.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 409
-
-
-def test_investigate_rejected_off_geolocated(db, author, second_user):
-    geo = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
-    response = client.post(
-        f"/api/v1/events/{geo.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 409
-
-
-def test_uninvestigate_rejected_off_detected(db, author, second_user):
-    geo = _make_geo(db, author=author, status=STATUS_DETECTED)
-    response = client.delete(
-        f"/api/v1/events/{geo.id}/investigate", headers=login_as(client, second_user)
-    )
-    assert response.status_code == 409
-
-
-# ── Reverse contributor reads: "a user's geolocations / investigations" ──
-# docs/data-model.md documents ``ix_event_geolocators_user_created_at`` /
-# ``ix_event_investigators_user_id`` explicitly for this reverse direction
-# ("the reverse 'a user's geolocations' profile query" / "what is this user
-# working on?"), but no router queries by ``EventGeolocator.user_id`` or
-# ``EventInvestigator.user_id`` today (``GET /users/{username}/events`` reads
-# ``Event.owner_id``, not the contributor tables; see data-model.md: "stays
-# on owner_id until it re-homes onto event_geolocators"). No HTTP surface
-# exists yet to test end to end, so these lock in the query shape the index
-# is FOR, directly against the ORM, so a future router wiring it up has a
-# correctness check already in place.
+# ── Reverse credit read: "a user's geolocations" ─────────────────────────
+# docs/data-model.md documents ``ix_event_geolocators_user_created_at``
+# explicitly for this reverse direction, but no router queries by
+# ``EventGeolocator.user_id`` today (``GET /users/{username}/events`` reads
+# ``Event.owner_id``, not the credit table; see data-model.md: "stays on
+# owner_id until it re-homes onto event_geolocators"). No HTTP surface exists
+# yet to test end to end, so this locks in the query shape the index is FOR,
+# directly against the ORM, so a future router wiring it up has a correctness
+# check already in place.
 
 
 def test_event_geolocators_reverse_query_by_user(db, author, second_user):
@@ -350,19 +317,3 @@ def test_event_geolocators_reverse_query_by_user(db, author, second_user):
     event_ids = {r.event_id for r in rows}
     assert event_ids == {older.id, newer.id}
     assert unrelated.id not in event_ids
-
-
-def test_event_investigators_reverse_query_by_user(db, author, second_user):
-    """The reverse "what is this user working on" read: every
-    ``EventInvestigator`` row for one user (the shape
-    ``ix_event_investigators_user_id`` backs)."""
-    signalled = _make_geo(db, author=author, status=STATUS_REQUESTED)
-    not_signalled = _make_geo(db, author=author, status=STATUS_REQUESTED)
-
-    db.add(EventInvestigator(event_id=signalled.id, user_id=second_user.id))
-    db.commit()
-
-    rows = db.query(EventInvestigator).filter(EventInvestigator.user_id == second_user.id).all()
-    event_ids = {r.event_id for r in rows}
-    assert event_ids == {signalled.id}
-    assert not_signalled.id not in event_ids

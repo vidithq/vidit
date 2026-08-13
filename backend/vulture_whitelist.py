@@ -19,17 +19,13 @@
 
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
 # Populated from the DB row on every ORM load and set at construction; no line
-# reads them by name in app/. `claimed_at`'s only Python producer is the bot's
-# assembled-profile mint (services/bot inserts an explicit NULL); nothing in
-# app/ reads it back yet (the claim flow is a v0.5 item), so it still reads as
-# unused to vulture.
-created_by  # app/models/invite_code.py
+# reads them by name in app/.
 # Set positionally in build_source_link_rows and read only through the
 # relationship's string order_by ("EventSourceLink.position").
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
-claimed_at  # app/models/user.py
 processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
+email_verified_at  # app/models/user.py — audit stamp, written at registration only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
@@ -64,9 +60,6 @@ pending_missing_proof_image  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_url  # schemas/admin.py AdminDetectionStatsRead
 authors  # schemas/search.py AuthorSuggestions
 requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
-claimer_count  # schemas/search.py SearchRequestHit
-investigator_count  # schemas/event.py EventRead + EventList
-investigators_sample  # schemas/event.py EventList
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
@@ -82,9 +75,6 @@ monthly_activity  # schemas/user.py UserStatsRead
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-
-# ── Retired column kept to skip a drop migration; nothing writes or reads it ──
-liked_at  # models/bot_mention.py BotMention
 
 # ── Dataclass fields set at construction, read via attribute access ───────────
 owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc

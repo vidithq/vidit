@@ -186,8 +186,6 @@ const MOCK_DETAIL: EventDetail = {
   thumbnail: null,
   requested_by: null,
   geolocators: [],
-  investigator_count: 0,
-  investigators: [],
 };
 
 // The same detail body with its source captured at both providers, plus one
@@ -526,7 +524,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling; `locked` renders the list read-only (the <Input> locked variant, no add / remove). Blank rows are the caller's to drop at assembly.">
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput
@@ -535,15 +533,6 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Secondary source"
                   placeholder="https://x.com/user/status/12345"
-                />
-              </Variant>
-              <Variant label="locked (inherited list)">
-                <LinkListInput
-                  values={["https://t.me/channel/12345"]}
-                  onChange={() => {}}
-                  max={3}
-                  itemLabel="Secondary source"
-                  locked
                 />
               </Variant>
             </div>
@@ -914,7 +903,7 @@ export default function PalettePage() {
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
             <Variant label="no concept">
-              <SectionEyebrow title="Working on" />
+              <SectionEyebrow title="Geolocators" />
             </Variant>
           </Item>
         </section>
@@ -1051,7 +1040,6 @@ export default function PalettePage() {
                 author={{ username: "analyst" }}
                 date="2026-05-01"
                 source={{ url: "https://t.me/channel/4242" }}
-                working={3}
                 tags={MOCK_TAGS}
               />
             </div>

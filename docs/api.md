@@ -23,7 +23,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Auth** | | | |
 | POST | `/auth/register` | 🌐 | Stage a pending registration; sends confirmation email |
 | POST | `/auth/confirm-registration` | 🌐 | Confirm a pending registration (creates user, signs in) |
-| GET | `/auth/invites/{code}/check` | 🌐 | Advisory invite-code probe for the registration form |
 | POST | `/auth/resend-confirmation` | 🌐 | Resend the confirmation email and invalidate the previous token |
 | POST | `/auth/login` | 🌐 | Email + password → session + CSRF cookies |
 | POST | `/auth/logout` | 🌐 | Clear session cookies (idempotent) |
@@ -47,8 +46,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
-| POST | `/events/{id}/investigate` | 🔒 | "I'm working on this" (idempotent, multi-analyst) |
-| DELETE | `/events/{id}/investigate` | 🔒 | Leave the working set |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -115,7 +112,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
 | `POST /events/{id}/geolocate` | 30/min |
 | `POST /events/batch-complete` | 10/min |
-| `POST /events/{id}/close`, `POST`/`DELETE /events/{id}/investigate` | 60/min |
+| `POST /events/{id}/close` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
@@ -130,7 +127,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
-`GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
 
 ### Per-user read quota
 
@@ -200,22 +197,6 @@ Anonymous. Consumes the token that `POST /auth/register` emailed, creates the `u
 | 409 | Email or username was taken in the gap between register and confirm |
 
 Rate-limited to 30/hour per IP.
-
----
-
-### `GET /auth/invites/{code}/check`
-
-Anonymous. A preflight invite-code probe for the registration form. It mirrors the `validate_invite_code` check that `POST /auth/register` runs, so a `200 {"valid": true}` response does not reserve the code. A concurrent registration can still consume it between the check and the submit.
-
-**Response 200:**
-```json
-{ "valid": true }
-```
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Invalid, exhausted, or expired invite code |
 
 ---
 
@@ -390,15 +371,13 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "conflicts": [
       { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
     ],
-    "investigator_count": null,
-    "investigators_sample": null
   }
 ]
 ```
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists. Ordering is `created_at DESC, id DESC`; see [Pagination](#pagination).
 
-`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). `investigator_count` / `investigators_sample` (up to 3, newest first) populate only on `view=requested`, `null` on `view=located`. The same card shape flows through the profile feed, the timeline, and search hits.
+`status` is one of `requested` / `detected` / `geolocated` / `closed`; `event_coords` is `null` on a coordinate-less `requested` row. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image (`null` when it has neither; a proof video is never picked). The pick lives in `backend/app/services/thumbnails.py`, the one home every card surface uses. `conflicts` is the event's rows from the [conflict referential](#conflicts) (`ConflictRead` shape). The same card shape flows through the profile feed, the timeline, and search hits.
 
 ---
 
@@ -714,8 +693,6 @@ Full detail for a single event, in any lifecycle state.
   "geolocators": [
     { "id": "uuid", "username": "kalush" }
   ],
-  "investigator_count": 0,
-  "investigators": [],
   "media": [
     {
       "id": "uuid",
@@ -743,7 +720,7 @@ Full detail for a single event, in any lifecycle state.
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`); `investigators` is the full "working on this" list (newest first, `event_investigators`) and `investigator_count` its length. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archival record of that `source_url`: `wayback` and `archive_today` carry that provider's copy or `null`, and `unavailable` is `true` only once both providers failed for good, with no attempt left. Every link is submitted to both providers, and one copy finishes the job, so a record with one URL and one `null` is settled rather than still filling in. The field itself is `null` when the link has no archival row at all: a source-less row, or a `detected` draft, whose links are queued when it is published. The detail surface renders the record as one icon per provider beside the source (see [`ingestion.md`](ingestion.md#source-archival)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archival records, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick.
 
 **Errors:**
 | Code | Case |
@@ -812,9 +789,6 @@ Your "Detections" queue: your machine-`detected` events awaiting a geolocate, ne
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
-
-**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -990,34 +964,6 @@ Close an event: withdraw a `requested` row or reject a `detected` draft, owner-o
 
 ---
 
-### `POST /events/{id}/investigate` 🔒
-
-Signal "I'm working on this" on a `requested` event. Multi-analyst: several investigators can hold the signal on one event at once. It's a coordination hint, not a single-claimer reservation. Idempotent: re-signaling is a 204 no-op, not a 409.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Event not found (incl. soft-deleted) |
-| 409 | Event status is not `requested` |
-
----
-
-### `DELETE /events/{id}/investigate` 🔒
-
-Leave the working set. Idempotent: returns 204 even if you weren't signaling.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Event not found (incl. soft-deleted) |
-| 409 | Event status is not `requested` (a terminated event's signals are frozen history) |
-
----
-
 ## Requests, geolocations, and detections are `/events` views
 
 There is no `/requests` router. A **request** is a `requested` event, a **geolocation** is a `geolocated` event, and a **detection** is a `detected` event, all rows on the one `events` table, distinguished only by `status`. Every read and write above already covers all three:
@@ -1026,10 +972,9 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 - **Open a request**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
 - **Fulfil a request, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
 - **Withdraw a request, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
-- **"I'm working on this"** on a request: [`POST`](#post-eventsidinvestigate) / [`DELETE /events/{id}/investigate`](#delete-eventsidinvestigate).
 - **Remove**: [`DELETE /events/{id}`](#delete-eventsid) (owner hard delete) or `DELETE /admin/events/{id}` (admin soft/hard delete).
 
-`GET /events?view=requested` cards additionally carry `investigator_count` / `investigators_sample`; `GET /events/{id}` always carries the full `investigators` list and `geolocators`. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
+`GET /events/{id}` always carries the `geolocators` list. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
 
 ---
 
@@ -1083,8 +1028,7 @@ Any active filter empties the users group: the filters are event predicates, and
       "created_at": "2026-04-12T08:00:00Z",
       "owner": { "…": "…" },
       "media": [{ "id": "uuid", "storage_url": "…", "media_type": "image" }],
-      "tags": [],
-      "claimer_count": 3
+      "tags": []
     }
   ],
   "users": [
@@ -1377,9 +1321,6 @@ Activity feed of geolocations submitted by analysts you follow, newest submissio
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header, and the supported way to read on. Supersedes `page` when both are sent. |
-
-**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 **Response 200:** same `PaginatedEvents` shape as `GET /users/{username}/events`.
 
@@ -1696,9 +1637,7 @@ Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTE
 
 The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and it's not a value you need to construct.
 
-Cursor-paged: [`GET /events`](#get-events), `GET /events/detections`, `GET /timeline`, `GET /admin/invite-codes`. All four order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
-
-`page` / `per_page` still work on the endpoints that had them, and a `cursor` supersedes `page` when both arrive.
+Cursor-paged: [`GET /events`](#get-events) and `GET /admin/invite-codes`. Both order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
 Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
@@ -1710,11 +1649,11 @@ Endpoints that page return this envelope, `total` being the pre-cap match count:
 }
 ```
 
-`page` echoes what you sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at whatever `page` the request carried (`1` by default) on every page of the walk. Read `Link` for position, not `page`. `total` is the match count either way.
+`page` echoes what you sent, so it means nothing on a cursor-driven request: a walk has no page number, and the field stays at `1`. Read `Link` for position, not `page`. `total` is the match count either way.
 
-Three kinds of list sit outside the cursor scheme:
+The other lists sit outside the cursor scheme:
 
-- [`GET /users/{username}/events`](#get-usersusernameevents) is offset-paged and capped, not cursor-paged: it orders by `event_date`, which is nullable and editable and so cannot key a cursor. `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common.
+- [`GET /users/{username}/events`](#get-usersusernameevents), [`GET /events/detections`](#get-eventsdetections), and [`GET /timeline`](#get-timeline) are offset-paged and capped. `GET /users/{username}/events` orders by `event_date`, which is nullable and editable and so cannot key a cursor; `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common. The other two are owner- or follow-scoped queues whose clients render a page number, not a walk.
 - [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
 - [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
 

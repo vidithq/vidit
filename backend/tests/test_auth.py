@@ -1,15 +1,18 @@
+"""``services.auth.validate_invite_code``: which invite codes are usable.
+
+The one gate ``POST /auth/register`` runs before it mints a pending
+registration, so the rules are pinned here rather than through a route.
+"""
+
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.main import app
 from app.models.invite_code import InviteCode
 from app.models.user import User
-
-client = TestClient(app)
+from app.services.auth import validate_invite_code
 
 
 @pytest.fixture
@@ -32,25 +35,23 @@ def fresh_invite(db):
     db.commit()
 
 
-def test_check_invite_returns_404_for_unknown_code():
-    response = client.get(f"/api/v1/auth/invites/does-not-exist-{uuid.uuid4().hex}/check")
-    assert response.status_code == 404
+def test_unknown_code_is_not_usable(db):
+    assert validate_invite_code(db, f"does-not-exist-{uuid.uuid4().hex}") is None
 
 
-def test_check_invite_returns_200_for_valid_unused_code(fresh_invite):
-    response = client.get(f"/api/v1/auth/invites/{fresh_invite.code}/check")
-    assert response.status_code == 200
-    assert response.json() == {"valid": True}
+def test_fresh_code_is_usable(db, fresh_invite):
+    assert validate_invite_code(db, fresh_invite.code) is not None
 
 
-def test_check_invite_does_not_consume_the_code(fresh_invite, db):
-    client.get(f"/api/v1/auth/invites/{fresh_invite.code}/check")
+def test_validation_does_not_consume_the_code(db, fresh_invite):
+    validate_invite_code(db, fresh_invite.code)
     db.refresh(fresh_invite)
     assert fresh_invite.used_by is None
     assert fresh_invite.used_at is None
+    assert fresh_invite.use_count == 0
 
 
-def test_check_invite_returns_404_for_exhausted_code(fresh_invite, db):
+def test_exhausted_code_is_not_usable(db, fresh_invite):
     user = User(
         username=f"u{uuid.uuid4().hex[:12]}",
         email=f"{uuid.uuid4().hex}@example.test",
@@ -66,8 +67,7 @@ def test_check_invite_returns_404_for_exhausted_code(fresh_invite, db):
     db.commit()
 
     try:
-        response = client.get(f"/api/v1/auth/invites/{fresh_invite.code}/check")
-        assert response.status_code == 404
+        assert validate_invite_code(db, fresh_invite.code) is None
     finally:
         # Detach the FK before fresh_invite teardown deletes the invite row
         fresh_invite.used_by = None
@@ -76,34 +76,31 @@ def test_check_invite_returns_404_for_exhausted_code(fresh_invite, db):
         db.commit()
 
 
-def test_check_invite_returns_404_for_revoked_code(fresh_invite, db):
+def test_revoked_code_is_not_usable(db, fresh_invite):
     fresh_invite.revoked_at = datetime.now(UTC)
     db.commit()
-    response = client.get(f"/api/v1/auth/invites/{fresh_invite.code}/check")
-    assert response.status_code == 404
+    assert validate_invite_code(db, fresh_invite.code) is None
 
 
-def test_check_invite_returns_200_for_multi_use_code_with_remaining_uses(db):
+def test_multi_use_code_with_remaining_uses_is_usable(db):
     code = f"test-multi-{uuid.uuid4().hex}"
     invite = InviteCode(code=code, max_uses=3, use_count=1)
     db.add(invite)
     db.commit()
     try:
-        response = client.get(f"/api/v1/auth/invites/{code}/check")
-        assert response.status_code == 200
+        assert validate_invite_code(db, code) is not None
     finally:
         db.delete(invite)
         db.commit()
 
 
-def test_check_invite_returns_404_for_expired_code(db):
+def test_expired_code_is_not_usable(db):
     code = f"test-expired-{uuid.uuid4().hex}"
     invite = InviteCode(code=code, expires_at=datetime.now(UTC) - timedelta(days=1))
     db.add(invite)
     db.commit()
     try:
-        response = client.get(f"/api/v1/auth/invites/{code}/check")
-        assert response.status_code == 404
+        assert validate_invite_code(db, code) is None
     finally:
         db.delete(invite)
         db.commit()

@@ -1,5 +1,5 @@
 """Single-event ops by id: detail, delete, and the lifecycle verbs
-(geolocate, close, investigate)."""
+(geolocate, close)."""
 
 import uuid
 
@@ -23,7 +23,6 @@ from app.models.event import (
     TITLE_MAX_LENGTH,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -59,7 +58,6 @@ _DETAIL_LOADS = (
     selectinload(Event.tags),
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
-    selectinload(Event.investigators).joinedload(EventInvestigator.user),
     # The archived-source fallback in ``build_event_read`` reads this set; a
     # detail loader without it pays a lazy query per event.
     selectinload(Event.archives),
@@ -274,43 +272,3 @@ def close_event(
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
     return _serialize_event(db, closed)
-
-
-@router.post("/{geolocation_id}/investigate", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("60/minute")
-def investigate_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
-    not a 409. Only open requests accept new signals; off ``requested`` the
-    signal is rejected with 409. The rules and the race backstop live in the
-    service.
-    """
-    geo = _resolve_live_event(db, geolocation_id)
-    try:
-        events_service.investigate(db, geo=geo, current_user=current_user)
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-
-
-@router.delete("/{geolocation_id}/investigate", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("60/minute")
-def uninvestigate_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Stop signalling. 204 even if the caller wasn't signalling: the
-    user-observable post-condition (caller not in the working set) is what we
-    promise, not "exactly one row was deleted". Gated to ``requested`` like the
-    POST: a terminated event's signals are frozen history. Rules in the service.
-    """
-    geo = _resolve_live_event(db, geolocation_id)
-    try:
-        events_service.uninvestigate(db, geo=geo, current_user=current_user)
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)

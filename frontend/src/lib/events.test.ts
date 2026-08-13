@@ -5,7 +5,6 @@ import {
   batchCompletionBlockers,
   missingEventFields,
   missingEventRequestFields,
-  submitReadiness,
   uploadArchive,
   type EventFieldsState,
 } from "./events";
@@ -104,45 +103,6 @@ describe("missingEventFields", () => {
 
   it("treats a blank-string title as missing", () => {
     expect(labels({ ...complete, title: "   " })).toEqual(["Title"]);
-  });
-});
-
-describe("submitReadiness", () => {
-  // A detected row that would pass the Submit gate.
-  const readyGeo = {
-    title: "Strike on depot",
-    lat: 48.5,
-    lng: 37.8,
-    source_url: "https://t.me/c/1",
-    source_posted_at: "2026-01-01T00:00:00Z",
-    proof: {
-      type: "doc",
-      content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
-    },
-    media: [{}, {}],
-    tags: [{ category: "capture_source" as const }],
-    conflicts: [{}],
-  };
-
-  it("is ready when the full submit floor is met", () => {
-    expect(submitReadiness(readyGeo)).toEqual({ isReady: true, missing: [] });
-  });
-
-  it("mirrors the Submit gate (same labels, including a text-only proof)", () => {
-    const r = submitReadiness({
-      ...readyGeo,
-      proof: { type: "doc", content: [{ type: "paragraph" }] },
-      media: [],
-      tags: [],
-      conflicts: [],
-    });
-    expect(r.isReady).toBe(false);
-    expect(r.missing).toEqual([
-      "Proof image",
-      "Source media",
-      "Conflict",
-      "Capture source tag",
-    ]);
   });
 });
 

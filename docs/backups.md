@@ -42,7 +42,7 @@ aws --profile <s3-admin> s3 cp s3://<backup-bucket>/YYYY/MM/DD/vidit-<ts>.dump .
 pg_restore --clean --if-exists --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" ./vidit.dump
 ```
 
-The target database must have the same extensions installed as production. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, and `fuzzystrmatch`. Both the stock `postgis/postgis:16-3.4` image and the custom image in [`docker/Dockerfile`](../docker/Dockerfile) include these extensions. Adding `vector`, `pg_cron`, or `age` to production would break restores into stock Postgres.
+The target database must have the same extensions installed as production. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, and `fuzzystrmatch`. The stock `postgis/postgis:16-3.4` image includes all four, and [`docker-compose.yml`](../docker-compose.yml) runs that same image locally. Adding an extension to production that this image does not carry breaks restores into stock Postgres.
 
 ---
 
@@ -102,7 +102,7 @@ docker compose exec db rm -f /tmp/vidit.dump
 rm -f /tmp/vidit-drill.dump
 ```
 
-The drill works against either PG version locally. `pg_restore` is forward-compatible, so a PG-16 dump from the cron restores cleanly into a local PG 16 or PG 18 server.
+Local and production run the same PG 16 image, so the drill exercises the version pair production actually uses.
 
 If steps 4 and 5 return plausible counts and the PostGIS smoke test returns `t`, the dump is restorable. Record the date and dump filename in `CHANGELOG.md`, under `### Operations`. For example: "Restore drill verified YYYY-MM-DD against `vidit-<ts>.dump`".
 

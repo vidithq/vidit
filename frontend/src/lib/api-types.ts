@@ -377,23 +377,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/invites/{code}/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Check Invite Code */
-        get: operations["check_invite_code_api_v1_auth_invites__code__check_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -561,9 +544,8 @@ export interface paths {
          * @description Newest-first cards for one lifecycle view.
          *
          *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-         *     queue (ex ``/requests``), whose cards additionally carry the investigator
-         *     aggregates (count + a small newest-first sample). Two-step "ids then full
-         *     rows" shape so eager-loads can't inflate the LIMIT count.
+         *     queue (ex ``/requests``). Two-step "ids then full rows" shape so eager-loads
+         *     can't inflate the LIMIT count.
          *
          *     Capped at 100 rows however large ``limit`` is; a caller reading past the
          *     first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
@@ -644,10 +626,8 @@ export interface paths {
          *     ``created_at DESC, id DESC``: the latest import is the first thing to
          *     triage.
          *
-         *     Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
-         *     the supported one and is immune to rows landing mid-walk; ``page`` is the
-         *     offset path the queue's pager still uses, and a ``cursor`` supersedes it
-         *     when both arrive. Either way the page is capped at 100 rows.
+         *     Walked with the ``page`` / ``per_page`` offset pager the queue renders,
+         *     capped at 100 rows per page.
          */
         get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
@@ -967,36 +947,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/investigate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Investigate Event
-         * @description Signal "I'm working on this". Idempotent: re-signalling is a 204 no-op,
-         *     not a 409. Only open requests accept new signals; off ``requested`` the
-         *     signal is rejected with 409. The rules and the race backstop live in the
-         *     service.
-         */
-        post: operations["investigate_event_api_v1_events__geolocation_id__investigate_post"];
-        /**
-         * Uninvestigate Event
-         * @description Stop signalling. 204 even if the caller wasn't signalling: the
-         *     user-observable post-condition (caller not in the working set) is what we
-         *     promise, not "exactly one row was deleted". Gated to ``requested`` like the
-         *     POST: a terminated event's signals are frozen history. Rules in the service.
-         */
-        delete: operations["uninvestigate_event_api_v1_events__geolocation_id__investigate_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -1105,9 +1055,8 @@ export interface paths {
          *     instead of falling back to a global firehose, so the page stays a
          *     deliberate signal rather than a noisy default feed.
          *
-         *     Newest submission first, capped at 100 rows per page. ``cursor`` (from the
-         *     ``Link: rel="next"`` header) is the supported way to read on; ``page`` is
-         *     the offset path the feed's pager still uses.
+         *     Newest submission first, walked with the ``page`` / ``per_page`` offset
+         *     pager and capped at 100 rows per page.
          */
         get: operations["get_timeline_api_v1_timeline_get"];
         put?: never;
@@ -1680,7 +1629,7 @@ export interface components {
          * @description Compact author handle used wherever one payload references another.
          *
          *     The public ``User`` fields other schemas need for the byline: handle and
-         *     avatar (geolocation card, request claimers, search hit).
+         *     avatar (geolocation card, geolocator credit, search hit).
          *     ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
          *     directly, no field-by-field build, so ``avatar_url`` flows off the column.
          */
@@ -1996,10 +1945,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Investigator Count */
-            investigator_count?: number | null;
-            /** Investigators Sample */
-            investigators_sample?: components["schemas"]["AuthorRef"][] | null;
             media: components["schemas"]["MediaRead"] | null;
             owner: components["schemas"]["AuthorRef"];
             /**
@@ -2051,10 +1996,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Investigator Count */
-            investigator_count: number;
-            /** Investigators */
-            investigators: components["schemas"]["AuthorRef"][];
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
@@ -2318,8 +2259,6 @@ export interface components {
         };
         /** SearchRequestHit */
         SearchRequestHit: {
-            /** Claimer Count */
-            claimer_count: number;
             /**
              * Created At
              * Format: date-time
@@ -3238,37 +3177,6 @@ export interface operations {
             };
         };
     };
-    check_invite_code_api_v1_auth_invites__code__check_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
@@ -3596,8 +3504,6 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
-                /** @description Opaque cursor from a Link: rel=next header */
-                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -4042,68 +3948,6 @@ export interface operations {
             };
         };
     };
-    investigate_event_api_v1_events__geolocation_id__investigate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    uninvestigate_event_api_v1_events__geolocation_id__investigate_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_api_v1_search_get: {
         parameters: {
             query?: {
@@ -4255,8 +4099,6 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
-                /** @description Opaque cursor from a Link: rel=next header */
-                cursor?: string | null;
             };
             header?: never;
             path?: never;

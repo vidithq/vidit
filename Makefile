@@ -1,14 +1,13 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-build db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
 	@echo "  make init          - Full initialization (install + env + db-up + migrate)"
 	@echo "  make install       - Install backend (uv) and frontend (npm) dependencies"
 	@echo "  make env           - Initialize .env files from templates (.env and .env.local)"
-	@echo "  make db-up         - Start custom PostgreSQL 18.3 container (PostGIS, pgvector, AGE, cron)"
-	@echo "  make db-build      - Force rebuild the custom database image"
+	@echo "  make db-up         - Start the PostgreSQL + PostGIS container"
 	@echo "  make db-down       - Stop the database container"
 	@echo "  make migrate       - Apply database migrations via Alembic"
 	@echo "  make seed          - mock-admin + machine detections from the synthetic archive"
@@ -91,9 +90,6 @@ db-up:
 	docker-compose up -d
 	@echo "Waiting for database to be ready..."
 	@sleep 3
-
-db-build:
-	docker-compose build db
 
 db-down:
 	docker-compose down
