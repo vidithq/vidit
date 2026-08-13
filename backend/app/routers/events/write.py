@@ -96,6 +96,9 @@ async def create_event(
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
+    # The author's graphic-content declaration; defaults to FALSE so an older
+    # client that omits the field submits an unflagged event.
+    is_graphic: bool = Form(False),
     # Exactly one source file (the footage); the proof body's inline images
     # ride alongside it and resolve against the doc's placeholder srcs.
     file: UploadFile = File(...),
@@ -149,6 +152,7 @@ async def create_event(
             proof_data=proof_data,
             tag_ids=parsed_tag_ids,
             conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
             file=file,
             proof_files=proof_files,
         )
@@ -191,6 +195,9 @@ async def create_event_request(
     source_posted_at: str = Form(...),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
+    # A request carries the poster's footage from the start, so it declares the
+    # flag on the same terms as a direct submit.
+    is_graphic: bool = Form(False),
     file: UploadFile = File(...),
     # The proof body's inline images (optional on a request), matched to the
     # doc's ``placeholder://`` srcs, same as the direct-create form.
@@ -239,6 +246,7 @@ async def create_event_request(
             source_posted_at=parsed_source_posted_at,
             tag_ids=parsed_tag_ids,
             conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
             file=file,
             proof_files=proof_files,
             source_snapshot_url=source_snapshot_url,

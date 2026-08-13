@@ -52,7 +52,11 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
         aria-label={draft.title}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <MediaThumb media={draft.thumbnail ?? undefined} className="w-16" />
+      <MediaThumb
+        media={draft.thumbnail ?? undefined}
+        isGraphic={draft.is_graphic}
+        className="w-16"
+      />
       {/* The badge shares the row from `sm` up and drops under the text on a
           phone, where a named-piece badge and a title can't both hold a
           column. */}

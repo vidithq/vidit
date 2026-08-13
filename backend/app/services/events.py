@@ -46,6 +46,7 @@ from app.models.event import (
 from app.models.tag import Tag
 from app.models.user import User
 from app.services import source_archive
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     MediaRequiredError,
@@ -332,6 +333,7 @@ async def create_with_evidence(
     proof_data: dict | None,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
@@ -402,6 +404,7 @@ async def create_with_evidence(
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
+        is_graphic=is_graphic,
         geolocated_at=datetime.now(UTC),
     )
     geo.tags = effective_tags
@@ -452,6 +455,7 @@ async def create_request(
     source_posted_at: datetime,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
@@ -514,6 +518,7 @@ async def create_request(
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
+        is_graphic=is_graphic,
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -560,6 +565,7 @@ async def geolocate(
     proof_data: dict | None,
     tag_ids: list,
     conflict_ids: list,
+    is_graphic: bool = False,
     remove_media_ids: list,
     files: list[UploadFile],
     proof_files: list[UploadFile],
@@ -570,11 +576,16 @@ async def geolocate(
     The one generalized "give this event a vouched location" write, folding
     request fulfilment and detection submit into a single step. The form posts
     the whole state (title, coordinates, source URL, event date + time, source
-    post time, proof + its images, tags, and the source media: ``files`` added,
-    ``remove_media_ids`` dropped), and on success the row becomes
+    post time, the graphic-content flag, proof + its images, tags, and the
+    source media: ``files`` added, ``remove_media_ids`` dropped), and on
+    success the row becomes
     ``geolocated`` and frozen, stamped ``geolocated_at``, with the caller
     credited in ``event_geolocators``. ``detected_from_url`` (the provenance
     anchor) and ``status`` carry no form field.
+
+    ``is_graphic`` is the one field the form cannot lower: it ratchets, so a
+    posted false leaves an already-flagged event flagged. Clearing it is
+    admin-only, through ``PATCH /admin/events/{id}/moderation``.
 
     Concurrency: the row is re-fetched ``with_for_update()`` FIRST, then the
     status re-checked: two racing geolocates serialize on the row lock and
@@ -693,6 +704,12 @@ async def geolocate(
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at
+        # A ratchet, unlike every other field here: the form raises the flag
+        # and never lowers it, so a false value against an already-flagged
+        # event leaves it set. Clearing is admin-only, through ``PATCH
+        # /admin/events/{id}/moderation``, which audits the unmark. An author
+        # who mis-flags their own event asks an admin to undo it.
+        geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = effective_tags
         geo.conflicts = effective_conflicts
         geo.status = STATUS_GEOLOCATED
@@ -815,7 +832,12 @@ def _publish_draft(
     """
     geo = (
         db.query(Event)
-        .filter(Event.id == event_id, Event.deleted_at.is_(None))
+        # A withheld draft is frozen for its owner (same as the single-row
+        # :func:`geolocate`, which resolves through ``_resolve_live_event``):
+        # while an admin holds a row down, its owner does not get to move it on
+        # to a published state. Not an archival guarantee, since the queue
+        # filters on ``deleted_at`` alone (see :func:`source_archive.claim_next`).
+        .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
         .first()

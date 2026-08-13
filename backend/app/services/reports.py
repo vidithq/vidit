@@ -1,0 +1,400 @@
+"""Content reports and the takedown they resolve into.
+
+Three writes and one read live here: a viewer files a report
+(:func:`create_report`), an admin walks the queue (:func:`list_reports`) and
+closes a row with a verdict (:func:`resolve_report`), and an admin acts on an
+event directly, with no report to hang it on (:func:`set_event_moderation`).
+The two admin writes share one home because they perform the same two
+mutations, the graphic flag and ``events.hidden_at``, and each mutation must
+leave the same audit trail whichever door it came through.
+
+Errors are typed with stable ``code`` strings, translated to HTTP via the
+shared ``{code, message}`` envelope; :data:`REPORT_ERROR_STATUS` is the one
+mapping both routers read, the shape ``evidence_intake`` uses.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import BackgroundTasks
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.content_report import (
+    ContentReport,
+    ContentReportReason,
+    ContentReportResolution,
+)
+from app.models.event import Event
+from app.services import email
+from app.services.admin import log_admin_event
+from app.services.event_filters import visible_events
+
+logger = logging.getLogger(__name__)
+
+
+class ReportError(Exception):
+    """Base for friendly errors raised by the reports service.
+
+    Carries a ``code`` so a router maps to an HTTP status without
+    string-matching exception text. Mirrors
+    :class:`app.services.admin.AdminError`.
+    """
+
+    code: str = "report_error"
+
+
+class EventNotFoundError(ReportError):
+    """The reported (or moderated) event does not exist, is soft-deleted, or is
+    already withheld from the public surface it was reached through."""
+
+    code = "event_not_found"
+
+
+class ReportNotFoundError(ReportError):
+    code = "report_not_found"
+
+
+class ReportAlreadyResolvedError(ReportError):
+    """The report already carries a verdict.
+
+    Reports are resolved once and never reopened or deleted, so a second
+    resolve is a conflict rather than an overwrite: the first verdict is the
+    record of what was decided, and its audit row names the admin who decided
+    it.
+    """
+
+    code = "report_already_resolved"
+
+
+class ReportEventGoneError(ReportError):
+    """The reported event was hard-deleted, so this verdict has nothing to act on.
+
+    The report survives the deletion (``content_reports.event_id`` is SET NULL),
+    which keeps the record of the complaint, but ``marked_graphic`` and
+    ``hidden`` both mutate an event row that no longer exists. ``dismissed``
+    stays available: closing the report is still a verdict.
+    """
+
+    code = "report_event_gone"
+
+
+# Status per code, read by both the public report endpoint and the admin
+# router. One home, so the two cannot drift.
+REPORT_ERROR_STATUS: dict[str, int] = {
+    "event_not_found": 404,
+    "report_not_found": 404,
+    "report_already_resolved": 409,
+    "report_event_gone": 409,
+}
+
+
+def _notify_new_report(
+    *,
+    address: str,
+    report_id: uuid.UUID,
+    event_id: uuid.UUID | None,
+    event_title: str,
+    reason: ContentReportReason,
+    details: str | None,
+    reporter: str,
+    created_at: datetime,
+) -> None:
+    """Tell the moderation address a report landed, best effort.
+
+    Runs as a background task, after the response: the report is already
+    recorded and already in the admin queue, so the notification is a heads-up
+    rather than the delivery mechanism, and a reporter must not wait on a
+    Resend round trip to learn their report landed. A provider outage is
+    logged and swallowed on the same terms as the auth mailers.
+
+    Plain values rather than the ``ContentReport`` row: the request's session
+    is gone by the time this runs, so an ORM instance would be detached with
+    expired attributes.
+    """
+    try:
+        email.send(
+            email.content_report_email(
+                to=address,
+                event_id=str(event_id),
+                event_title=event_title,
+                reason=reason,
+                details=details,
+                reporter=reporter,
+                created_at=created_at,
+            )
+        )
+    except email.EmailSendError as exc:
+        logger.warning("content report notification send failed for report %s: %s", report_id, exc)
+
+
+def create_report(
+    db: Session,
+    *,
+    event_id: uuid.UUID,
+    reason: ContentReportReason,
+    details: str | None,
+    reporter_user_id: uuid.UUID | None,
+    reporter_username: str | None,
+    background_tasks: BackgroundTasks,
+) -> ContentReport:
+    """File one report against a live event.
+
+    ``reporter_user_id`` is the caller's id when they happened to be logged in
+    and ``None`` otherwise: reporting is open to anonymous viewers, because the
+    people a piece of footage harms rarely hold an account on the platform that
+    published it.
+
+    An event that does not exist, is soft-deleted, or is already withheld reads
+    as :class:`EventNotFoundError` (404): all three are invisible to the caller,
+    so all three answer the same way rather than confirming which.
+
+    A successful report notifies the moderation address when one is configured
+    (see :func:`_notify_new_report`), enqueued after the commit and run after
+    the response, so the send is never on the reporter's critical path and
+    never at the report's expense. ``reporter_username`` comes from the
+    caller's session rather than a lookup: the commit expires the row, so
+    re-reading it here would cost a second query for a name the router
+    already holds.
+    """
+    visible = (
+        db.query(Event.id, Event.title).filter(Event.id == event_id, *visible_events()).first()
+    )
+    if visible is None:
+        raise EventNotFoundError("Event not found")
+
+    report = ContentReport(
+        event_id=event_id,
+        reason=reason,
+        details=details,
+        reporter_user_id=reporter_user_id,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    address = settings.report_notify_email
+    if address:
+        background_tasks.add_task(
+            _notify_new_report,
+            address=address,
+            report_id=report.id,
+            event_id=report.event_id,
+            event_title=visible.title,
+            reason=report.reason,
+            details=report.details,
+            reporter=reporter_username or "anonymous",
+            created_at=report.created_at,
+        )
+    return report
+
+
+def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[ContentReport], int]:
+    """One page of the queue: open reports first, newest first within each group.
+
+    ``resolved_at IS NOT NULL`` sorts ascending, so ``false`` (open) leads. The
+    ``created_at, id`` tie-break makes the ordering total, which an offset walk
+    needs to avoid serving a row twice. ``ix_content_reports_queue`` carries
+    these three expressions in this order, so the walk reads the index rather
+    than sorting the table; changing this ORDER BY means changing that index.
+    """
+    total = db.query(func.count(ContentReport.id)).scalar() or 0
+    rows = (
+        db.query(ContentReport)
+        .order_by(
+            ContentReport.resolved_at.isnot(None),
+            ContentReport.created_at.desc(),
+            ContentReport.id.desc(),
+        )
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return rows, total
+
+
+def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bool) -> bool:
+    """Set or clear the graphic flag over the author's declaration.
+
+    Returns whether the row actually changed; a no-op writes no audit row,
+    since re-affirming a flag is not an administrative act.
+    """
+    if event.is_graphic == graphic:
+        return False
+    event.is_graphic = graphic
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="event_marked_graphic" if graphic else "event_unmarked_graphic",
+        target={"event_id": str(event.id)},
+    )
+    return True
+
+
+def _set_hidden(db: Session, *, event: Event, actor_id: uuid.UUID, hidden: bool) -> bool:
+    """Withhold the event from the public read surface, or restore it.
+
+    Returns whether the row actually changed, which is also what tells the
+    router whether the points cache has to be dropped: an idempotent hide moves
+    nothing on the map.
+    """
+    if hidden == (event.hidden_at is not None):
+        return False
+    event.hidden_at = datetime.now(UTC) if hidden else None
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="event_hidden" if hidden else "event_unhidden",
+        target={"event_id": str(event.id)},
+    )
+    return True
+
+
+def resolve_report(
+    db: Session,
+    *,
+    report_id: uuid.UUID,
+    resolution: ContentReportResolution,
+    actor_id: uuid.UUID,
+) -> tuple[ContentReport, bool]:
+    """Close one report with a verdict, applying it to the event.
+
+    ``marked_graphic`` sets the event's graphic flag, ``hidden`` withholds the
+    event from every public read, and ``dismissed`` leaves the event untouched.
+    Each verdict stamps the report and appends a ``report_resolved`` audit row;
+    a verdict that actually changed the event appends the matching event action
+    too, so the trail reads the same whether the change came from the queue or
+    from the direct moderation endpoint.
+
+    A report whose event was hard-deleted since (``event_id`` is NULL) accepts
+    ``dismissed`` only: the other two verdicts mutate an event row that is no
+    longer there.
+
+    Concurrency: the report is fetched ``with_for_update()`` FIRST and its
+    verdict re-checked under the lock, so two admins resolving the same report
+    serialize and the loser sees the 409 rather than overwriting the first
+    verdict. The two event-mutating verdicts lock the event the same way;
+    ``dismissed`` touches no event, so it neither fetches nor locks one.
+
+    Returns ``(report, hidden_changed)``; the flag is the router's cue to drop
+    the points cache. Raises :class:`ReportNotFoundError` (404) on an unknown
+    id, :class:`ReportAlreadyResolvedError` (409) on a report that already
+    carries a verdict, and :class:`ReportEventGoneError` (409) on an
+    event-mutating verdict against a deleted event.
+    """
+    # Lock the report row FIRST, then re-check the verdict under the lock, the
+    # ``_publish_draft`` pattern: two admins resolving the same report
+    # serialize here and the loser reads the winner's verdict, so the
+    # documented 409 holds under concurrency instead of both writes landing.
+    # ``populate_existing()`` is load-bearing whenever the row is already in
+    # the session's identity map, where the locked SELECT would otherwise be
+    # answered from a stale Python object.
+    report = (
+        db.query(ContentReport)
+        .filter(ContentReport.id == report_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if report is None:
+        raise ReportNotFoundError("Report not found")
+    if report.resolved_at is not None:
+        raise ReportAlreadyResolvedError("This report is already resolved")
+
+    hidden_changed = False
+    # ``dismissed`` closes the row and touches no event, so it skips the fetch
+    # and the lock below entirely. It is also the only verdict an orphaned
+    # report accepts.
+    if resolution != "dismissed":
+        if report.event_id is None:
+            # The event was hard-deleted; the report outlived it (SET NULL).
+            # There is nothing left to mark or hide.
+            raise ReportEventGoneError(
+                "The reported event was deleted, so this report can only be dismissed"
+            )
+        # Locked because the verdict mutates it: a resolve racing the direct
+        # moderation endpoint over the same event serializes on this row
+        # rather than interleaving the two writes. Soft-deleted and
+        # already-hidden rows are reachable on purpose: a report filed before
+        # the removal still deserves a verdict.
+        event = (
+            db.query(Event)
+            .filter(Event.id == report.event_id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
+        if resolution == "marked_graphic":
+            _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
+        elif resolution == "hidden":
+            hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
+
+    report.resolved_at = datetime.now(UTC)
+    report.resolution = resolution
+    report.resolved_by = actor_id
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="report_resolved",
+        target={
+            "report_id": str(report.id),
+            # NULL when the event was hard-deleted before the verdict landed.
+            "event_id": str(report.event_id) if report.event_id is not None else None,
+            "resolution": resolution,
+        },
+    )
+    db.commit()
+    db.refresh(report)
+    return report, hidden_changed
+
+
+def set_event_moderation(
+    db: Session,
+    *,
+    geolocation_id: uuid.UUID,
+    is_graphic: bool | None,
+    hidden: bool | None,
+    actor_id: uuid.UUID,
+) -> tuple[Event, bool]:
+    """Apply an admin's moderation state to one event, with no report behind it.
+
+    Both fields are optional and independent: ``None`` leaves that axis alone,
+    and a value equal to what the row already holds writes nothing at all, so
+    re-sending the current state is not an administrative act. The one verb that
+    can also UNDO a takedown, which is why it does not go through
+    ``_resolve_live_event`` (that helper hides withheld rows by design).
+
+    Concurrency: the event is fetched ``with_for_update()``, like the one a
+    report verdict mutates, so the two admin doors onto the same two columns
+    serialize.
+
+    Returns ``(event, hidden_changed)``. Raises :class:`EventNotFoundError`
+    (404) for an unknown or soft-deleted event.
+    """
+    # Locked like the event a report verdict mutates, so the two admin doors
+    # onto the same two columns serialize instead of interleaving.
+    event = (
+        db.query(Event)
+        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if event is None:
+        raise EventNotFoundError("Event not found")
+
+    if is_graphic is not None:
+        _mark_graphic(db, event=event, actor_id=actor_id, graphic=is_graphic)
+    hidden_changed = (
+        _set_hidden(db, event=event, actor_id=actor_id, hidden=hidden)
+        if hidden is not None
+        else False
+    )
+
+    db.commit()
+    db.refresh(event)
+    return event, hidden_changed

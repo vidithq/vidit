@@ -1,7 +1,7 @@
 """one analyst-recorded snapshot per link on source_archives
 
-Revision ID: z8b0d2f4h6j8
-Revises: y7a9c1e3g5i7
+Revision ID: b0d2f4h6j8l0
+Revises: a9c1e3g5i7k9
 Create Date: 2026-08-13 10:00:00.000000
 
 The table stops being a capture queue and becomes a record of the copies
@@ -32,8 +32,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "z8b0d2f4h6j8"
-down_revision: Union[str, None] = "y7a9c1e3g5i7"
+revision: str = "b0d2f4h6j8l0"
+down_revision: Union[str, None] = "a9c1e3g5i7k9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

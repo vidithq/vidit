@@ -8,6 +8,7 @@ import { LinkListInput } from "@/components/ui/LinkListInput";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { Switch } from "@/components/ui/Switch";
 import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 
@@ -37,6 +38,16 @@ interface DetailsFieldsProps {
    *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;
+  /** The author's graphic-content declaration. Never required: an unflagged
+   *  event is a complete form. */
+  isGraphic: boolean;
+  setIsGraphic: (v: boolean) => void;
+  /** The loaded event already carries the flag. The declaration ratchets on
+   *  the backend (the form raises it and never lowers it), so the switch reads
+   *  its state and refuses the toggle instead of offering a change the
+   *  geolocate write would discard. A fresh submit leaves this `false` (nothing
+   *  is set yet); fulfilling a flagged request sets it, like the edit form. */
+  graphicLocked?: boolean;
   /** Render the source URL read-only — it's inherited from the request on a
    *  fulfilment (shows a "from request" hint). The detection edit form leaves it
    *  editable (`false`). */
@@ -68,6 +79,9 @@ export function DetailsFields({
   setEventTime,
   sourcePostedAt,
   setSourcePostedAt,
+  isGraphic,
+  setIsGraphic,
+  graphicLocked = false,
   sourceUrlLocked,
   detectedFromUrl,
   sourcePostedAtInvalid = false,
@@ -169,6 +183,30 @@ export function DetailsFields({
           max={MAX_SECONDARY_SOURCE_LINKS}
           itemLabel="Secondary source"
           placeholder="https://x.com/user/status/12345"
+        />
+      </div>
+
+      {/* The graphic-content declaration. A `span` label plus the switch's own
+          accessible name, matching the secondary-sources block above: the
+          control is not a labelable field the browser can associate a
+          `<label>` with. */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <span className={FORM_LABEL}>
+            Graphic content
+            {graphicLocked && <LockedHint>admin only</LockedHint>}
+          </span>
+          <p className="text-xs text-neutral-500">
+            {graphicLocked
+              ? "This event is flagged. Removing the flag requires an admin, so ask a moderator to review it."
+              : "Blurs media behind an age confirmation for viewers. Flag footage showing death, injury or human remains."}
+          </p>
+        </div>
+        <Switch
+          on={isGraphic}
+          onToggle={() => setIsGraphic(!isGraphic)}
+          disabled={graphicLocked}
+          aria-label="Graphic content"
         />
       </div>
 

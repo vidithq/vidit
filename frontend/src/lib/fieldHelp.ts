@@ -73,6 +73,14 @@ export const FIELD_HELP = {
     text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin).",
     label: "What is 'detected from'?",
   },
+  requested_by: {
+    text: "The analyst who opened this as a request. The row stays after fulfilment, as the trace of where the event came from.",
+    label: "Who requested this?",
+  },
+  author: {
+    text: "The analyst who owns this entry on Vidit: the geolocation's submitter, or the analyst who opened it while it is a request. Not necessarily whoever filmed or posted the source.",
+    label: "Who is the author?",
+  },
   // Section-level concepts (the `?` next to a section heading).
   section_location: {
     text: "The footage being located, and the coordinates of the subject it shows. A request has just the footage; whoever picks it up adds the coordinates.",

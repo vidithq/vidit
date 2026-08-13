@@ -88,6 +88,7 @@ export default function RequestsPage() {
                 title={r.title}
                 badge={<StatusBadge status={r.status} />}
                 media={r.media ?? undefined}
+                isGraphic={r.is_graphic}
                 author={r.owner}
                 date={r.event_date ?? undefined}
                 coords={r.event_coords}

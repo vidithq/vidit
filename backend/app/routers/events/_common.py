@@ -24,6 +24,7 @@ from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
 from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
@@ -80,12 +81,15 @@ def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
     """Fetch a live event by id, or 404.
 
     A soft-deleted row reads as 404 (an admin-removed row isn't actionable, the
-    same surface as a genuine 404, no enumeration oracle). Permission is the
-    caller's concern: the geolocate transition owns per-status ownership (a
-    ``requested`` event is answerable by anyone), while the owner-only verbs
-    call ``permissions.ensure_owner`` themselves.
+    same surface as a genuine 404, no enumeration oracle). A withheld row
+    (``hidden_at``) reads the same way: a takedown freezes the event for its
+    owner too, so it can be neither edited, closed, investigated nor archived
+    while it stands, and only the admin moderation endpoint lifts it.
+    Permission is the caller's concern: the geolocate transition owns
+    per-status ownership (a ``requested`` event is answerable by anyone), while
+    the owner-only verbs call ``permissions.ensure_owner`` themselves.
     """
-    geo = db.query(Event).filter(Event.id == event_id, Event.deleted_at.is_(None)).first()
+    geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()
     if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return geo
@@ -130,6 +134,7 @@ def build_event_list(
         title=geo.title,
         event_coords=coords_or_none(lat, lng),
         event_date=geo.event_date,
+        is_graphic=geo.is_graphic,
         status=geo.status,
         before_closed_status=geo.before_closed_status,
         owner=geo.owner,
@@ -201,6 +206,7 @@ def build_event_read(
         detected_at=geo.detected_at,
         geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
+        is_graphic=geo.is_graphic,
         status=geo.status,
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,

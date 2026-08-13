@@ -51,6 +51,9 @@ class SearchEventHit(BaseModel):
     # Nullable (a machine detection often has no known date) but always
     # serialised: ``services.search.search_geolocations`` sets the key on every hit.
     event_date: date | None
+    # See ``EventRead.is_graphic``; the result card covers its thumbnail on it,
+    # so the flag travels with the hit rather than costing a detail fetch.
+    is_graphic: bool
     # ``detected`` rows surface in search marked, like everywhere else.
     status: EventStatus
     owner: AuthorRef
@@ -74,6 +77,9 @@ class SearchRequestHit(BaseModel):
     # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
     status: EventStatus
     created_at: datetime
+    # Same cover gate as ``SearchEventHit.is_graphic``: a request carries the
+    # poster's footage, so its card needs the flag too.
+    is_graphic: bool
     owner: AuthorRef
     # Same picked-thumbnail shape as ``SearchEventHit.media``.
     media: list[MediaRead]

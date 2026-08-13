@@ -21,6 +21,7 @@ import {
   useTaxonomy,
 } from "@/components/geolocations/TaxonomyFields";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
+import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
@@ -55,6 +56,11 @@ export function EventEditForm({
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
+  // The utilities tier only: this page's flow action is the form's own
+  // "Confirm & submit", which stays at the bottom where the fields it applies
+  // end. The header still shares and reports the draft like every other detail
+  // surface.
+  const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
@@ -90,6 +96,10 @@ export function EventEditForm({
   const [sourcePostedAt, setSourcePostedAt] = useState(
     toDatetimeLocalUTC(geo.source_posted_at)
   );
+  // The graphic-content declaration the draft already carries, editable here.
+  // Submitting posts the whole state, so an untouched switch re-posts the same
+  // value rather than clearing it.
+  const [isGraphic, setIsGraphic] = useState(geo.is_graphic);
   const [proof, setProof] = useState<Record<string, unknown> | null>(geo.proof);
   // Inline proof images the editor holds locally; uploaded as `proof_files[]`
   // at submit. A detection's existing proof images are already stored URLs in
@@ -136,6 +146,7 @@ export function EventEditForm({
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
     source_posted_at: sourcePostedAt,
+    is_graphic: isGraphic,
     proof,
     tag_ids: selectedTagIds,
     conflict_ids: selectedConflictIds,
@@ -227,7 +238,11 @@ export function EventEditForm({
       back
       title="Submit detection"
       subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
+      actions={actions}
     >
+      {/* Under the header, where the trigger that opened it is. */}
+      {panels}
+
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
       <form onSubmit={attemptSubmit} className="space-y-6" noValidate>
@@ -286,6 +301,11 @@ export function EventEditForm({
           setEventTime={setEventTime}
           sourcePostedAt={sourcePostedAt}
           setSourcePostedAt={setSourcePostedAt}
+          isGraphic={isGraphic}
+          setIsGraphic={setIsGraphic}
+          // The loaded value, not the live one: the flag ratchets on the
+          // backend, so an event that arrived flagged cannot be unflagged here.
+          graphicLocked={geo.is_graphic}
           sourceUrlLocked={false}
           detectedFromUrl={geo.detected_from_url}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}

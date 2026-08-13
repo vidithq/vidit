@@ -16,6 +16,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    is_graphic: false,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",

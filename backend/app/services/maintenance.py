@@ -19,6 +19,7 @@ from app.models.auth_token import AuthToken
 from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services import email as email_service
+from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,10 @@ def drafts_awaiting_completion(
         .join(Event, Event.owner_id == User.id)
         .filter(
             Event.status == STATUS_DETECTED,
-            Event.deleted_at.is_(None),
+            # The same visibility floor `list_detections` and `_publish_draft`
+            # apply: a takedown freezes a draft for its owner, so nagging them
+            # to complete one they cannot publish is a dead-end prompt.
+            *visible_events(),
             User.deleted_at.is_(None),
             User.is_active.is_(True),
             User.email.isnot(None),

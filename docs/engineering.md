@@ -310,6 +310,8 @@ Each service has its own `.env` (not committed):
 - `backend/.env`: `DATABASE_URL`, `JWT_SECRET`, `STORAGE_BACKEND` (`local` or `s3`), `S3_BUCKET`, `AWS_REGION`, `CLOUDFRONT_DOMAIN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CORS_ORIGINS`. Full list in `backend/.env.example`.
 - `frontend/.env.local`: `NEXT_PUBLIC_API_URL`. Full list in `frontend/.env.local.example`.
 
+Set `REPORT_NOTIFY_EMAIL` in `backend/.env` to receive one email per content report a viewer files. The message names the reason and links to both the admin console and the reported event. Leave it unset to record reports without sending mail. The admin report queue holds every report either way.
+
 ### Running multiple frontends against one backend
 
 The local CORS allowlist accepts every `localhost:<port>` (http or https) by default. See [`backend/app/config.py`](../backend/app/config.py) (`cors_origin_regex`). One backend on `:8000` serves any number of concurrent frontends (main checkout, worktrees, alternate ports) without a restart. For a frontend on a non-default port, run:
@@ -416,6 +418,8 @@ vercel --prod --yes                               # promote to production
 `--scope` is required in non-interactive shells (no default team).
 
 `NEXT_PUBLIC_*` env vars are baked into the JS bundle at build time. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video, a CloudFront `.mp4` URL, currently `landing/promo-v04.mp4` on the media bucket) are passed explicitly into the build from repo **variables** in [`deploy.yml`](../.github/workflows/deploy.yml), because `vercel pull` doesn't reliably surface `NEXT_PUBLIC_*` to `next build`.
+
+**Legal pages.** `/legal` and `/privacy` carry their statutory content inline, so they read no environment variables. The *Hébergeurs* section of [`legal/page.tsx`](../frontend/src/app/legal/page.tsx) names the three providers that host the platform, each with its role, postal address, and site: Vercel (the web interface), Railway (the API and the database), and Amazon Web Services (media storage and delivery). The platform is a non-professional publisher under LCEN article 6-III-2, so the pages identify the hosts rather than the publisher. Both pages publish `support@vidit.app` for takedown notices, data requests, and other legal mail. Change a hosting provider, and edit the list in the same commit.
 
 ### Observability: what's wired and how to turn it on
 

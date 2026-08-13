@@ -49,7 +49,7 @@ interface EventDetailBodyProps {
    *  full page slots its Location map here. */
   children?: ReactNode;
   /** Extra DetailRows appended to the Details section, where the request view
-   *  slots its "Working on" and "Closed" rows. */
+   *  slots its "Closed" row. */
   detailExtras?: ReactNode;
 }
 
@@ -85,14 +85,19 @@ function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           title="Source media"
           concept="source_media"
         />
-        <MediaGallery media={geo.media} alt={geo.title} variant="panel" />
+        <MediaGallery
+          media={geo.media}
+          alt={geo.title}
+          variant="panel"
+          isGraphic={geo.is_graphic}
+        />
       </div>
     );
   }
   return (
     <div>
       <SectionEyebrow title="Source media" concept="source_media" />
-      <MediaGallery media={geo.media} alt={geo.title} />
+      <MediaGallery media={geo.media} alt={geo.title} isGraphic={geo.is_graphic} />
     </div>
   );
 }
@@ -257,7 +262,7 @@ function DetailRows({
           a lifecycle move on this same row, so the trace is who opened the
           request (``requested_by``), not a link to a separate request. */}
       {!compact && geo.requested_by && (
-        <DetailRow label="Requested by" compact={compact}>
+        <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <Link
             href={`/profile/${geo.requested_by.username}`}
             className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
@@ -267,7 +272,7 @@ function DetailRows({
         </DetailRow>
       )}
       {!compact && (
-        <DetailRow label="Author" compact={compact}>
+        <DetailRow label="Author" concept="author" compact={compact}>
           <AuthorByline author={geo.owner} prefix={false} className="text-sm" />
         </DetailRow>
       )}
@@ -417,7 +422,7 @@ function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   // and the map panel render through, so neither can regress alone.
   const body = geo.proof ? (
     <div className="text-sm text-neutral-300 leading-relaxed [overflow-wrap:anywhere]">
-      {renderProof(geo.proof)}
+      {renderProof(geo.proof, { gateImages: geo.is_graphic })}
     </div>
   ) : (
     <p className="text-sm text-neutral-500 italic">No proof provided</p>

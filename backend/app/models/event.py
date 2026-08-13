@@ -4,6 +4,7 @@ from typing import Literal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -230,6 +231,19 @@ class Event(Base):
     # Soft-delete: NULL = live, timestamp = removed from public view. Filtered out
     # by every public read; only the admin path acts on soft-deleted rows.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Takedown: NULL = visible, timestamp = withheld from public view after a
+    # content report. Filtered out by every public read alongside ``deleted_at``,
+    # and reversible (an admin clears it), which is what separates it from the
+    # soft-delete: the row is withheld pending judgement, not removed.
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # TRUE when the footage shows death, injury or human remains. The author
+    # sets it on the write forms; an admin overrides it from the moderation
+    # endpoint when a submission understated what it carries. The read surface
+    # covers a flagged event's imagery until the viewer asks to see it, so the
+    # column is public and carried by both read schemas.
+    is_graphic: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false")
+    )
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])

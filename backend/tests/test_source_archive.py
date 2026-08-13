@@ -459,7 +459,7 @@ def _load_migration(stem: str):
 
 
 def _load_single_snapshot_migration():
-    return _load_migration("z8b0d2f4h6j8_source_archive_single_snapshot")
+    return _load_migration("b0d2f4h6j8l0_source_archive_single_snapshot")
 
 
 @pytest.fixture

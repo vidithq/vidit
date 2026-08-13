@@ -233,7 +233,12 @@ export function ReviewDraft({
         <div className="space-y-4">
           <div>
             <SectionEyebrow title="Source media" />
-            <MediaGallery media={draft.media} alt={draft.title} variant="panel" />
+            <MediaGallery
+              media={draft.media}
+              alt={draft.title}
+              isGraphic={draft.is_graphic}
+              variant="panel"
+            />
           </div>
           <ProofSection>
             {proofBody ? (

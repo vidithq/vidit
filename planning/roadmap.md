@@ -87,6 +87,7 @@ Long-term items deferred for cost, scale, philosophical fit, or because the curr
 - **Reputation system per scope/conflict.** Today: gameable (Goodhart); per-event attestation plus moderation is the quality model. Reconsider only with a concrete anti-gaming design.
 - **Community-driven moderation governance.** Today: community is too small for democracy; admin-driven is faster and cleaner. Revisit when contributor count outgrows what a small admin team can review.
 - **Comments / discussion threads** on geolocations. Today: high abuse surface, large DSA UGC moderation burden, low marginal value over X/Discord. Reconsider only with a design that closes the abuse + DSA cost gap.
+- **Request coordination at scale.** Today: a request is picked up by geolocating it, and duplicate effort is cheap at beta headcount. The passive "I'm working on this" badge was tried and removed (#256): a signal with no commitment discourages others without guaranteeing work. Reconsider when duplicate geolocation effort shows up in practice, and with commitment semantics: an expiring claim that auto-releases without a publication, or partial proof on the request as the visible, verifiable signal of effort.
 
 ---
 
