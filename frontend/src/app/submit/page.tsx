@@ -559,6 +559,9 @@ function SubmitForm() {
         <SourceMediaField
           existing={request ? request.media : []}
           locked={lockedFromRequest}
+          // The requester's media, covered when they flagged the request: a
+          // fulfiller opening the form is a reader too.
+          isGraphic={request?.is_graphic ?? false}
           invalid={invalidKeys.has("source_media")}
           staged={lockedFromRequest ? [] : files}
           onAddFiles={lockedFromRequest ? undefined : (f) => setFiles([...files, ...f])}
@@ -596,6 +599,10 @@ function SubmitForm() {
           setSourcePostedAt={setSourcePostedAt}
           isGraphic={isGraphic}
           setIsGraphic={setIsGraphic}
+          // The loaded request's value, not the live one: the flag ratchets on
+          // the backend, so a request that arrived flagged cannot be unflagged
+          // by the fulfilment either.
+          graphicLocked={request?.is_graphic ?? false}
           sourceUrlLocked={lockedFromRequest}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}

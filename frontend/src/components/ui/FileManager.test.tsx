@@ -76,4 +76,33 @@ describe("FileManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
+
+  it("covers a gated item and keeps its lightbox shut until the reader confirms", () => {
+    const items: FileManagerItem[] = [
+      {
+        key: "a",
+        content: <img alt="thumb" src="/a-thumb.jpg" />,
+        viewContent: <img alt="enlarged" src="/a-hero.jpg" />,
+        viewLabel: "View image",
+        gated: true,
+      },
+    ];
+    render(<FileManager {...baseProps} items={items} />);
+
+    // The gate wraps the view trigger rather than sitting inside it, so the
+    // trigger is covered: inert takes it out of the tab order and the reveal
+    // control is what a click lands on.
+    const reveal = screen.getByRole("button", {
+      name: "Show graphic content (18 or older)",
+    });
+    expect(screen.getByAltText("thumb").closest("[inert]")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(reveal);
+
+    // Revealed: the tile is a normal view trigger again.
+    expect(screen.getByAltText("thumb").closest("[inert]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View image" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });

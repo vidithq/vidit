@@ -35,8 +35,8 @@ interface DetailsFieldsProps {
   /** The loaded event already carries the flag. The declaration ratchets on
    *  the backend (the form raises it and never lowers it), so the switch reads
    *  its state and refuses the toggle instead of offering a change the
-   *  geolocate write would discard. The submit form leaves this `false`: a
-   *  fresh event has nothing set yet. */
+   *  geolocate write would discard. A fresh submit leaves this `false` (nothing
+   *  is set yet); fulfilling a flagged request sets it, like the edit form. */
   graphicLocked?: boolean;
   /** Render the source URL read-only — it's inherited from the request on a
    *  fulfilment (shows a "from request" hint). The detection edit form leaves it

@@ -19,6 +19,8 @@ interface SourceMediaFieldProps {
   onRemoveStaged?: (index: number) => void;
   /** Read-only (request fulfilment): show existing media, no add / remove. */
   locked?: boolean;
+  /** The event's `is_graphic` flag, forwarded to the persisted tiles. */
+  isGraphic?: boolean;
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
   /** Extra note rendered inside the card under the grid. */
