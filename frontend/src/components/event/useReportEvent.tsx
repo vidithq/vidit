@@ -101,7 +101,7 @@ export function useReportEvent(eventId: string): {
   const trigger = (
     <Button
       icon
-      variant="danger"
+      variant="dangerGhost"
       aria-label="Report"
       title="Report"
       aria-expanded={open}

@@ -212,14 +212,15 @@ The fetch itself follows no redirect (a public host must not be able to bounce t
 
 ### Buttons
 
-There is one primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). It has four variants on two axes: tone (accent or danger) and emphasis (filled, outline, text):
+There is one primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). It has five variants on two axes: tone (accent or danger) and emphasis (filled, outline, text):
 
 - `primary`: accent, filled. The one main action of a view.
 - `secondary`: accent, outline. A secondary action (edit, search, pagination).
 - `ghost`: accent, text only. The quiet tier: cancel, dismiss, dense row actions, and (with `icon`) icon-only buttons.
 - `danger`: red, outline. A destructive action (delete, revoke, reject), quiet on purpose.
+- `dangerGhost`: red, text only. A red control at ghost weight, so it sits in an icon row without outweighing its accent neighbours (the report flag).
 
-Every clickable is accent, and red is only for destructive actions. There is no grey button (grey lives in `<Pill>` neutral and `disabled`). The one loud filled red is `DANGER_CONFIRM`, applied through `className` to the armed second click of a two-click confirm, so the strongest red shows once, at the point of no return. `fullWidth` stretches it (auth submits). `icon` makes a square icon-only button. A `<Link>` that should look like a button takes `buttonClasses(variant)`.
+Every clickable is accent, and red is only for destructive or alerting actions. There is no grey button (grey lives in `<Pill>` neutral and `disabled`). The one loud filled red is `DANGER_CONFIRM`, applied through `className` to the armed second click of a two-click confirm, so the strongest red shows once, at the point of no return. `fullWidth` stretches it (auth submits). `icon` makes a square icon-only button. A `<Link>` that should look like a button takes `buttonClasses(variant)`.
 
 **Tap size.** Both shapes stand taller on a phone (`min-h-9` on the text shape, `size-9` on the icon square), dropping to the desktop 28px / 32px from `sm` up. Only the tappable height moves. The type scale and the horizontal padding are the same at every width. The `?` grows its own target the same way; see *Field help* below.
 

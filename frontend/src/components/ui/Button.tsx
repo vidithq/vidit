@@ -10,18 +10,27 @@ import { cn } from "@/lib/cn";
 //
 // Defaults to `type="button"` so a button never submits a form by accident;
 // pass `type="submit"` explicitly where it should.
-// Four variants on two axes: tone (accent or danger) and emphasis (filled,
+// Five variants on two axes: tone (accent or danger) and emphasis (filled,
 // outline, text). Everything clickable is the accent colour; red is only for
-// destructive. There is no grey button (grey lives in the <Pill> neutral tone +
-// disabled states), since a grey clickable reads as not-clickable.
-//   primary    accent, filled    the one main action of a view
-//   secondary  accent, outline   a secondary action
-//   ghost      accent, text      quiet: cancel, dismiss, dense rows, icons
-//   danger     red, outline      a destructive action (secondary, but red)
+// destructive or alerting. There is no grey button (grey lives in the <Pill>
+// neutral tone + disabled states), since a grey clickable reads as
+// not-clickable.
+//   primary      accent, filled    the one main action of a view
+//   secondary    accent, outline   a secondary action
+//   ghost        accent, text      quiet: cancel, dismiss, dense rows, icons
+//   danger       red, outline      a destructive action (secondary, but red)
+//   dangerGhost  red, text         a red control at ghost weight, so it sits
+//                                  in an icon row without outweighing its
+//                                  accent neighbours (the report flag)
 // The loud filled red is not an everyday variant: it is `DANGER_CONFIRM`, applied
 // only to the armed second click of a two-click confirm, so the strongest red
 // shows up once, at the point of no return.
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "danger"
+  | "dangerGhost";
 
 const BASE =
   "inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50";
@@ -42,6 +51,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   secondary: "text-orange-400 hover:bg-orange-500/10 border border-orange-500/30",
   ghost: "text-orange-400 hover:bg-orange-500/10",
   danger: "text-red-400 hover:bg-red-500/10 border border-red-500/30",
+  dangerGhost: "text-red-400 hover:bg-red-500/10",
 };
 
 // The one loud filled red, for the armed second click of a two-click confirm
