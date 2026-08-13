@@ -50,8 +50,8 @@ class ArchiveImportJob(Base):
     progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Assemble counts, final once ``done`` (see ``AssembleOutcome``).
     created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    recreated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -207,12 +207,12 @@ class LocalStorage:
         # by ``max_image_size`` / ``max_video_size``, so buffering is fine.
         file.file.seek(0)
         data = await file.read()
-        sha256 = hashlib.sha256(data).hexdigest()
+        sha256 = content_sha256(data)
         self._path(key).write_bytes(data)
         return UploadResult(url=self.public_url(key), sha256=sha256)
 
     async def upload_bytes(self, data: bytes, key: str, content_type: str) -> UploadResult:
-        sha256 = hashlib.sha256(data).hexdigest()
+        sha256 = content_sha256(data)
         self._path(key).write_bytes(data)
         return UploadResult(url=self.public_url(key), sha256=sha256)
 
@@ -328,7 +328,7 @@ class S3Storage:
         # ``to_thread`` wrap still matters: the seeder mints hundreds of rows
         # in a tight loop, and a blocking ``put_object`` per row would starve
         # the loop.
-        sha256 = hashlib.sha256(data).hexdigest()
+        sha256 = content_sha256(data)
         await asyncio.to_thread(
             self.client.put_object,
             Bucket=self.bucket,
@@ -463,6 +463,16 @@ def scrub_log(value: str) -> str:
     through this first (``sweep_keys`` below, the tweet-import router).
     """
     return value.replace("\r", "").replace("\n", "")
+
+
+def content_sha256(data: bytes) -> str:
+    """The content fingerprint stored on a ``Media`` row, for a bytes payload.
+
+    One home for the digest so a caller that needs to know whether bytes are
+    already stored (the re-import upsert compares against ``Media.sha256``)
+    computes it the same way the upload does.
+    """
+    return hashlib.sha256(data).hexdigest()
 
 
 def sweep_keys(keys: list[str], *, context: str) -> None:

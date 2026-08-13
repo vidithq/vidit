@@ -1384,9 +1384,9 @@ export interface components {
          *     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
          *     owner vouched (promoted to ``geolocated``) is not a reject, even once
          *     soft-deleted (it was vouched before removal); a detection still awaiting
-         *     review is not a reject yet. This mirrors the dismissal semantics in
-         *     ``services/detection._reimportable``, where soft-delete and owner close are
-         *     the same judged-and-thrown-out shape. ``reject_rate`` is
+         *     review is not a reject yet. Both shapes are ones
+         *     ``services/detection._row_disposition`` refuses to re-import, since each
+         *     records a judgment a re-import must not undo. ``reject_rate`` is
          *     ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
          *     machine detections. Counted over all machine rows, soft-deleted or not: the
          *     metric measures what the pipeline produced.
@@ -1713,11 +1713,12 @@ export interface components {
          *
          *     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
          *     counts are the assemble outcome, final once ``done`` (zero until then):
-         *     ``created`` is new ``detected`` rows; ``skipped`` a pair a live row
-         *     already held; ``recreated`` a previously rejected pair re-detected;
-         *     ``failed`` a detection that raised mid-persist and was rolled back (the
-         *     others still land). ``error`` stays operator-oriented and terse; the
-         *     owner gets the human story by email.
+         *     ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
+         *     draft the import overwrote with a newer parse; ``skipped`` a detection the
+         *     import left alone, either because the row it matched is not one to touch
+         *     or because that row was already up to date; ``failed`` a detection that
+         *     raised mid-persist and was rolled back (the others still land). ``error``
+         *     stays operator-oriented and terse; the owner gets the human story by email.
          */
         ArchiveImportJobRead: {
             /** Created */
@@ -1744,8 +1745,6 @@ export interface components {
             progress_done: number;
             /** Progress Total */
             progress_total: number | null;
-            /** Recreated */
-            recreated: number;
             /** Skipped */
             skipped: number;
             /** Started At */
@@ -1755,6 +1754,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "done" | "failed";
+            /** Updated */
+            updated: number;
         };
         /**
          * ArchiveImportPresignRead

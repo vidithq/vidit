@@ -121,9 +121,28 @@ An X "Download your data" export exposes the analyst's own reply edges and inlin
 
 **Postgres is the queue.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row with `FOR UPDATE SKIP LOCKED`, which is safe under concurrent workers. It stamps the row `running`, re-checks the staged object's size (the presign window outlives the enqueue), downloads the zip, and runs the hardened extract-and-backfill attributed to the job's owner. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`. Both states delete the staged object, so no live object accumulates: the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). Zip-shape validation happens only here. A malformed upload lands `failed` and triggers the failure email; the browser strip catches the common shapes before upload.
 
-**Crash recovery.** A worker killed mid-job leaves its row `running`. The row becomes claimable again once `started_at` is older than the stale window (30 minutes). `started_at` also doubles as a liveness heartbeat, re-stamped every 5 minutes while the job runs. This way a legitimately long import never crosses the window while it is still alive, and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. After three attempts, the job lands `failed` as a poison-pill guard. The backfill is idempotent on `(detected_from_url, coordinate)`, and on `(source_url, coordinate)` when the detection declares a source. This also collapses the delete-and-repost shape: two provenance tweets declaring the same footage at the same coordinate land as one draft. So a reclaimed, half-applied run never duplicates rows.
+**Crash recovery.** A worker killed mid-job leaves its row `running`. The row becomes claimable again once `started_at` is older than the stale window (30 minutes). `started_at` also doubles as a liveness heartbeat, re-stamped every 5 minutes while the job runs. This way a legitimately long import never crosses the window while it is still alive, and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. After three attempts, the job lands `failed` as a poison-pill guard. A reclaimed, half-applied run never duplicates rows, because the matching rule below already holds every row the first pass wrote.
 
-**Email.** The job typically finishes after the analyst has navigated away, so the worker emails the outcome. On success, the email carries the counts and a link to the Detections queue. On failure, it carries a retry-safe failure notice. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
+### Re-import
+
+A detection is matched against the importing owner's own rows on `(detected_from_url, coordinate)`, and on `(source_url, coordinate)` when the detection declares a source. The coordinate compares to six decimal places, the same rounding the coordinate extraction dedups on. The source URL leg also collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one draft.
+
+What happens to a matched row depends on what the row is. [`detection._row_disposition`](../backend/app/services/detection.py) holds the matrix:
+
+| Matched row | Outcome |
+|---|---|
+| Soft-deleted (`deleted_at`) | Skipped. An admin removal stands; a re-import never brings the event back. |
+| Withheld (`hidden_at`) | Skipped, whatever its status. A takedown freezes the row for its owner too. |
+| `geolocated` | Skipped. A machine never overwrites published work. |
+| `detected` | Updated in place. |
+| `closed` | Skipped. A rejected detection stays rejected, so nobody rejects the same post twice. |
+| No match | A new `detected` row. |
+
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its `detected_from_url`, and its place in the review queue. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. This is safe because no analyst-facing path writes those fields and leaves the row `detected`: every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](#source-archival), and those survive the update; if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row no longer carries it.
+
+**An unchanged post writes nothing.** Every field is compared before it is written, and media is compared by SHA-256, so re-running the same export leaves `updated_at` where it was, uploads no bytes and creates no storage objects. Such a row counts as `skipped`, not `updated`.
+
+**Email.** The job typically finishes after the analyst has navigated away, so the worker emails the outcome. On success, the email carries the counts (created, updated, skipped, failed, each a disjoint bucket) and a link to the Detections queue. On failure, it carries a retry-safe failure notice. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
 
 **Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever, with a 5-second idle sleep and one fresh session per pass. Each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [Bot format](#bot-format)). Set `IMPORT_WORKER_ONCE=1` to run a single drain-and-exit pass over both queues, by hand or as a cron fallback.
 

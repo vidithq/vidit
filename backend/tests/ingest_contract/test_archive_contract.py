@@ -26,12 +26,15 @@ from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import assemble_detections, backfill_from_archive
 from app.services.tweet_ingest import (
+    DetectedGeoloc,
+    ParsedCoord,
     ParsedMedia,
     archive_media_fetcher,
     detect,
     read_tweets,
     stitch,
 )
+from tests._fixtures import TINY_JPEG
 
 from . import loader
 
@@ -346,6 +349,139 @@ async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_pat
     assert len(source) == 0
     proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
     assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
+
+
+async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_path, monkeypatch):
+    """The regression this whole change exists for, end to end.
+
+    An import that ran before the parser read a whole-line ``Source:``
+    designation stored a bare draft: no ``source_url``, no mirrors, no source
+    media. Re-importing the same export with today's parser fills all three on
+    the same row instead of computing them and throwing them away.
+    """
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    handle = owner.x_handle or owner.username
+    tweet_id = "8400000000000000042"
+    permalink = f"https://x.com/{handle}/status/{tweet_id}"
+    archive = _bare_designation_archive(tmp_path, tweet_id)
+
+    def fake_embed(url: str, *, client: Any = None) -> Any:
+        assert url == "https://t.me/somechannel/12345"
+        return TelegramEmbed(
+            posted_at="2026-03-04T09:00:00+00:00",
+            media=[
+                ParsedMedia(
+                    kind="video",
+                    remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
+                    content_type="video/mp4",
+                    origin="quote",
+                )
+            ],
+        )
+
+    async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
+        return loader.TINY_MP4, parsed.content_type
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
+
+    # The row the old import left behind: the right post at the right place,
+    # and nothing the whole-line designation would have given it.
+    stale = await assemble_detections(
+        db,
+        owner=owner,
+        detections=[_pre_designation_detection(permalink)],
+        fetch_media=archive_media_fetcher(archive),
+    )
+    assert len(stale.created) == 1
+    stale_row = stale.created[0]
+    stale_id, stale_created_at = stale_row.id, stale_row.created_at
+    assert stale_row.source_url is None
+    assert stale_row.source_links == []
+    assert db.query(Media).filter(Media.event_id == stale_id, Media.role == "source").all() == []
+
+    # Today's parser over the same export: the designation reads, the mirror
+    # lists, the Telegram embed is chased for the date and the footage.
+    outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, chase=True)
+    assert outcome.created == [] and outcome.updated == 1 and outcome.failed == 0
+
+    db.expire_all()
+    [row] = db.query(Event).filter(Event.owner_id == owner.id).all()
+    assert row.id == stale_id  # the same row, not a second one beside it
+    assert row.created_at == stale_created_at
+    assert row.status == STATUS_DETECTED
+    assert row.detected_from_url == permalink
+    assert row.source_url == "https://t.me/somechannel/12345"
+    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
+    assert [link.url for link in row.source_links] == ["https://www.youtube.com/watch?v=FAKEVID1"]
+    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
+    assert len(source) == 1 and source[0].media_type == "video"
+
+
+def _pre_designation_detection(permalink: str) -> DetectedGeoloc:
+    """What the parser produced for this post before it read ``Source:`` lines.
+
+    The coordinate, the text and the annotation photo, and nothing else: the
+    designated link went unread, so the draft carried no source URL, no mirrors
+    and no footage. This is the shape 127 of one analyst's 461 drafts are in.
+    """
+    return DetectedGeoloc(
+        coordinate=ParsedCoord(lat=44.6123, lng=33.5221),
+        title="Geolocated airfield perimeter",
+        proof_text="Geolocated airfield perimeter",
+        source_url=None,
+        detected_from_url=permalink,
+        owner_handle="own",
+        event_date=date(2026, 3, 4),
+        source_posted_at=None,
+        detected_post_at=datetime.fromisoformat("2026-03-04T13:20:00+00:00"),
+        secondary_source_urls=[],
+        source_media=[],
+        proof_media=[
+            ParsedMedia(
+                kind="image",
+                remote_url=f"tweets_media/{permalink.rsplit('/', 1)[-1]}-FAKEOP9A.jpg",
+                content_type="image/jpeg",
+            )
+        ],
+    )
+
+
+def _bare_designation_archive(tmp_path: Any, tweet_id: str) -> Any:
+    """A one-tweet export: a coordinate, a whole-line Telegram ``Source:``
+    designation, one mirror link, and one annotation photo."""
+    archive = tmp_path / "reimport_archive"
+    (archive / "tweets_media").mkdir(parents=True)
+    entry = {
+        "id_str": tweet_id,
+        "created_at": "Wed Mar 04 13:20:00 +0000 2026",
+        "full_text": (
+            "Geolocated 44.612300, 33.522100 airfield perimeter\n"
+            "Source: https://t.co/fakeTELE\n"
+            "Mirror: https://t.co/fakeTUBE"
+        ),
+        "entities": {
+            "urls": [
+                {"url": "https://t.co/fakeTELE", "expanded_url": "https://t.me/somechannel/12345"},
+                {
+                    "url": "https://t.co/fakeTUBE",
+                    "expanded_url": "https://www.youtube.com/watch?v=FAKEVID1",
+                },
+            ],
+            "media": [
+                {
+                    "id_str": "9100000000000000001",
+                    "media_url_https": "https://pbs.twimg.com/media/FAKEOP9A.jpg",
+                    "type": "photo",
+                }
+            ],
+        },
+    }
+    loader.write_archive_js(archive, [entry])
+    (archive / "tweets_media" / f"{tweet_id}-FAKEOP9A.jpg").write_bytes(TINY_JPEG)
+    return archive
 
 
 # ── Small DB-shape helpers ─────────────────────────────────────────────────

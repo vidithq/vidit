@@ -165,10 +165,10 @@ def test_gold_path_register_import_geolocate_publish(
         assert polled.status_code == 200
         job = polled.json()
         assert job["status"] == "done"
-        assert {k: job[k] for k in ("created", "skipped", "recreated", "failed")} == {
+        assert {k: job[k] for k in ("created", "updated", "skipped", "failed")} == {
             "created": 1,
+            "updated": 0,
             "skipped": 0,
-            "recreated": 0,
             "failed": 0,
         }
         # The registration mailer and the worker share the email module, so

@@ -47,11 +47,12 @@ class ArchiveImportJobRead(BaseModel):
 
     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
     counts are the assemble outcome, final once ``done`` (zero until then):
-    ``created`` is new ``detected`` rows; ``skipped`` a pair a live row
-    already held; ``recreated`` a previously rejected pair re-detected;
-    ``failed`` a detection that raised mid-persist and was rolled back (the
-    others still land). ``error`` stays operator-oriented and terse; the
-    owner gets the human story by email.
+    ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
+    draft the import overwrote with a newer parse; ``skipped`` a detection the
+    import left alone, either because the row it matched is not one to touch
+    or because that row was already up to date; ``failed`` a detection that
+    raised mid-persist and was rolled back (the others still land). ``error``
+    stays operator-oriented and terse; the owner gets the human story by email.
     """
 
     id: uuid.UUID
@@ -64,8 +65,8 @@ class ArchiveImportJobRead(BaseModel):
     progress_done: int
     progress_total: int | None
     created: int = Field(validation_alias="created_count")
+    updated: int = Field(validation_alias="updated_count")
     skipped: int = Field(validation_alias="skipped_count")
-    recreated: int = Field(validation_alias="recreated_count")
     failed: int = Field(validation_alias="failed_count")
     error: str | None
     created_at: datetime
