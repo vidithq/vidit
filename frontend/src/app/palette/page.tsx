@@ -8,6 +8,7 @@ import {
   Calendar,
   Check,
   Circle,
+  Copy,
   Download,
   Mail,
   MapPin,
@@ -75,6 +76,7 @@ import {
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
   HOVER_REVEAL,
+  ARMED_RING,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
@@ -370,6 +372,17 @@ export default function PalettePage() {
                   </p>
                 </div>
               </Variant>
+            </div>
+          </Item>
+
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's draft-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+            <div className="flex items-center gap-3">
+              <Button variant="primary" className={ARMED_RING}>
+                Confirm submit
+              </Button>
+              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy link">
+                <Copy size={15} />
+              </Button>
             </div>
           </Item>
 

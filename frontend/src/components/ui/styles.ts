@@ -42,6 +42,15 @@ export const FLOATING_CONTROL =
 export const HOVER_REVEAL =
   "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100";
 
+// The armed half of a two-click confirm, for a control that stays in place
+// while it waits: a ring plus a neutral plate, so the button reads as changed
+// without moving or resizing anything around it. One look for every armed
+// control that is not the loud red point of no return (that one is
+// `DANGER_CONFIRM` in ./Button): the event share row's draft-link pair, the
+// detection form's Submit. Pair with `useConfirmAction`, which owns the arming
+// itself; the label change stays at the call site.
+export const ARMED_RING = "bg-neutral-800 ring-1 ring-neutral-500";
+
 // Amber "caution / heads-up" surface — the warning counterpart to the red error
 // banners (a hard error). Amber reads as "check this, you're not blocked"
 // (duplicate-probe, curated-tags load failure, tweet-import notice). Colour only

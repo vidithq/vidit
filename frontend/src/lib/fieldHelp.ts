@@ -109,7 +109,7 @@ export const FIELD_HELP = {
   },
   // Detection submit action, spelled out here.
   action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it), frozen and no longer editable. Give it a full read first.",
+    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). Submitting freezes the event, so it can no longer be edited. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
 } as const;

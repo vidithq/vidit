@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The two surfaces jsdom can't mount: the map canvas needs WebGL and the Tiptap
@@ -53,6 +53,7 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 }));
 
 import { closeEvent, geolocateEvent } from "@/lib/events";
+import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
@@ -136,17 +137,20 @@ function resource(path: string) {
   return null;
 }
 
-/** Make the two curated picks the publish floor asks for, then submit through
- *  the form's confirm step. */
-async function submitDraft() {
+/** Make the two curated picks the publish floor asks for. */
+function fillTheFloor() {
   fireEvent.click(
     screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
   );
   fireEvent.click(screen.getByRole("button", { name: "Drone" }));
+}
+
+/** Fill the floor, then submit: the first click arms the button in place, the
+ *  second one writes. */
+async function submitDraft() {
+  fillTheFloor();
   fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Confirm & submit" })
-  );
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm submit" }));
 }
 
 /** Reject the draft on screen, through its confirm-with-reason panel. */
@@ -297,5 +301,75 @@ describe("a review pass over the queue", () => {
     // a plain edit again rather than claiming a position it doesn't have.
     expect(screen.queryByText(/Draft \d+ of/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+});
+
+describe("the submit confirm", () => {
+  /** Render the form, fill the floor, and take the first click, which arms
+   *  the button. */
+  function armSubmit() {
+    render(<EditEventPage />);
+    fillTheFloor();
+    const button = screen.getByRole("button", { name: "Submit" });
+    fireEvent.click(button);
+    return button;
+  }
+
+  it("arms the one button in place instead of swapping the row", () => {
+    const button = armSubmit();
+
+    // Same element, renamed: no confirm pair appears beside it and nothing is
+    // inserted before it, so the second click lands where the first one did.
+    expect(button).toHaveAccessibleName("Confirm submit");
+    expect(screen.getByRole("button", { name: "Confirm submit" })).toBe(button);
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(geolocateMock).not.toHaveBeenCalled();
+  });
+
+  it("announces the armed state and what the next click costs", () => {
+    armSubmit();
+    // A live region beside the button, not a renamed control: the reader hears
+    // the state and what it costs, in the shape `<CopyButton>` already uses.
+    const announcement = screen.getByText(
+      "Click again to submit. Submitting freezes the event."
+    );
+    expect(announcement).toHaveAttribute("role", "status");
+    expect(announcement).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("writes on the second click", async () => {
+    const button = armSubmit();
+    fireEvent.click(button);
+    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("disarms on Escape", () => {
+    const button = armSubmit();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(button).toHaveAccessibleName("Submit");
+    expect(
+      screen.queryByText("Click again to submit. Submitting freezes the event.")
+    ).toBeNull();
+  });
+
+  it("disarms when the next click lands elsewhere", () => {
+    const button = armSubmit();
+    fireEvent.pointerDown(screen.getByRole("textbox", { name: /Title/ }));
+    expect(button).toHaveAccessibleName("Submit");
+    // And that click is spent disarming: nothing is written.
+    expect(geolocateMock).not.toHaveBeenCalled();
+  });
+
+  it("disarms on its own after a few seconds", () => {
+    vi.useFakeTimers();
+    try {
+      const button = armSubmit();
+      act(() => {
+        vi.advanceTimersByTime(ARM_MS);
+      });
+      expect(button).toHaveAccessibleName("Submit");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -13,6 +13,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
+import { ARMED_RING } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -24,6 +25,7 @@ import {
 import { CloseEventForm } from "@/components/event/CloseEventForm";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { cleanNumber } from "@/lib/coordinates";
@@ -79,9 +81,8 @@ export function EventEditForm({
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   // The utilities tier only: this surface's flow action is the form's own
-  // "Confirm & submit", which stays at the bottom where the fields it applies
-  // end. The header still shares and reports the draft like every other detail
-  // surface.
+  // Submit, at the bottom where the fields it applies end. The header still
+  // shares and reports the draft like every other detail surface.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
   // Reject the draft: the confirm step is the inline `CloseEventForm` (a
@@ -151,8 +152,6 @@ export function EventEditForm({
     geo.conflicts.map((c) => c.id)
   );
 
-  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
-
   // Incomplete-form feedback (shared notice + in-form red outlines).
   const {
     missingFields,
@@ -195,6 +194,24 @@ export function EventEditForm({
       finish();
     },
   });
+
+  // Submitting freezes the row, so it takes a second click. The button arms in
+  // place rather than swapping itself for a confirm pair: the control the
+  // reader is aiming at stays where it is, and the second click lands on the
+  // same pixels as the first. It keeps focus, so Enter twice submits too.
+  const {
+    armed: submitArmed,
+    trigger: triggerSubmit,
+    controlRef: submitButtonRef,
+  } = useConfirmAction(
+    () => {
+      void submitMutation.run();
+    },
+    {
+      timeoutMs: ARM_MS,
+      dismissOnOutside: true,
+    }
+  );
 
   const busy = submitMutation.loading;
   const actionError = submitMutation.error;
@@ -250,11 +267,10 @@ export function EventEditForm({
       flagIncomplete(missing);
       return;
     }
-    setConfirmingSubmit(true);
-  };
-
-  const handleSubmit = () => {
-    submitMutation.run();
+    // A complete form arms the button; the click after it writes. Every check
+    // above runs on both clicks, so a form that stopped being submittable
+    // between them says so instead of posting.
+    triggerSubmit();
   };
 
   return (
@@ -409,41 +425,51 @@ export function EventEditForm({
         {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
 
         {/* The flow action, alone at the foot of the fields it applies, as on
-            the create form. Disposing of the draft is not a form action: it
-            sits in the header's ⋯ menu. */}
+            the create form. Disposing of the draft is not a form action: Skip
+            and Reject sit in the header. */}
         <div className="flex flex-wrap items-center gap-3">
-          {confirmingSubmit ? (
-            <span className="inline-flex items-center gap-2">
-              <span className="text-xs text-amber-400/90">
-                Once submitted it can&apos;t be edited.
+          <span className="inline-flex items-center gap-1.5">
+            <Button
+              ref={submitButtonRef}
+              type="submit"
+              variant="primary"
+              disabled={busy}
+              className={submitArmed ? ARMED_RING : ""}
+              title={
+                submitArmed
+                  ? "Click again to submit. Submitting freezes the event."
+                  : undefined
+              }
+            >
+              {/* The three labels stack in one grid cell, so the button is as
+                  wide as the longest of them from the first paint and arming
+                  moves nothing at all, not even the `?` beside it. */}
+              <span className="grid">
+                <span aria-hidden className="col-start-1 row-start-1 invisible">
+                  Confirm submit
+                </span>
+                <span className="col-start-1 row-start-1">
+                  {busy
+                    ? "Submitting…"
+                    : submitArmed
+                      ? "Confirm submit"
+                      : "Submit"}
+                </span>
               </span>
-              <Button
-                variant="primary"
-                onClick={handleSubmit}
-                disabled={busy}
-              >
-                {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setConfirmingSubmit(false)}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={busy}
-              >
-                Submit
-              </Button>
-              <FieldHelp concept="action_submit" />
-            </span>
-          )}
+            </Button>
+            {/* What the second click costs is the button's `?`, which every
+                field on this form already carries, rather than a line of copy
+                that appears mid-gesture and pushes the button sideways. */}
+            <FieldHelp concept="action_submit" />
+          </span>
+          {/* Sibling status region, the shape `<CopyButton>` uses: the armed
+              state is reported once, as a status, so a reader who cannot see
+              the ring hears what the next click will do. */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {submitArmed
+              ? "Click again to submit. Submitting freezes the event."
+              : ""}
+          </span>
         </div>
       </form>
     </PageShell>
