@@ -163,6 +163,67 @@ describe("batchCompletionBlockers", () => {
       "Source URL",
     ]);
   });
+
+  // The readiness rule has three expressions: this one, the server floor in
+  // `services/events._publish_draft`, and the SQL the queue's `readiness`
+  // filter pages on (`services/events.draft_ready_predicate`). The queue
+  // labels rows from here and asks the server which rows to show, so a
+  // disagreement shows up as a row badged Ready that the Ready filter hides.
+  //
+  // Shape for shape, this table mirrors `backend/tests/events/
+  // _readiness_cases.py`, where the two server expressions are held to the
+  // same verdicts. Change one table, change the other.
+  describe("agrees with the server's readiness filter, shape for shape", () => {
+    const proofWithImage = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Cross-referenced." }] },
+        { type: "image", attrs: { src: "https://cdn.example.com/proof.jpg" } },
+      ],
+    };
+    const proofImageNested = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [{ type: "image", attrs: { src: "https://cdn/x.jpg" } }],
+            },
+          ],
+        },
+      ],
+    };
+    const proofTextOnly = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "No imagery." }] }],
+    };
+    // An image node with no `src`. The server counts srcs, not nodes, so it
+    // does not satisfy the floor; a node-type-only test here would badge the
+    // draft Ready and then never find it under the Ready filter.
+    const proofImageWithoutSrc = { type: "doc", content: [{ type: "image" }] };
+
+    const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
+      ["ready", importedDraft, true],
+      ["ready_with_a_nested_proof_image", { ...importedDraft, proof: proofImageNested }, true],
+      ["no_source_url", { ...importedDraft, source_url: null }, false],
+      ["blank_source_url", { ...importedDraft, source_url: " \t\n " }, false],
+      ["no_coordinates", { ...importedDraft, event_coords: null }, false],
+      ["no_source_media", { ...importedDraft, media: [] }, false],
+      ["no_proof_image", { ...importedDraft, proof: proofTextOnly }, false],
+      ["proof_image_without_a_src", { ...importedDraft, proof: proofImageWithoutSrc }, false],
+      [
+        "missing_everything_but_the_title",
+        { event_coords: null, source_url: null, proof: proofTextOnly, media: [] },
+        false,
+      ],
+    ];
+
+    it.each(cases)("%s", (_name, draft, ready) => {
+      expect(batchCompletionBlockers(draft).length === 0).toBe(ready);
+    });
+  });
 });
 
 describe("missingEventRequestFields", () => {

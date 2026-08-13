@@ -47,7 +47,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
 | POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
-| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated) |
+| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
@@ -827,23 +827,30 @@ Owner-only delete. Cascades media, tag links, and contributor rows. A **hard** d
 
 ### `GET /events/detections` 🔒
 
-Your "Detections" queue: your machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**: it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where you review and geolocate each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and computes geolocate-readiness (source media + a conflict + a `capture_source` tag) client-side without a per-row fetch.
+Your "Detections" queue: your machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**: it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where you review and geolocate each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and names what each row is missing without a per-row fetch.
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+| `readiness` | string | Which drafts to page through: `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
+
+**Readiness.** A draft is `ready` when it carries every piece of evidence a publish needs and waits only on the two judgments a review supplies (a conflict and a `capture_source` tag): a `source` media row, a non-blank `source_url`, coordinates, and a proof body embedding at least one image. `incomplete` is the exact complement, so the two sets partition the queue and no draft falls out of both. The filter runs in SQL over the whole queue, not over the page you loaded, so `readiness=ready` on page 1 answers about every draft you hold.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
 {
   "items": [ { "id": "uuid", "status": "detected", "media": [], "tags": [] } ],
-  "total": 12,
+  "total": 248,
   "page": 1,
-  "per_page": 20
+  "per_page": 20,
+  "ready_total": 248,
+  "incomplete_total": 213
 }
 ```
+
+`total` counts the set `readiness` selected, so the page count you compute from it describes what you are paging through. `ready_total` and `incomplete_total` count the whole queue under every `readiness` value, so one call states the split; they sum to `total` when `readiness=all`.
 
 A detection carries no location it was promoted from; `requested_by` is always `null` here (a detection is machine-born, not opened as a request).
 
@@ -851,6 +858,7 @@ A detection carries no location it was promoted from; `requested_by` is always `
 | Code | Case |
 |------|------|
 | 401 | Not authenticated |
+| 422 | `readiness` outside `all` / `ready` / `incomplete`, or out-of-range paging |
 
 ---
 
