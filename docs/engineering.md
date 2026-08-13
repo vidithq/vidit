@@ -155,12 +155,11 @@ vidit/
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
-│   │       ├── seed.py             # Admin demo-data seeder
 │   │       ├── social.py           # Follow edges, timeline assembly
 │   │       ├── source_archive.py   # Dual-provider capture queue for published events' links
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
-│   ├── scripts/                    # Local-dev helpers (mock_admin, seed_demo, seed_timeline)
+│   ├── scripts/                    # Local-dev helpers (mock_admin, seed_detections, import_prod)
 │   ├── tests/                      # pytest; events/ is a sub-package (read/create/duplicates/import/owner_flow/detections/requests). `pytest -n auto --dist loadfile` (= `make test`) runs parallel: conftest migrates a template DB to alembic head and clones one database per xdist worker; plain `pytest` stays serial on the dev DB
 │   ├── alembic.ini
 │   ├── pyproject.toml              # uv + dependencies
@@ -172,7 +171,7 @@ vidit/
 │   │   │   ├── layout.tsx
 │   │   │   ├── page.tsx            # Public landing page (storefront)
 │   │   │   ├── about/              # Public marketing / mission page
-│   │   │   ├── admin/              # Admin console (invites, demo seed, reapers)
+│   │   │   ├── admin/              # Admin console (invites, detection stats, reapers)
 │   │   │   ├── requests/           # Request (requested-view) index + detail (create lives at /submit)
 │   │   │   ├── events/[id]/        # Event detail (any lifecycle state) + edit
 │   │   │   ├── geolocations/new/   # Legacy create-route redirect to /submit
@@ -468,7 +467,7 @@ finally:
 EOF
 ```
 
-**Generate curated demo geolocations from the admin panel**: `make seed` covers the auto-generated 50-point dataset for onboarding. For curated demos (promo recordings, screenshots, manually themed content), populate `s3://<bucket>/demo-pool/geo-XX/{media,proof}/` (or `.local-storage/demo-pool/geo-XX/{media,proof}/` when `STORAGE_BACKEND=local`) with photos per template. Then go to `/admin` → *Demo data* panel, enter a count, and select Generate. Seeded geolocations carry a `demo` tag for filtering. The same panel wipes them.
+**Fill a local database with real data**: run `make import-prod`, which restores the most recent production backup into the local container. Procedure and required variables: [`backups.md`](backups.md#import-production-into-local-dev). For a smaller offline set, `make seed` creates the mock admin and backfills the committed synthetic X archive as machine detections.
 
 **Backfill source archival over the existing catalog**: go to `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. This inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns immediately. The import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events it already covered, so clicking it again walks further down the catalog and picks up what has been written since.
 

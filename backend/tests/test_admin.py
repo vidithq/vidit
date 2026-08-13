@@ -1555,31 +1555,6 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
     assert after["machine_rejected"] == before["machine_rejected"]
 
 
-def test_detection_stats_exclude_demo_rows(admin_user, regular_user, events_cleanup, db):
-    """A demo machine row moves neither aggregate: excluded from the machine and
-    the pending queries alike so seeded fixtures don't pollute the metric."""
-    before = _detection_stats(admin_user)
-
-    now = datetime.now(UTC)
-    demo_draft = Event(
-        owner_id=regular_user.id,
-        title=f"Demo draft {uuid.uuid4().hex[:8]}",
-        status=STATUS_DETECTED,
-        detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        is_demo=True,
-    )
-    db.add(demo_draft)
-    db.commit()
-    events_cleanup.append(demo_draft.id)
-
-    after = _detection_stats(admin_user)
-    assert after["machine_total"] == before["machine_total"]
-    assert after["machine_rejected"] == before["machine_rejected"]
-    assert after["pending"] == before["pending"]
-    assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
-
-
 def test_pending_proof_video_counts_as_missing_proof_image(
     admin_user, regular_user, events_cleanup, db
 ):

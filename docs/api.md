@@ -79,7 +79,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
-| POST/DELETE | `/admin/seed-demo[-requests]` | 🛡️ | Generate / drop demo geos + users / requests |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/enqueue-source-archival` | 🛡️ | Queue Wayback archival for the existing catalog |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
@@ -129,7 +128,6 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST`/`DELETE /admin/seed-demo[-requests]` | 10/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/enqueue-source-archival` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 `GET /auth/invites/{code}/check` and the read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
@@ -373,7 +371,6 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
     "title": "Strike on depot, Donetsk",
     "event_coords": { "lat": 48.123, "lng": 37.456 },
     "event_date": "2026-03-15",
-    "is_demo": false,
     "status": "geolocated",
     "before_closed_status": null,
     "owner": {
@@ -407,7 +404,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected, demo]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one; `demo` is `1` for a demo row, so the map's filter panel offers its hide-demo toggle only when one is present (flags, not status strings). Located rows only, so `requested` events never appear here.
+Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, no joins, no pagination. `event_date` / `added_date` are ISO `YYYY-MM-DD` (the `created_at` calendar day); `event_date` is `null` when unknown (the column is optional), and the map's event-date scrubber skips null-dated points instead of hiding them. The map buckets the dates for its timeline scrubbers and filters client-side. `detected` is `1` for a machine-detected row, `0` for a `geolocated` one: a flag, not a status string. Located rows only, so `requested` events never appear here.
 
 `bbox` is **required**. The payload tracks the area you request, and the map's own
 calls are viewport-sized. Nothing caps that area: the map legitimately requests
@@ -429,7 +426,6 @@ contains the box requested.
 |-------|------|-------------|
 | `bbox` | string, **required** | `south,west,north,east` (four comma-separated floats), same shape and validation as on `GET /events`: latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. Missing, empty, or malformed → 422. Boxes crossing the antimeridian are not modeled: the map widens such a viewport to the full longitude range rather than splitting it into two calls. |
 | `media` | string (repeatable) | `?media=image&media=video`, matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `hide_demo` | bool | Exclude demo rows. |
 | `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | See `GET /events` for semantics. The date params are accepted, and the map filters dates client-side off the payload instead of sending them. |
 
 | Status | Meaning |
@@ -705,7 +701,6 @@ Full detail for a single event, in any lifecycle state.
   "detected_at": null,
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
-  "is_demo": false,
   "status": "geolocated",
   "close_reason": null,
   "before_closed_status": null,
@@ -1052,7 +1047,7 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
 | `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `hide_demo`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
+| *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
 Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry point). Typing then narrows within it.
 
@@ -1072,7 +1067,6 @@ Any active filter empties the users group: the filters are event predicates, and
       "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
       "lat": 48.01, "lng": 37.80,
       "event_date": "2026-04-15",
-      "is_demo": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
@@ -1087,7 +1081,6 @@ Any active filter empties the users group: the filters are event predicates, and
       "source_url": "https://twitter.com/…",
       "status": "requested",
       "created_at": "2026-04-12T08:00:00Z",
-      "is_demo": false,
       "owner": { "…": "…" },
       "media": [{ "id": "uuid", "storage_url": "…", "media_type": "image" }],
       "tags": [],
@@ -1402,7 +1395,7 @@ Activity feed of geolocations submitted by analysts you follow, newest submissio
 All routes below are mounted under `/admin` and gated by the `require_admin` FastAPI dependency. `require_admin` layers on top of `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately.
 
 <details>
-<summary>18 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, demo seeding, maintenance sweeps). Expand for full contracts.</summary>
+<summary>14 admin endpoints, rarely-touched ops surface (invites, detection-quality metrics, soft/hard delete, X handle link, maintenance sweeps). Expand for full contracts.</summary>
 
 ### `GET /admin/me` 🛡️
 
@@ -1415,13 +1408,13 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 ### `GET /admin/detection-stats` 🛡️
 
-Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Demo rows (`is_demo`) are excluded from both aggregates. Read-only, no audit row (a metric read is not an administrative act).
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every (non-demo) machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
 Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own draft) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending drafts as rejects.
 
-The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only, demo excluded): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
 **Response 200:**
 ```json
@@ -1617,71 +1610,6 @@ Link or clear the X handle the bot attributes mentions to; the interactive write
 
 **Response 404:** unknown or soft-deleted user id.
 
-### `POST /admin/seed-demo-requests` 🛡️
-
-Generate `count` synthetic demo requests attributed to the same fixed pool of demo authors as `POST /admin/seed-demo`. Reads templates from the shared `demo-pool/` storage prefix. If the prefix is empty or missing the expected layout, the endpoint returns 422 so you can populate the pool before retrying. A fraction of requests get 1-3 random demo-author claims attached. Audited as `demo_requests_seeded`.
-
-**Request body:**
-```json
-{ "count": 20 }
-```
-Capped at 5000 per click.
-
-**Response 200:**
-```json
-{
-  "created": 20,
-  "templates": 3,
-  "authors": 5,
-  "with_claims": 11,
-  "open": 12,
-  "fulfilled": 5,
-  "closed": 3
-}
-```
-
-`open` / `fulfilled` / `closed` are the per-status breakdown across the generated batch (`requested` / `geolocated` / `closed` under the hood), proving the status-filter chips have data to render. `with_claims` counts requests that got 1-3 random demo-analyst `event_investigators` rows attached (the field name predates the claim → investigate rename; the wire shape is unchanged).
-
----
-
-### `DELETE /admin/seed-demo-requests` 🛡️
-
-Drop every `is_demo=true` request in one bulk DELETE. Demo users and demo geolocations are NOT touched; those live behind the separate `/admin/seed-demo` panel. The `demo-pool/` S3 objects stay (shared assets). Audited as `demo_requests_wiped`.
-
-**Response 200:**
-```json
-{ "deleted_requests": 20 }
-```
-
----
-
-### `POST /admin/seed-demo` 🛡️
-
-Generate synthetic demo geolocations attributed to the demo author pool (`demo-analyst-1` … `-5`, `is_demo=true`). Reads templates from the `demo-pool/` storage prefix populated by the admin outside the codebase; each generated geo references (does not copy) a random subset of the template's media and proof imagery via CloudFront URLs. Region split (weights, integer percent): Ukraine 50, Middle East 20, Sahel 8, Western Europe 7, Balkans 4, North America 4, South America 3, East Asia 2, Sub-Saharan Africa 2. Audited as `demo_seeded`. Invalidates the points cache.
-
-**Request body:**
-```json
-{ "count": 100 }
-```
-
-`count` is `1 ≤ count ≤ 50000`; default 100. Re-running is additive on geos and idempotent on demo authors.
-
-**Response 200:**
-```json
-{ "created": 100, "templates": 10, "authors": 5 }
-```
-
-**Response 422:** the `demo-pool/` prefix is empty or has no `geo-XX/media/<file>` entries.
-
-### `DELETE /admin/seed-demo` 🛡️
-
-Drop every `is_demo=true` geolocation + user. The `demo-pool/` S3 objects are NOT touched; they're shared assets for re-seeding. Audited as `demo_wiped`. Invalidates the points cache.
-
-**Response 200:**
-```json
-{ "deleted_geos": 100, "deleted_users": 5 }
-```
-
 ### `POST /admin/maintenance/reap-auth-tokens` 🛡️
 
 Drop expired and old-consumed `auth_tokens` rows. Replaces the cron that previously lived in `scripts/reap_auth_tokens.py`. Audited as `maintenance_reap_auth_tokens`.
@@ -1702,7 +1630,7 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 
 ### `POST /admin/maintenance/enqueue-source-archival` 🛡️
 
-Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live non-demo events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
+Queue Wayback archival for every live event that has no [`source_archives`](data-model.md#source_archives) row: the catalog backfill behind archival at publication. Walks live events oldest first, capped per call. Enqueue only, no HTTP calls to an archiving service; the worker paces the captures (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events already covered, so repeated calls walk the catalog forward rather than re-reading its oldest page. Audited as `maintenance_enqueue_source_archival`.
 
 **Response 200:**
 ```json
@@ -1711,7 +1639,7 @@ Queue Wayback archival for every live event that has no [`source_archives`](data
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), demo rows excluded, and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
 
 **Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
 ```json

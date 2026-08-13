@@ -44,11 +44,6 @@ bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 last_login_at  # schemas/admin.py AdminInviteRedeemerRead
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
-deleted_geos  # schemas/admin.py
-with_claims  # schemas/admin.py
-fulfilled  # schemas/admin.py
-closed  # schemas/admin.py
-deleted_requests  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
 events_scanned  # schemas/admin.py AdminMaintenanceResponse
 links_enqueued  # schemas/admin.py AdminMaintenanceResponse
@@ -67,6 +62,7 @@ pending  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_media  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_proof_image  # schemas/admin.py AdminDetectionStatsRead
 pending_missing_source_url  # schemas/admin.py AdminDetectionStatsRead
+authors  # schemas/search.py AuthorSuggestions
 requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary group)
 claimer_count  # schemas/search.py SearchRequestHit
 investigator_count  # schemas/event.py EventRead + EventList
@@ -97,6 +93,8 @@ in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
+_.get_bytes  # services/storage.py, both backends
+_.put_bytes_sync  # services/storage.py, both backends
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
 # The body-size middleware caches the streamed body onto ``request._body`` so

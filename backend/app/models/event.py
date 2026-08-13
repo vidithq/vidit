@@ -4,7 +4,6 @@ from typing import Literal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
-    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -270,9 +269,6 @@ class Event(Base):
     # Soft-delete: NULL = live, timestamp = removed from public view. Filtered out
     # by every public read; only the admin path acts on soft-deleted rows.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # TRUE iff created by an admin demo seeder. Surfaced as a "DEMO" badge;
-    # dropped en masse by the wipe button. Real submissions never set this.
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])

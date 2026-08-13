@@ -17,20 +17,13 @@ from app.schemas.admin import (
     AdminMaintenanceResponse,
     AdminMeResponse,
     AdminPurgeDetectedResponse,
-    AdminSeedDemoRequest,
-    AdminSeedDemoRequestsRequest,
-    AdminSeedDemoRequestsResponse,
-    AdminSeedDemoResponse,
     AdminUserDeleteResponse,
     AdminUserRead,
-    AdminWipeDemoRequestsResponse,
-    AdminWipeDemoResponse,
     UserXHandleUpdate,
 )
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import registration as registration_service
-from app.services import seed as seed_service
 from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
 
 router = APIRouter()
@@ -279,109 +272,6 @@ def delete_geolocation_admin(
         mode="soft",
         deleted_at=geo.deleted_at,
     )
-
-
-# ── Demo data ────────────────────────────────────────────────────────────
-
-
-@router.post("/seed-demo", response_model=AdminSeedDemoResponse)
-@limiter.limit("10/hour")
-def seed_demo(
-    request: Request,
-    body: AdminSeedDemoRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminSeedDemoResponse:
-    """Generate `count` synthetic demo geolocations attributed to the demo
-    author pool. Reads templates from the `demo-pool/` storage prefix; if
-    the prefix is empty or missing the expected layout, returns 422 so
-    the admin can populate the pool before retrying."""
-    try:
-        result = seed_service.seed_demo(db, count=body.count)
-    except seed_service.NoTemplatesError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    admin_service.log_admin_event(
-        db,
-        actor_id=current_user.id,
-        action="demo_seeded",
-        target={"count": result["created"], "templates": result["templates"]},
-    )
-    db.commit()
-    points_cache.invalidate()
-    return AdminSeedDemoResponse(**result)
-
-
-@router.delete("/seed-demo", response_model=AdminWipeDemoResponse)
-@limiter.limit("10/hour")
-def wipe_demo(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminWipeDemoResponse:
-    """Drop every is_demo=True geolocation + user. The `demo-pool/` S3
-    objects are NOT touched — they're shared assets for re-seeding."""
-    result = seed_service.wipe_demo(db)
-    admin_service.log_admin_event(
-        db,
-        actor_id=current_user.id,
-        action="demo_wiped",
-        target={
-            "deleted_geos": result["deleted_geos"],
-            "deleted_users": result["deleted_users"],
-        },
-    )
-    db.commit()
-    points_cache.invalidate()
-    return AdminWipeDemoResponse(**result)
-
-
-@router.post("/seed-demo-requests", response_model=AdminSeedDemoRequestsResponse)
-@limiter.limit("10/hour")
-def seed_demo_requests(
-    request: Request,
-    body: AdminSeedDemoRequestsRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminSeedDemoRequestsResponse:
-    """Generate ``count`` synthetic demo requests attributed to the same
-    fixed pool of demo authors as the geolocation seeder. Reads templates
-    from the same ``demo-pool/`` S3 prefix — requests only need media,
-    not coordinates, so the template imagery is reused unchanged.
-    """
-    try:
-        result = seed_service.seed_demo_requests(db, count=body.count)
-    except seed_service.NoTemplatesError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    admin_service.log_admin_event(
-        db,
-        actor_id=current_user.id,
-        action="demo_requests_seeded",
-        target={"count": result["created"], "templates": result["templates"]},
-    )
-    db.commit()
-    return AdminSeedDemoRequestsResponse(**result)
-
-
-@router.delete("/seed-demo-requests", response_model=AdminWipeDemoRequestsResponse)
-@limiter.limit("10/hour")
-def wipe_demo_requests(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminWipeDemoRequestsResponse:
-    """Drop every is_demo=True request. Demo users and demo geolocations
-    are NOT touched — they live behind the separate ``Demo data`` panel
-    and an admin may want to keep one population while wiping the other.
-    """
-    result = seed_service.wipe_demo_requests(db)
-    admin_service.log_admin_event(
-        db,
-        actor_id=current_user.id,
-        action="demo_requests_wiped",
-        target={"deleted_requests": result["deleted_requests"]},
-    )
-    db.commit()
-    return AdminWipeDemoRequestsResponse(**result)
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────

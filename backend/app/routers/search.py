@@ -57,7 +57,6 @@ def search(
         description="Scope the event groups to this owner username (exact, case-insensitive)",
     ),
     media: list[str] | None = Query(None),
-    hide_demo: bool = False,
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     """Grouped FTS across the three first-class entity types.
@@ -92,7 +91,6 @@ def search(
         submitted_to=submitted_to,
         author=author,
         media=media,
-        hide_demo=hide_demo,
     )
     grouped = search_service.search_all(db, query=q, types=types, limit=limit, filters=filters)
 
