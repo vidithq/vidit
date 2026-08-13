@@ -976,7 +976,7 @@ The first six are the same stable codes the single-row geolocate answers with, a
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the status badge and the requested-view routing). A closed `detected` row is re-importable if the same tweet is later re-detected. Distinct from `DELETE`, which removes the row for good.
+Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A closed `detected` row is re-importable if the same tweet is later re-detected. Distinct from `DELETE`, which removes the row for good.
 
 **Request body:**
 ```json

@@ -625,23 +625,11 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). `text` overrides that sentence for an instance whose content is per-row data (the detections queue names the pieces one draft is missing); the concept still owns the accessible label."
+            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
           >
-            <Variant label="from the registry">
-              <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-                Coordinates <FieldHelp concept="coordinates" />
-              </span>
-            </Variant>
-            <Variant label="instance text over the concept's own">
-              <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-                <Pill tone="neutral">Missing: 2 pieces</Pill>
-                <FieldHelp
-                  concept="detection_missing"
-                  text="Still missing: Source media, Proof image. A review can't supply them, so open the draft on the full form to fill it in."
-                  size={12}
-                />
-              </span>
-            </Variant>
+            <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
+              Coordinates <FieldHelp concept="coordinates" />
+            </span>
           </Item>
 
           <Item name="<TagPicker>" usage="Conflict typeahead (ongoing by default, ended behind the switch) + curated/free tag selection (Pill chips + inline free-tag creation); submit / edit">

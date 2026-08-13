@@ -98,15 +98,10 @@ export const FIELD_HELP = {
     text: "The judgment a machine draft still needs: a title, the point on the map, the conflict and the capture source. Your last conflict and capture source carry to the next draft, since an import usually sits in one conflict. Everything else the draft already carries.",
     label: "What does reviewing a draft cover?",
   },
-  // Detections queue: the filter over the page, and the row badge that names
-  // what one draft still lacks.
+  // Detections queue: the filter over the page.
   detection_queue_filter: {
     text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), which only the full edit form fills in.",
     label: "What does this filter select?",
-  },
-  detection_missing: {
-    text: "The pieces of evidence the import left missing on this draft. A review can't supply them, so open the draft on the full form to fill them in.",
-    label: "Which pieces are missing?",
   },
   // Detection submit action, spelled out here.
   action_submit: {

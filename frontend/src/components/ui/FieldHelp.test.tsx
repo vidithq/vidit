@@ -24,22 +24,6 @@ describe("FieldHelp", () => {
     expect(btn.getAttribute("aria-describedby")).toBe(tooltip.getAttribute("id"));
   });
 
-  it("shows instance text over the concept's own, keeping the concept's label", async () => {
-    // The detections queue names the pieces one draft is missing: per-row data,
-    // so it cannot live in the registry. The accessible name still comes from
-    // the concept, so every instance announces the same question.
-    render(
-      <FieldHelp concept="detection_missing" text="Still missing: Source media." />
-    );
-    const btn = screen.getByRole("button", {
-      name: FIELD_HELP.detection_missing.label,
-    });
-    fireEvent.focus(btn);
-    const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent("Still missing: Source media.");
-    expect(tooltip).not.toHaveTextContent(FIELD_HELP.detection_missing.text);
-  });
-
   it("toggles the pinned state on click (touch devices don't hover)", () => {
     render(<FieldHelp concept="title" />);
     const btn = screen.getByRole("button", { name: FIELD_HELP.title.label });

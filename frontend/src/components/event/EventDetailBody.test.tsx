@@ -279,7 +279,7 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
   });
 
-  it("shows the closer's reason on a closed row, and the closed tooltip reflects before_closed_status", () => {
+  it("shows the closer's reason on a closed row, beside the status badge", () => {
     render(
       <EventDetailBody
         geo={geoFixture({
@@ -296,10 +296,10 @@ describe("EventDetailBody", () => {
     expect(
       screen.getByText("Duplicate of an existing request.")
     ).toBeInTheDocument();
-    expect(screen.getByText("Closed").closest("[title]")).toHaveAttribute(
-      "title",
-      "The author withdrew this request"
-    );
+    // The badge is the state, the Reason is why: it carries no hover text of
+    // its own, and the `status` concept's `?` on the row names both dismissal
+    // shapes.
+    expect(screen.getByText("Closed").closest("[title]")).toBeNull();
   });
 
   it("omits the Reason row when a closed row has no reason", () => {

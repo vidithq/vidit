@@ -134,10 +134,7 @@ function DetailRows({
   const rows = (
     <>
       <DetailRow label="Status" concept="status" compact={compact}>
-        <StatusBadge
-          status={geo.status}
-          beforeClosedStatus={geo.before_closed_status}
-        />
+        <StatusBadge status={geo.status} />
       </DetailRow>
       {/* The closer's free-text reason, kept publicly visible on a closed row
           (transparency: why the request was withdrawn or the detection

@@ -351,7 +351,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
 | `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine draft, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and froze it; always has a location) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate` and `close` transitions are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
-| `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the status badge and the requested-view routing, and lets re-import treat a closed detection as re-importable. |
+| `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the requested-view routing, and lets re-import treat a closed detection as re-importable. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin takedown (soft-delete): public reads filter the row out, but the row still exists. |
 | `is_demo` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` only for rows the admin Demo data panel seeds. Surfaced through the always-attached `demo` free tag, filterable in the map UI, and dropped in bulk by the wipe button. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -678,7 +678,7 @@ This keeps `media.event_id` NOT NULL: no staging table, no `event_id IS NULL` or
 An event carries several links: its `source_url`, its mirrors, and every citation in the proof body. Columns on `events` could only hold the source's captures, and each link needs its own attempt counter, backoff schedule, and failure reason to retry independently. The child table also makes the queue and the read surface the same rows, so a capture is never copied from a job table into an event column, where the two could disagree.
 
 ### Why `before_closed_status`?
-`close` unifies the old withdraw and reject actions into one verb, but a closed request and a closed detection are different: the badge copy, the requested-view routing, and re-import all need to tell them apart. `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.
+`close` unifies the old withdraw and reject actions into one verb, but a closed request and a closed detection are different: the requested-view routing and re-import both need to tell them apart. `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.
 
 ---
 

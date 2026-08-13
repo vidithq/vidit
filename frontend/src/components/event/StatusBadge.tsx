@@ -1,12 +1,7 @@
 import { Bot, MapPin, Megaphone, X } from "lucide-react";
 import type { ReactNode } from "react";
-import type { components } from "@/lib/api-types";
 import type { EventStatus } from "@/types";
 import { Pill, type PillTone } from "@/components/ui/Pill";
-
-/** The status a closed row held just before closing: `requested` = the author
- *  withdrew a request, `detected` = the owner rejected a detection. */
-type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_status"];
 
 /**
  * The unified event lifecycle status as a coloured pill: one badge for all four
@@ -23,9 +18,13 @@ type BeforeClosedStatus = components["schemas"]["EventRead"]["before_closed_stat
  *   detection); it does NOT claim independent verification, only that a person
  *   stands behind it. The neutral colour keeps the accent states the
  *   attention-drawing marks.
- * - `closed` (neutral, a cross): a terminal audit row. Its tooltip reflects
- *   ``before_closed_status`` when supplied (a withdrawn request vs a rejected
- *   detection) since the one badge covers both dismissal shapes.
+ * - `closed` (neutral, a cross): a terminal audit row. The one badge covers
+ *   both dismissal shapes; which one this row took is the Reason beside it on
+ *   the detail surfaces, and the `status` concept's `?` names the pair.
+ *
+ * The badge is a label, never an explanation: what a status means is the
+ * `status` concept in [`lib/fieldHelp.ts`](../../lib/fieldHelp.ts), read by the
+ * `?` on the Status row and on the status filter.
  *
  * Shown on cards, the detail pages (geolocation + requested), search results,
  * and the Detections queue.
@@ -48,53 +47,18 @@ export const EVENT_STATUS_META: Record<
   closed: { label: "Closed", tone: "neutral" },
 };
 
-/** The icon and tooltip half, which only the page badge has a use for. */
-interface StatusMeta {
-  icon: ReactNode;
-  title: string;
-}
-
-const STATUS: Record<EventStatus, StatusMeta> = {
-  requested: {
-    icon: <Megaphone size={11} />,
-    title: "An open request to geolocate this footage",
-  },
-  detected: {
-    icon: <Bot size={11} />,
-    title: "Machine-detected from a tweet, shown until the owner submits it",
-  },
-  geolocated: {
-    icon: <MapPin size={11} />,
-    title: "Geolocated by a person, not independently verified",
-  },
-  closed: {
-    icon: <X size={11} />,
-    // Generic fallback; `closedTitle` refines it from `before_closed_status`.
-    title: "Closed, kept as an audit row",
-  },
+/** The glyph half, which the share card has no use for (it renders text only). */
+const STATUS_ICON: Record<EventStatus, ReactNode> = {
+  requested: <Megaphone size={11} />,
+  detected: <Bot size={11} />,
+  geolocated: <MapPin size={11} />,
+  closed: <X size={11} />,
 };
 
-/** The closed tooltip, keyed off which state the row left. */
-function closedTitle(before: BeforeClosedStatus): string {
-  if (before === "requested") return "The author withdrew this request";
-  if (before === "detected") return "The owner rejected this detection";
-  return STATUS.closed.title;
-}
-
-export function StatusBadge({
-  status,
-  beforeClosedStatus = null,
-}: {
-  status: EventStatus;
-  /** For a `closed` row, the status it held before closing, so the tooltip
-   *  tells a withdrawn request from a rejected detection. Ignored otherwise. */
-  beforeClosedStatus?: BeforeClosedStatus;
-}) {
-  const meta = STATUS[status];
+export function StatusBadge({ status }: { status: EventStatus }) {
   const { label, tone } = EVENT_STATUS_META[status];
-  const title = status === "closed" ? closedTitle(beforeClosedStatus) : meta.title;
   return (
-    <Pill tone={tone} icon={meta.icon} title={title}>
+    <Pill tone={tone} icon={STATUS_ICON[status]}>
       {label}
     </Pill>
   );

@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { MediaThumb } from "@/components/ui/EntityCard";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
@@ -13,24 +12,13 @@ import type { EventDetail } from "@/types";
  * The badge text for a draft still short of the evidence floor. One missing
  * piece is named, since that is the common case and the name is what tells the
  * analyst whether it is worth opening. Several collapse to a count: three names
- * joined into one badge outgrew the row, and the `?` beside the badge names
- * them in full, with the review flow and the edit form both naming them in
- * place.
+ * joined into one badge outgrew the row, and the review flow and the edit form
+ * both name them in place, which is where they get filled in.
  */
 function missingLabel(blockers: string[]): string {
   return blockers.length === 1
     ? `Missing: ${blockers[0]}`
     : `Missing: ${blockers.length} pieces`;
-}
-
-/** What the `?` beside the missing badge says: the names in full, whether or
- *  not the badge collapsed them, plus what the analyst is meant to do about it.
- *  A count on its own says how bad it is without saying what it is. This is the
- *  one place a `FieldHelp` takes instance text, the pieces being this row's
- *  data rather than a concept. */
-function missingText(blockers: string[]): string {
-  const them = blockers.length === 1 ? "it" : "them";
-  return `Still missing: ${blockers.join(", ")}. A review can't supply ${them}, so open the draft on the full form to fill it in.`;
 }
 
 /**
@@ -48,8 +36,7 @@ function missingText(blockers: string[]): string {
  * the capture source), never that the draft is finished. It carries the softer
  * outline tone for that reason, so it cannot be read as a published or
  * complete state. What the two states mean is the queue filter's `?`, one for
- * the page; the incomplete badge carries a `?` of its own, since which pieces
- * are missing is this row's own data.
+ * the page: the row itself stays a label and a click.
  */
 export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
   const blockers = batchCompletionBlockers(draft);
@@ -87,23 +74,12 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
             />
           </div>
         </div>
-        {/* `relative z-20` lifts the badge and its `?` over the stretched link,
-            the same way `EntityCard` lifts its byline and its source label:
-            without it the link covering the whole row takes the pointer, and
-            the `?` would neither hover nor click. The cost is that the badge
-            itself no longer navigates; the rest of the row still does, and the
-            `?` swallows its own click rather than opening the draft. */}
-        <span className="relative z-20 flex items-center gap-1 self-start">
-          <Pill tone={ready ? "secondary" : "neutral"}>
-            {ready ? "Ready to review" : missingLabel(blockers)}
-          </Pill>
-          {/* Only on the incomplete badge: what "Ready to review" means is the
-              filter's concept, one `?` for the whole page, rather than the same
-              sentence repeated on every ready row. */}
-          {!ready && (
-            <FieldHelp concept="detection_missing" text={missingText(blockers)} size={12} />
-          )}
-        </span>
+        {/* Nothing on the row takes a pointer of its own, so the badge sits
+            under the stretched link and the whole row, badge included, stays
+            one click to the full form. */}
+        <Pill tone={ready ? "secondary" : "neutral"} className="self-start">
+          {ready ? "Ready to review" : missingLabel(blockers)}
+        </Pill>
       </div>
     </div>
   );

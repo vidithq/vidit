@@ -1,8 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DetectionQueueRow } from "./DetectionQueueRow";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import type { EventDetail } from "@/types";
 
 function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
@@ -65,11 +64,12 @@ describe("DetectionQueueRow", () => {
     render(<DetectionQueueRow draft={draftFixture()} />);
     // "Ready to review", never a bare "Ready": the draft still needs the
     // conflict and the capture source, which a review supplies. What the state
-    // means is the queue filter's own `?`, so a ready row carries the label and
-    // nothing else.
+    // means is the queue filter's own `?`, so the row carries the label and
+    // nothing to hover or press.
     expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+    expect(document.querySelector("[title]")).toBeNull();
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
@@ -80,25 +80,19 @@ describe("DetectionQueueRow", () => {
     );
   });
 
-  it("names the one piece a draft is missing, and what to do about it", () => {
+  it("names the one piece a draft is missing", () => {
     render(
       <DetectionQueueRow
         draft={draftFixture({ proof: { type: "doc", content: [{ type: "paragraph" }] } })}
       />
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
+    // The common case is one piece, and its name is what tells the analyst
+    // whether the row is worth opening.
     expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
-    // A named badge still earns a `?`: the name alone doesn't say that a review
-    // can't fill it in.
-    fireEvent.focus(
-      screen.getByRole("button", { name: FIELD_HELP.detection_missing.label })
-    );
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "Still missing: Proof image. A review can't supply it, so open the draft on the full form to fill it in."
-    );
   });
 
-  it("collapses several missing pieces to a count, with the list behind the `?`", () => {
+  it("collapses several missing pieces to a count", () => {
     render(
       <DetectionQueueRow
         draft={draftFixture({
@@ -107,15 +101,9 @@ describe("DetectionQueueRow", () => {
         })}
       />
     );
-    // The row stays dense whatever the import missed; the names sit behind the
-    // `?` rather than growing the badge to three lines.
+    // The row stays dense whatever the import missed: three names joined into
+    // one badge outgrow it, and the edit form names them in place.
     expect(screen.getByText("Missing: 2 pieces")).toBeInTheDocument();
-    fireEvent.focus(
-      screen.getByRole("button", { name: FIELD_HELP.detection_missing.label })
-    );
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "Still missing: Source media, Proof image. A review can't supply them, so open the draft on the full form to fill it in."
-    );
   });
 
   it("says so when the draft declares no source and no event date", () => {

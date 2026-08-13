@@ -28,8 +28,8 @@ import { DetailRow } from "@/components/ui/DetailRow";
  * served by the same ``GET /events/{id}`` a located row uses; this page just
  * renders the requested-only actions (investigate / close) around the shared
  * ``EventDetailBody``. Close captures a required free-text reason via
- * ``CloseEventForm``; the status badge tells a withdrawn request from a rejected
- * detection through ``before_closed_status``.
+ * ``CloseEventForm``, shown as the Reason beside the status badge, which is
+ * what tells a withdrawn request from a rejected detection.
  */
 export default function RequestDetailPage() {
   const params = useParams();

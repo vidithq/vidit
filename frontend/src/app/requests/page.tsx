@@ -86,12 +86,7 @@ export default function RequestsPage() {
                 variant="compact"
                 detailHref={`/requests/${r.id}`}
                 title={r.title}
-                badge={
-                  <StatusBadge
-                    status={r.status}
-                    beforeClosedStatus={r.before_closed_status}
-                  />
-                }
+                badge={<StatusBadge status={r.status} />}
                 media={r.media ?? undefined}
                 author={r.owner}
                 date={r.event_date ?? undefined}
