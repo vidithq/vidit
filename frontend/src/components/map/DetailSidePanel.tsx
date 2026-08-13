@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -61,6 +62,11 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
                 className={`text-neutral-100 ${TEXT_LINK}`}
               >
                 {detail.title}
+                {/* ArrowRight, the in-app navigation glyph (detections entry,
+                    landing CTAs); the external ↗ stays reserved for external
+                    destinations. Inline so it rides the last line of a
+                    wrapped title instead of breaking the wrap. */}
+                <ArrowRight size={14} className="ml-1 inline align-[-2px]" />
               </Link>
             </h2>
             {/* The panel's actions ride the byline row, right-aligned under the
