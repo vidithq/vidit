@@ -1,8 +1,7 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 
 import { usePinnedPopover } from "@/hooks/usePinnedPopover";
@@ -23,25 +22,21 @@ import { cn } from "@/lib/cn";
  * fires a delete must not open under a passing pointer.
  *
  * Semantics: the trigger carries `aria-haspopup="menu"` plus `aria-expanded`,
- * the panel is a `role="menu"`, and every entry is a real `<button>` or
- * `<Link>` with `role="menuitem"`. Acting on an entry closes the menu, so a
- * panel an entry opens is read against a closed menu.
+ * the panel is a `role="menu"`, and every entry is a real `<button>` with
+ * `role="menuitem"`. Acting on an entry closes the menu, so a panel an entry
+ * opens is read against a closed menu.
  */
 
 export interface OverflowMenuItem {
   /** The entry's visible text, and its accessible name. */
   label: string;
-  /** Runs on click, then the menu closes. Omit on an `href` entry. */
+  /** Runs on click, then the menu closes. */
   onClick?: () => void;
-  /** Renders the entry as an in-app link instead of a button. */
-  href?: string;
   /** Red text, for a destructive entry (delete, revoke). */
   danger?: boolean;
   disabled?: boolean;
   /** Ties the entry to the panel it opens, which is not a DOM sibling. */
   controls?: string;
-  /** Leading glyph, sized like the rest of the icon set (14px). */
-  icon?: ReactNode;
 }
 
 const ENTRY =
@@ -94,37 +89,22 @@ export function OverflowMenu({
             aria-label={label}
             className="z-[2000] block min-w-44 py-1 rounded-md bg-neutral-800 border border-neutral-700 shadow-lg"
           >
-            {items.map((item) =>
-              item.href ? (
-                <Link
-                  key={item.label}
-                  role="menuitem"
-                  href={item.href}
-                  aria-controls={item.controls}
-                  className={entryClass(item)}
-                  onClick={close}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              ) : (
-                <button
-                  key={item.label}
-                  type="button"
-                  role="menuitem"
-                  aria-controls={item.controls}
-                  disabled={item.disabled}
-                  className={entryClass(item)}
-                  onClick={() => {
-                    close();
-                    item.onClick?.();
-                  }}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              )
-            )}
+            {items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                aria-controls={item.controls}
+                disabled={item.disabled}
+                className={entryClass(item)}
+                onClick={() => {
+                  close();
+                  item.onClick?.();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </span>,
           document.body
         )}

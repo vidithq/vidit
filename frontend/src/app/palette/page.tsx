@@ -380,7 +380,7 @@ export default function PalettePage() {
             <CopyButton value={() => "https://vidit.app/profile/demo"} label="Copy profile link" />
           </Item>
 
-          <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick | href, danger, disabled, controls, icon}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
+          <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick, danger, disabled, controls}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
             <OverflowMenu
               items={[
                 { label: "Close this request", onClick: () => {} },
