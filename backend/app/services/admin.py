@@ -192,7 +192,6 @@ def create_invite_code(
     expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
     invite = InviteCode(
         code=generate_invite_code(),
-        created_by=actor_id,
         max_uses=1,
         expires_at=expires_at,
         x_handle=x_handle,
@@ -479,9 +478,8 @@ def hard_delete_user(
        is left below one geolocator.
     3. Delete the user. ``auth_tokens`` and their contributor rows on other
        people's events cascade-drop; ``admin_events.actor_id`` and
-       ``invite_codes.created_by`` / ``.used_by`` flip to NULL via
-       migration f1a3b5c7d9e0 — invite-code rows are audit trail and
-       should outlive the user.
+       ``invite_codes.used_by`` flip to NULL via migration f1a3b5c7d9e0:
+       invite-code rows are audit trail and should outlive the user.
     4. Commit, *then* sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()

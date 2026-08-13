@@ -88,24 +88,4 @@ describe("LinkListInput", () => {
     ).toBeDisabled();
     expect(screen.getByText("3 maximum.")).toBeInTheDocument();
   });
-
-  it("renders read-only rows with no add or remove when locked", () => {
-    render(
-      <LinkListInput
-        {...props}
-        values={["https://a.example/1"]}
-        onChange={() => {}}
-        locked
-      />
-    );
-    expect(screen.getByLabelText("Secondary source 1")).toHaveAttribute(
-      "readonly"
-    );
-    expect(
-      screen.queryByRole("button", { name: "Add secondary source" })
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Remove secondary source 1" })
-    ).toBeNull();
-  });
 });

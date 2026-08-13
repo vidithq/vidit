@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   Globe,
   AtSign,
@@ -9,18 +10,19 @@ import {
   BookOpen,
   IdCard,
   Play,
+  ArrowRight,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
-import HeroCtas from "@/components/landing/HeroCtas";
+import { buttonClasses } from "@/components/ui/Button";
 import DemoVideo from "@/components/landing/DemoVideo";
 
 // Public landing at `vidit.app`, reachable without an account (see
 // `PUBLIC_EXACT` in `proxy.ts`); the app lives behind login at `/map`.
-// Server component for SEO (no "use client"); the hero CTAs are a small
-// `<HeroCtas>` client island that swaps sign-in for "Open the map" once
-// signed in. Offset by `pl-14` to keep the shared sidebar rail.
+// Server component for SEO (no "use client"); the hero CTA is a plain link,
+// the same one for every visitor. Offset by `pl-14` to keep the shared
+// sidebar rail.
 
 // `openGraph` + `twitter` blocks render a rich summary_large_image card
 // instead of a bare text card. The image comes from the sibling
@@ -176,7 +178,14 @@ export default function LandingPage() {
             platform where OSINT/GEOINT analysts publish, archive and share
             geolocated events from armed conflicts.
           </p>
-          <HeroCtas />
+          {/* Readers first, not only analysts, so the hero carries the read
+              path alone; joining lives in the sidebar's sign-in. */}
+          <div className="mt-8 flex items-center justify-center">
+            <Link href="/map" className={buttonClasses("primary")}>
+              Explore the map
+              <ArrowRight size={15} />
+            </Link>
+          </div>
         </section>
 
         <section className="pb-20">

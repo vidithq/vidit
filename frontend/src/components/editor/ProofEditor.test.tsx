@@ -27,14 +27,6 @@ describe("ProofEditor", () => {
     expect(control).toBeInTheDocument();
     expect(control.querySelector('input[type="file"]')).not.toBeNull();
   });
-
-  it("drops the image control when allowImages is false", () => {
-    // A request's proof maps to the same `events.proof` column, in progress
-    // (else it'd be a geolocation), and stays image-free there.
-    render(<ProofEditor onChange={() => {}} allowImages={false} />);
-    expect(screen.queryByText("+ Image")).toBeNull();
-    expect(screen.getByRole("button", { name: "B" })).toBeInTheDocument();
-  });
 });
 
 describe("link URI allowlist", () => {

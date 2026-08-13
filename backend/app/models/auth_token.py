@@ -8,17 +8,11 @@ from app.database import Base
 
 # Single source of truth for `purpose` values. Mirrored in the migration's CHECK.
 PURPOSE_PASSWORD_RESET = "password_reset"
-# Legacy soft-verify purpose, no longer minted by any production path:
-# pre-creation email confirmation holds the token on
-# `pending_registrations.token_hash` and bypasses this table. Constant + CHECK
-# value retained as the "non-`password_reset`" anchor for the cross-purpose
-# rejection regression test in test_auth_recovery.py.
-PURPOSE_EMAIL_VERIFICATION = "email_verification"
-ALL_PURPOSES = (PURPOSE_PASSWORD_RESET, PURPOSE_EMAIL_VERIFICATION)
+ALL_PURPOSES = (PURPOSE_PASSWORD_RESET,)
 
 
 class AuthToken(Base):
-    """One row per outstanding password-reset / email-verification token.
+    """One row per outstanding password-reset token.
 
     The raw secret is never stored — only `sha256(secret)` lands in
     `token_hash`. A DB read reveals which users have outstanding tokens and

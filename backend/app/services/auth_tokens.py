@@ -1,4 +1,4 @@
-"""Single-use, expiring tokens for password-reset and email-verification.
+"""Single-use, expiring tokens for password reset.
 
 Token lifecycle
 ---------------
@@ -20,9 +20,9 @@ Hash at rest because a read-only DB leak (logs, backups, snapshots) would
 otherwise hand over working live tokens; SHA-256 makes "read DB → log in"
 require inverting the hash.
 
-One shared table because password-reset and email-verification share every
-moving part (entropy, TTL, single-use-with-expiry, indexes); a ``purpose``
-column halves the migration + code surface with identical safety.
+The ``purpose`` column keeps the table reusable for a second token kind
+without a second table; ``consume`` matches on it, so a token minted for one
+purpose can never be redeemed for another.
 """
 
 import secrets
