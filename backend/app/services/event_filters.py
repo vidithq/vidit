@@ -45,7 +45,7 @@ def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
 
     Three deliberate non-callers: the event detail read, which hands a
     withheld row to an admin (:func:`routers.events.item.get_event`);
-    :func:`services.events.set_event_moderation`, which has to reach a
+    :func:`services.reports.set_event_moderation`, which has to reach a
     withheld row to lift the takedown; and the archival worker, which filters
     ``deleted_at`` alone by decision (see :func:`source_archive.claim_next`).
     """

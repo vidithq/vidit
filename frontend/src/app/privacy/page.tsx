@@ -78,7 +78,8 @@ export default function PrivacyPage() {
               <span className="text-neutral-100">Journal
               d&apos;authentification</span> : identifiant de compte, type
               d&apos;évènement (connexion, échec de connexion, déconnexion,
-              changement de mot de passe et évènements
+              demande de réinitialisation du mot de passe, réinitialisation
+              effectuée, changement de mot de passe et évènements
               d&apos;inscription) et horodatage. Ni adresse IP ni agent
               utilisateur n&apos;y figurent.
             </li>
