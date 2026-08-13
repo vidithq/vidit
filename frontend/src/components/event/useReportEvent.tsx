@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Flag } from "lucide-react";
 
 import {
@@ -66,6 +66,19 @@ export function useReportEvent(eventId: string): {
   const [details, setDetails] = useState("");
   const [sent, setSent] = useState(false);
 
+  // The hook outlives the event it reports on: the map panel and a client
+  // navigation from one detail page to the next both keep this component
+  // mounted and swap `eventId` under it. Without this reset an open form, a
+  // typed reason, half-written details, or the "report received" receipt all
+  // carry over to the next event, and the receipt would hide the trigger for
+  // an event the reader has not reported at all.
+  useEffect(() => {
+    setOpen(false);
+    setReason("illegal_content");
+    setDetails("");
+    setSent(false);
+  }, [eventId]);
+
   const reportMutation = useMutation(
     () =>
       reportEvent(eventId, {
@@ -105,7 +118,10 @@ export function useReportEvent(eventId: string): {
       aria-label="Report"
       title="Report"
       aria-expanded={open}
-      aria-controls={FORM_ID}
+      // Only while the form is mounted: `aria-controls` pointing at an id that
+      // is not in the document is a dangling reference (the `OverflowMenu`
+      // trigger takes the same care).
+      aria-controls={open ? FORM_ID : undefined}
       onClick={() => {
         reportMutation.reset();
         setOpen((prev) => !prev);

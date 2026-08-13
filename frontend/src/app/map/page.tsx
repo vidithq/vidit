@@ -240,6 +240,10 @@ export default function HomePage() {
 
       {selectedId && (
         <DetailSidePanel
+          // Keyed by event: the panel stays mounted across pin switches, so a
+          // remount is what guarantees every piece of per-event state inside it
+          // (the report form, the action row's optimistic flags) starts clean.
+          key={selectedId}
           detail={detail}
           loading={detailLoading}
           onClose={closeDetail}

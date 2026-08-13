@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Users } from "lucide-react";
@@ -108,7 +108,15 @@ export function useEventActions({
       next ? investigateEvent(event!.id) : uninvestigateEvent(event!.id),
     {
       fallback: "Action failed",
-      onSuccess: () => onChanged?.(),
+      // Refetch first, then drop the override so the fresh server value takes
+      // back over. Clearing it here and not from the caller is what makes it
+      // run at all: both endpoints resolve `void`, so `run` returns `undefined`
+      // on success exactly as it does on failure and the caller cannot tell
+      // the two apart.
+      onSuccess: () => {
+        onChanged?.();
+        setOptimisticInvestigating(null);
+      },
       // Roll the optimistic flip back to the server value on failure.
       onError: (err) => {
         setOptimisticInvestigating(null);
@@ -127,6 +135,21 @@ export function useEventActions({
       router.push("/requests");
     },
   });
+
+  // Same leak the report form had: this hook survives a client navigation from
+  // one request to the next, so per-event state has to follow the row rather
+  // than the mount. Without it the next request opens with the previous one's
+  // close panel open, its optimistic investigate state, or permanently
+  // disabled actions inherited from a delete that already navigated away.
+  useEffect(() => {
+    // Guarded on a real id: `event` also goes null while a row loads and
+    // during the post-delete navigation, and resetting `deleted` there would
+    // re-enable the actions in exactly the unmount window it exists to cover.
+    if (!event?.id) return;
+    setOptimisticInvestigating(null);
+    setClosing(false);
+    setDeleted(false);
+  }, [event?.id]);
 
   const pending =
     toggleInvestigateMutation.loading || deleteMutation.loading || deleted;
@@ -152,10 +175,8 @@ export function useEventActions({
     deleteMutation.reset();
     const next = !isInvestigatingMe;
     setOptimisticInvestigating(next);
-    const ok = await toggleInvestigateMutation.run(next);
-    // On success the refetch reconciles the list; drop the optimistic override
-    // so the fresh server value takes back over.
-    if (ok !== undefined) setOptimisticInvestigating(null);
+    // The override is cleared by the mutation's own callbacks, both ways.
+    await toggleInvestigateMutation.run(next);
   };
 
   const handleDelete = async () => {
