@@ -44,8 +44,8 @@ export const metadata: Metadata = {
   },
 };
 
-const CONTACT_EMAIL =
-  process.env.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL ?? "[TODO: adresse de contact]";
+// Where data requests and other legal mail land, as on `/legal`.
+const CONTACT_EMAIL = "support@vidit.app";
 
 const PARAGRAPH = "text-sm text-neutral-300 leading-relaxed";
 const LIST = "list-disc pl-5 space-y-2 text-sm text-neutral-300 leading-relaxed";
@@ -190,9 +190,9 @@ export default function PrivacyPage() {
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Éditeur et hébergeur" margin="none" />
+          <SectionEyebrow title="Éditeur et hébergeurs" margin="none" />
           <p className={PARAGRAPH}>
-            L&apos;identification de l&apos;hébergeur et les modalités de
+            L&apos;identification des hébergeurs et les modalités de
             signalement figurent dans les{" "}
             <Link href="/legal" className={TEXT_LINK}>
               mentions légales

@@ -17,13 +17,13 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // so the content below carries its own lang="fr".
 //
 // The publisher is a non-professional one within the meaning of LCEN article
-// 6-III-2, so only the hosting provider is identified by name, plus a contact
-// address for notices. The maintainer's identity is held by the host, not
+// 6-III-2, so only the hosting providers are identified by name, plus a contact
+// address for notices. The maintainer's identity is held by the hosts, not
 // published here.
 
 const TITLE = "Mentions légales";
 const DESCRIPTION =
-  "Éditeur, hébergeur et contact de Vidit, plateforme ouverte de géolocalisation OSINT.";
+  "Éditeur, hébergeurs et contact de Vidit, plateforme ouverte de géolocalisation OSINT.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -45,19 +45,32 @@ export const metadata: Metadata = {
   },
 };
 
-// Read at build time from the deployment environment. The visible placeholder
-// is the point: an unset value reads as an obvious hole rather than as a blank
-// line a reader would take for "nothing to declare".
-const HOST_NAME =
-  process.env.NEXT_PUBLIC_LEGAL_HOST_NAME ?? "[TODO: nom de l'hébergeur]";
-const HOST_ADDRESS =
-  process.env.NEXT_PUBLIC_LEGAL_HOST_ADDRESS ??
-  "[TODO: adresse postale de l'hébergeur]";
-const HOST_CONTACT =
-  process.env.NEXT_PUBLIC_LEGAL_HOST_CONTACT ??
-  "[TODO: téléphone ou courriel de l'hébergeur]";
-const CONTACT_EMAIL =
-  process.env.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL ?? "[TODO: adresse de contact]";
+// Where takedown notices, data requests and other legal mail land.
+const CONTACT_EMAIL = "support@vidit.app";
+
+// The three providers that host the platform, each with the role it plays.
+// Article 6-III-2 asks for the host's identity, so the list carries the legal
+// name, the postal address and the site of each one.
+const HOSTS = [
+  {
+    name: "Vercel Inc.",
+    role: "héberge le site (interface web).",
+    address: "440 N Barranca Ave #4133, Covina, CA 91723, États-Unis",
+    site: "https://vercel.com",
+  },
+  {
+    name: "Railway Corp.",
+    role: "héberge l'API et la base de données.",
+    address: "548 Market St PMB 68956, San Francisco, CA 94104, États-Unis",
+    site: "https://railway.com",
+  },
+  {
+    name: "Amazon Web Services, Inc.",
+    role: "stockage et diffusion des médias.",
+    address: "410 Terry Avenue North, Seattle, WA 98109-5210, États-Unis",
+    site: "https://aws.amazon.com",
+  },
+];
 
 const PARAGRAPH = "text-sm text-neutral-300 leading-relaxed";
 
@@ -73,7 +86,7 @@ export default function LegalPage() {
             n° 2004-575 du 21 juin 2004 pour la confiance dans
             l&apos;économie numérique, l&apos;éditeur a choisi de ne pas rendre
             publique son identité. Les éléments d&apos;identification de
-            l&apos;éditeur sont conservés par l&apos;hébergeur, qui les tient à
+            l&apos;éditeur sont conservés par les hébergeurs, qui les tiennent à
             la disposition de l&apos;autorité judiciaire.
           </p>
           <p className={PARAGRAPH}>
@@ -83,14 +96,19 @@ export default function LegalPage() {
         </Card>
 
         <Card as="section">
-          <SectionEyebrow title="Hébergeur" margin="none" />
-          <p className={PARAGRAPH}>
-            {HOST_NAME}
-            <br />
-            {HOST_ADDRESS}
-            <br />
-            {HOST_CONTACT}
-          </p>
+          <SectionEyebrow title="Hébergeurs" margin="none" />
+          {HOSTS.map((host) => (
+            <p key={host.name} className={PARAGRAPH}>
+              <span className="text-neutral-100">{host.name}</span> :{" "}
+              {host.role}
+              <br />
+              {host.address}
+              <br />
+              <a href={host.site} className={TEXT_LINK}>
+                {host.site}
+              </a>
+            </p>
+          ))}
         </Card>
 
         <Card as="section">
