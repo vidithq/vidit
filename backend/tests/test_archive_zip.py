@@ -66,6 +66,46 @@ def test_data_prefix_is_normalized(tmp_path):
     assert not (dest / "account.js").exists()
 
 
+def test_deleted_tweets_media_is_not_extracted(tmp_path):
+    # The media of deleted posts is outside the allowlist, and its directory
+    # name contains ``tweets_media/`` as a substring: the prefix match has to
+    # be anchored on the export root for it to stay out. The browser strip
+    # anchors the same way (``frontend/src/lib/archive.ts``).
+    src = _zip(
+        tmp_path,
+        {
+            "data/tweets.js": _TWEETS,
+            "data/tweets_media/1-a.jpg": b"img",
+            "data/deleted_tweets_media/2-b.jpg": b"deleted media",
+        },
+    )
+    dest = tmp_path / "out"
+    dest.mkdir()
+    extract_allowlisted(src, dest)
+
+    assert {p.name for p in dest.rglob("*") if p.is_file()} == {"tweets.js", "1-a.jpg"}
+
+
+def test_second_nested_export_media_is_not_extracted(tmp_path):
+    # A zip holding a second, nested export: the shortest ``tweets.js`` wins
+    # and only the media beside it is extracted.
+    src = _zip(
+        tmp_path,
+        {
+            "data/tweets.js": _TWEETS,
+            "data/tweets_media/1-a.jpg": b"img",
+            "other-export/data/tweets.js": b"other",
+            "other-export/data/tweets_media/2-b.jpg": b"other media",
+        },
+    )
+    dest = tmp_path / "out"
+    dest.mkdir()
+    extract_allowlisted(src, dest)
+
+    assert (dest / "tweets.js").read_bytes() == _TWEETS
+    assert {p.name for p in dest.rglob("*") if p.is_file()} == {"tweets.js", "1-a.jpg"}
+
+
 def test_missing_tweets_js_raises(tmp_path):
     src = _zip(tmp_path, {"account.js": b"x", "tweets_media/1-a.jpg": b"img"})
     dest = tmp_path / "out"

@@ -33,6 +33,35 @@ describe("stripArchive", () => {
     expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
   });
 
+  it("never emits deleted_tweets_media (its path contains tweets_media/)", async () => {
+    // The media of deleted posts is outside the allowlist, and its directory
+    // name literally contains `tweets_media/`. A rebased entry from it would
+    // reach the backend under a legitimate name, so the backend's own
+    // allowlist could no longer tell the two apart.
+    const file = zipFile({
+      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+      "data/tweets_media/1-a.jpg": new Uint8Array([1]),
+      "data/deleted_tweets_media/2-b.jpg": new Uint8Array([2]),
+    });
+    const stripped = await stripArchive(file);
+    const out = unzipSync(new Uint8Array(await stripped.file.arrayBuffer()));
+    expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
+  });
+
+  it("keeps only the media of the export root the tweets.js came from", async () => {
+    // A zip holding a second, nested export: the shortest tweets.js wins, and
+    // only the media beside it travels.
+    const file = zipFile({
+      "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+      "data/tweets_media/1-a.jpg": new Uint8Array([1]),
+      "other-export/data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
+      "other-export/data/tweets_media/2-b.jpg": new Uint8Array([2]),
+    });
+    const stripped = await stripArchive(file);
+    const out = unzipSync(new Uint8Array(await stripped.file.arrayBuffer()));
+    expect(Object.keys(out).sort()).toEqual(["tweets.js", "tweets_media/1-a.jpg"]);
+  });
+
   it("throws archive_no_tweets when there is no tweets.js", async () => {
     const file = zipFile({ "data/account.js": strToU8("x") });
     await expect(stripArchive(file)).rejects.toHaveProperty("code", "archive_no_tweets");
