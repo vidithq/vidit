@@ -242,7 +242,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
         "avatar_url",
     }
     assert [g["username"] for g in body["geolocators"]] == []
-    assert body["investigator_count"] == 0
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
 
 

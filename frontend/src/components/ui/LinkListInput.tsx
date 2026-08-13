@@ -24,9 +24,6 @@ interface LinkListInputProps {
    *  add button for screen readers, so the list needs no visible per-row label. */
   itemLabel: string;
   placeholder?: string;
-  /** Read-only rendering of an inherited list: locked fields, no add / remove.
-   *  Same treatment as `<Input variant="locked">` on a single field. */
-  locked?: boolean;
 }
 
 export function LinkListInput({
@@ -35,7 +32,6 @@ export function LinkListInput({
   max,
   itemLabel,
   placeholder,
-  locked = false,
 }: LinkListInputProps) {
   const atCap = values.length >= max;
   const lower = itemLabel.toLowerCase();
@@ -49,9 +45,7 @@ export function LinkListInput({
         // remaining values into the surviving inputs.
         <div key={i} className="flex items-center gap-2">
           <Input
-            variant={locked ? "locked" : "default"}
             type="url"
-            readOnly={locked}
             value={url}
             onChange={(e) =>
               onChange(values.map((v, idx) => (idx === i ? e.target.value : v)))
@@ -60,34 +54,30 @@ export function LinkListInput({
             aria-label={`${itemLabel} ${i + 1}`}
             className="flex-1"
           />
-          {!locked && (
-            <Button
-              variant="ghost"
-              icon
-              aria-label={`Remove ${lower} ${i + 1}`}
-              onClick={() => onChange(values.filter((_, idx) => idx !== i))}
-            >
-              <X size={14} />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            icon
+            aria-label={`Remove ${lower} ${i + 1}`}
+            onClick={() => onChange(values.filter((_, idx) => idx !== i))}
+          >
+            <X size={14} />
+          </Button>
         </div>
       ))}
 
-      {!locked && (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            disabled={atCap}
-            onClick={() => onChange([...values, ""])}
-          >
-            <Plus size={13} strokeWidth={2} />
-            Add {lower}
-          </Button>
-          {atCap && (
-            <span className="text-xs text-neutral-500">{max} maximum.</span>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          disabled={atCap}
+          onClick={() => onChange([...values, ""])}
+        >
+          <Plus size={13} strokeWidth={2} />
+          Add {lower}
+        </Button>
+        {atCap && (
+          <span className="text-xs text-neutral-500">{max} maximum.</span>
+        )}
+      </div>
     </div>
   );
 }

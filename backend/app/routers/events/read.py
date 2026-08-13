@@ -2,7 +2,6 @@
 payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
-import uuid
 
 import orjson
 from fastapi import (
@@ -14,7 +13,6 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
@@ -24,7 +22,6 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
     EventGeolocator,
-    EventInvestigator,
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -33,7 +30,6 @@ from app.schemas.event import (
     EventList,
     PaginatedEventDetails,
 )
-from app.schemas.user import AuthorRef
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     VIEWS,
@@ -55,9 +51,6 @@ from app.services.pagination import (
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
-# Detail page lists every investigator; the list card only needs a few
-# avatars + a count. Tune if the avatar strip grows.
-LIST_INVESTIGATOR_SAMPLE_SIZE = 3
 
 
 def _build_points_cache_key(
@@ -108,38 +101,6 @@ def _build_points_cache_key(
         ]
     )
     return f"points:{hashlib.sha256(payload).hexdigest()}"
-
-
-def investigator_aggregates(
-    db: Session, event_ids: list[uuid.UUID]
-) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, list[AuthorRef]]]:
-    """Per-event investigator count + newest-first capped sample, without N+1.
-
-    Detail can afford eager-loading every row on its one event; a list runs
-    two grouped queries: one for the per-row count, one for the sample.
-    A Postgres window function would be tidier for the sample, but joined
-    order_by + a Python-side cap is simpler and the working set is small.
-    """
-    counts: dict[uuid.UUID, int] = {
-        eid: int(count)
-        for eid, count in db.query(EventInvestigator.event_id, func.count("*"))
-        .filter(EventInvestigator.event_id.in_(event_ids))
-        .group_by(EventInvestigator.event_id)
-        .all()
-    }
-    sample: dict[uuid.UUID, list[AuthorRef]] = {}
-    rows = (
-        db.query(EventInvestigator)
-        .options(joinedload(EventInvestigator.user))
-        .filter(EventInvestigator.event_id.in_(event_ids))
-        .order_by(EventInvestigator.event_id, EventInvestigator.created_at.desc())
-        .all()
-    )
-    for row in rows:
-        bucket = sample.setdefault(row.event_id, [])
-        if len(bucket) < LIST_INVESTIGATOR_SAMPLE_SIZE:
-            bucket.append(AuthorRef.model_validate(row.user))
-    return counts, sample
 
 
 @router.get("/points")
@@ -297,9 +258,8 @@ def list_events(
     """Newest-first cards for one lifecycle view.
 
     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-    queue (ex ``/requests``), whose cards additionally carry the investigator
-    aggregates (count + a small newest-first sample). Two-step "ids then full
-    rows" shape so eager-loads can't inflate the LIMIT count.
+    queue (ex ``/requests``). Two-step "ids then full rows" shape so eager-loads
+    can't inflate the LIMIT count.
 
     Capped at 100 rows however large ``limit`` is; a caller reading past the
     first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
@@ -371,23 +331,7 @@ def list_events(
         .all()
     )
 
-    # The requested queue renders "N working" per card, so aggregate once for
-    # the page, not per row.
-    counts: dict[uuid.UUID, int] = {}
-    sample: dict[uuid.UUID, list[AuthorRef]] = {}
-    if view == "requested":
-        counts, sample = investigator_aggregates(db, ids)
-
-    return [
-        build_event_list(
-            geo,
-            lat=lat,
-            lng=lng,
-            investigator_count=counts.get(geo.id, 0) if view == "requested" else None,
-            investigators_sample=sample.get(geo.id, []) if view == "requested" else None,
-        )
-        for geo, lat, lng in rows
-    ]
+    return [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
@@ -395,10 +339,8 @@ def list_events(
 @limiter.limit("120/minute")
 def list_detections(
     request: Request,
-    response: Response,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -413,10 +355,8 @@ def list_detections(
     ``created_at DESC, id DESC``: the latest import is the first thing to
     triage.
 
-    Two ways to walk it. ``cursor`` (from the ``Link: rel="next"`` header) is
-    the supported one and is immune to rows landing mid-walk; ``page`` is the
-    offset path the queue's pager still uses, and a ``cursor`` supersedes it
-    when both arrive. Either way the page is capped at 100 rows.
+    Walked with the ``page`` / ``per_page`` offset pager the queue renders,
+    capped at 100 rows per page.
     """
     # A too-large page size is clamped (over-asking buys nothing, it isn't an
     # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
@@ -453,27 +393,18 @@ def list_detections(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             selectinload(Event.geolocators).joinedload(EventGeolocator.user),
-            selectinload(Event.investigators).joinedload(EventInvestigator.user),
             selectinload(Event.archives),
             selectinload(Event.source_links),
         )
         .filter(*detected)
         .order_by(Event.created_at.desc(), Event.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     )
-    if cursor is not None:
-        window = window.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
-    else:
-        window = window.offset((page - 1) * per_page)
-
-    rows, has_next = take_page(window.limit(per_page + 1).all(), per_page)
-
-    if has_next:
-        last = rows[-1][0]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
 
     items = [
         build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
-        for geo, lat, lng, capture_lat, capture_lng in rows
+        for geo, lat, lng, capture_lat, capture_lng in window.all()
     ]
 
     return PaginatedEventDetails(items=items, total=total, page=page, per_page=per_page)

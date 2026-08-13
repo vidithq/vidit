@@ -542,7 +542,6 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
       media={hit.media[0]}
       author={hit.owner}
       source={{ url: hit.source_url }}
-      working={hit.claimer_count}
     />
   );
 }

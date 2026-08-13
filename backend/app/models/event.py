@@ -58,45 +58,6 @@ SOURCE_URL_MAX_LENGTH = 2000
 MAX_SECONDARY_SOURCE_LINKS = 10
 
 
-class EventInvestigator(Base):
-    """Soft, public "I'm working on this" signal on a ``requested`` event.
-
-    Renamed from ``event_claims`` ("claim" made no sense on an event).
-    Multi-analyst by design: geolocation is collaborative and partly
-    competitive, several analysts may pull at the same media in parallel. The
-    composite PK makes re-signalling idempotent; the signal never gates the
-    event's lifecycle, and the ``event_id`` cascade drops rows on hard-delete.
-    """
-
-    __tablename__ = "event_investigators"
-
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-
-    event = relationship("Event", back_populates="investigators")
-    user = relationship("User")
-
-    __table_args__ = (
-        # "Who's working on request X right now?" — the detail page's query.
-        Index(
-            "ix_event_investigators_event_id_created_at",
-            "event_id",
-            "created_at",
-        ),
-        # "What is this user working on?" — profile / dashboard view.
-        Index("ix_event_investigators_user_id", "user_id"),
-    )
-
-
 class EventGeolocator(Base):
     """Durable credit for the geolocation: who vouched the location.
 
@@ -275,12 +236,6 @@ class Event(Base):
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="event_tags", back_populates="events")
     conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
-    investigators = relationship(
-        "EventInvestigator",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventInvestigator.created_at.desc()",
-    )
     geolocators = relationship(
         "EventGeolocator",
         back_populates="event",

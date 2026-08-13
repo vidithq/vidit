@@ -51,10 +51,6 @@ interface ProofEditorProps {
    *  local staging the "+ Image" control uses: a live preview plus a
    *  `proof_files[]` entry, so publish uploads them exactly once. */
   initialProofFiles?: File[];
-  // Drops the Image extension + upload button. A request's proof maps to
-  // the same `events.proof` column, in progress (else it'd be a
-  // geolocation), so it stays text + formatting only there.
-  allowImages?: boolean;
 }
 
 // `previewUrl` is a `blob:` URL for a manually picked "+ Image" file, or a
@@ -182,7 +178,6 @@ export default function ProofEditor({
   onProofFilesChange,
   initialContent,
   initialProofFiles,
-  allowImages = true,
 }: ProofEditorProps) {
   // Computed once at construction (the lazy `useState` initializer): pure
   // name-matching, no blob URLs yet, so nothing here needs cleanup and a
@@ -218,7 +213,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: allowImages ? [PROOF_STARTER_KIT, Image] : [PROOF_STARTER_KIT],
+    extensions: [PROOF_STARTER_KIT, Image],
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {
@@ -368,30 +363,26 @@ export default function ProofEditor({
         >
           List
         </button>
-        {allowImages && (
-          <>
-            <div className="w-px h-4 bg-neutral-700 mx-1" />
-            {/* Holds the picked file locally (blob preview + retained File);
-                the upload happens at publish via proof_files[]. */}
-            <label
-              className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 cursor-pointer"
-              title="Add a proof image (uploaded when you publish)"
-            >
-              + Image
-              <input
-                type="file"
-                accept={ACCEPTED_IMAGE_MIME}
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  // Reset so re-picking the same file still fires onChange.
-                  e.target.value = "";
-                  if (file) pickImage(file);
-                }}
-              />
-            </label>
-          </>
-        )}
+        <div className="w-px h-4 bg-neutral-700 mx-1" />
+        {/* Holds the picked file locally (blob preview + retained File);
+            the upload happens at publish via proof_files[]. */}
+        <label
+          className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 cursor-pointer"
+          title="Add a proof image (uploaded when you publish)"
+        >
+          + Image
+          <input
+            type="file"
+            accept={ACCEPTED_IMAGE_MIME}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Reset so re-picking the same file still fires onChange.
+              e.target.value = "";
+              if (file) pickImage(file);
+            }}
+          />
+        </label>
       </div>
 
       <EditorContent editor={editor} />

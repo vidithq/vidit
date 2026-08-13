@@ -102,7 +102,7 @@ def admin_user(db):
     # case mints.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.created_by == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -586,8 +586,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"close_reason": "probe"}},
     ),
-    _Case("post", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
-    _Case("delete", f"/api/v1/events/{_MISSING_ID}/investigate", 60),
     # Tags / users / social writes.
     _Case(
         "post",

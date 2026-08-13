@@ -399,8 +399,9 @@ def test_timeline_paginates(db, cleanup):
     assert {it["id"] for it in page1["items"]} & {it["id"] for it in page2["items"]} == set()
 
 
-def test_timeline_cursor_walks_the_whole_feed(db, cleanup):
-    """``Link: rel="next"`` walks the feed to exhaustion, once each."""
+def test_timeline_offset_pager_walks_the_whole_feed(db, cleanup):
+    """The feed is offset-paged: `page` / `per_page` walk it to exhaustion,
+    each row once, and `total` reports the whole match count on every page."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -417,18 +418,13 @@ def test_timeline_cursor_walks_the_whole_feed(db, cleanup):
 
     headers = login_as(client, viewer)
     walked: list[str] = []
-    path: str | None = "/api/v1/timeline?per_page=2"
-    pages = 0
-    while path is not None:
-        response = client.get(path, headers=headers)
+    for page in (1, 2, 3):
+        response = client.get(f"/api/v1/timeline?per_page=2&page={page}", headers=headers)
         assert response.status_code == 200
-        walked.extend(item["id"] for item in response.json()["items"])
-        link = response.headers.get("Link")
-        path = link[1 : link.index(">")].replace("http://testserver", "") if link else None
-        pages += 1
-        assert pages <= 10, "cursor walk did not terminate"
+        body = response.json()
+        assert body["total"] == 5
+        walked.extend(item["id"] for item in body["items"])
 
-    assert pages == 3
     assert len(walked) == len(set(walked)), "a row was served twice"
     assert set(walked) == created
 
@@ -444,7 +440,7 @@ def test_timeline_caps_per_page_and_rejects_garbage(db, cleanup):
     assert capped.status_code == 200
     assert capped.json()["per_page"] == 100
 
-    for query in ("per_page=0", "page=0", "page=abc", "cursor=garbage"):
+    for query in ("per_page=0", "page=0", "page=abc"):
         response = client.get(f"/api/v1/timeline?{query}", headers=headers)
         assert response.status_code == 422, f"expected 422 for {query!r}"
 

@@ -594,63 +594,6 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
-/** Caller joins the "I'm working on this" set. Idempotent: re-signalling
- *  is a 204 no-op, not an error. `POST /events/{id}/investigate`. */
-export function investigateEvent(id: string): Promise<void> {
-  return apiFetch<void>(`/events/${id}/investigate`, { method: "POST" });
-}
-
-/** Caller leaves the working set. No-op if caller wasn't signalling.
- *  `DELETE /events/{id}/investigate`. */
-export function uninvestigateEvent(id: string): Promise<void> {
-  return apiFetch<void>(`/events/${id}/investigate`, { method: "DELETE" });
-}
-
-export interface SubmitReadiness {
-  isReady: boolean;
-  /** Submit-floor fields still missing, the labels shown in the queue card's
-   *  readiness line. Empty when ready. */
-  missing: string[];
-}
-
-/**
- * Whether a `detected` row would pass the **Submit** gate, computed client-side
- * so the Detections queue shows the owner exactly what's left before they open
- * it. Delegates to `missingEventFields` (requireMedia + requireTags), the
- * same check the Submit button makes, so the readiness line can never drift from
- * what submitting actually enforces. (The backend floor is the narrower media +
- * one conflict + a `capture_source` tag; the form adds the core fields and a
- * proof image on top, see `missingEventFields`.)
- */
-export function submitReadiness(geo: {
-  title: string;
-  lat: number;
-  lng: number;
-  source_url: string;
-  source_posted_at: string;
-  proof: Record<string, unknown> | null;
-  media: readonly unknown[];
-  tags: readonly { category: TagCategory }[];
-  conflicts: readonly unknown[];
-}): SubmitReadiness {
-  const missing = missingEventFields(
-    {
-      title: geo.title,
-      lat: String(geo.lat),
-      lng: String(geo.lng),
-      sourceUrl: geo.source_url,
-      sourcePostedAt: geo.source_posted_at,
-      proof: geo.proof,
-      mediaCount: geo.media.length,
-      hasConflictTag: geo.conflicts.length > 0,
-      hasCaptureSourceTag: geo.tags.some((t) => t.category === "capture_source"),
-    },
-    { requireMedia: true, requireTags: true }
-  ).map((m) => m.label);
-
-  return { isReady: missing.length === 0, missing };
-}
-
 /** The editable state a geolocation create/edit form validates before it lets
  *  the analyst submit or validate. Strings are the raw input values. */
 export interface EventFieldsState {
@@ -680,8 +623,8 @@ export interface EventFieldsOptions {
  * `IncompleteFormNotice` (the labels) and the in-form highlight (the keys): the
  * whole list at once, not the first miss. Drives the create submit form and the
  * detection submit form. Coordinate, media, and tag rules mirror the backend;
- * keep them in step with `submitReadiness` (the queue's inline readiness) and
- * the server submit check. Proof must carry an image (`proofHasImage`):
+ * keep them in step with the server submit check. Proof must carry an image
+ * (`proofHasImage`):
  * a geolocation's proof is a source ↔ satellite cross-reference, so text alone
  * can't be audited.
  */

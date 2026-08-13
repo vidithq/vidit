@@ -73,7 +73,7 @@ vidit/
 ├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
 ├── docs/             api, backups, data-model, design, engineering (technical reference)
 ├── planning/         roadmap + next (project planning, not user docs)
-├── docker/           custom PG image (PostGIS + AGE + pg_cron) + daily backup cron
+├── docker/           daily backup cron image
 ├── AGENTS.md            project context for AI tools (CLAUDE.md is a one-line `@AGENTS.md` pointer for Claude Code)
 ├── CHANGELOG.md         release history
 ├── CODE_OF_CONDUCT.md   Contributor Covenant 2.1
@@ -119,7 +119,7 @@ make test        # backend pytest
 
 ### Prerequisites
 
-- Docker (for PostgreSQL + PostGIS; prod runs PG 16 on Railway, local is PG 18, see [`docs/backups.md`](docs/backups.md) for restore implications)
+- Docker (for PostgreSQL + PostGIS; local and prod both run `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
 - Python 3.12+ and [uv](https://github.com/astral-sh/uv)
 - Node.js 20+ and npm
 

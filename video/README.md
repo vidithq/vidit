@@ -27,12 +27,11 @@ needs (idempotent — re-running is safe):
 cd backend && uv run python scripts/mock_demo_user.py
 ```
 
-That creates three non-admin users (`analyst` + `demo-analyst` + `analyst-helper`)
-so the request viewer in the recording is NOT also the request author — the
-"I'm working on this" button only renders on a request you don't own.
-`analyst` is who the recording logs in as (community-handle perspective,
-no admin badge); `demo-analyst` owns the seeded requests; `analyst-helper`
-pre-seeds the "1 working" indicator on one request in the list view.
+That creates the non-admin users the capture needs, so the request viewer
+in the recording is NOT also the request author: an owner sees "Close this
+request" where the recording expects "Geolocate this". `analyst` is who the
+recording logs in as (community-handle perspective, no admin badge);
+`demo-analyst` owns the seeded requests.
 
 ## Generate the promo (one command)
 
@@ -76,17 +75,16 @@ For 4K (3840×2160), append `--scale 2` to the render command.
 1. **`seed-requests.js`** logs in as `demo-analyst`, wipes that user's old
    requests, then imports a curated list of the real analyst's tweets,
    downloads their video media via the backend's tweet proxy, and posts
-   them as requests (`POST /events/requests`, one source file each). It
-   then logs in as `analyst-helper` and claims one
-   (`POST /events/{id}/investigate`) so the list shows "1 working" social
-   proof. Idempotent.
+   them as requests (`POST /events/requests`, one source file each).
+   Idempotent.
 
 2. **`record-submit.js`** logs in as `analyst`, opens Chrome headlessly
    with an injected DOM cursor overlay (the OS cursor isn't captured by
    `page.screenshot()`, so we render our own SVG cursor), and drives the
    page through the full flow: map cold open → sidebar tour → submit a
-   geolocation from a tweet on `/submit` → "I'm working on this" → post a
-   new request from a Telegram link on the same form → publish. A polling
+   geolocation from a tweet on `/submit` → read a request on the requests
+   board → post a new request from a Telegram link on the same form →
+   publish. A polling
    loop calls `page.screenshot()` at 60 fps in parallel and writes JPEG
    frames to disk. `ffmpeg` muxes them into `out/recording-submit.mp4` at
    2560×1440, at the fps the grabber actually sustained.
@@ -133,9 +131,9 @@ For 4K (3840×2160), append `--scale 2` to the render command.
   login (`analyst@vidit.app`) fails outright. Even if you create just
   `analyst` and skip the rest, requests get posted by `analyst` itself
   instead of `demo-analyst` — viewing their own request in the recording
-  would then show "Close this request" instead of "I'm working on this",
-  and the recording would fail at that step with a TimeoutError on the
-  missing button.
+  would then show "Close this request" instead of "Geolocate this", and
+  the recording would fail at that step with a TimeoutError on the
+  missing control.
 
 ## Why this stack
 
