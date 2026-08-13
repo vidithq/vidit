@@ -24,6 +24,9 @@ describe("GraphicContentGate", () => {
     // in the layout, but nothing under the gate can be read or clicked.
     expect(covered).toHaveClass("blur-xl", "pointer-events-none");
     expect(covered).toHaveAttribute("aria-hidden", "true");
+    // `inert` and not only `pointer-events-none`: a keyboard reader must not
+    // be able to Tab into the covered media and open the lightbox with Enter.
+    expect(covered).toHaveAttribute("inert");
     expect(screen.getByRole("button", { name: REVEAL })).toBeInTheDocument();
   });
 
@@ -48,6 +51,9 @@ describe("GraphicContentGate", () => {
     expect(screen.queryByRole("button", { name: REVEAL })).toBeNull();
     expect(screen.getByAltText("First").parentElement).not.toHaveClass("blur-xl");
     expect(screen.getByAltText("Second").parentElement).not.toHaveClass("blur-xl");
+    // The wrapper is gone with the gate, so the media is back in the tab order.
+    expect(screen.getByAltText("First").closest("[inert]")).toBeNull();
+    expect(screen.getByAltText("Second").closest("[inert]")).toBeNull();
   });
 
   it("starts revealed for an instance mounted after the confirmation", () => {

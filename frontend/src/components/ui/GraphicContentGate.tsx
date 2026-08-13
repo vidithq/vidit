@@ -93,8 +93,12 @@ export function GraphicContentGate({
     <div className={cn("relative overflow-hidden rounded-lg", compact && "size-full")}>
       {/* Blurred and inert: the covered media stays in the layout (the block
           keeps its size) but takes no clicks and no tab stops, so a reader
-          cannot open the lightbox behind the gate. */}
+          cannot open the lightbox behind the gate. `inert` is what removes the
+          tab stops: `pointer-events-none` only stops the pointer, and a
+          focusable child (`MediaLightbox`'s trigger) was still reachable with
+          Tab and openable with Enter, at full size and ungated. */}
       <div
+        inert
         aria-hidden="true"
         className={cn(
           "pointer-events-none select-none blur-xl",
@@ -106,11 +110,17 @@ export function GraphicContentGate({
       {compact ? (
         // One control filling the tile: at card size there is no room for a
         // sentence plus a separate button.
+        //
+        // `z-20` is the lift every interactive child of an `EntityCard` gets
+        // (see `AuthorLink`, `relative z-20`): the card's stretched link is
+        // `absolute inset-0 z-10`, so without it a click on this control hit
+        // the link and navigated to the event instead of revealing the media.
+        // Outside a card there is nothing to outrank and it changes nothing.
         <Button
           variant="ghost"
           onClick={acknowledge}
           aria-label="Show graphic content (18 or older)"
-          className={`absolute inset-0 h-full w-full flex-col gap-1 rounded-none px-1 ${WARNING_CALLOUT}`}
+          className={`absolute inset-0 z-20 h-full w-full flex-col gap-1 rounded-none px-1 ${WARNING_CALLOUT}`}
         >
           <EyeOff size={12} />
           <span className="text-[10px] leading-none">Graphic content</span>

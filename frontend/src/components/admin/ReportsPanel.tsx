@@ -9,7 +9,7 @@ import {
   type ContentReportList,
   type ContentReportResolution,
 } from "@/lib/admin";
-import type { ContentReport } from "@/lib/events";
+import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/events";
 import { formatInstant } from "@/lib/format";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
@@ -40,16 +40,11 @@ import { TEXT_LINK } from "@/components/ui/styles";
 
 const PER_PAGE = 20;
 
-// Human labels for the two generated vocabularies. Keyed by the union, so a new
-// backend value fails `tsc` here instead of rendering as a raw enum string.
-const REASON_LABELS: Record<ContentReport["reason"], string> = {
-  illegal_content: "Illegal content",
-  graphic_not_flagged: "Graphic, not flagged",
-  copyright: "Copyright",
-  privacy: "Privacy",
-  other: "Something else",
-};
-
+// The bucket labels are the reporter-facing ones (`REPORT_REASON_LABELS`), so
+// the queue reads a report back in the words the reporter picked it by. The
+// verdicts are this surface's own vocabulary: keyed by the generated union, so
+// a new backend value fails `tsc` here instead of rendering as a raw enum
+// string.
 const RESOLUTION_LABELS: Record<ContentReportResolution, string> = {
   marked_graphic: "Marked graphic",
   hidden: "Hidden",
@@ -83,7 +78,7 @@ function ReportRow({
           {open ? "Open" : (report.resolution && RESOLUTION_LABELS[report.resolution])}
         </Pill>
         <span className="text-neutral-300 font-medium">
-          {REASON_LABELS[report.reason]}
+          {REPORT_REASON_LABELS[report.reason]}
         </span>
         <span className="text-neutral-500">{formatInstant(report.created_at)}</span>
         <span className="text-neutral-500">

@@ -5,6 +5,7 @@ import { Flag } from "lucide-react";
 
 import {
   REPORT_DETAILS_MAX_LEN,
+  REPORT_REASON_LABELS,
   reportEvent,
   type ContentReportReason,
 } from "@/lib/events";
@@ -48,17 +49,9 @@ import {
  * often the whole report.
  */
 
-// The human label per bucket. Keyed by the generated union, so a new backend
-// reason fails `tsc` here instead of rendering as a raw enum value.
-const REASON_LABELS: Record<ContentReportReason, string> = {
-  illegal_content: "Illegal content",
-  graphic_not_flagged: "Graphic content, not flagged",
-  copyright: "Copyright",
-  privacy: "Privacy",
-  other: "Something else",
-};
-
-const REASONS = Object.keys(REASON_LABELS) as ContentReportReason[];
+// The order the select offers, taken from the shared label map so the form and
+// the admin queue name every bucket the same way.
+const REASONS = Object.keys(REPORT_REASON_LABELS) as ContentReportReason[];
 
 // The trigger sits in the header and the form in the body, so they are not DOM
 // siblings; `aria-controls` is what ties the two together for a screen reader.
@@ -149,7 +142,7 @@ export function useReportEvent(eventId: string): {
             >
               {REASONS.map((value) => (
                 <option key={value} value={value}>
-                  {REASON_LABELS[value]}
+                  {REPORT_REASON_LABELS[value]}
                 </option>
               ))}
             </Select>

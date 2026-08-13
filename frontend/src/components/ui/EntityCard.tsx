@@ -76,6 +76,10 @@ export function MediaThumb({
       )}
     >
       {picture ? (
+        // The compact gate lifts its own reveal control above the card's
+        // stretched link (`z-20`, the lift `AuthorLink` gets), so the control
+        // takes the click; once revealed nothing is left above the link and
+        // the thumbnail navigates like any other card surface.
         isGraphic ? (
           <GraphicContentGate variant="compact">{picture}</GraphicContentGate>
         ) : (

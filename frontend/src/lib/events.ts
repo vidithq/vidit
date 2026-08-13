@@ -631,6 +631,21 @@ export type ContentReport = components["schemas"]["ContentReportRead"];
 export const REPORT_DETAILS_MAX_LEN = 2000;
 
 /**
+ * The human label per report bucket, in the reporter's own register: the
+ * report form offers them and the admin queue reads them back, so one map
+ * serves both and the two surfaces cannot name the same bucket differently.
+ * Keyed by the generated union, so a new backend reason fails `tsc` here
+ * instead of rendering as a raw enum value.
+ */
+export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
+  illegal_content: "Illegal content",
+  graphic_not_flagged: "Graphic content, not flagged",
+  copyright: "Copyright",
+  privacy: "Privacy",
+  other: "Something else",
+};
+
+/**
  * Report an event: `POST /events/{id}/report`. Open to anyone, signed in or
  * not: the people who most need to flag illegal or mislabelled footage are the
  * least likely to hold an account here. `apiFetch` omits the CSRF header when
