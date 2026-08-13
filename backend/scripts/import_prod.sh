@@ -94,11 +94,26 @@ trap 'rm -f "${DUMP}"' EXIT
 echo "Downloading ..."
 aws "${AWS_ARGS[@]}" cp "s3://${BUCKET}/${KEY}" "${DUMP}"
 
+# Recreate the database instead of restoring with --clean: --clean only
+# drops objects the dump knows about, so a local table the production
+# schema does not have yet keeps FK references to users/events alive and
+# every DROP fails. A fresh database mirrors the restore drill.
+DB_USER="$(printf '%s' "${IN_CONTAINER_URL}" | sed -E 's#^[a-z+]+://([^:@/]+).*#\1#')"
+echo "Recreating ${TARGET_DB} ..."
+docker exec "${CONTAINER}" psql -U "${DB_USER}" -d postgres -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS \"${TARGET_DB}\" WITH (FORCE);" \
+    -c "CREATE DATABASE \"${TARGET_DB}\";"
+
 echo "Restoring into ${TARGET_DB} ..."
 docker cp "${DUMP}" "${CONTAINER}:/tmp/vidit-import.dump"
-docker exec "${CONTAINER}" pg_restore --clean --if-exists --no-owner --no-acl \
+# Restore through a TOC list that skips the tiger geocoder: the app never
+# calls it, and its install script does not run on every local image.
+docker exec "${CONTAINER}" sh -c \
+    "pg_restore -l /tmp/vidit-import.dump | grep -vi tiger > /tmp/vidit-import.list"
+docker exec "${CONTAINER}" pg_restore --no-owner --no-acl \
+    --use-list=/tmp/vidit-import.list \
     --dbname="${IN_CONTAINER_URL}" /tmp/vidit-import.dump
-docker exec "${CONTAINER}" rm -f /tmp/vidit-import.dump
+docker exec "${CONTAINER}" rm -f /tmp/vidit-import.dump /tmp/vidit-import.list
 
 # The dump lags whatever migrations landed since it was taken.
 echo "Applying migrations ..."

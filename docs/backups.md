@@ -110,9 +110,11 @@ If steps 4 and 5 return plausible counts and the PostGIS smoke test returns `t`,
 
 ## Import production into local dev
 
-`make import-prod` fills a local dev database with real data. It picks the most recent dump from the backup bucket, restores it into the running `vidit-db` container with the flags the [restore drill](#restore-drill) uses, and then runs `alembic upgrade head`, because a dump lags whatever migrations landed after it was taken. The script is [`backend/scripts/import_prod.sh`](../backend/scripts/import_prod.sh).
+`make import-prod` fills a local dev database with real data. It picks the most recent dump from the backup bucket, drops and recreates the local database, restores the dump into the running `vidit-db` container with the flags the [restore drill](#restore-drill) uses, and then runs `alembic upgrade head`, because a dump lags whatever migrations landed after it was taken. The script is [`backend/scripts/import_prod.sh`](../backend/scripts/import_prod.sh).
 
-The target is the whole local database, not a scratch one: the restore drops every local row. The script prints the source object and the target database and waits for a confirmation. Pass `ARGS=--yes` to skip the prompt.
+The script recreates the database instead of restoring with `--clean`. `--clean` drops only the objects the dump contains, so a local migration that production does not have yet keeps foreign keys alive and the drops fail. The restore also skips the `postgis_tiger_geocoder` entries: the application never calls the tiger geocoder, and its install script fails on images where the extension set differs from production.
+
+The target is the whole local database, not a scratch one: every local row is dropped. The script prints the source object and the target database and waits for a confirmation. Pass `ARGS=--yes` to skip the prompt.
 
 Set two variables in the environment. The backend settings model rejects keys it does not declare, so `backend/.env` cannot carry them:
 
