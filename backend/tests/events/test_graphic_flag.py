@@ -1,17 +1,24 @@
 """The author-set graphic-content flag across the write and read surfaces.
 
-``is_graphic`` is declared on the create / request forms, rewritten by the
-geolocate edit (which posts the whole state, so an omitted box clears it), and
-carried by both read payloads so a card and a detail page can cover the imagery
-without a second request. Shared fixtures live in `conftest.py`; `client` /
-`_make_geo` / the proof helpers in `_helpers.py`.
+``is_graphic`` is declared on the create / request forms and ratchets on the
+geolocate edit: the form raises the flag and never lowers it, so only the admin
+moderation endpoint can clear one. Both read payloads carry it, so a card and a
+detail page can cover the imagery without a second request. Shared fixtures
+live in `conftest.py`; `client` / `_make_geo` / the proof helpers in
+`_helpers.py`.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 
+import pytest
+
+from app.models.admin_event import AdminEvent
 from app.models.event import STATUS_DETECTED, Event
+from app.models.user import User
+from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -20,6 +27,27 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
+
+
+@pytest.fixture
+def admin_user(db):
+    """An admin, for the one door that can still clear the flag."""
+    user = User(
+        username=f"mod{uuid.uuid4().hex[:8]}",
+        email=f"mod-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    # Reap this actor's audit rows so the user row deletes cleanly, the same
+    # teardown shape as the moderation suite.
+    db.expire_all()
+    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
 
 
 def _create_form(conflict, capture_source_tag, **overrides):
@@ -125,9 +153,9 @@ def test_geolocate_sets_the_flag(db, author, conflict, capture_source_tag):
     assert db.query(Event).filter(Event.id == geo.id).one().is_graphic is True
 
 
-def test_geolocate_clears_the_flag(db, author, conflict, capture_source_tag):
-    """The form posts the whole state, so an omitted box clears a flag the
-    draft carried, exactly like an emptied text field."""
+def test_geolocate_cannot_clear_the_flag(db, author, conflict, capture_source_tag):
+    """The flag ratchets: unlike every other field on the form, an omitted box
+    leaves a flag the draft already carried rather than clearing it."""
     geo = _make_geo(
         db,
         author=author,
@@ -143,7 +171,41 @@ def test_geolocate_clears_the_flag(db, author, conflict, capture_source_tag):
         headers=login_as(client, author),
     )
     assert response.status_code == 200, response.text
-    assert response.json()["is_graphic"] is False
+    assert response.json()["is_graphic"] is True
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == geo.id).one().is_graphic is True
+
+
+def test_admin_can_still_unmark_a_ratcheted_flag(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """The moderation endpoint is the one door out: after the form has failed
+    to clear the flag, an admin unmark still does."""
+    geo = _make_geo(
+        db,
+        author=author,
+        status=STATUS_DETECTED,
+        with_media=True,
+        is_graphic=True,
+        detected_from_url="https://x/3",
+    )
+    edit = client.post(
+        f"/api/v1/events/{geo.id}/geolocate",
+        data=_geolocate_form(conflict, capture_source_tag),
+        files=[proof_file_part()],
+        headers=login_as(client, author),
+    )
+    assert edit.status_code == 200, edit.text
+    assert edit.json()["is_graphic"] is True
+
+    unmark = client.patch(
+        f"/api/v1/admin/events/{geo.id}/moderation",
+        json={"is_graphic": False},
+        headers=login_as(client, admin_user),
+    )
+    assert unmark.status_code == 200, unmark.text
+    assert unmark.json()["is_graphic"] is False
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo.id).one().is_graphic is False

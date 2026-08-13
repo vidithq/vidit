@@ -565,6 +565,10 @@ async def geolocate(
     credited in ``event_geolocators``. ``detected_from_url`` (the provenance
     anchor) and ``status`` carry no form field.
 
+    ``is_graphic`` is the one field the form cannot lower: it ratchets, so a
+    posted false leaves an already-flagged event flagged. Clearing it is
+    admin-only, through ``PATCH /admin/events/{id}/moderation``.
+
     Concurrency: the row is re-fetched ``with_for_update()`` FIRST, then the
     status re-checked: two racing geolocates serialize on the row lock and
     the loser sees the 409, restoring the pre-merge fulfilment lock (see
@@ -675,9 +679,12 @@ async def geolocate(
         geo.event_date = event_date
         geo.event_time = event_time
         geo.source_posted_at = source_posted_at
-        # Posted with the rest of the state, so an author clearing the box
-        # clears the flag; only the moderation endpoint pins it against them.
-        geo.is_graphic = is_graphic
+        # A ratchet, unlike every other field here: the form raises the flag
+        # and never lowers it, so a false value against an already-flagged
+        # event leaves it set. Clearing is admin-only, through ``PATCH
+        # /admin/events/{id}/moderation``, which audits the unmark. An author
+        # who mis-flags their own event asks an admin to undo it.
+        geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = effective_tags
         geo.conflicts = effective_conflicts
         geo.status = STATUS_GEOLOCATED

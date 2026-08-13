@@ -824,6 +824,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `proof` | string (JSON) | no | Serialized Tiptap document. Its inline images reference not-yet-uploaded files as `placeholder://<filename>`, resolved against `proof_files`. |
 | `tag_ids` | string (JSON array) | yes | `["uuid1", "uuid2"]`. **Must include at least one `capture_source` tag** (see *Required categories* below). |
 | `conflict_ids` | string (JSON array) | yes | `["uuid1"]`. Ids from the [conflict referential](#conflicts). **At least one is required** (see *Required categories* below). |
+| `is_graphic` | boolean | no | The author's declaration that the footage shows death, injury or human remains. Defaults to `false`. Viewers see flagged media behind an age confirmation. Once set, only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it. |
 | `file` | File | yes | Exactly one source file (image or video): the footage. |
 | `proof_files` | File[] | no | The proof body's inline images, matched to its `placeholder://` srcs by filename. At least one is required (see *Required categories*). |
 
@@ -940,6 +941,7 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | `proof` | JSON string | Tiptap document (sanitized); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
+| `is_graphic` | boolean | The graphic-content declaration. Unlike every other field here it ratchets: `true` sets the flag, and `false` leaves an already-flagged event flagged. To clear the flag, use [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation), which audits the unmark |
 | `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
 | `files` | file[] | New source media to add (0 or 1; kept + new must total exactly one, same allowlist + size limits as create) |
 | `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |

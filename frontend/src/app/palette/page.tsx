@@ -471,12 +471,15 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles).">
+          <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles). disabled reads the state but refuses the toggle, for a value this surface cannot change (the edit form's ratcheted graphic-content flag).">
             <Variant label='size="md"'>
               <Switch on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch" />
             </Variant>
             <Variant label='size="sm"'>
               <Switch size="sm" on={swOn} onToggle={() => setSwOn(!swOn)} aria-label="Demo switch small" />
+            </Variant>
+            <Variant label="disabled">
+              <Switch on disabled aria-label="Demo switch locked" />
             </Variant>
           </Item>
 

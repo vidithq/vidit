@@ -253,8 +253,9 @@ async def geolocate_event(
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    # The author's graphic-content declaration, posted with the rest of the
-    # state: omitting it clears the flag, exactly like an emptied field.
+    # The author's graphic-content declaration. Unlike the fields around it
+    # this one ratchets: omitting it leaves a flag the event already carries,
+    # and only the admin moderation endpoint can clear one.
     is_graphic: bool = Form(False),
     # Ids of existing media to drop (JSON array). A replacement source rides
     # in ``files``; the proof body's new inline images in ``proof_files``.

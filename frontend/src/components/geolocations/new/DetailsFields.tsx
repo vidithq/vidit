@@ -32,6 +32,12 @@ interface DetailsFieldsProps {
    *  event is a complete form. */
   isGraphic: boolean;
   setIsGraphic: (v: boolean) => void;
+  /** The loaded event already carries the flag. The declaration ratchets on
+   *  the backend (the form raises it and never lowers it), so the switch reads
+   *  its state and refuses the toggle instead of offering a change the
+   *  geolocate write would discard. The submit form leaves this `false`: a
+   *  fresh event has nothing set yet. */
+  graphicLocked?: boolean;
   /** Render the source URL read-only — it's inherited from the request on a
    *  fulfilment (shows a "from request" hint). The detection edit form leaves it
    *  editable (`false`). */
@@ -62,6 +68,7 @@ export function DetailsFields({
   setSourcePostedAt,
   isGraphic,
   setIsGraphic,
+  graphicLocked = false,
   sourceUrlLocked,
   detectedFromUrl,
   sourcePostedAtInvalid = false,
@@ -162,15 +169,20 @@ export function DetailsFields({
           `<label>` with. */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <span className={FORM_LABEL}>Graphic content</span>
+          <span className={FORM_LABEL}>
+            Graphic content
+            {graphicLocked && <LockedHint>admin only</LockedHint>}
+          </span>
           <p className="text-xs text-neutral-500">
-            Blurs media behind an age confirmation for viewers. Flag footage
-            showing death, injury or human remains.
+            {graphicLocked
+              ? "This event is flagged. Removing the flag requires an admin, so ask a moderator to review it."
+              : "Blurs media behind an age confirmation for viewers. Flag footage showing death, injury or human remains."}
           </p>
         </div>
         <Switch
           on={isGraphic}
           onToggle={() => setIsGraphic(!isGraphic)}
+          disabled={graphicLocked}
           aria-label="Graphic content"
         />
       </div>

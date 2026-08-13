@@ -288,6 +288,9 @@ export function EventEditForm({
           setSourcePostedAt={setSourcePostedAt}
           isGraphic={isGraphic}
           setIsGraphic={setIsGraphic}
+          // The loaded value, not the live one: the flag ratchets on the
+          // backend, so an event that arrived flagged cannot be unflagged here.
+          graphicLocked={geo.is_graphic}
           sourceUrlLocked={false}
           detectedFromUrl={geo.detected_from_url}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
