@@ -88,16 +88,87 @@ jobs:
             echo "- **Author:** $AUTHOR"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Version-pinned: the deploy step below depends on `railway up --detach`
+      # and on `railway deployment list --json --limit`, so the CLI is not a
+      # floating dependency. Bump this pin deliberately, after checking the
+      # new version still carries those flags.
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@5.35.0
 
       # Each service carries its own dashboard config (Root Directory
       # ``backend``, Config-as-code ``backend/railway.scheduler.json``, start
       # command); the upload is the same repo-root snapshot for all four.
+      #
+      # Why detach + poll rather than `railway up --ci`: `--ci` streams build
+      # logs and exits with the status of that stream, which is not the status
+      # of the deployment. A dropped stream (`Failed to stream build logs`)
+      # failed all five matrix jobs on the v0.5.0 deploy while every service
+      # went on to reach SUCCESS. `--detach` returns once the upload is
+      # accepted, and the deployment status is then read from the API, so the
+      # job's exit status tracks the deployment.
       - name: Deploy ${{ matrix.service }} to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service ${{ matrix.service }} --ci
+          SERVICE: ${{ matrix.service }}
+          # Poll budget, kept under the job's ``timeout-minutes`` so a stuck
+          # deploy fails with the message below instead of a bare job kill.
+          POLL_TIMEOUT_SECONDS: "900"
+          POLL_INTERVAL_SECONDS: "10"
+        run: |
+          set -euo pipefail
+
+          # Newest deployment for the service as "<id> <status>", or empty.
+          # The jq walk tolerates either a bare array of deployments or a
+          # wrapped shape, and picks the most recent by ``createdAt``.
+          newest_deployment() {
+            railway deployment list --service "$SERVICE" --json --limit 20 \
+              | jq -r '[.. | objects | select(has("id") and has("status"))]
+                       | (sort_by(.createdAt // "") | last) // empty
+                       | "\(.id) \(.status)"'
+          }
+
+          BEFORE_ID=$(newest_deployment | cut -d' ' -f1 || true)
+          echo "Newest deployment before this run: ${BEFORE_ID:-none}"
+
+          railway up --service "$SERVICE" --detach
+
+          DEADLINE=$(( $(date +%s) + POLL_TIMEOUT_SECONDS ))
+          LAST_STATUS=""
+          DEPLOY_ID=""
+          STATUS=""
+          while :; do
+            LINE=$(newest_deployment || true)
+            ID=$(printf '%s' "$LINE" | cut -d' ' -f1)
+            STATUS=$(printf '%s' "$LINE" | cut -d' ' -f2)
+
+            # Ignore the pre-existing deployment: the new one is not
+            # registered the instant the upload returns.
+            if [ -n "$ID" ] && [ "$ID" != "$BEFORE_ID" ]; then
+              DEPLOY_ID="$ID"
+              if [ "$STATUS" != "$LAST_STATUS" ]; then
+                echo "Deployment $DEPLOY_ID: $STATUS"
+                LAST_STATUS="$STATUS"
+              fi
+              case "$STATUS" in
+                SUCCESS)
+                  echo "$SERVICE deployment $DEPLOY_ID finished with status $STATUS"
+                  exit 0
+                  ;;
+                FAILED|CRASHED|REMOVED|SKIPPED)
+                  echo "$SERVICE deployment $DEPLOY_ID finished with status $STATUS"
+                  echo "Build logs: railway logs --build --service $SERVICE"
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "Timed out after ${POLL_TIMEOUT_SECONDS}s waiting for $SERVICE to reach a terminal status."
+              echo "Last seen deployment: ${DEPLOY_ID:-none} status ${STATUS:-unknown}"
+              exit 1
+            fi
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
 
   deploy-frontend:
     name: Deploy frontend (Vercel)
