@@ -23,13 +23,22 @@ import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { DetailRow } from "@/components/ui/DetailRow";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+
+// Ties the header's Close trigger to the panel it opens two levels down the
+// tree, which `aria-controls` needs since the two are not DOM siblings.
+const CLOSE_FORM_ID = "close-request-form";
 
 /**
  * A request is a ``requested`` event (see ``docs/data-model.md`` → ``events``),
  * served by the same ``GET /events/{id}`` a located row uses; this page just
- * renders the requested-only actions (investigate / close) around the shared
- * ``EventDetailBody``. Close captures a required free-text reason via
+ * renders the requested-only actions (geolocate / investigate / close / delete)
+ * around the shared ``EventDetailBody``. Every one of them sits in PageShell's
+ * ``actions`` slot, the same top-right cluster the event detail page and the
+ * map side panel use, so a reader finds the controls in one place on all three
+ * detail surfaces. Close captures a required free-text reason via
  * ``CloseEventForm``; the status badge tells a withdrawn request from a rejected
  * detection through ``before_closed_status``.
  */
@@ -137,11 +146,67 @@ export default function RequestDetailPage() {
       title={request.title}
       subtitle={<AuthorByline author={request.owner} avatar />}
       actions={
+        // Every way to act on this request lives in this one cluster, the same
+        // top-right spot the event page and the map panel use. Reading order
+        // runs from the main call to action to the quiet controls: geolocate,
+        // signal, close, delete, share, report.
+        //
+        // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
+        // breaks into stacked right-aligned lines instead of pushing the header
+        // sideways (PageShell caps the cluster at the header width).
+        //
         // A request is served by the same `GET /events/{id}` a located row is,
         // and `/events/{id}` renders it, so the share row needs nothing the
         // payload does not already carry: the coordinate pair is simply absent
         // and the tweet drops that line.
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {canGeolocate && (
+            <Link
+              href={`/submit?request_id=${request.id}`}
+              className={buttonClasses("primary")}
+            >
+              <MapPin size={14} />
+              Geolocate this
+            </Link>
+          )}
+          {canGeolocate && !isAuthor && (
+            // Active (signalling) reads as a filled, on state; the call to
+            // action reads as a quieter outline, mirroring FollowButton's
+            // variant swap so the toggle state is unambiguous.
+            <Button
+              variant={isInvestigatingMe ? "primary" : "secondary"}
+              onClick={handleToggleInvestigate}
+              disabled={actionPending}
+              aria-pressed={isInvestigatingMe}
+            >
+              <Users size={14} />
+              {isInvestigatingMe ? "Working on this" : "I'm working on this"}
+            </Button>
+          )}
+          {isAuthor && request.status === "requested" && (
+            // A toggle, like the report trigger beside it: the panel it opens
+            // sits under the header, so the button that opened it stays put
+            // and closes it again.
+            <Button
+              variant="ghost"
+              onClick={() => setClosing((prev) => !prev)}
+              disabled={actionPending}
+              aria-expanded={closing}
+              aria-controls={CLOSE_FORM_ID}
+            >
+              Close this request
+            </Button>
+          )}
+          {isAuthor &&
+            (request.status === "requested" || request.status === "closed") && (
+              <Button
+                variant="danger"
+                onClick={handleDelete}
+                disabled={actionPending}
+              >
+                Delete this request
+              </Button>
+            )}
           <ShareButtons
             id={request.id}
             title={request.title}
@@ -155,7 +220,30 @@ export default function RequestDetailPage() {
         </div>
       }
     >
-        {/* Directly under the header, where the trigger that opened it is. */}
+        {/* Both panels open directly under the header, where the triggers that
+            opened them are. They stack rather than replace each other: each is
+            its own titled card, so a reader who somehow opens both reads two
+            separate forms in a column, never two forms sharing a slot. */}
+        {closing && (
+          // The `id` sits on a wrapper, not the Card, so `aria-controls` on a
+          // trigger that is not a DOM sibling still resolves (same shape the
+          // report form uses).
+          <div id={CLOSE_FORM_ID}>
+            <Card as="section">
+              <SectionEyebrow title="Close this request" margin="none" />
+              <CloseEventForm
+                eventId={request.id}
+                status={request.status}
+                disabled={actionPending}
+                onClosed={() => {
+                  setClosing(false);
+                  refetch();
+                }}
+                onCancel={() => setClosing(false)}
+              />
+            </Card>
+          </div>
+        )}
         {report.panel}
 
         {/* A request is an event with no coordinates, so the body renders with
@@ -191,76 +279,6 @@ export default function RequestDetailPage() {
             </>
           }
         />
-
-        {/* Actions at the bottom, after the user has read the request.
-            "I'm working on this" gets a neutral treatment so it doesn't
-            compete with the "Geolocate this" CTA. */}
-        {canGeolocate && (
-          <div className="pt-4 border-t border-neutral-800 flex items-center gap-3 flex-wrap">
-            <Link
-              href={`/submit?request_id=${request.id}`}
-              className={buttonClasses("primary")}
-            >
-              <MapPin size={14} />
-              Geolocate this
-            </Link>
-            {!isAuthor && (
-              // Active (signalling) reads as a filled, on state; the call-to-
-              // action reads as a quieter outline, mirroring FollowButton's
-              // variant swap so the toggle state is unambiguous.
-              <Button
-                variant={isInvestigatingMe ? "primary" : "secondary"}
-                onClick={handleToggleInvestigate}
-                disabled={actionPending}
-                aria-pressed={isInvestigatingMe}
-              >
-                <Users size={14} />
-                {isInvestigatingMe ? "Working on this" : "I'm working on this"}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {isAuthor && request.status === "requested" && (
-          <div className="pt-4 border-t border-neutral-800 space-y-4">
-            {closing ? (
-              <CloseEventForm
-                eventId={request.id}
-                status={request.status}
-                disabled={actionPending}
-                onClosed={() => {
-                  setClosing(false);
-                  refetch();
-                }}
-                onCancel={() => setClosing(false)}
-              />
-            ) : (
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setClosing(true)}
-                  disabled={actionPending}
-                >
-                  Close this request
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={handleDelete}
-                  disabled={actionPending}
-                >
-                  Delete this request
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-        {isAuthor && request.status === "closed" && (
-          <div className="pt-4 border-t border-neutral-800">
-            <Button variant="danger" onClick={handleDelete} disabled={actionPending}>
-              Delete this request
-            </Button>
-          </div>
-        )}
     </PageShell>
   );
 }

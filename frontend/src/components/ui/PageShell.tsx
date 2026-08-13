@@ -74,7 +74,14 @@ export function PageShell({
               </div>
             )}
           </div>
-          {actions && <div className="shrink-0">{actions}</div>}
+          {/* `max-w-full` caps the cluster at the header width, which is what
+              lets a wide row (the request page's four action buttons plus the
+              share and report controls) wrap inside itself. Without it,
+              `shrink-0` holds the cluster at its max-content width and a phone
+              scrolls sideways. The cap only binds once the cluster has taken
+              its own line, so a cluster that fits beside the title is
+              untouched. */}
+          {actions && <div className="shrink-0 max-w-full">{actions}</div>}
         </div>
       </header>
       {children}

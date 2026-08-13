@@ -42,39 +42,44 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
         </div>
       ) : (
         <div className="p-4 space-y-4">
-          <div className="pr-6 space-y-2">
-            <h2 className="text-lg font-medium text-neutral-100">
+          <div className="space-y-2">
+            {/* `pr-6` on the heading alone: it is the line the absolute close
+                button overlaps, and keeping the inset off the block below lets
+                the action row sit flush with the panel's content edge. */}
+            <h2 className="text-lg font-medium text-neutral-100 pr-6">
               {detail.title}
             </h2>
+            {/* The panel's actions ride the byline row, right-aligned under the
+                title and clear of the close button, so this surface puts its
+                controls in the same top-right spot the two detail pages do.
+                Same ShareButtons as those pages, so tweet and clipboard output
+                stays in sync across every share surface. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
                 <AuthorByline author={detail.owner} size="xs" avatar />
               </p>
+              <div className="flex items-center gap-3 shrink-0">
+                <ShareButtons
+                  id={detail.id}
+                  title={detail.title}
+                  author={detail.owner.username}
+                  eventDate={detail.event_date}
+                  lat={detail.event_coords?.lat ?? null}
+                  lng={detail.event_coords?.lng ?? null}
+                  status={detail.status}
+                />
+                <Link
+                  href={`/events/${detail.id}`}
+                  className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
+                >
+                  Full page
+                  <ExternalLink size={11} />
+                </Link>
+              </div>
             </div>
           </div>
 
           <EventDetailBody geo={detail} variant="panel" />
-
-          {/* Same ShareButtons as the detail page so tweet/clipboard
-              output stays in sync across both share surfaces. */}
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-800">
-            <ShareButtons
-              id={detail.id}
-              title={detail.title}
-              author={detail.owner.username}
-              eventDate={detail.event_date}
-              lat={detail.event_coords?.lat ?? null}
-              lng={detail.event_coords?.lng ?? null}
-              status={detail.status}
-            />
-            <Link
-              href={`/events/${detail.id}`}
-              className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
-            >
-              Full page
-              <ExternalLink size={11} />
-            </Link>
-          </div>
         </div>
       )}
     </div>
