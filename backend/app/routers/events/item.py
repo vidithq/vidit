@@ -46,6 +46,7 @@ from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
 from app.services import permissions
 from app.services import reports as reports_service
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.storage import (
     sweep_keys,
@@ -82,15 +83,7 @@ def _resolve_live_event(db: Session, geolocation_id: uuid.UUID) -> Event:
     caller's concern: the geolocate transition owns per-status ownership (a
     ``requested`` event is answerable by anyone).
     """
-    geo = (
-        db.query(Event)
-        .filter(
-            Event.id == geolocation_id,
-            Event.deleted_at.is_(None),
-            Event.hidden_at.is_(None),
-        )
-        .first()
-    )
+    geo = db.query(Event).filter(Event.id == geolocation_id, *visible_events()).first()
     if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return geo

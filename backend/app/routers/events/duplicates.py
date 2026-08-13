@@ -23,6 +23,7 @@ from app.schemas.event import (
     CoordsRead,
     PossibleDuplicateRead,
 )
+from app.services.event_filters import visible_events
 
 router = APIRouter()
 
@@ -173,7 +174,7 @@ def list_possible_duplicates(
             distance_m,
         )
         .options(joinedload(Event.owner))
-        .filter(Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+        .filter(*visible_events())
         # Located rows only: a duplicate is a real placed event, not a
         # ``requested`` guess or a dismissed ``closed`` row. The coords CHECK no
         # longer forbids coordinates off ``geolocated`` (a request may carry an

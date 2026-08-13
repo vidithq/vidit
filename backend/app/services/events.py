@@ -46,6 +46,7 @@ from app.models.event import (
 )
 from app.models.tag import Tag
 from app.models.user import User
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     MediaRequiredError,
@@ -804,13 +805,12 @@ def _publish_draft(
     """
     geo = (
         db.query(Event)
-        # ``hidden_at`` like ``deleted_at``: a withheld draft is frozen for its
-        # owner (same as the single-row :func:`geolocate`, which resolves
-        # through ``_resolve_live_event``). The freeze is the whole reason:
+        # A withheld draft is frozen for its owner (same as the single-row
+        # :func:`geolocate`, which resolves through ``_resolve_live_event``):
         # while an admin holds a row down, its owner does not get to move it on
         # to a published state. Not an archival guarantee, since the queue
         # filters on ``deleted_at`` alone (see :func:`source_archive.claim_next`).
-        .filter(Event.id == event_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+        .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
         .first()

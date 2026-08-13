@@ -8,6 +8,7 @@ from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.conflict import ConflictRead
+from app.services.event_filters import visible_events
 from app.services.pagination import REFERENTIAL_MAX_ROWS
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def list_conflicts(
         query = (
             query.join(event_conflicts, event_conflicts.c.conflict_id == Conflict.id)
             .join(Event, Event.id == event_conflicts.c.event_id)
-            .filter(Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+            .filter(*visible_events())
             .distinct()
         )
     rows = query.order_by(Conflict.ongoing.desc(), Conflict.name).limit(REFERENTIAL_MAX_ROWS).all()

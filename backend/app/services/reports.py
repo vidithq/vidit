@@ -31,6 +31,7 @@ from app.models.event import Event
 from app.models.user import User
 from app.services import email
 from app.services.admin import log_admin_event
+from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +149,7 @@ def create_report(
     (see :func:`_notify_new_report`), after the commit and never at its expense.
     """
     visible = (
-        db.query(Event.id, Event.title)
-        .filter(Event.id == event_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
-        .first()
+        db.query(Event.id, Event.title).filter(Event.id == event_id, *visible_events()).first()
     )
     if visible is None:
         raise EventNotFoundError("Event not found")
@@ -250,7 +249,8 @@ def resolve_report(
     Concurrency: the report is fetched ``with_for_update()`` FIRST and its
     verdict re-checked under the lock, so two admins resolving the same report
     serialize and the loser sees the 409 rather than overwriting the first
-    verdict. The event the verdict mutates is locked the same way.
+    verdict. The two event-mutating verdicts lock the event the same way;
+    ``dismissed`` touches no event, so it neither fetches nor locks one.
 
     Returns ``(report, hidden_changed)``; the flag is the router's cue to drop
     the points cache. Raises :class:`ReportNotFoundError` (404) on an unknown
@@ -278,17 +278,19 @@ def resolve_report(
         raise ReportAlreadyResolvedError("This report is already resolved")
 
     hidden_changed = False
-    if report.event_id is None:
-        # The event was hard-deleted; the report outlived it (SET NULL). There
-        # is nothing to mark or hide, so only closing the row is left.
-        if resolution != "dismissed":
+    # ``dismissed`` closes the row and touches no event, so it skips the fetch
+    # and the lock below entirely. It is also the only verdict an orphaned
+    # report accepts.
+    if resolution != "dismissed":
+        if report.event_id is None:
+            # The event was hard-deleted; the report outlived it (SET NULL).
+            # There is nothing left to mark or hide.
             raise ReportEventGoneError(
                 "The reported event was deleted, so this report can only be dismissed"
             )
-    else:
-        # Locked too, since the verdict mutates it: a resolve racing the
-        # direct moderation endpoint over the same event serializes on this
-        # row rather than interleaving the two writes. Soft-deleted and
+        # Locked because the verdict mutates it: a resolve racing the direct
+        # moderation endpoint over the same event serializes on this row
+        # rather than interleaving the two writes. Soft-deleted and
         # already-hidden rows are reachable on purpose: a report filed before
         # the removal still deserves a verdict.
         event = (

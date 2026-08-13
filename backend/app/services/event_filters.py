@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import and_, func, or_
+from sqlalchemy import ColumnElement, and_, func, or_
 from sqlalchemy.orm import Query as SAQuery
 
 from app.models.conflict import Conflict
@@ -33,6 +33,23 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
+
+
+def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    """The public-visibility predicate pair: not soft-deleted, not withheld.
+
+    The single home for what "publicly visible" means on an event. Every
+    surface that lists, counts or resolves an event for a public reader
+    spreads this into its filter (``*visible_events()``), so a third
+    visibility axis added later lands here instead of at every call site.
+
+    Three deliberate non-callers: the event detail read, which hands a
+    withheld row to an admin (:func:`routers.events.item.get_event`);
+    :func:`services.events.set_event_moderation`, which has to reach a
+    withheld row to lift the takedown; and the archival worker, which filters
+    ``deleted_at`` alone by decision (see :func:`source_archive.claim_next`).
+    """
+    return Event.deleted_at.is_(None), Event.hidden_at.is_(None)
 
 
 def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
@@ -272,9 +289,7 @@ def apply_filters(
     a name without knowing its bucket (back-compat with the pre-multi-select
     API).
     """
-    query = query.filter(
-        Event.deleted_at.is_(None), Event.hidden_at.is_(None), view_predicate(view)
-    )
+    query = query.filter(*visible_events(), view_predicate(view))
 
     if status:
         query = query.filter(Event.status.in_(status))

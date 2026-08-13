@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
+from app.services.event_filters import visible_events
 from app.services.pagination import keyset_before, take_page
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -90,11 +91,7 @@ def get_timeline(
     if not followed_ids:
         return {"items": [], "total": 0, "has_next": False}
 
-    where_clause = and_(
-        Event.owner_id.in_(followed_ids),
-        Event.deleted_at.is_(None),
-        Event.hidden_at.is_(None),
-    )
+    where_clause = and_(Event.owner_id.in_(followed_ids), *visible_events())
     total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     window = (
         db.query(

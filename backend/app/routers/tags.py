@@ -10,6 +10,7 @@ from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
+from app.services.event_filters import visible_events
 from app.services.pagination import REFERENTIAL_MAX_ROWS
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ def list_tags(
         db.query(Tag)
         .join(event_tags, event_tags.c.tag_id == Tag.id)
         .join(Event, Event.id == event_tags.c.event_id)
-        .filter(Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+        .filter(*visible_events())
         .distinct()
     )
     if category:

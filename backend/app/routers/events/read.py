@@ -43,6 +43,7 @@ from app.services.event_filters import (
     snap_bbox,
     validate_media_types,
     validate_status_filter,
+    visible_events,
 )
 from app.services.pagination import (
     MAX_PAGE_SIZE,
@@ -435,8 +436,7 @@ def list_detections(
     detected = (
         Event.owner_id == current_user.id,
         Event.status == STATUS_DETECTED,
-        Event.deleted_at.is_(None),
-        Event.hidden_at.is_(None),
+        *visible_events(),
     )
 
     total = db.query(Event).filter(*detected).count()

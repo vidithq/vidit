@@ -23,6 +23,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag, event_tags
 from app.schemas.user import MonthBucket, TagCount, UserStatsRead
+from app.services.event_filters import visible_events
 
 # The activity row is a fixed-width sparkline: always this many buckets,
 # newest last, zero-filled so the frontend never has to pad.
@@ -45,7 +46,7 @@ def _last_months(today: date, n: int) -> list[str]:
 
 
 def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
-    live = (Event.owner_id == user_id, Event.deleted_at.is_(None), Event.hidden_at.is_(None))
+    live = (Event.owner_id == user_id, *visible_events())
 
     status_rows = (
         db.query(Event.status, func.count(Event.id)).filter(*live).group_by(Event.status).all()

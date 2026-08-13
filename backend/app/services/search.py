@@ -35,7 +35,7 @@ from app.models.event import (
     EventInvestigator,
 )
 from app.models.user import User
-from app.services.event_filters import EventFilters
+from app.services.event_filters import EventFilters, visible_events
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -435,13 +435,7 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
         return []
     like = q.replace("_", r"\_")
     has_live_event = (
-        db.query(Event.id)
-        .filter(
-            Event.owner_id == User.id,
-            Event.deleted_at.is_(None),
-            Event.hidden_at.is_(None),
-        )
-        .exists()
+        db.query(Event.id).filter(Event.owner_id == User.id, *visible_events()).exists()
     )
     rows = (
         db.query(User.username)
