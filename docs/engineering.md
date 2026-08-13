@@ -151,12 +151,12 @@ vidit/
 │   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
 │   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
 │   │       ├── events.py           # create / create_request / geolocate / close + typed EventError hierarchy
-│   │       ├── maintenance.py      # Admin sweeps: auth tokens, pending regs, archival backfill
+│   │       ├── maintenance.py      # Admin sweeps: auth tokens, pending regs, completion digests
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
 │   │       ├── search.py           # ts_headline-driven highlight pipeline
 │   │       ├── social.py           # Follow edges, timeline assembly
-│   │       ├── source_archive.py   # Dual-provider capture queue for published events' links
+│   │       ├── source_archive.py   # Analyst-recorded archived copies of event links
 │   │       └── storage.py          # Storage protocol + S3Storage / LocalStorage + sweep_keys post-commit helper
 │   ├── alembic/                    # DB migrations
 │   ├── scripts/                    # Local-dev helpers (mock_admin, seed_detections, import_prod)
@@ -186,8 +186,9 @@ vidit/
 │   │   ├── components/
 │   │   │   ├── admin/              # Admin console panels (SeedWipePanel, etc.)
 │   │   │   ├── auth/               # LoginForm, RegisterForm, etc.
+│   │   │   ├── detections/         # Detections queue row + the review flow
 │   │   │   ├── editor/             # Tiptap components
-│   │   │   ├── event/              # EventDetailBody, StatusBadge, DetectionCard, etc. (cross-page)
+│   │   │   ├── event/              # EventDetailBody, StatusBadge, CloseEventForm, etc. (cross-page)
 │   │   │   ├── geolocations/       # Submit/edit form sections (LocationPicker, MediaManager, etc.)
 │   │   │   ├── landing/            # Public landing-page sections
 │   │   │   ├── map/                # MapLibre GL components + map overlays (FilterPanel, etc.)
@@ -472,8 +473,6 @@ EOF
 ```
 
 **Fill a local database with real data**: run `make import-prod`, which restores the most recent production backup into the local container. Procedure and required variables: [`backups.md`](backups.md#import-production-into-local-dev). For a smaller offline set, `make seed` creates the mock admin and backfills the committed synthetic X archive as machine detections.
-
-**Backfill source archival over the existing catalog**: go to `/admin` → *Maintenance* panel → *Queue source archival for the catalog*. This inserts the missing [`source_archives`](data-model.md#source_archives) rows and returns immediately. The import worker drains them at its paced rate (see [`ingestion.md`](ingestion.md#source-archival)). The scan skips events it already covered, so clicking it again walks further down the catalog and picks up what has been written since.
 
 **Clean up an orphan Railway domain** (e.g. an auto-generated `*.up.railway.app` host, which leaks the project name to scanners):
 

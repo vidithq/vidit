@@ -351,7 +351,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
 | `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine draft, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and froze it; always has a location) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate` and `close` transitions are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
-| `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the status badge and the requested-view routing, and lets re-import treat a closed detection as re-importable. |
+| `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the requested-view routing, and lets re-import treat a closed detection as re-importable. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
 | `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
@@ -622,26 +622,20 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 
 ### `source_archives`
 
-One row per link carried by an event: its `source_url`, its [`event_source_links`](#event_source_links) mirrors, and every `http(s)` href in the proof body's Tiptap document. The row is both the archival job and its result, so a link never travels between a queue table and a read table. The write paths insert `queued` rows. The worker claims them with `FOR UPDATE SKIP LOCKED`, submits the link to both archiving services, and stamps their capture columns in place. One row per link rather than one per (link, provider): the two providers share one lifecycle, since the first capture to land finishes the job. See [`ingestion.md`](ingestion.md#source-archival) for the pipeline and retry semantics.
+One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{event_id}/archives`](api.md#post-eventsevent_idarchives) is where the snapshot URL comes back. See [`ingestion.md`](ingestion.md#source-archival) for the flow and the validation.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
 | `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under whichever of them it appeared in first when the row was created. The insert conflicts on `(event_id, original_url)` and does nothing afterward, so a later enqueue never rewrites the origin. |
-| `status` | `VARCHAR(10)` | NOT NULL, `ck_source_archives_status_valid`: `'queued'` → `'running'` → `'done'` \| `'failed'`. One lifecycle for both providers. An attempt where every provider refused returns the row to `queued` behind a backoff. A `running` row past the stale window is reclaimable. `'failed'` is terminal and displayed: the read surface shows the link as not archived. |
-| `wayback_url` | `TEXT` | nullable. The Wayback Machine replay URL. |
-| `archive_today_url` | `TEXT` | nullable. The archive.today snapshot URL. Filled independently of `wayback_url`: both providers are attempted for every link. |
-| `attempts` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the row lands `failed` rather than consuming attempt budget forever. |
-| `error` | `TEXT` | nullable. A terse reason for the last attempt, one clause per provider that refused. Kept on a row that returns to `queued`, so a retry history stays readable in flight, and on a `done` row where one provider refused, since it is the only record of why that column is empty. |
+| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine draft was detected from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
+| `snapshot_url` | `TEXT` | NOT NULL. The archived copy, validated against `original_url` before it is stored. |
+| `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'` or `'archive_today'`. Inferred from the snapshot's host at write time, and what the read surface picks its icon from. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
-| `next_attempt_at` | `TIMESTAMPTZ` | NOT NULL. When the row becomes claimable. Set to now at insert, and pushed out by exponential backoff after each failure. Indexed together with `status` (`ix_source_archives_status_next_attempt`), the claim query. |
-| `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
 
-`UNIQUE (event_id, original_url)` is the idempotency anchor. Every enqueue path, create, the geolocate promotion, an edit that adds a citation, and the catalog backfill, can run repeatedly and only inserts what is missing.
+`UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
 
-`ck_source_archives_done_capture` ties the two capture columns to the status in both directions: at least one of them is non-NULL exactly when `status='done'`, and both are NULL in every other state. So a non-NULL value is always a usable capture, a `done` row is never empty, and a `failed` row never holds one, which is what lets the read surface treat `failed` as "no copy exists" rather than "no copy yet". A `done` row with one column empty is settled rather than half-finished: that provider refused and is not retried.
 
 ---
 
@@ -680,11 +674,11 @@ Edit rights and credit are different facts. `owner_id` is a single mutable permi
 ### Why upload proof images at publish, not while typing?
 This keeps `media.event_id` NOT NULL: no staging table, no `event_id IS NULL` orphan, no reaper. The editor holds local previews, and submit uploads every file through the one evidence intake. The trade-off is a browser-side editor that batches uploads at submit rather than on drop.
 
-### Why a `source_archives` child table and not capture columns on `events`?
-An event carries several links: its `source_url`, its mirrors, and every citation in the proof body. Columns on `events` could only hold the source's captures, and each link needs its own attempt counter, backoff schedule, and failure reason to retry independently. The child table also makes the queue and the read surface the same rows, so a capture is never copied from a job table into an event column, where the two could disagree.
+### Why a `source_archives` child table and not a snapshot column on `events`?
+An event carries several links: its `source_url`, its mirrors, its provenance link, and every citation in the proof body. Each is archivable on its own terms, and each carries its own copy. A column on `events` could only hold the source's, which leaves every other link with nowhere to record one.
 
 ### Why `before_closed_status`?
-`close` unifies the old withdraw and reject actions into one verb, but a closed request and a closed detection are different: the badge copy, the requested-view routing, and re-import all need to tell them apart. `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.
+`close` unifies the old withdraw and reject actions into one verb, but a closed request and a closed detection are different: the requested-view routing and re-import both need to tell them apart. `before_closed_status` records which state the row left, so one column keeps the unified verb without losing the distinction.
 
 ---
 

@@ -40,14 +40,16 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    raise_archive_error,
+    resolve_live_event,
 )
 from app.schemas.event import EventCloseRequest, EventRead
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
 from app.services import permissions
 from app.services import reports as reports_service
-from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
+from app.services.source_archive import SnapshotRejected
 from app.services.storage import (
     sweep_keys,
 )
@@ -69,23 +71,6 @@ _DETAIL_LOADS = (
     selectinload(Event.archives),
     selectinload(Event.source_links),
 )
-
-
-def _resolve_live_event(db: Session, geolocation_id: uuid.UUID) -> Event:
-    """Fetch a live event by id, or 404.
-
-    A soft-deleted row reads as 404 (an admin-removed row isn't actionable —
-    same surface as a genuine 404, no enumeration oracle). A withheld row
-    (``hidden_at``) reads the same way: a takedown freezes the event for its
-    owner too, so it can be neither edited, closed nor investigated while it
-    stands, and only the admin moderation endpoint lifts it. Permission is the
-    caller's concern: the geolocate transition owns per-status ownership (a
-    ``requested`` event is answerable by anyone).
-    """
-    geo = db.query(Event).filter(Event.id == geolocation_id, *visible_events()).first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return geo
 
 
 def _serialize_event(db: Session, geo: Event) -> EventRead:
@@ -198,7 +183,7 @@ def delete_event(
     image derivatives) are swept after the commit lands. Admin soft-delete
     lives behind the admin router and stamps ``deleted_at`` instead.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     permissions.ensure_owner(geo, current_user)
 
     # Snapshot the S3 keys before the cascade drops the rows, then
@@ -236,6 +221,10 @@ async def geolocate_event(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of the stored source URL, if the analyst made one while
+    # editing (same field the submit form carries). Optional; checked against
+    # the source URL this write stores.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The mirrors, repeated once per link. The submitted list REPLACES whatever
     # the row held, on a requested fulfilment too: unlike ``source_url`` these
     # carry no requester protection (see the service docstring).
@@ -274,6 +263,12 @@ async def geolocate_event(
     Blocked until the evidence floor is met (one source media, a proof image,
     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
+
+    ``source_snapshot_url`` records the archived source in the same write, on
+    the terms ``POST /events/{id}/archives`` applies (a paste that is not a
+    snapshot of the stored source URL is a 400, and nothing is written). An
+    edit that changes the source URL and pastes no new snapshot leaves the
+    event with no archived source rather than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -287,7 +282,7 @@ async def geolocate_event(
 
     # Not owner-gated at the router: the service enforces per-status ownership
     # (owner-only for ``detected``, open for ``requested``) under a row lock.
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         geolocated = await events_service.geolocate(
             db,
@@ -299,6 +294,7 @@ async def geolocate_event(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_url=source_url,
+            source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
@@ -313,6 +309,8 @@ async def geolocate_event(
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
     return _serialize_event(db, geolocated)
 
 
@@ -333,7 +331,7 @@ def close_event(
     map, and a closed detection is re-importable. Off ``requested`` /
     ``detected`` → 409; soft-deleted → 404; not the owner → 403.
     """
-    geo = _resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, geolocation_id)
     try:
         closed = events_service.close(
             db, geo=geo, current_user=current_user, close_reason=body.close_reason

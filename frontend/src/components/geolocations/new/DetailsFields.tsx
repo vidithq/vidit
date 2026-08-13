@@ -1,5 +1,7 @@
 "use client";
 
+import type { ArchivedLink } from "@/types";
+import { ArchiveSourceField } from "@/components/ui/ArchivedCopies";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -14,6 +16,14 @@ interface DetailsFieldsProps {
   sourceUrl: string;
   /** Omit when `sourceUrlLocked` — a read-only field never calls it. */
   setSourceUrl?: (v: string) => void;
+  /** The snapshot of the source URL the analyst archived while filling the
+   *  form, posted with it as `source_snapshot_url`. Optional to fill, but the
+   *  pair is always wired: archival belongs where the source is typed. */
+  sourceSnapshotUrl: string;
+  setSourceSnapshotUrl: (v: string) => void;
+  /** The copy the event already carries (the edit form); null on a fresh
+   *  submit, where nothing has been archived yet. */
+  archivedSource?: ArchivedLink | null;
   /** Optional mirrors of the same media. Editable on every path, including a
    *  fulfilment (the geolocate transition replaces the whole list), so unlike
    *  the primary source it has no locked mode here. */
@@ -58,6 +68,9 @@ interface DetailsFieldsProps {
 export function DetailsFields({
   sourceUrl,
   setSourceUrl,
+  sourceSnapshotUrl,
+  setSourceSnapshotUrl,
+  archivedSource = null,
   secondarySourceUrls,
   setSecondarySourceUrls,
   eventDate,
@@ -145,6 +158,16 @@ export function DetailsFields({
           invalid={sourceUrlInvalid}
         />
       </div>
+
+      {/* Archival sits under the link it archives, on the form where the link
+          is typed: a source is most archivable while the analyst still has it
+          open. Optional, and never part of a publish floor. */}
+      <ArchiveSourceField
+        sourceUrl={sourceUrl}
+        value={sourceSnapshotUrl}
+        onChange={setSourceSnapshotUrl}
+        copy={archivedSource}
+      />
 
       {/* The mirrors sit under the primary they mirror. Never required, so no
           invalid state and no readiness entry: an empty list is a complete

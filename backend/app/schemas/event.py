@@ -5,7 +5,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
-from app.models.event import BeforeClosedStatus, EventStatus
+from app.models.event import SOURCE_URL_MAX_LENGTH, BeforeClosedStatus, EventStatus
+from app.models.source_archive import SourceArchiveProvider
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
@@ -83,27 +84,36 @@ class CoordsRead(BaseModel):
     lng: float
 
 
-class ArchivedCopiesRead(BaseModel):
-    """One link's archived copies, one field per provider, plus the dead end.
+class ArchivedLinkRead(BaseModel):
+    """One link's archived copy: where it lives, and who holds it.
 
-    Both providers are attempted for every link, so a link can end up with two
-    copies, one, or none. An object rather than a URL per field on ``EventRead``
-    keeps the primary source and each mirror reading the same shape, and leaves
-    room for the state a bare URL cannot express: ``unavailable`` is ``true``
-    only once neither provider captured the link and no attempt is left, which
-    is what lets the detail surface show "not archived" instead of showing
-    nothing.
+    One copy per link, from whichever provider the analyst used, so the field
+    carrying this is ``null`` exactly when no copy has been recorded. An object
+    rather than a bare URL because the read surface picks its icon from
+    ``provider``, and because the primary source, each mirror and the
+    provenance link all serialise through this one shape.
     """
 
-    # The Wayback Machine replay URL, ``null`` until that capture lands and
-    # forever if it never does.
-    wayback: str | None
-    # The archive.today snapshot URL, on the same terms.
-    archive_today: str | None
-    # Terminal failure of both providers: the retry ladder is spent and the
-    # link has no copy anywhere. ``false`` while a capture is still coming, and
-    # ``false`` on a link one provider captured, whatever the other did.
-    unavailable: bool
+    model_config = ConfigDict(from_attributes=True)
+
+    # The snapshot, as the analyst recorded it (validated against the link it
+    # archives, see ``services/source_archive.validate_snapshot``).
+    url: str
+    # Which service holds it, inferred from the snapshot's host at write time.
+    provider: SourceArchiveProvider
+
+
+class EventArchiveCreate(BaseModel):
+    """Body of ``POST /events/{event_id}/archives``.
+
+    ``original_url`` names which of the event's links the copy is of, and has
+    to be one the event actually carries; ``snapshot_url`` is what the provider
+    handed the analyst back. Both ceilings match the columns behind them, so an
+    oversized paste is a 422 on the field rather than a database error.
+    """
+
+    original_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
+    snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
 
 
 class EventCloseRequest(BaseModel):
@@ -205,13 +215,12 @@ class EventRead(BaseModel):
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
     source_url: str | None
-    # The archived copies of ``source_url``, rendered as the fallback once the
-    # original dies. NULL when the link is not tracked at all: a source-less
-    # row, or an unpublished ``detected`` draft whose links are queued only at
-    # publication. Once tracked it is always an object, whose fields say what
-    # was captured and whether the attempts are spent. Required-nullable: the
-    # key is always serialised.
-    archived_source: ArchivedCopiesRead | None
+    # The archived copy of ``source_url``, rendered as the fallback once the
+    # original dies. NULL when the owner has recorded none, which is every
+    # link's starting state: archival is an act the analyst performs, so a copy
+    # exists only where one was pasted back. Required-nullable: the key is
+    # always serialised.
+    archived_source: ArchivedLinkRead | None
     # Mirrors of the same media on other networks (or other same-POV posts), in
     # the order the submitter gave them. Empty when the event declares none;
     # always serialised. Unlike ``source_url`` these are not the frozen evidence
@@ -221,7 +230,7 @@ class EventRead(BaseModel):
     # order: entry ``i`` covers mirror ``i``, NULL on the same terms as
     # ``archived_source``. A parallel list rather than fields on the mirrors
     # keeps ``secondary_source_urls`` the shape every existing consumer reads.
-    archived_secondary_sources: list[ArchivedCopiesRead | None]
+    archived_secondary_sources: list[ArchivedLinkRead | None]
     proof: dict[str, Any] | None
     event_date: date | None
     # Optional time-of-day for ``event_date`` (UTC); NULL when the hour is unknown.
@@ -253,6 +262,10 @@ class EventRead(BaseModel):
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None
+    # The archived copy of ``detected_from_url``, same shape and same NULL
+    # conditions as ``archived_source``: the provenance link is archivable on
+    # the same terms as the footage source.
+    archived_detected_from: ArchivedLinkRead | None
     # When the analyst posted this geolocation on X (the imported tweet's time);
     # NULL for human submits. The "who geolocated first" precedence signal.
     detected_post_at: datetime | None

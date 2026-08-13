@@ -6,6 +6,8 @@ import type { EventStatus } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { ARMED_RING } from "@/components/ui/styles";
+import { ARM_MS } from "@/hooks/useConfirmAction";
 
 interface ShareButtonsProps {
   id: string;
@@ -19,9 +21,6 @@ interface ShareButtonsProps {
    *  link's content may change. Surfaced as a caveat next to the share row. */
   status: EventStatus;
 }
-
-// How long an armed share / copy waits for its confirming re-click.
-const ARM_MS = 3000;
 
 export default function ShareButtons({
   id,
@@ -114,14 +113,14 @@ export default function ShareButtons({
         value={url}
         label="Copy link"
         beforeCopy={onCopy}
-        className={armed === "copy" ? "bg-neutral-800 ring-1 ring-neutral-500" : ""}
+        className={armed === "copy" ? ARMED_RING : ""}
         title={armed === "copy" ? "Click again to copy this draft link" : undefined}
       />
       <Button
         icon
         variant="ghost"
         onClick={onShareX}
-        className={armed === "share" ? "bg-neutral-800 ring-1 ring-neutral-500" : ""}
+        className={armed === "share" ? ARMED_RING : ""}
         aria-label="Share on X"
         title={armed === "share" ? "Click again to share this draft" : "Share on X"}
       >

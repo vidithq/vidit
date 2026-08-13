@@ -256,8 +256,8 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventGeolocator.created_at",
     )
-    # One row per link carried by the event, each holding that link's archived
-    # copy once the worker has one. See ``models.source_archive`` for which
+    # One row per link the owner has recorded an archived copy for. See
+    # ``models.source_archive`` for which
     # links those are.
     archives = relationship(
         "SourceArchive",

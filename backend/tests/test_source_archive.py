@@ -1,27 +1,25 @@
-"""Tests for the source-archival queue.
+"""Tests for analyst-recorded source archival.
 
-Every archiving call is served through ``httpx.MockTransport``, so no test
-touches web.archive.org. The pass pacing and the status poll are patched to
-zero where they would otherwise dominate the runtime; the scheduling arithmetic
-they guard is asserted directly instead.
+Nothing here talks to an archiving service, because nothing in the module does:
+the capture happens in the analyst's browser and the server only checks and
+stores what comes back. What is under test is therefore the two halves of that
+check (is this one of the event's links, and is this URL a snapshot of it), the
+one-slot write, and the data mapping of the migrations that shaped the table.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
-import httpx
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
-    STATUS_CLOSED,
     STATUS_DETECTED,
-    STATUS_REQUESTED,
     Event,
     EventSourceLink,
 )
@@ -31,11 +29,13 @@ from app.services import source_archive
 from app.services.auth import hash_password
 from app.services.sanitize import extract_link_hrefs
 
-SOURCE = "https://x.com/analyst/status/1234567890"
+SOURCE = "https://newsdesk.example/post/1234567890"
 PROOF_LINK = "https://example.org/report"
 MIRROR = "https://t.me/channel/42"
+DETECTED_FROM = "https://x.com/analyst/status/9876543210"
 CAPTURE_TS = "20260811120000"
-ARCHIVE_TODAY_SNAPSHOT = f"https://archive.ph/abcde/{SOURCE}"
+WAYBACK_SNAPSHOT = f"https://web.archive.org/web/{CAPTURE_TS}/{SOURCE}"
+ARCHIVE_TODAY_SNAPSHOT = "https://archive.ph/abcde"
 
 
 @pytest.fixture
@@ -103,30 +103,6 @@ def event(db, owner):
     db.commit()
 
 
-@pytest.fixture
-def published_event(db, owner):
-    """A published event, the only kind the catalog backfill sweeps.
-
-    ``requested`` is the cheapest published state to build (no coordinate, no
-    geolocation stamp). What the backfill reads is that the row is public, not
-    which published state it holds.
-    """
-    row = Event(
-        owner_id=owner.id,
-        title="Published event",
-        source_url=SOURCE,
-        proof=_proof_doc(PROOF_LINK),
-        status=STATUS_REQUESTED,
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    yield row
-    db.expire_all()
-    db.query(Event).filter(Event.id == row.id).delete(synchronize_session=False)
-    db.commit()
-
-
 def _with_mirrors(db, event, *urls: str) -> Event:
     """Give an event the ordered secondary source links ``urls``."""
     event.source_links = [
@@ -137,71 +113,17 @@ def _with_mirrors(db, event, *urls: str) -> Event:
     return event
 
 
-@pytest.fixture(autouse=True)
-def _deterministic_pacing_and_providers(db, monkeypatch):
-    """Collapse the wall-clock waits, pin the providers, empty the queue.
-
-    ``REQUEST_SPACING`` and the status-poll interval only exist to stay under a
-    rate ceiling; the tests assert the scheduling values rather than sit
-    through them. The credential pair and the archive.today kill switch are
-    pinned to their defaults so a populated local ``.env`` cannot change what a
-    test exercises: both providers are attempted, which is what production
-    does. The queue starts empty because ``claim_next`` claims the oldest
-    runnable row in the whole table: rows another module's event write left
-    behind would otherwise be what a claim assertion here sees.
-    """
-    monkeypatch.setattr(source_archive, "REQUEST_SPACING", timedelta(0))
-    monkeypatch.setattr(source_archive, "_STATUS_POLL_INTERVAL_S", 0)
-    monkeypatch.setattr(source_archive.settings, "archive_org_access_key", "")
-    monkeypatch.setattr(source_archive.settings, "archive_org_secret_key", "")
-    monkeypatch.setattr(source_archive.settings, "archive_today_enabled", True)
-    db.query(SourceArchive).delete(synchronize_session=False)
-    db.commit()
-
-
-def _spn_client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-def _wayback_ok(request: httpx.Request) -> httpx.Response:
-    """Save Page Now's two-leg happy path: submit answers a job, poll succeeds."""
-    if request.url.path == "/save":
-        return httpx.Response(200, json={"job_id": "job-1"})
-    return httpx.Response(
-        200,
-        json={
-            "status": "success",
-            "timestamp": CAPTURE_TS,
-            "original_url": SOURCE,
-        },
-    )
-
-
-def _archive_today_ok(_request: httpx.Request) -> httpx.Response:
-    """archive.today's happy path: the snapshot URL arrives in a header."""
-    return httpx.Response(302, headers={"Refresh": f"0; url={ARCHIVE_TODAY_SNAPSHOT}"})
-
-
-def _both_ok(request: httpx.Request) -> httpx.Response:
-    """Both providers capture. The default shape of a pass in production."""
-    if request.url.host == "web.archive.org":
-        return _wayback_ok(request)
-    return _archive_today_ok(request)
-
-
-WAYBACK_CAPTURE = f"https://web.archive.org/web/{CAPTURE_TS}/{SOURCE}"
-
-
 # ── link collection ────────────────────────────────────────────────────
 
 
 def test_extract_link_hrefs_reads_link_marks_and_dedupes():
-    doc = _proof_doc(PROOF_LINK, PROOF_LINK, "https://other.example/a")
-    assert extract_link_hrefs(doc) == [PROOF_LINK, "https://other.example/a"]
+    doc = _proof_doc(PROOF_LINK, PROOF_LINK, "https://example.org/other")
+    assert extract_link_hrefs(doc) == [PROOF_LINK, "https://example.org/other"]
 
 
 def test_extract_link_hrefs_drops_non_http_schemes():
-    assert extract_link_hrefs(_proof_doc("javascript:alert(1)")) == []
+    doc = _proof_doc("javascript:alert(1)", PROOF_LINK)
+    assert extract_link_hrefs(doc) == [PROOF_LINK]
 
 
 def test_collect_links_orders_source_first_and_tags_origin(event):
@@ -212,41 +134,48 @@ def test_collect_links_orders_source_first_and_tags_origin(event):
 
 
 def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
-    """A malformed URL is a link to skip, not a 500 on a committed write.
-
-    ``urlparse`` raises on an unterminated IPv6 literal; a crafted
-    ``source_url`` reaching the enqueue must not turn a durable event write
-    into an error response.
-    """
+    """The archivable set is ``sanitize.safe_link_href``, so a scheme the proof
+    editor would refuse is not one an analyst can record a copy for."""
     row = Event(
         owner_id=owner.id,
-        title="Malformed source",
-        source_url="http://[::1",
-        proof=_proof_doc("https://[fe80::1"),
+        title="Bad link",
+        source_url=SOURCE,
+        proof=_proof_doc("mailto:someone@example.com"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
     db.add(row)
     db.commit()
-    assert source_archive.collect_links(row) == []
+    db.refresh(row)
+
+    assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
 
 
 def test_collect_links_drops_an_oversized_url(db, owner):
-    """A href past the ``source_url`` column width would abort the insert that
-    carries it, so it never enters the queue."""
-    long_url = "https://example.org/" + "a" * SOURCE_URL_MAX_LENGTH
-    assert (
-        source_archive.collect_links(
-            Event(owner_id=owner.id, title="Long href", proof=_proof_doc(long_url))
-        )
-        == []
+    """Past the ``source_url`` ceiling the value could not be stored anyway, so
+    it never reaches the unique index it would abort."""
+    oversized = "https://example.org/" + "x" * SOURCE_URL_MAX_LENGTH
+    row = Event(
+        owner_id=owner.id,
+        title="Long link",
+        source_url=SOURCE,
+        proof=_proof_doc(oversized),
+        status=STATUS_DETECTED,
+        detected_at=datetime.now(UTC),
     )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
 
 
 def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
+    """A link that is both the declared source and a proof citation is one
+    link, kept under the strongest provenance the walk reaches first."""
     row = Event(
         owner_id=owner.id,
-        title="Self-citing",
+        title="Cited source",
         source_url=SOURCE,
         proof=_proof_doc(SOURCE),
         status=STATUS_DETECTED,
@@ -254,683 +183,256 @@ def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
     )
     db.add(row)
     db.commit()
+    db.refresh(row)
+
     assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
 
 
 def test_collect_links_includes_the_secondary_source_links(db, event):
-    """The analyst-submitted mirrors are evidence with the same link-rot risk
-    as the primary source, so they queue too, tagged for where they came
-    from."""
-    _with_mirrors(db, event, MIRROR, "https://rumble.com/v-mirror")
+    _with_mirrors(db, event, MIRROR)
     assert source_archive.collect_links(event) == [
         (SOURCE, "source_url"),
         (MIRROR, "secondary_source"),
-        ("https://rumble.com/v-mirror", "secondary_source"),
+        (PROOF_LINK, "proof_link"),
+    ]
+
+
+def test_collect_links_includes_the_provenance_link(db, event):
+    """The analyst's own post carries the geolocation claim, and rots the same
+    way the footage source does."""
+    event.detected_from_url = DETECTED_FROM
+    db.commit()
+    db.refresh(event)
+
+    assert source_archive.collect_links(event) == [
+        (SOURCE, "source_url"),
+        (DETECTED_FROM, "detected_from"),
         (PROOF_LINK, "proof_link"),
     ]
 
 
 def test_collect_links_keeps_a_mirror_of_the_source_url_once(db, event):
-    """A stored mirror equal to ``source_url`` is one link, attributed to the
-    source: a second row would trip the unique constraint the enqueue paths
-    rely on."""
-    _with_mirrors(db, event, SOURCE, PROOF_LINK)
+    """A mirror repeating the declared source is one link, not two."""
+    _with_mirrors(db, event, SOURCE, MIRROR)
     assert source_archive.collect_links(event) == [
         (SOURCE, "source_url"),
-        (PROOF_LINK, "secondary_source"),
+        (MIRROR, "secondary_source"),
+        (PROOF_LINK, "proof_link"),
     ]
 
 
-# ── enqueue ────────────────────────────────────────────────────────────
-
-
-def test_enqueue_event_inserts_one_row_per_link(db, event):
-    assert source_archive.enqueue_event(db, event) == 2
-    rows = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
-    assert {r.original_url for r in rows} == {SOURCE, PROOF_LINK}
-    assert {r.status for r in rows} == {"queued"}
-    assert all(r.wayback_url is None and r.archive_today_url is None for r in rows)
-
-
-def test_enqueue_event_is_idempotent(db, event):
-    source_archive.enqueue_event(db, event)
-    assert source_archive.enqueue_event(db, event) == 0
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 2
-
-
-def test_enqueue_event_picks_up_a_link_added_later(db, event):
-    source_archive.enqueue_event(db, event)
-    event.proof = _proof_doc(PROOF_LINK, "https://added.example/late")
-    db.commit()
-    assert source_archive.enqueue_event(db, event) == 1
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 3
-
-
-def test_enqueue_event_queues_a_mirror_of_the_source_url_once(db, event):
-    """Idempotency end to end: a mirror equal to the primary is one row, and a
-    second enqueue neither duplicates it nor errors."""
-    _with_mirrors(db, event, SOURCE, MIRROR)
-    assert source_archive.enqueue_event(db, event) == 3
-    assert source_archive.enqueue_event(db, event) == 0
-    rows = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
-    assert {(r.original_url, r.origin) for r in rows} == {
-        (SOURCE, "source_url"),
-        (MIRROR, "secondary_source"),
-        (PROOF_LINK, "proof_link"),
-    }
-
-
-def test_the_origin_constraint_accepts_a_secondary_source_row(db, event):
-    """``ck_source_archives_origin_valid`` pins the origin domain at the
-    database; the model Literal and the constraint are a hand-kept pair."""
-    db.add(
-        SourceArchive(
-            event_id=event.id,
-            original_url=MIRROR,
-            origin="secondary_source",
-            status="queued",
-        )
-    )
-    db.commit()
-    stored = db.query(SourceArchive).filter(SourceArchive.original_url == MIRROR).one()
-    assert stored.origin == "secondary_source"
-
-    db.add(
-        SourceArchive(
-            event_id=event.id,
-            original_url="https://example.net/other",
-            origin="nowhere",
-            status="queued",
-        )
-    )
-    with pytest.raises(IntegrityError):
-        db.commit()
-    db.rollback()
-
-
-def test_enqueue_event_best_effort_swallows_a_database_failure(db, event, monkeypatch):
-    """A durable event write must not 500 because the queue insert failed."""
-
-    def boom(*_args, **_kwargs):
-        raise OperationalError("insert", {}, Exception("connection lost"))
-
-    monkeypatch.setattr(source_archive, "enqueue_event", boom)
-    source_archive.enqueue_event_best_effort(db, event)
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
-
-
-def test_enqueue_event_best_effort_swallows_any_failure(db, event, monkeypatch):
-    """Not only database errors: nothing an enqueue raises may reach the
-    analyst as the response to a write that already committed."""
-
-    def boom(*_args, **_kwargs):
-        raise RuntimeError("something else entirely")
-
-    monkeypatch.setattr(source_archive, "enqueue_event", boom)
-    source_archive.enqueue_event_best_effort(db, event)
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
-
-
-def test_enqueue_catalog_covers_an_event_written_before_archival(db, published_event):
-    result = source_archive.enqueue_catalog(db)
-    assert result["links_enqueued"] >= 2
-    assert (
-        db.query(SourceArchive)
-        .filter(
-            SourceArchive.event_id == published_event.id,
-            SourceArchive.original_url == SOURCE,
-        )
-        .count()
-        == 1
-    )
-
-
-def test_enqueue_catalog_skips_events_it_already_covered(db, published_event):
-    """The scan converges: an event whose links are all queued drops out of the
-    next click's scan entirely."""
-    source_archive.enqueue_event(db, published_event)
-    assert published_event.id not in {
-        row[0] for row in source_archive._backfill_chunk(db, None, 500)
-    }
-    source_archive.enqueue_catalog(db)
-    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == published_event.id).count() == 2
-
-
-def test_enqueue_catalog_reaches_a_mirror_on_an_already_queued_event(db, published_event):
-    """The widened scan's reason to exist: an event whose ``source_url`` is
-    already queued still qualifies while one of its mirrors is not.
-
-    A scan keyed on "carries no archival rows at all" would drop this event and
-    the mirror would never be captured. The mirrors come from the child table,
-    which the chunk's keyset column walk does not select, so this also pins
-    that read.
-    """
-    source_archive.enqueue_catalog(db)
-    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
-
-    _with_mirrors(db, published_event, MIRROR)
-    assert published_event.id in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
-    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 1
-    rows = db.query(SourceArchive).filter(SourceArchive.event_id == published_event.id).all()
-    assert {(r.original_url, r.origin) for r in rows} == {
-        (SOURCE, "source_url"),
-        (MIRROR, "secondary_source"),
-        (PROOF_LINK, "proof_link"),
-    }
-    # And it converges again: nothing is left unqueued.
-    assert source_archive.enqueue_catalog(db)["links_enqueued"] == 0
-
-
-def test_enqueue_catalog_leaves_an_unpublished_draft_alone(db, event):
-    """The archiving services are public and timestamped, so a machine
-    ``detected`` draft is not submitted by the admin backfill either; its
-    promotion enqueues it."""
+def test_origin_of_answers_membership_and_label_together(db, event):
     _with_mirrors(db, event, MIRROR)
-    assert event.id not in {row[0] for row in source_archive._backfill_chunk(db, None, 500)}
-    source_archive.enqueue_catalog(db)
+    assert source_archive.origin_of(event, SOURCE) == "source_url"
+    assert source_archive.origin_of(event, MIRROR) == "secondary_source"
+    assert source_archive.origin_of(event, PROOF_LINK) == "proof_link"
+    assert source_archive.origin_of(event, "https://elsewhere.example/x") is None
+
+
+# ── snapshot validation ────────────────────────────────────────────────
+
+
+def _reject_code(original: str, snapshot: str) -> str:
+    with pytest.raises(source_archive.SnapshotRejected) as excinfo:
+        source_archive.validate_snapshot(original_url=original, snapshot_url=snapshot)
+    return excinfo.value.code
+
+
+def test_a_wayback_replay_url_of_the_link_is_accepted():
+    assert (
+        source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT)
+        == "wayback"
+    )
+
+
+def test_an_archive_today_code_is_accepted():
+    """The short code embeds nothing, so the shape is the whole check."""
+    assert (
+        source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=ARCHIVE_TODAY_SNAPSHOT)
+        == "archive_today"
+    )
+    assert (
+        source_archive.validate_snapshot(
+            original_url=SOURCE, snapshot_url="https://archive.today/xY9k2/"
+        )
+        == "archive_today"
+    )
+
+
+def test_http_is_refused():
+    assert (
+        _reject_code(SOURCE, f"http://web.archive.org/web/{CAPTURE_TS}/{SOURCE}")
+        == "snapshot_url_not_https"
+    )
+
+
+def test_a_host_outside_the_allowlist_is_refused():
+    """The allowlist is the abuse bound: the catalog renders the value as an
+    outbound link, so a lookalike host is not "an archiving service"."""
+    for host in ("archive.org", "web-archive.org.evil.example", "archive.ph.evil.example"):
+        assert (
+            _reject_code(SOURCE, f"https://{host}/web/{CAPTURE_TS}/{SOURCE}")
+            == "snapshot_provider_not_allowed"
+        )
+
+
+def test_a_wayback_url_that_is_not_a_replay_url_is_refused():
+    assert _reject_code(SOURCE, "https://web.archive.org/about/") == "snapshot_not_a_replay_url"
+
+
+def test_a_wayback_replay_of_another_link_is_refused():
+    """The embedded original is what makes the snapshot this link's."""
+    assert (
+        _reject_code(SOURCE, f"https://web.archive.org/web/{CAPTURE_TS}/https://elsewhere.test/x")
+        == "snapshot_original_mismatch"
+    )
+
+
+@pytest.mark.parametrize(
+    "embedded",
+    [
+        # Wayback settles on its own scheme for the crawled URL.
+        "http://newsdesk.example/post/1234567890",
+        # A copied link picks up or loses a trailing slash on the way through
+        # a browser.
+        "https://newsdesk.example/post/1234567890/",
+        # The host is folded to lower case, and ``www.`` is not an identity.
+        "https://WWW.Newsdesk.Example/post/1234567890",
+    ],
+)
+def test_a_replay_url_naming_the_same_page_is_accepted(embedded):
+    """A difference that names the same page is not a different link. Rejecting
+    these would refuse correct snapshots for spelling alone."""
+    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{embedded}"
+    assert source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=snapshot) == "wayback"
+
+
+def test_a_replay_url_keeps_the_originals_query_string():
+    """The embedded original's query is parsed off the replay URL, so it has to
+    be put back before the two are compared."""
+    original = "https://newsdesk.example/post?id=42"
+    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{original}"
+    assert (
+        source_archive.validate_snapshot(original_url=original, snapshot_url=snapshot) == "wayback"
+    )
+    assert (
+        _reject_code(original, f"https://web.archive.org/web/{CAPTURE_TS}/{original}&extra=1")
+        == "snapshot_original_mismatch"
+    )
+
+
+def test_a_replay_modifier_is_accepted():
+    """The Wayback player appends a replay modifier to the timestamp; a link
+    copied out of it is still a snapshot of the page."""
+    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}"
+    assert source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=snapshot) == "wayback"
+
+
+def test_an_archive_today_url_carrying_a_path_is_refused():
+    """``archive.ph/newest/<url>`` is a lookup, not a snapshot: it resolves to
+    whatever the service holds today rather than to a fixed capture."""
+    assert (
+        _reject_code(SOURCE, f"https://archive.ph/newest/{SOURCE}")
+        == "snapshot_not_a_snapshot_code"
+    )
+    assert _reject_code(SOURCE, "https://archive.ph/") == "snapshot_not_a_snapshot_code"
+
+
+def test_an_oversized_snapshot_is_refused():
+    oversized = "https://archive.ph/" + "a" * SOURCE_URL_MAX_LENGTH
+    assert _reject_code(SOURCE, oversized) == "snapshot_url_too_long"
+
+
+# ── recording a copy ───────────────────────────────────────────────────
+
+
+def test_record_snapshot_stores_the_copy_with_its_provider_and_origin(db, event):
+    row = source_archive.record_snapshot(
+        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT
+    )
+    assert (row.original_url, row.origin) == (SOURCE, "source_url")
+    assert (row.snapshot_url, row.provider) == (WAYBACK_SNAPSHOT, "wayback")
+
+    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
+    assert [(r.snapshot_url, r.provider) for r in stored] == [(WAYBACK_SNAPSHOT, "wayback")]
+
+
+def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, event):
+    """One copy per link is what makes a second paste the owner's correction
+    path rather than a competing row."""
+    source_archive.record_snapshot(
+        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT
+    )
+    row = source_archive.record_snapshot(
+        db, event=event, original_url=SOURCE, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
+    )
+
+    assert (row.snapshot_url, row.provider) == (ARCHIVE_TODAY_SNAPSHOT, "archive_today")
+    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
+    assert len(stored) == 1
+    assert (stored[0].snapshot_url, stored[0].provider) == (
+        ARCHIVE_TODAY_SNAPSHOT,
+        "archive_today",
+    )
+
+
+def test_record_snapshot_refuses_a_link_the_event_does_not_carry(db, event):
+    with pytest.raises(source_archive.SnapshotRejected) as excinfo:
+        source_archive.record_snapshot(
+            db,
+            event=event,
+            original_url="https://elsewhere.example/x",
+            snapshot_url=f"https://web.archive.org/web/{CAPTURE_TS}/https://elsewhere.example/x",
+        )
+    assert excinfo.value.code == "original_url_not_on_event"
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
 
 
-def test_enqueue_catalog_leaves_a_rejected_draft_alone(db, owner):
-    """A draft closed off ``detected`` is a rejected detection: it was never
-    published, so closing it does not hand its links to a public archive."""
-    row = Event(
-        owner_id=owner.id,
-        title="Rejected detection",
-        source_url=SOURCE,
-        status=STATUS_CLOSED,
-        before_closed_status=STATUS_DETECTED,
-        closed_at=datetime.now(UTC),
-    )
-    db.add(row)
-    db.commit()
-    source_archive.enqueue_catalog(db)
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == row.id).count() == 0
+def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, event):
+    """The source, a mirror, the provenance link and a proof citation are all
+    archivable, each stored under its own origin."""
+    event.detected_from_url = DETECTED_FROM
+    _with_mirrors(db, event, MIRROR)
 
-
-def test_enqueue_catalog_walks_past_an_event_with_no_links(db, owner, published_event):
-    """An event whose stored source the allowlist refuses yields nothing to
-    enqueue, so it never leaves the scan; the keyset cursor still advances, or
-    the sweep would re-read it forever and never reach the rest."""
-    row = Event(
-        owner_id=owner.id,
-        title="Unarchivable source",
-        source_url="ftp://files.example.org/clip.mp4",
-        status=STATUS_REQUESTED,
-    )
-    db.add(row)
-    db.commit()
-    result = source_archive.enqueue_catalog(db)
-    assert result["events_scanned"] >= 2
-    assert (
-        db.query(SourceArchive)
-        .filter(
-            SourceArchive.event_id == published_event.id,
-            SourceArchive.original_url == SOURCE,
+    for url in (SOURCE, MIRROR, DETECTED_FROM, PROOF_LINK):
+        source_archive.record_snapshot(
+            db, event=event, original_url=url, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
         )
-        .count()
-        == 1
-    )
 
-
-# ── claim ──────────────────────────────────────────────────────────────
-
-
-def test_claim_next_skips_a_row_still_inside_its_backoff(db, event):
-    source_archive.enqueue_event(db, event)
-    db.query(SourceArchive).filter(SourceArchive.event_id == event.id).update(
-        {"next_attempt_at": datetime.now(UTC) + timedelta(hours=1)},
-        synchronize_session=False,
-    )
-    db.commit()
-    assert source_archive.claim_next(db) is None
-    still_queued = (
-        db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.status == "queued")
-        .count()
-    )
-    assert still_queued == 2
-
-
-def test_claim_next_stamps_running_and_counts_the_attempt(db, event):
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    assert row is not None
-    assert row.status == "running"
-    assert row.attempts == 1
-    assert row.started_at is not None
-
-
-def test_claim_next_skips_a_soft_deleted_event(db, event):
-    """An admin taking an event down must not be followed by this queue
-    pushing its links to a public archive."""
-    source_archive.enqueue_event(db, event)
-    event.deleted_at = datetime.now(UTC)
-    db.commit()
-    assert source_archive.claim_next(db) is None
-
-
-# ── capture ────────────────────────────────────────────────────────────
-
-
-def test_capture_submits_to_both_providers_and_returns_both_urls():
-    """The rule the whole feature rests on: every link goes to both services,
-    and each answer is stored under its own provider."""
-    with _spn_client(_both_ok) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {
-        "wayback": WAYBACK_CAPTURE,
-        "archive_today": ARCHIVE_TODAY_SNAPSHOT,
-    }
-    assert outcome.errors == {}
-
-
-def test_capture_still_reaches_archive_today_when_wayback_refuses():
-    """The peers are independent: one service refusing costs the other nothing,
-    which is the whole reason both are attempted."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "web.archive.org":
-            return httpx.Response(503)
-        return _archive_today_ok(request)
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {"archive_today": ARCHIVE_TODAY_SNAPSHOT}
-    assert outcome.errors == {"wayback": "service error 503"}
-
-
-def test_capture_still_reaches_wayback_when_archive_today_refuses():
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "web.archive.org":
-            return _wayback_ok(request)
-        return httpx.Response(403, text="blocked")
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {"wayback": WAYBACK_CAPTURE}
-    assert "archive_today" in outcome.errors
-
-
-def test_capture_attempts_only_the_providers_it_is_given():
-    """What a claimed row hands in: the captures it is still missing."""
-    hosts: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        hosts.append(request.url.host)
-        return _both_ok(request)
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, providers=["archive_today"], client=client)
-    assert outcome.captures == {"archive_today": ARCHIVE_TODAY_SNAPSHOT}
-    assert hosts == ["archive.ph"]
-
-
-def test_capture_uses_an_inline_existing_snapshot_without_polling():
-    """A submit that answers with a capture directly costs no status poll."""
-    polled = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path != "/save":
-            polled.append(request.url.path)
-        return httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
-    assert outcome.captures["wayback"].endswith(SOURCE)
-    assert polled == []
-
-
-def test_capture_records_a_rate_limit_rather_than_raising():
-    """A refusal is a per-provider outcome, never an exception: raising would
-    take the peer's attempt down with it."""
-    with _spn_client(lambda _r: httpx.Response(429, text="slow down")) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {}
-    assert outcome.errors == {
-        "wayback": "rate limited",
-        # archive.today has no status contract to read, so its refusal is named
-        # by what the response did not carry.
-        "archive_today": "no snapshot in response 429",
+    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
+    assert {r.original_url: r.origin for r in stored} == {
+        SOURCE: "source_url",
+        MIRROR: "secondary_source",
+        DETECTED_FROM: "detected_from",
+        PROOF_LINK: "proof_link",
     }
 
 
-def test_capture_records_the_reason_a_job_reports():
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/save":
-            return httpx.Response(200, json={"job_id": "job-1"})
-        return httpx.Response(200, json={"status": "error", "message": "robots blocked"})
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, providers=["wayback"], client=client)
-    assert outcome.errors == {"wayback": "robots blocked"}
-
-
-def test_capture_records_a_transport_failure_per_provider():
-    """The real outage case: a host refuses the connection.
-
-    A transport failure never reaches the service's own error contract, so
-    without this the peer's attempt would be lost to an escaping exception.
-    """
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "web.archive.org":
-            raise httpx.ConnectError("no route to host")
-        return _archive_today_ok(request)
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {"archive_today": ARCHIVE_TODAY_SNAPSHOT}
-    assert outcome.errors == {"wayback": "transport: ConnectError"}
-
-
-def test_capture_sends_the_key_pair_when_configured(monkeypatch):
-    seen: dict[str, str] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.update(request.headers)
-        return httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})
-
-    monkeypatch.setattr(source_archive.settings, "archive_org_access_key", "KEY")
-    monkeypatch.setattr(source_archive.settings, "archive_org_secret_key", "SECRET")
-    with _spn_client(handler) as client:
-        source_archive.capture(SOURCE, providers=["wayback"], client=client)
-    assert seen["authorization"] == "LOW KEY:SECRET"
-
-
-def test_the_kill_switch_drops_the_archive_today_leg(monkeypatch):
-    """``ARCHIVE_TODAY_ENABLED`` is an operator switch, not a feature flag: on
-    by default, and turning it off stops that leg from being submitted at all,
-    leaving the Wayback capture the only one a link can get."""
-    hosts: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        hosts.append(request.url.host)
-        return _both_ok(request)
-
-    monkeypatch.setattr(source_archive.settings, "archive_today_enabled", False)
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, client=client)
-    assert outcome.captures == {"wayback": WAYBACK_CAPTURE}
-    assert "archive.ph" not in hosts
-
-
-def test_capture_spaces_its_two_provider_submissions(monkeypatch):
-    """The rate ceiling counts submissions, not links, so one row's two legs
-    are spaced exactly as two rows are."""
-    slept: list[float] = []
-    monkeypatch.setattr(source_archive, "REQUEST_SPACING", timedelta(seconds=6))
-    monkeypatch.setattr(source_archive.time, "sleep", lambda seconds: slept.append(seconds))
-
-    inline = lambda r: (  # noqa: E731
-        httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})
-        if r.url.host == "web.archive.org"
-        else _archive_today_ok(r)
+def test_archive_row_for_matches_a_link_by_url(db, event):
+    source_archive.record_snapshot(
+        db, event=event, original_url=PROOF_LINK, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
     )
-    with _spn_client(inline) as client:
-        source_archive.capture(SOURCE, client=client)
-    # Two providers, so exactly one gap, and never one after the last leg.
-    assert slept == [6.0]
+    db.refresh(event)
 
-
-def test_capture_rejects_a_snapshot_url_that_is_not_a_link():
-    """archive.today's snapshot URL comes off a header this code parses itself
-    and the detail surface renders as an href, so a non-http(s) value is a
-    failed capture rather than something to store."""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, headers={"Refresh": "0; url=javascript:alert(1)"})
-
-    with _spn_client(handler) as client:
-        outcome = source_archive.capture(SOURCE, providers=["archive_today"], client=client)
-    assert outcome.captures == {}
-    assert "not an http" in outcome.errors["archive_today"]
-
-
-# ── process + retry policy ─────────────────────────────────────────────
-
-
-def test_process_stamps_both_capture_columns(db, event):
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    with _spn_client(_both_ok) as client:
-        assert source_archive.process(db, row, client=client) is True
-    db.refresh(row)
-    assert row.status == "done"
-    assert row.wayback_url == WAYBACK_CAPTURE
-    assert row.archive_today_url == ARCHIVE_TODAY_SNAPSHOT
-    assert row.error is None
-    assert row.finished_at is not None
-
-
-def test_one_capture_finishes_the_row_and_the_peer_is_never_retried(db, event):
-    """A single copy is what the feature promises, so the first capture ends
-    the job: the row leaves the claim query with the other column empty, and no
-    later pass touches it. The refusal stays in ``error`` as the only record of
-    why that column is empty."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "web.archive.org":
-            return _wayback_ok(request)
-        return httpx.Response(403)
-
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    row_id = row.id
-    with _spn_client(handler) as client:
-        assert source_archive.process(db, row, client=client) is True
-    db.refresh(row)
-    assert row.status == "done"
-    assert row.wayback_url == WAYBACK_CAPTURE
-    assert row.archive_today_url is None
-    assert row.error.startswith("archive.today: ")
-
-    # Not runnable again, whatever the schedule says: ``done`` is out of the
-    # claim query, so the missing peer is never re-attempted.
-    db.query(SourceArchive).filter(SourceArchive.id == row_id).update(
-        {"next_attempt_at": datetime.now(UTC) - timedelta(days=1)}, synchronize_session=False
+    assert source_archive.archive_row_for(event, PROOF_LINK).snapshot_url == (
+        ARCHIVE_TODAY_SNAPSHOT
     )
-    db.commit()
-    while (claimed := source_archive.claim_next(db)) is not None:
-        assert claimed.id != row_id
-
-
-def test_process_reschedules_when_both_providers_refuse(db, event):
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    before = datetime.now(UTC)
-    with _spn_client(lambda _r: httpx.Response(429)) as client:
-        assert source_archive.process(db, row, client=client) is False
-    db.refresh(row)
-    assert row.status == "queued"
-    assert row.wayback_url is None
-    assert row.archive_today_url is None
-    # One clause per provider, so an operator reads why each one refused.
-    assert row.error == "wayback: rate limited; archive.today: no snapshot in response 429"
-    assert row.next_attempt_at >= before + source_archive.BASE_BACKOFF
-
-
-def test_process_buries_a_row_once_the_attempt_budget_is_spent(db, event):
-    """The terminal state the read surface displays: neither provider captured
-    the link and there is no attempt left, so the event page can say the link
-    is not archived rather than saying nothing."""
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    row.attempts = source_archive.MAX_ATTEMPTS
-    db.commit()
-    with _spn_client(lambda _r: httpx.Response(503)) as client:
-        source_archive.process(db, row, client=client)
-    db.refresh(row)
-    assert row.status == "failed"
-    assert row.wayback_url is None
-    assert row.archive_today_url is None
-    assert row.finished_at is not None
-
-
-def test_a_row_walks_the_whole_ladder_before_it_is_buried(db, event):
-    """The retry horizon end to end: every attempt short of the last returns
-    the row to the queue, and only the last one buries it."""
-    source_archive.enqueue_event(db, event)
-    # One row, so every attempt lands on the same ladder rather than alternating
-    # between this event's two links.
-    db.query(SourceArchive).filter(SourceArchive.original_url != SOURCE).delete(
-        synchronize_session=False
-    )
-    db.commit()
-    with _spn_client(lambda _r: httpx.Response(503)) as client:
-        for attempt in range(1, source_archive.MAX_ATTEMPTS + 1):
-            db.query(SourceArchive).filter(SourceArchive.status == "queued").update(
-                {"next_attempt_at": datetime.now(UTC)}, synchronize_session=False
-            )
-            db.commit()
-            row = source_archive.claim_next(db)
-            assert row is not None
-            source_archive.process(db, row, client=client)
-            db.refresh(row)
-            expected = "failed" if attempt == source_archive.MAX_ATTEMPTS else "queued"
-            assert row.status == expected, f"attempt {attempt}"
-
-
-def test_process_reschedules_a_transport_error(db, event):
-    def handler(_request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("no route")
-
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    with _spn_client(handler) as client:
-        assert source_archive.process(db, row, client=client) is False
-    db.refresh(row)
-    assert row.status == "queued"
-    assert "transport: ConnectError" in row.error
-
-
-def test_process_reschedules_an_unexpected_failure(db, event, monkeypatch):
-    """Anything the named branches miss must still land on the retry ladder;
-    an escaping exception would leave the row ``running`` for the whole stale
-    window."""
-
-    def boom(*_args, **_kwargs):
-        raise ValueError("provider answered something new")
-
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    monkeypatch.setattr(source_archive, "capture", boom)
-    assert source_archive.process(db, row) is False
-    db.refresh(row)
-    assert row.status == "queued"
-    assert row.error == "unexpected: ValueError"
-
-
-def test_reschedule_clears_the_claim_stamp(db, event):
-    """``started_at`` belongs to the claim that ended; a queued row carrying an
-    old one reads as a claim in flight to the stale-window reclaim."""
-    source_archive.enqueue_event(db, event)
-    row = source_archive.claim_next(db)
-    with _spn_client(lambda _r: httpx.Response(429)) as client:
-        source_archive.process(db, row, client=client)
-    db.refresh(row)
-    assert row.status == "queued"
-    assert row.started_at is None
-
-
-def test_backoff_grows_and_is_capped():
-    assert source_archive._backoff(1) == source_archive.BASE_BACKOFF
-    assert source_archive._backoff(2) == source_archive.BASE_BACKOFF * 2
-    assert source_archive._backoff(99) == source_archive.MAX_BACKOFF
-
-
-def test_the_attempt_ladder_actually_reaches_the_cap():
-    """The retry horizon is a claim the docs make, so it is asserted here: the
-    last wait before a row is buried is ``MAX_BACKOFF``."""
-    last_wait = source_archive._backoff(source_archive.MAX_ATTEMPTS - 1)
-    assert last_wait == source_archive.MAX_BACKOFF
-
-
-# ── drain ──────────────────────────────────────────────────────────────
-
-
-def test_run_once_stops_at_the_pass_budget(db, event):
-    source_archive.enqueue_event(db, event)
-    with _spn_client(_both_ok) as client:
-        assert source_archive.run_once(db, budget=1, client=client) == 1
-    done = (
-        db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.status == "done")
-        .count()
-    )
-    assert done == 1
-
-
-def test_run_once_does_not_sleep_after_the_last_row(db, event, monkeypatch):
-    """The pacing gap belongs between two submissions. Paying it after the
-    final one is pure latency: an idle worker would hold the pass open for
-    nothing."""
-    slept: list[float] = []
-    monkeypatch.setattr(source_archive, "REQUEST_SPACING", timedelta(seconds=6))
-    monkeypatch.setattr(source_archive.time, "sleep", lambda seconds: slept.append(seconds))
-    # One provider, so the only gaps a pass can pay are the ones between rows.
-    monkeypatch.setattr(source_archive.settings, "archive_today_enabled", False)
-
-    source_archive.enqueue_event(db, event)
-    # An inline snapshot, so the only sleep a capture can add is the pacing gap.
-    inline = lambda _r: httpx.Response(200, json={"timestamp": CAPTURE_TS, "original_url": SOURCE})  # noqa: E731
-    with _spn_client(inline) as client:
-        assert source_archive.run_once(db, budget=5, client=client) == 2
-    # Two rows, so exactly one gap, and it falls between them.
-    assert slept == [6.0]
-
-
-def test_archive_row_for_matches_the_original(db, event):
-    """The read surface looks a link up by its exact stored value, and gets the
-    whole row: both capture columns and the state, not one URL."""
-    source_archive.enqueue_event(db, event)
-    row = (
-        db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
-        .one()
-    )
-    assert source_archive.archive_row_for(event, SOURCE).id == row.id
-    assert source_archive.archive_row_for(event, PROOF_LINK).original_url == PROOF_LINK
-    # A link the event does not carry, and a source-less event, have no row.
-    assert source_archive.archive_row_for(event, "https://elsewhere.example/x") is None
+    assert source_archive.archive_row_for(event, SOURCE) is None
     assert source_archive.archive_row_for(event, None) is None
 
 
-def test_missing_providers_reads_the_capture_columns(db, event):
-    """What a pass attempts, and what makes a row done: derived from the
-    columns rather than tracked separately."""
-    source_archive.enqueue_event(db, event)
-    row = (
-        db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
-        .one()
+def test_the_provider_constraint_rejects_an_unknown_service(db, event):
+    """The Literal is pinned at the database too, so a row written outside the
+    service cannot introduce a provider the read surface has no glyph for."""
+    db.add(
+        SourceArchive(
+            event_id=event.id,
+            original_url=SOURCE,
+            origin="source_url",
+            snapshot_url=WAYBACK_SNAPSHOT,
+            provider="somewhere_else",
+        )
     )
-    assert source_archive.missing_providers(row) == list(source_archive.PROVIDERS)
-    row.status = "done"
-    row.wayback_url = "https://web.archive.org/web/x/y"
-    db.commit()
-    assert source_archive.missing_providers(row) == ["archive_today"]
-
-
-def test_the_done_check_constraint_rejects_an_empty_capture_pair(db, event):
-    """``ck_source_archives_done_capture`` pins "done means at least one copy"
-    at the database, in both directions, which is what lets the read surface
-    treat ``failed`` as a real "not archived" state."""
-    source_archive.enqueue_event(db, event)
-    row = (
-        db.query(SourceArchive)
-        .filter(SourceArchive.event_id == event.id, SourceArchive.original_url == SOURCE)
-        .one()
-    )
-    row.status = "done"
-    with pytest.raises(IntegrityError):
-        db.commit()
-    db.rollback()
-
-    # And the mirror image: a capture on a row that is not done.
-    row = db.query(SourceArchive).filter(SourceArchive.original_url == SOURCE).one()
-    row.archive_today_url = "https://archive.ph/abcde/x"
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
@@ -939,49 +441,48 @@ def test_the_done_check_constraint_rejects_an_empty_capture_pair(db, event):
 # ── migration data mapping ─────────────────────────────────────────────
 
 
-def _load_dual_provider_migration():
-    """The dual-provider migration module, loaded by path.
+def _load_migration(stem: str):
+    """One migration module, loaded by path.
 
-    ``alembic/versions`` is not a package, so the revision is imported through
+    ``alembic/versions`` is not a package, so a revision is imported through
     the file loader rather than a normal import. Only its SQL builders are
     read; the ``op``-driven schema half is what ``alembic upgrade`` exercises.
     """
     import importlib.util
     import pathlib
 
-    path = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "alembic"
-        / "versions"
-        / "u3w5y7a9c1e3_source_archive_dual_provider.py"
-    )
-    spec = importlib.util.spec_from_file_location("dual_provider_migration", path)
+    path = pathlib.Path(__file__).resolve().parents[1] / "alembic" / "versions" / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(stem, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-@pytest.fixture
-def legacy_table(db):
-    """A scratch table in the pre-migration shape, dropped afterwards.
+def _load_single_snapshot_migration():
+    return _load_migration("b0d2f4h6j8l0_source_archive_single_snapshot")
 
-    The mapping is run against this rather than against ``source_archives``:
-    the live table is already migrated, and the statements are
-    table-parameterised precisely so their data half stays testable.
+
+@pytest.fixture
+def queue_table(db):
+    """A scratch table in the pre-migration queue shape, dropped afterwards.
+
+    The mapping runs against this rather than against ``source_archives``: the
+    live table is already migrated, and the statements are table-parameterised
+    precisely so their data half stays testable.
     """
-    name = f"source_archives_legacy_{uuid.uuid4().hex[:8]}"
+    name = f"source_archives_queue_{uuid.uuid4().hex[:8]}"
     db.execute(
         text(
             f"""
             CREATE TABLE {name} (
                 id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
-                archived_url TEXT,
-                provider TEXT,
-                finished_at TIMESTAMPTZ,
-                next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 wayback_url TEXT,
-                archive_today_url TEXT
+                archive_today_url TEXT,
+                snapshot_url TEXT,
+                provider TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                finished_at TIMESTAMPTZ
             )
             """
         )
@@ -992,85 +493,77 @@ def legacy_table(db):
     db.commit()
 
 
-def test_the_migration_maps_each_row_onto_its_provider_column(db, legacy_table):
-    """Existing captures keep their provider: a ``wayback`` row's URL lands in
-    ``wayback_url``, an ``archive_today`` row's in ``archive_today_url``, and
-    ``done`` carries over because either column alone satisfies the new check."""
-    migration = _load_dual_provider_migration()
+def test_the_migration_folds_each_capture_into_the_single_slot(db, queue_table):
+    """A captured row keeps its URL and gains the provider it came from;
+    Wayback wins on a row holding both, since a replay URL embeds the original
+    and a short code does not."""
+    migration = _load_single_snapshot_migration()
     db.execute(
         text(
             f"""
-            INSERT INTO {legacy_table} (id, status, archived_url, provider) VALUES
-                ('a', 'done', 'https://web.archive.org/web/1/x', 'wayback'),
-                ('b', 'done', 'https://archive.ph/abcde/x', 'archive_today'),
-                ('c', 'queued', NULL, NULL),
+            INSERT INTO {queue_table} (id, status, wayback_url, archive_today_url) VALUES
+                ('a', 'done', 'https://web.archive.org/web/1/x', NULL),
+                ('b', 'done', NULL, 'https://archive.ph/abcde'),
+                ('c', 'done', 'https://web.archive.org/web/2/y', 'https://archive.ph/fghij')
+            """
+        )
+    )
+    for statement in migration.fold_captures_sql(queue_table):
+        db.execute(text(statement))
+    db.commit()
+
+    rows = {
+        r[0]: r[1:]
+        for r in db.execute(text(f"SELECT id, snapshot_url, provider FROM {queue_table}"))
+    }
+    assert rows["a"] == ("https://web.archive.org/web/1/x", "wayback")
+    assert rows["b"] == ("https://archive.ph/abcde", "archive_today")
+    assert rows["c"] == ("https://web.archive.org/web/2/y", "wayback")
+
+
+def test_the_migration_deletes_the_rows_that_were_only_queue_entries(db, queue_table):
+    """A row with no capture was an unfinished job under a pipeline that no
+    longer runs, and nothing at all under a model where a row means a copy."""
+    migration = _load_single_snapshot_migration()
+    db.execute(
+        text(
+            f"""
+            INSERT INTO {queue_table} (id, status, wayback_url, archive_today_url) VALUES
+                ('a', 'done', 'https://web.archive.org/web/1/x', NULL),
+                ('b', 'queued', NULL, NULL),
+                ('c', 'running', NULL, NULL),
                 ('d', 'failed', NULL, NULL)
             """
         )
     )
-    for statement in migration.split_captures_sql(legacy_table):
+    for statement in migration.fold_captures_sql(queue_table):
         db.execute(text(statement))
+    db.commit()
+
+    assert {r[0] for r in db.execute(text(f"SELECT id FROM {queue_table}"))} == {"a"}
+
+
+def test_the_migration_downgrade_puts_a_snapshot_back_in_its_provider_column(db, queue_table):
+    """Downgrade keeps every copy reachable in the two-column shape, and lands
+    each row ``done``, which is what the restored check pins."""
+    migration = _load_single_snapshot_migration()
+    db.execute(
+        text(
+            f"""
+            INSERT INTO {queue_table} (id, status, snapshot_url, provider) VALUES
+                ('a', 'queued', 'https://web.archive.org/web/1/x', 'wayback'),
+                ('b', 'queued', 'https://archive.ph/abcde', 'archive_today')
+            """
+        )
+    )
+    db.execute(text(migration.unfold_captures_sql(queue_table)))
     db.commit()
 
     rows = {
         r[0]: r[1:]
         for r in db.execute(
-            text(f"SELECT id, status, wayback_url, archive_today_url FROM {legacy_table}")
+            text(f"SELECT id, status, wayback_url, archive_today_url FROM {queue_table}")
         )
     }
     assert rows["a"] == ("done", "https://web.archive.org/web/1/x", None)
-    assert rows["b"] == ("done", None, "https://archive.ph/abcde/x")
-    # Statuses carry over untouched, and an uncaptured row keeps both columns
-    # empty, which is what the new check demands of every non-done row.
-    assert rows["c"] == ("queued", None, None)
-    assert rows["d"] == ("failed", None, None)
-
-
-def test_the_migration_requeues_a_done_row_with_no_provider(db, legacy_table):
-    """A ``done`` row the old code left without a provider maps to no column at
-    all, which the new check rejects. It goes back on the queue instead of
-    blocking the migration."""
-    migration = _load_dual_provider_migration()
-    db.execute(
-        text(
-            f"""
-            INSERT INTO {legacy_table} (id, status, archived_url, provider, finished_at)
-            VALUES ('e', 'done', 'https://web.archive.org/web/1/x', NULL, now())
-            """
-        )
-    )
-    for statement in migration.split_captures_sql(legacy_table):
-        db.execute(text(statement))
-    db.commit()
-
-    status, finished_at = db.execute(
-        text(f"SELECT status, finished_at FROM {legacy_table} WHERE id = 'e'")
-    ).one()
-    assert status == "queued"
-    assert finished_at is None
-
-
-def test_the_migration_downgrade_folds_the_pair_back(db, legacy_table):
-    """Downgrade keeps a capture reachable in the single-column shape, and a
-    row holding both keeps the Wayback one as the primary provider."""
-    migration = _load_dual_provider_migration()
-    db.execute(
-        text(
-            f"""
-            INSERT INTO {legacy_table} (id, status, wayback_url, archive_today_url) VALUES
-                ('a', 'done', 'https://web.archive.org/web/1/x', 'https://archive.ph/abcde/x'),
-                ('b', 'done', NULL, 'https://archive.ph/fghij/y'),
-                ('c', 'failed', NULL, NULL)
-            """
-        )
-    )
-    db.execute(text(migration.merge_captures_sql(legacy_table)))
-    db.commit()
-
-    rows = {
-        r[0]: r[1:]
-        for r in db.execute(text(f"SELECT id, archived_url, provider FROM {legacy_table}"))
-    }
-    assert rows["a"] == ("https://web.archive.org/web/1/x", "wayback")
-    assert rows["b"] == ("https://archive.ph/fghij/y", "archive_today")
-    assert rows["c"] == (None, None)
+    assert rows["b"] == ("done", None, "https://archive.ph/abcde")

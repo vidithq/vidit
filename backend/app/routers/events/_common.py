@@ -3,25 +3,30 @@
 What the ``read`` / ``write`` / ``item`` sub-routers all need, kept here so
 none imports another:
 
-* the typed-error → HTTP envelope (``_raise_event_error`` over the
-  ``code → status`` map),
+* the typed-error → HTTP envelopes (``_raise_event_error`` and
+  :func:`raise_archive_error`, each over its ``code → status`` map),
 * :func:`build_event_read` and :func:`build_event_list`, the single
   ``EventRead`` / ``EventList`` assemblers shared by every response site
   (including the users and social routers, which import from here), and
 * the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
-  every serializer leans on.
+  every serializer leans on, and :func:`resolve_live_event`, the by-id fetch
+  the ``item`` and ``archives`` sub-routers share.
 """
 
+import uuid
 from typing import Annotated, NoReturn
 
+from fastapi import HTTPException
 from pydantic import StringConstraints
+from sqlalchemy.orm import Session
 
 from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.routers._errors import raise_typed_error
-from app.schemas.event import ArchivedCopiesRead, CoordsRead, EventList, EventRead
+from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
 from app.schemas.media import MediaRead
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
-from app.services.source_archive import archive_row_for
+from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
@@ -29,6 +34,29 @@ from app.services.thumbnails import pick_thumbnail
 # ``max_length`` on the ``list[str]`` parameter would cap how many entries the
 # form accepts, not how long each URL may be.
 SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
+
+# Every ``SnapshotRejected`` code is the same verdict about the same two
+# fields: what the analyst pasted is not a snapshot of the link they named. 400
+# across the board, with the code telling them which check it failed. Shared by
+# the archives endpoint and the two write forms that carry
+# ``source_snapshot_url``, so one paste is answered the same way wherever it
+# arrives.
+ARCHIVE_ERROR_STATUS: dict[str, int] = {
+    "original_url_not_on_event": 400,
+    "snapshot_url_invalid": 400,
+    "snapshot_url_too_long": 400,
+    "snapshot_url_not_https": 400,
+    "snapshot_provider_not_allowed": 400,
+    "snapshot_not_a_replay_url": 400,
+    "snapshot_original_mismatch": 400,
+    "snapshot_not_a_snapshot_code": 400,
+}
+
+
+def raise_archive_error(exc: SnapshotRejected) -> NoReturn:
+    """Translate a rejected snapshot paste into its 400."""
+    raise_typed_error(exc, ARCHIVE_ERROR_STATUS)
+
 
 _EVENT_ERROR_STATUS: dict[str, int] = {
     **EVIDENCE_INTAKE_ERROR_STATUS,
@@ -47,6 +75,24 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
 def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:
     """Translate a typed events-service error into an HTTP response."""
     raise_typed_error(exc, _EVENT_ERROR_STATUS)
+
+
+def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
+    """Fetch a live event by id, or 404.
+
+    A soft-deleted row reads as 404 (an admin-removed row isn't actionable, the
+    same surface as a genuine 404, no enumeration oracle). A withheld row
+    (``hidden_at``) reads the same way: a takedown freezes the event for its
+    owner too, so it can be neither edited, closed, investigated nor archived
+    while it stands, and only the admin moderation endpoint lifts it.
+    Permission is the caller's concern: the geolocate transition owns
+    per-status ownership (a ``requested`` event is answerable by anyone), while
+    the owner-only verbs call ``permissions.ensure_owner`` themselves.
+    """
+    geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return geo
 
 
 def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
@@ -98,22 +144,17 @@ def build_event_list(
     )
 
 
-def _archived_copies(geo: Event, url: str | None) -> ArchivedCopiesRead | None:
-    """One link's capture columns and dead-end flag, or ``None`` when untracked.
+def _archived_link(geo: Event, url: str | None) -> ArchivedLinkRead | None:
+    """One link's archived copy as wire shape, or ``None`` when it has none.
 
-    The one place the queue row becomes wire shape, so the primary source and
-    every mirror serialise identically. ``unavailable`` is exactly the row's
-    terminal ``failed`` state: both providers refused and the attempt budget is
-    spent, which the read surface displays rather than swallows.
+    The one place the stored row becomes wire shape, so the primary source, the
+    provenance link and every mirror serialise identically. ``None`` is the
+    ordinary state: a copy exists only where the owner recorded one.
     """
     row = archive_row_for(geo, url)
     if row is None:
         return None
-    return ArchivedCopiesRead(
-        wayback=row.wayback_url,
-        archive_today=row.archive_today_url,
-        unavailable=row.status == "failed",
-    )
+    return ArchivedLinkRead(url=row.snapshot_url, provider=row.provider)
 
 
 def build_event_read(
@@ -147,14 +188,14 @@ def build_event_read(
         # Reads the eager-loaded ``archives`` collection; callers that skip
         # that load pay a lazy query per event, so every detail loader carries
         # it (see ``_DETAIL_LOADS``).
-        archived_source=_archived_copies(geo, geo.source_url),
+        archived_source=_archived_link(geo, geo.source_url),
         # Ordered by the relationship's ``position``, so the read order is the
         # order the submitter gave.
         secondary_source_urls=[link.url for link in geo.source_links],
         # Built from the same walk, so the two lists stay index-aligned by
         # construction. Reads the same eager-loaded ``archives`` collection as
         # ``archived_source``, so a mirror costs no extra query.
-        archived_secondary_sources=[_archived_copies(geo, link.url) for link in geo.source_links],
+        archived_secondary_sources=[_archived_link(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
         event_date=geo.event_date,
         event_time=geo.event_time,
@@ -170,6 +211,9 @@ def build_event_read(
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,
+        # Same eager-loaded collection as the source and the mirrors, so the
+        # provenance row costs no extra query either.
+        archived_detected_from=_archived_link(geo, geo.detected_from_url),
         detected_post_at=geo.detected_post_at,
         owner=geo.owner,
         # Null a soft-deleted requester so a banned account never surfaces in the

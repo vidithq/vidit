@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { X } from "lucide-react";
 
@@ -135,6 +136,15 @@ const FOCUSABLE =
  * focused before on unmount, so dismissing the viewer returns the keyboard to
  * the tile that opened it. Hand-rolled rather than a focus-trap dependency:
  * it is one dialog with one exit, and this is the whole of it.
+ *
+ * **Layer.** The overlay goes through a portal to `document.body`, at a
+ * z-index above every floating surface (map panels 1000, sidebar 1100, banner
+ * 1200). A caller can sit anywhere: inside the map's detail panel, which
+ * scrolls its own overflow and paints in its own stacking context, or inside a
+ * proof body, which is arbitrary rendered content that may carry a transform,
+ * and `fixed` resolves against a transformed ancestor rather than the viewport
+ * whenever one exists. Portalling puts the viewer out of reach of both, so it
+ * covers the whole screen from every surface that mounts it.
  */
 export function MediaOverlay({
   label,
@@ -189,13 +199,13 @@ export function MediaOverlay({
     return () => restoreTo?.focus?.();
   }, []);
 
-  return (
+  return createPortal(
     <div
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
+      className="fixed inset-0 z-1500 flex items-center justify-center bg-black/85 p-6"
       onClick={onClose}
     >
       <div
@@ -218,7 +228,8 @@ export function MediaOverlay({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

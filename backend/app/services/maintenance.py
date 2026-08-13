@@ -1,8 +1,7 @@
 """On-demand maintenance ops surfaced via the admin Maintenance panel.
 
 An admin clicks when they remember rather than a cron firing on a schedule.
-That holds while every op here sweeps low-cost rows / objects (or, for the
-archival backfill, only enqueues work the worker paces itself) whose backlog
+That holds while every op here sweeps low-cost rows / objects whose backlog
 isn't latency-sensitive; if a table or the S3 bill outgrows admin attention,
 the move is a Railway scheduled job hitting these endpoints, not a
 standalone script.
@@ -20,7 +19,6 @@ from app.models.auth_token import AuthToken
 from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services import email as email_service
-from app.services import source_archive as source_archive_service
 from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
@@ -64,30 +62,10 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
 
 
-# One click's scan ceiling for the archival backfill. Bounds the request's
-# wall-clock cost; the enqueue is idempotent per link, so a catalog past this
-# size is covered by clicking again.
-ARCHIVAL_BACKFILL_LIMIT = 5000
-
-
-def enqueue_source_archival(db: Session) -> dict[str, int]:
-    """Queue archival for the links of every live published event that lacks it.
-
-    The catalog backfill: events created before archival existed carry no
-    ``source_archives`` rows, so nothing would ever capture their sources, and
-    an event that gained a link after its first enqueue carries rows for the
-    others but not for it. Published rows only, since submitting a link to Save
-    Page Now announces it. Enqueue only, no HTTP: the worker drains the queue
-    at its own paced rate, so the click returns immediately whatever the
-    catalog size.
-    """
-    return source_archive_service.enqueue_catalog(db, limit=ARCHIVAL_BACKFILL_LIMIT)
-
-
-# One click's ceiling on the completion digest, the same shape as
-# ARCHIVAL_BACKFILL_LIMIT above: the action is one provider round-trip per
-# analyst with no resume marker, so the wall-clock cost of the request has to be
-# bounded by something other than the size of the analyst base. Rows come
+# One click's ceiling on the completion digest: the action is one provider
+# round-trip per analyst with no resume marker, so the wall-clock cost of the
+# request has to be bounded by something other than the size of the analyst
+# base. Rows come
 # ordered by backlog, so the cap keeps the analysts the digest is for; a base
 # past this size is covered by clicking again once the tail matters.
 COMPLETION_DIGEST_LIMIT = 200

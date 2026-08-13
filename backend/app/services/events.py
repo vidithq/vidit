@@ -45,6 +45,7 @@ from app.models.event import (
 )
 from app.models.tag import Tag
 from app.models.user import User
+from app.services import source_archive
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
@@ -58,7 +59,6 @@ from app.services.sanitize import (
     extract_image_srcs,
     sanitize_tiptap_doc,
 )
-from app.services.source_archive import enqueue_event_best_effort as enqueue_source_archival
 from app.services.storage import sweep_keys
 
 logger = logging.getLogger(__name__)
@@ -336,6 +336,7 @@ async def create_with_evidence(
     is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Create a ``geolocated`` event row + its evidence (a direct geolocate).
 
@@ -350,6 +351,12 @@ async def create_with_evidence(
     resolved from ``proof_files``, see ``evidence_intake``), a conflict, and
     the curated ``capture_source`` tag. ``capture_source_lat`` / ``lng``
     (the camera point) are optional, both-or-neither.
+
+    ``source_snapshot_url`` is the archived copy of ``source_url`` the analyst
+    made while filling the form: optional, checked by
+    ``services/source_archive`` and stored as the event's archived source in
+    this same transaction, so a rejected paste (:class:`SnapshotRejected`,
+    raised before any upload) creates no event.
 
     Failure modes (:class:`EvidenceIntakeError` subclasses, event rules
     here, shared file/media rules from ``evidence_intake``):
@@ -411,6 +418,12 @@ async def create_with_evidence(
     # row so the owner-among-geolocators invariant lives in one place.
     _credit_geolocator(db, geo, current_user)
 
+    # The copy of the source the analyst archived while filling the form. The
+    # row needs the event's id, so it is staged after the flush, and still
+    # before the first upload: a rejected paste costs no S3 round-trip.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
     await attach_evidence_and_commit(
         db,
         event=geo,
@@ -421,10 +434,6 @@ async def create_with_evidence(
     )
 
     db.refresh(geo)
-    # The row is born public, so its links are archived now: the source tweet
-    # can be deleted at any time, and the capture runs off-request behind the
-    # worker (see ``services/source_archive``).
-    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 
@@ -449,6 +458,7 @@ async def create_request(
     is_graphic: bool = False,
     file: UploadFile,
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -468,6 +478,11 @@ async def create_request(
     ``proof_files`` and resolve against ``placeholder://`` srcs exactly like the
     geolocate path. Unlike a geolocation there is no proof-image floor, so a
     blank request stays imageless.
+
+    ``source_snapshot_url`` is the archived copy of ``source_url``, on the same
+    terms as :func:`create_with_evidence`: the poster archives the source while
+    filling the one form that posts either shape, so the paste is kept whichever
+    button they press.
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -514,6 +529,11 @@ async def create_request(
     db.add(geo)
     db.flush()
 
+    # Same placement as the direct create: after the flush that mints the id,
+    # before the first upload.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
     await attach_evidence_and_commit(
         db,
         event=geo,
@@ -524,9 +544,6 @@ async def create_request(
     )
 
     db.refresh(geo)
-    # A request is public content the moment it lands, so its links archive on
-    # the same terms as a geolocation's.
-    enqueue_source_archival(db, geo)
     return geo
 
 
@@ -552,6 +569,7 @@ async def geolocate(
     remove_media_ids: list,
     files: list[UploadFile],
     proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
 ) -> Event:
     """Transition a ``requested`` or ``detected`` event to ``geolocated``.
 
@@ -602,6 +620,13 @@ async def geolocate(
     requested fulfilment as well as an owner's detected submit. They are
     mirrors, not the evidence origin, so a fulfiller correcting them is an
     edit, not a rewrite of the requester's claim.
+
+    ``source_snapshot_url`` is the archived copy of the stored source URL, same
+    field the submit form carries: optional, checked by
+    ``services/source_archive``, and stored in this transaction. Whether or not
+    the form carries one, ``reconcile_source_archive`` runs, so an edit that
+    changes the source URL never leaves a copy of the old one filed as the
+    event's archived source (see that function for the drop-or-re-file rule).
 
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``,
     :class:`InvalidCoordinatesError` / :class:`InvalidProofError` (400) on bad
@@ -709,6 +734,15 @@ async def geolocate(
         db.delete(m)
     db.flush()
 
+    # The archived source follows the source URL this write stores: a copy of a
+    # URL that is no longer the source is re-filed or dropped, and the paste the
+    # form carried fills the slot. Both run before the upload, so a rejected
+    # paste costs no S3 round-trip, and inside this transaction, so a failure
+    # takes them back with everything else.
+    source_archive.reconcile_source_archive(db, event=geo)
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
     # Upload new files + commit everything atomically; rollback-sweeps the new
     # uploads on failure. Empty ``files`` still commits the field + removal edits.
     await attach_evidence_and_commit(
@@ -723,11 +757,6 @@ async def geolocate(
     # Committed; sweep the removed media's S3 objects (best-effort).
     sweep_keys(removed_keys, context=f"event {geo.id} geolocate media removal")
     db.refresh(geo)
-    # Publication: this is where a draft's links first go to a public archive.
-    # The promotion also sets the source URL a detected draft was born without
-    # and rewrites the proof body, so what is enqueued here is the published
-    # set, not the draft's.
-    enqueue_source_archival(db, geo)
     points_cache.invalidate()
     return geo
 
@@ -794,8 +823,7 @@ def _publish_draft(
 
     Locked with ``with_for_update()`` + ``populate_existing()`` like
     :func:`geolocate`, so a batch racing a hand-submit of the same draft
-    serializes and the loser sees the state error. Commits on success and
-    enqueues the row's links for archival (publication is the archival trigger).
+    serializes and the loser sees the state error. Commits on success.
 
     Raises the typed floor errors, :class:`EventStateError` off ``detected``,
     :class:`EventNotFoundError` when the row is gone, and the 403 of
@@ -851,9 +879,6 @@ def _publish_draft(
     _credit_geolocator(db, geo, current_user)
     db.commit()
     db.refresh(geo)
-    # Publication: the draft's links reach a public archive here, exactly as
-    # they do on the single-row promotion.
-    enqueue_source_archival(db, geo)
 
 
 def complete_drafts(

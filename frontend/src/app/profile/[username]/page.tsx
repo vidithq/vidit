@@ -84,17 +84,22 @@ export default function ProfilePage() {
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
   // Portfolio order: who, then the work, then the account. The handle titles
-  // the page, the bio positions it, and everything below is evidence, shape of
-  // work first (`ProfileInsights`), then where it happened (`ProfileMap`), then
-  // the events themselves. Owner-only account affordances (linked accounts,
-  // the detections queue, sign out) sink under all of it, so a visitor lands on
-  // a portfolio and the owner still finds their controls in one place.
+  // the page, the bio positions it, the linked accounts carry the rest of that
+  // identity (they are where the analyst already posts, so they belong beside
+  // the bio rather than at the far end of the page), and everything below is
+  // evidence, shape of work first (`ProfileInsights`), then where it happened
+  // (`ProfileMap`), then the events themselves. Sign out sinks under all of
+  // it, so a visitor lands on a portfolio and the owner still finds their
+  // controls in one place.
+  //
+  // The detections entry is the exception: it is pending work, not an account
+  // control, so on the owner's own profile it opens the page, above the bio.
+  // A queue of hundreds read as buried at the bottom of the portfolio.
   //
   // Editing collapses that order to the form alone: every editable field sits
   // between the header and Save, with the read-only portfolio sections dropped
-  // for the duration. Interleaved, the linked-accounts inputs landed a full
-  // page below the bio and the Save button was off screen by the time you
-  // reached them.
+  // for the duration. The bio and the linked-accounts inputs are contiguous in
+  // both modes, which is what keeps Save on screen by the time you reach them.
   return (
     <PageShell
       back
@@ -104,11 +109,15 @@ export default function ProfilePage() {
     >
       <ProfileHeaderEditFields edit={edit} />
 
+      {!edit.editing && isOwn && detectionCount > 0 && (
+        <DetectionsEntry username={profile.username} count={detectionCount} />
+      )}
+
       <BioCard profile={profile} edit={edit} />
 
-      {edit.editing ? (
-        <LinkedAccountsCard profile={profile} edit={edit} />
-      ) : (
+      <LinkedAccountsCard profile={profile} edit={edit} />
+
+      {!edit.editing && (
         <>
           <ProfileStats profile={profile} />
 
@@ -121,12 +130,6 @@ export default function ProfilePage() {
             submissions={submissions}
             isOwn={isOwn}
           />
-
-          <LinkedAccountsCard profile={profile} edit={edit} />
-
-          {isOwn && detectionCount > 0 && (
-            <DetectionsEntry username={profile.username} count={detectionCount} />
-          )}
 
           {isOwn && (
             <div className="pt-4 border-t border-neutral-800 flex justify-center">

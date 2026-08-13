@@ -48,8 +48,7 @@ def batch_complete_events(
     draft that fails the floor (no proof image, no source media, no
     coordinates, no source URL) rolls back alone and stays a draft with its
     reason in ``rows[]``. Publishing a row credits the caller as its
-    geolocator and queues its links for archival, exactly as the single-row
-    transition does.
+    geolocator, exactly as the single-row transition does.
 
     Two conditions reject the whole call, before anything is published: no
     resolvable conflict (400, since no row could clear the floor) and a

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 import { DownloadSourceMedia } from "@/components/geolocations/DownloadSourceMedia";
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
@@ -11,10 +10,14 @@ import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { PageShell } from "@/components/ui/PageShell";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
+import { ARMED_RING } from "@/components/ui/styles";
+import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import {
   TaxonomyFields,
   useTaxonomy,
@@ -22,6 +25,7 @@ import {
 import { CloseEventForm } from "@/components/event/CloseEventForm";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { cleanNumber } from "@/lib/coordinates";
@@ -34,6 +38,9 @@ import {
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
+// Ties Reject to the reason panel it opens, which is not its DOM sibling.
+const REJECT_PANEL_ID = "reject-detection-form";
+
 /**
  * Owner edit + submit of a machine-`detected` geolocation. Built like the create
  * form (same field bricks, same `MediaManager` staging): the owner curates the
@@ -45,21 +52,46 @@ import type { EventDetail } from "@/types";
  * (with a confirm, since submitting freezes it). State is seeded from props (the
  * form mounts only after the row loaded), so the Tiptap editor gets its
  * `initialContent` on first paint.
+ *
+ * Reviewing a queue of drafts is this same surface with `queue` set: the header
+ * gains the position and a Skip, and a finished draft hands over to the next one
+ * instead of returning to the queue list. Nothing else differs, so a draft opened
+ * from a queue row and a draft under review are one form.
  */
 export function EventEditForm({
   geo,
   redirectTo,
+  queue,
 }: {
   geo: EventDetail;
   redirectTo: string;
+  /** Set when this draft is one step of a review pass over the queue. */
+  queue?: {
+    /** Where this draft sits in the queue, as `Draft n of m`. */
+    position: string;
+    /** Open the next draft, or leave for `redirectTo` past the last one. Runs
+     *  on Skip, and after a submit or a rejection. */
+    onAdvance: () => void;
+  };
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
-  // The utilities tier only: this page's flow action is the form's own
-  // "Confirm & submit", which stays at the bottom where the fields it applies
-  // end. The header still shares and reports the draft like every other detail
-  // surface.
+  // Where a write that finishes with this row goes: back to the queue list on
+  // its own, on to the next draft during a review pass.
+  const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
+
+  // The utilities tier only: this surface's flow action is the form's own
+  // Submit, at the bottom where the fields it applies end. The header still
+  // shares and reports the draft like every other detail surface.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
+
+  // Reject the draft: the confirm step is the inline `CloseEventForm` (a
+  // required, publicly visible reason), so this flag only opens the panel. It
+  // sits in the open beside Skip rather than behind the `⋯` menu: the menu is
+  // for the rare management action on a reading surface, while working a draft
+  // has three verbs (submit it, skip it, reject it) and hiding one of them
+  // behind a disclosure costs a click on every pass.
+  const [rejecting, setRejecting] = useState(false);
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a ``detected`` draft, so seed the
@@ -81,6 +113,10 @@ export function EventEditForm({
   // A ``detected`` draft may be born with no declared source, so the field
   // starts empty (not `String(null)`) rather than showing a fabricated value.
   const [sourceUrl, setSourceUrl] = useState(geo.source_url ?? "");
+  // A snapshot pasted here replaces whatever copy the draft carries, so the
+  // field starts empty and the existing copy shows beside it instead: the value
+  // is what to write, not what is stored.
+  const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
   // The mirrors the import found, editable here: submitting replaces the whole
   // list, so a row the owner deletes is gone from the published event.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
@@ -116,8 +152,6 @@ export function EventEditForm({
     geo.conflicts.map((c) => c.id)
   );
 
-  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
-
   // Incomplete-form feedback (shared notice + in-form red outlines).
   const {
     missingFields,
@@ -136,6 +170,7 @@ export function EventEditForm({
     lng: cleanNumber(lng) ?? NaN,
     ...parseCaptureCoords(captureLat, captureLng),
     source_url: sourceUrl.trim(),
+    source_snapshot_url: sourceSnapshotUrl,
     secondary_source_urls: secondarySourceUrls,
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
@@ -156,15 +191,27 @@ export function EventEditForm({
     fallback: "Couldn't submit.",
     onSuccess: () => {
       refreshDetectionCount();
-      router.push(redirectTo);
+      finish();
     },
   });
 
-  // Reject (close) the detection: a detection card is just a click, like every
-  // other card. The reason is captured in an inline `CloseEventForm` (required
-  // + publicly visible), which owns its own close mutation; this flag just
-  // toggles the panel.
-  const [rejecting, setRejecting] = useState(false);
+  // Submitting freezes the row, so it takes a second click. The button arms in
+  // place rather than swapping itself for a confirm pair: the control the
+  // reader is aiming at stays where it is, and the second click lands on the
+  // same pixels as the first. It keeps focus, so Enter twice submits too.
+  const {
+    armed: submitArmed,
+    trigger: triggerSubmit,
+    controlRef: submitButtonRef,
+  } = useConfirmAction(
+    () => {
+      void submitMutation.run();
+    },
+    {
+      timeoutMs: ARM_MS,
+      dismissOnOutside: true,
+    }
+  );
 
   const busy = submitMutation.loading;
   const actionError = submitMutation.error;
@@ -206,6 +253,12 @@ export function EventEditForm({
       submitMutation.setError(taxonomy.blockedMessage);
       return;
     }
+    // A snapshot that cannot be one is caught before the upload; the field
+    // flags itself red and the banner says what a snapshot link looks like.
+    if (sourceSnapshotUrl.trim() && !isSnapshotUrl(sourceSnapshotUrl)) {
+      submitMutation.setError(SNAPSHOT_HINT);
+      return;
+    }
     const missing = missingEventFields(fieldsState(), {
       requireMedia: true,
       requireTags: true,
@@ -214,22 +267,66 @@ export function EventEditForm({
       flagIncomplete(missing);
       return;
     }
-    setConfirmingSubmit(true);
-  };
-
-  const handleSubmit = () => {
-    submitMutation.run();
+    // A complete form arms the button; the click after it writes. Every check
+    // above runs on both clicks, so a form that stopped being submittable
+    // between them says so instead of posting.
+    triggerSubmit();
   };
 
   return (
     <PageShell
       back
+      backFallback={redirectTo}
       title="Submit detection"
-      subtitle="Review and complete this machine detection, then submit it. Submitting freezes the row, so give it a full read first."
-      actions={actions}
+      actions={
+        // Everything that disposes of this draft rather than filling it in,
+        // in the header's own cluster: the position and the way past it during
+        // a review pass, then Reject, then the utilities. Submit is the only
+        // action left at the foot of the fields.
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+          {queue && (
+            <>
+              <span className={LABEL_TEXT}>{queue.position}</span>
+              <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+                Skip
+              </Button>
+            </>
+          )}
+          <Button
+            variant="danger"
+            onClick={() => setRejecting(true)}
+            disabled={busy || rejecting}
+            aria-controls={REJECT_PANEL_ID}
+            aria-expanded={rejecting}
+          >
+            Reject
+          </Button>
+          {actions}
+        </div>
+      }
     >
       {/* Under the header, where the trigger that opened it is. */}
       {panels}
+
+      {/* The reason panel Reject opens, in the same slot the shared action
+          row's own panels use: under the header, below its trigger. */}
+      {rejecting && (
+        <div id={REJECT_PANEL_ID}>
+          <Card as="section">
+            <SectionEyebrow title="Reject this detection" margin="none" />
+            <CloseEventForm
+              eventId={geo.id}
+              status={geo.status}
+              disabled={busy}
+              onClosed={() => {
+                refreshDetectionCount();
+                finish();
+              }}
+              onCancel={() => setRejecting(false)}
+            />
+          </Card>
+        </div>
+      )}
 
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
@@ -278,6 +375,9 @@ export function EventEditForm({
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
+          sourceSnapshotUrl={sourceSnapshotUrl}
+          setSourceSnapshotUrl={setSourceSnapshotUrl}
+          archivedSource={geo.archived_source}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
           eventDate={eventDate}
@@ -324,75 +424,53 @@ export function EventEditForm({
         />
         {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
 
+        {/* The flow action, alone at the foot of the fields it applies, as on
+            the create form. Disposing of the draft is not a form action: Skip
+            and Reject sit in the header. */}
         <div className="flex flex-wrap items-center gap-3">
-          {confirmingSubmit ? (
-            <span className="inline-flex items-center gap-2">
-              <span className="text-xs text-amber-400/90">
-                Once submitted it can&apos;t be edited.
-              </span>
-              <Button
-                variant="primary"
-                onClick={handleSubmit}
-                disabled={busy}
-              >
-                {submitMutation.loading ? "Submitting…" : "Confirm & submit"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setConfirmingSubmit(false)}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={busy}
-              >
-                Submit
-              </Button>
-              <FieldHelp concept="action_submit" />
-            </span>
-          )}
-
-          <Link href={redirectTo} className={buttonClasses("ghost")}>
-            Cancel
-          </Link>
-
-          {/* Reject (close) lives here now, not on the queue card. It opens the
-              inline reason panel below rather than closing on a fixed reason. */}
-          {!rejecting && (
+          <span className="inline-flex items-center gap-1.5">
             <Button
-              variant="danger"
-              onClick={() => setRejecting(true)}
+              ref={submitButtonRef}
+              type="submit"
+              variant="primary"
               disabled={busy}
-              className="ml-auto"
+              className={submitArmed ? ARMED_RING : ""}
+              title={
+                submitArmed
+                  ? "Click again to submit. Submitting freezes the event."
+                  : undefined
+              }
             >
-              Reject detection
+              {/* The three labels stack in one grid cell, so the button is as
+                  wide as the longest of them from the first paint and arming
+                  moves nothing at all, not even the `?` beside it. */}
+              <span className="grid">
+                <span aria-hidden className="col-start-1 row-start-1 invisible">
+                  Confirm submit
+                </span>
+                <span className="col-start-1 row-start-1">
+                  {busy
+                    ? "Submitting…"
+                    : submitArmed
+                      ? "Confirm submit"
+                      : "Submit"}
+                </span>
+              </span>
             </Button>
-          )}
+            {/* What the second click costs is the button's `?`, which every
+                field on this form already carries, rather than a line of copy
+                that appears mid-gesture and pushes the button sideways. */}
+            <FieldHelp concept="action_submit" />
+          </span>
+          {/* Sibling status region, the shape `<CopyButton>` uses: the armed
+              state is reported once, as a status, so a reader who cannot see
+              the ring hears what the next click will do. */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {submitArmed
+              ? "Click again to submit. Submitting freezes the event."
+              : ""}
+          </span>
         </div>
-
-        {/* The reason panel for rejecting the detection: a required free-text
-            reason (kept publicly visible on the closed row). On success it
-            refreshes the detection count and returns to the queue. */}
-        {rejecting && (
-          <div className="pt-4 border-t border-neutral-800">
-            <CloseEventForm
-              eventId={geo.id}
-              status={geo.status}
-              disabled={busy}
-              onClosed={() => {
-                refreshDetectionCount();
-                router.push(redirectTo);
-              }}
-              onCancel={() => setRejecting(false)}
-            />
-          </div>
-        )}
       </form>
     </PageShell>
   );

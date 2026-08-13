@@ -20,7 +20,7 @@ import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
  * both come from the one registry in `lib/fieldHelp.ts`, so the same concept
  * reads identically everywhere it appears and never drifts between them.
  *
- * Neutral, not orange: it's meta help, not a content action — orange stays
+ * Neutral, not orange: it's meta help, not a content action, and orange stays
  * reserved for primary affordances.
  */
 export function FieldHelp({

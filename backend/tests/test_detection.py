@@ -20,7 +20,6 @@ from shapely.geometry import Point
 from app.database import SessionLocal
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
-from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import assemble_detections, backfill_from_archive
@@ -233,24 +232,6 @@ async def test_media_less_detection_persists(db, owner):
     assert geo.source_url is None
     assert geo.source_posted_at is None
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
-
-
-async def test_detection_does_not_archive_the_draft_source(db, owner):
-    """A detected row is unpublished working state, so its links are not
-    submitted to a public archive.
-
-    Save Page Now is public and timestamped: submitting a link announces it.
-    The draft's source is enqueued when the analyst publishes it, in
-    ``events.geolocate`` (see ``tests/events/test_source_archival_wiring.py``).
-    """
-    sourced = _dto(
-        source_url="https://x.com/src/status/9",
-        source_posted_at=datetime(2025, 11, 11, 9, 0, tzinfo=UTC),
-    )
-    await assemble_detections(db, owner=owner, detections=[sourced], fetch_media=_missing_fetcher)
-
-    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).count() == 0
 
 
 async def test_idempotency_skips_existing_pair(db, owner):

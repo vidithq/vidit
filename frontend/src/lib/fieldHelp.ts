@@ -37,6 +37,10 @@ export const FIELD_HELP = {
     text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published.",
     label: "What are secondary sources?",
   },
+  archived_copies: {
+    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events the greyed icon opens the Wayback Machine or archive.today with the link filled in, and you paste the snapshot it gives you back. Orange means a copy exists and opens it; grey means none yet.",
+    label: "What are the archived copies?",
+  },
   source_media: {
     text: "The footage being located. Not a map screenshot or an annotated export.",
     label: "What is the source media?",
@@ -98,13 +102,14 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
-  section_batch_completion: {
-    text: "Publish several drafts at once. An import usually sits in one conflict, so you set that once for the selection and pick the capture source per row; everything else the drafts already carry. Each row publishes on its own, so a draft that is still missing a piece stays a draft and says which piece.",
-    label: "What does completing a batch do?",
+  // Detections queue: the filter over the page.
+  detection_queue_filter: {
+    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
+    label: "What does this filter select?",
   },
   // Detection submit action, spelled out here.
   action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it), frozen and no longer editable. Give it a full read first.",
+    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). Submitting freezes the event, so it can no longer be edited. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
 } as const;

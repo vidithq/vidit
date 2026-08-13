@@ -16,9 +16,10 @@ import { DetailRow } from "@/components/ui/DetailRow";
  * the shared ``EventDetailBody`` under the shared action cluster. The request
  * surface is the one that carries all three tiers: the geolocate flow action,
  * the author's close and delete behind the ``⋯`` menu, and the share and report
- * utilities. ``useEventActions`` owns every one of them, so this page holds only
- * the request-only detail row. The status badge tells a withdrawn request from a
- * rejected detection through ``before_closed_status``.
+ * utilities. ``useEventActions`` owns every one of them, so this page holds
+ * only the request-only detail row. Close captures a required free-text reason
+ * via ``CloseEventForm``, shown as the Reason beside the status badge, which
+ * is what tells a withdrawn request from a rejected detection.
  */
 export default function RequestDetailPage() {
   const params = useParams();

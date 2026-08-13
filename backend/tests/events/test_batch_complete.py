@@ -11,7 +11,6 @@ from __future__ import annotations
 import uuid
 
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventGeolocator
-from app.models.source_archive import SourceArchive
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
 
@@ -324,28 +323,3 @@ def test_batch_complete_refuses_another_analysts_draft_before_publishing_any(
     db.expire_all()
     assert db.query(Event).filter(Event.id == mine.id).one().status == STATUS_DETECTED
     assert db.query(Event).filter(Event.id == theirs.id).one().status == STATUS_DETECTED
-
-
-def test_batch_complete_archives_only_the_published_rows(db, author, conflict, capture_source_tag):
-    """Publication is the archival trigger, per row: the drafts that published
-    have their source queued for capture, the one that stayed a draft has
-    nothing queued (its links are not public yet)."""
-    published = _draft(db, author)
-    imageless = _draft(db, author, proof=_PROOF_TEXT_ONLY)
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == published.id).count() == 0
-
-    response = client.post(
-        _URL,
-        headers=login_as(client, author),
-        json=_body(
-            conflict, [(published, capture_source_tag.id), (imageless, capture_source_tag.id)]
-        ),
-    )
-    assert response.status_code == 200, response.text
-
-    queued = {
-        row.original_url
-        for row in db.query(SourceArchive).filter(SourceArchive.event_id == published.id).all()
-    }
-    assert queued == {"https://x.com/a/status/1"}
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == imageless.id).count() == 0

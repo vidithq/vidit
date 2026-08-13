@@ -4,7 +4,8 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { ArchivedCopies as ArchivedCopiesPayload, EventDetail } from "@/types";
+import type { ArchivedLink, EventDetail } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
@@ -12,12 +13,14 @@ import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
   ArchivedCopies,
+  DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
 } from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -108,11 +111,18 @@ function DetailRows({
   compact: boolean;
   detailExtras?: ReactNode;
 }) {
+  const { user } = useAuth();
+  const viewerId = user?.id;
   // Conflicts (their own referential) and curated capture-source tags get
   // their own labelled rows so they read as structured facts, not free-form
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
+  // Archiving a link is the owner's own act, so the affordance is offered to
+  // exactly the analyst the endpoint would accept it from. A draft is included:
+  // archival is no longer tied to publication, and a draft's source rots while
+  // it waits.
+  const canArchive = viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
@@ -131,10 +141,7 @@ function DetailRows({
   const rows = (
     <>
       <DetailRow label="Status" concept="status" compact={compact}>
-        <StatusBadge
-          status={geo.status}
-          beforeClosedStatus={geo.before_closed_status}
-        />
+        <StatusBadge status={geo.status} />
       </DetailRow>
       {/* The closer's free-text reason, kept publicly visible on a closed row
           (transparency: why the request was withdrawn or the detection
@@ -187,10 +194,15 @@ function DetailRows({
             maxWidthClass={sourceMaxWidth}
             className={sourceClass}
           />
-          <ArchivedCopies
-            copies={geo.archived_source}
-            describes={PRIMARY_SOURCE_DESCRIPTION}
-          />
+          {geo.source_url && (
+            <ArchivedCopies
+              copy={geo.archived_source}
+              url={geo.source_url}
+              eventId={geo.id}
+              describes={PRIMARY_SOURCE_DESCRIPTION}
+              canArchive={canArchive}
+            />
+          )}
         </span>
       </DetailRow>
       {/* Mirrors of the same media, directly under the primary they mirror.
@@ -200,6 +212,8 @@ function DetailRows({
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
+          eventId={geo.id}
+          canArchive={canArchive}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -208,15 +222,26 @@ function DetailRows({
           footage origin), never folded into it. */}
       {geo.detected_from_url && (
         <DetailRow label="Detected from" concept="detected_from" compact={compact}>
-          {/* Same display nature as Source: SourceLabel reduces the URL to its
-              host, so the two provenance rows read alike rather than one
-              host-reduced, one truncated-full. */}
-          <SourceLabel
-            url={geo.detected_from_url}
-            variant="link"
-            maxWidthClass={sourceMaxWidth}
-            className={sourceClass}
-          />
+          <span className="flex min-w-0 items-baseline justify-end">
+            {/* Same display nature as Source: SourceLabel reduces the URL to its
+                host, so the two provenance rows read alike rather than one
+                host-reduced, one truncated-full. */}
+            <SourceLabel
+              url={geo.detected_from_url}
+              variant="link"
+              maxWidthClass={sourceMaxWidth}
+              className={sourceClass}
+            />
+            {/* Archived on the same terms as the source: the analyst's post is
+                the provenance of the claim, and it rots the same way. */}
+            <ArchivedCopies
+              copy={geo.archived_detected_from}
+              url={geo.detected_from_url}
+              eventId={geo.id}
+              describes={DETECTED_FROM_DESCRIPTION}
+              canArchive={canArchive}
+            />
+          </span>
         </DetailRow>
       )}
       {geo.conflicts.length > 0 && (
@@ -314,11 +339,15 @@ function DetailRows({
 function SecondarySourcesRow({
   urls,
   archived,
+  eventId,
+  canArchive,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
-  archived: (ArchivedCopiesPayload | null)[];
+  archived: (ArchivedLink | null)[];
+  eventId: string;
+  canArchive: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -332,24 +361,29 @@ function SecondarySourcesRow({
       align="start"
     >
       <div className="flex flex-col items-end gap-1 ml-4">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
-        >
-          {open ? (
-            <>
-              Hide
-              <ChevronUp size={12} />
-            </>
-          ) : (
-            <>
-              {urls.length} more source{urls.length === 1 ? "" : "s"}
-              <ChevronDown size={12} />
-            </>
-          )}
-        </button>
+        <span className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
+          >
+            {open ? (
+              <>
+                Hide
+                <ChevronUp size={12} />
+              </>
+            ) : (
+              <>
+                {urls.length} more source{urls.length === 1 ? "" : "s"}
+                <ChevronDown size={12} />
+              </>
+            )}
+          </button>
+          {/* One `?` for the whole expanded list, not one per mirror: ten
+              mirrors would otherwise carry ten copies of the same sentence. */}
+          {open && <FieldHelp concept="archived_copies" size={12} />}
+        </span>
         {open &&
           urls.map((url, index) => (
             // Index key: two mirrors may repeat a URL, and the archival record
@@ -367,8 +401,12 @@ function SecondarySourcesRow({
                   two cases a bare host cannot carry (mirrors sharing a host, a
                   URL with no host to show). */}
               <ArchivedCopies
-                copies={archived[index] ?? null}
+                copy={archived[index] ?? null}
+                url={url}
+                eventId={eventId}
                 describes={mirrorDescription(safeHostname(url), index, urls.length)}
+                canArchive={canArchive}
+                help={false}
               />
             </span>
           ))}

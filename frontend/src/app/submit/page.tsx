@@ -31,6 +31,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
+import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import {
   TaxonomyFields,
   useTaxonomy,
@@ -147,6 +148,9 @@ function SubmitForm() {
   const [captureLat, setCaptureLat] = useState("");
   const [captureLng, setCaptureLng] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  // The snapshot of that source the analyst archived while filling the form.
+  // Optional on both publish paths, and never part of either floor.
+  const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
   // Optional mirrors of the same media (other networks, other same-POV posts),
   // ordered. Never part of either publish floor.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>([]);
@@ -254,6 +258,7 @@ function SubmitForm() {
       createEventRequest({
         title: title.trim(),
         source_url: sourceUrl.trim(),
+        source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
         proof,
         // Optional approximate guess, both-or-neither, same strict parse as the
@@ -294,6 +299,7 @@ function SubmitForm() {
           lng: lngNum,
           ...capture,
           source_url: sourceUrl,
+          source_snapshot_url: sourceSnapshotUrl,
           secondary_source_urls: secondarySourceUrls,
           event_date: eventDate || undefined,
           event_time: eventTime || undefined,
@@ -313,6 +319,7 @@ function SubmitForm() {
         lng: lngNum,
         ...capture,
         source_url: sourceUrl,
+        source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
@@ -402,6 +409,12 @@ function SubmitForm() {
     clearIncomplete();
   };
 
+  // A pasted snapshot that cannot be one, caught before the upload: the field
+  // flags itself red, and the publish it would have failed says why. Not a
+  // missing field (the archive is optional), so it never enters the tick-list.
+  const snapshotUnusable =
+    sourceSnapshotUrl.trim() !== "" && !isSnapshotUrl(sourceSnapshotUrl);
+
   const publishGeolocation = async () => {
     resetActions();
     // A pending / failed curated-tags or conflicts load is a recoverable state,
@@ -409,6 +422,10 @@ function SubmitForm() {
     // of the outlines.
     if (taxonomy.blockedMessage !== null) {
       geolocationMutation.setError(taxonomy.blockedMessage);
+      return;
+    }
+    if (snapshotUnusable) {
+      geolocationMutation.setError(SNAPSHOT_HINT);
       return;
     }
     if (geoMissing.length) {
@@ -420,6 +437,10 @@ function SubmitForm() {
 
   const postRequest = async () => {
     resetActions();
+    if (snapshotUnusable) {
+      requestMutation.setError(SNAPSHOT_HINT);
+      return;
+    }
     if (reqMissing.length) {
       flagIncomplete(reqMissing);
       return;
@@ -589,6 +610,9 @@ function SubmitForm() {
         <DetailsFields
           sourceUrl={sourceUrl}
           setSourceUrl={setSourceUrl}
+          sourceSnapshotUrl={sourceSnapshotUrl}
+          setSourceSnapshotUrl={setSourceSnapshotUrl}
+          archivedSource={request?.archived_source ?? null}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
           eventDate={eventDate}

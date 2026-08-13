@@ -8,6 +8,7 @@ import {
   Calendar,
   Check,
   Circle,
+  Copy,
   Download,
   Mail,
   MapPin,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/BrandGlyphs";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
+import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -62,7 +64,9 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
+  ArchiveSourceField,
   ArchivedCopies,
+  DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
 } from "@/components/ui/ArchivedCopies";
@@ -72,6 +76,7 @@ import {
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
   HOVER_REVEAL,
+  ARMED_RING,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
@@ -177,6 +182,7 @@ const MOCK_DETAIL: EventDetail = {
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
+  archived_detected_from: null,
   detected_post_at: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
@@ -191,24 +197,59 @@ const MOCK_DETAIL: EventDetail = {
   geolocators: [],
 };
 
-// The same detail body with its source captured at both providers, plus one
-// mirror captured at one provider only and one whose archiving failed for good,
-// so the icon pair shows all three of its states.
+// The three badge states a Detections queue row can be in: the draft that
+// carries the whole evidence floor and is waiting on a review's judgment, the
+// one short of a single named piece, and the one short of several, which
+// collapse to a count.
+const MOCK_DRAFT_READY: EventDetail = {
+  ...MOCK_DETAIL,
+  id: "draft-ready",
+  status: "detected",
+  source_url: "https://t.me/channel/12345",
+  proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
+  media: [
+    {
+      id: "m1",
+      storage_url: "/local-storage/demo.jpg",
+      media_type: "image",
+      role: "source",
+    },
+  ],
+};
+
+const MOCK_DRAFT_ONE_MISSING: EventDetail = {
+  ...MOCK_DRAFT_READY,
+  id: "draft-one-missing",
+  title: "Convoy on a rural road, unnamed",
+  proof: null,
+};
+
+const MOCK_DRAFT_SEVERAL_MISSING: EventDetail = {
+  ...MOCK_DRAFT_ONE_MISSING,
+  id: "draft-several-missing",
+  title: "Smoke over a treeline, location unclear",
+  media: [],
+  source_url: null,
+};
+
+// The same detail body with a real source captured at both providers, a
+// provenance link archived at archive.today, plus one mirror archived and one
+// with no copy yet.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
   source_url: "https://t.me/channel/12345",
   archived_source: {
-    wayback: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
-    unavailable: false,
+    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+    provider: "wayback",
   },
+  detected_from_url: "https://x.com/analyst/status/1234567890",
+  archived_detected_from: { url: "https://archive.ph/fghij", provider: "archive_today" },
   archived_secondary_sources: [
     {
-      wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-      archive_today: null,
-      unavailable: false,
+      url: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
+      provider: "wayback",
     },
-    { wayback: null, archive_today: null, unavailable: true },
+    null,
   ],
 };
 
@@ -334,6 +375,17 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's draft-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+            <div className="flex items-center gap-3">
+              <Button variant="primary" className={ARMED_RING}>
+                Confirm submit
+              </Button>
+              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy link">
+                <Copy size={15} />
+              </Button>
+            </div>
+          </Item>
+
           <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice, admin armed confirms. Colour only; callers add rounded-md + their own padding.">
             <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
@@ -442,7 +494,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard). tone=danger paints a destructive option's active state red; fullWidth stretches the track.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter. tone=danger paints a destructive option's active state red; fullWidth stretches the track. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -515,7 +567,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Used per row in the detections batch-completion table. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
+          <Item name="<Select>" usage="Pick-one from a short curated list, same shapes and invalid state as <Input> (one recipe, so a select and a text field on the same row can't drift). Native <select> under a custom caret: the options are a handful of values and the platform control is what behaves on a phone. Carries the reason bucket on the report-event form. Reach for <TagPicker> chips instead when the options are a taxonomy to browse.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Select defaultValue="">
@@ -578,7 +630,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<FieldHelp>" usage="Help ? on labels/sections">
+          <Item
+            name="<FieldHelp>"
+            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+          >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
             </span>
@@ -642,52 +697,89 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copies beside an outbound source link, on the event detail surfaces: the primary Source row and every expanded secondary mirror. One icon per archiving service (Wayback Machine, archive.today), accent and clickable where that service holds a copy, greyed and inert where it does not, so the absence of a copy is shown rather than hidden. The glyphs are lucide marks, not the services' own logos. Renders nothing when the link is not tracked at all (a source-less row, an unpublished draft), so a caller hands it the payload field with no guard of its own. Every glyph looks alike across the page, so the accessible name carries the target and the state: PRIMARY_SOURCE_DESCRIPTION for the source, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph (a clock-with-arrow for the Wayback Machine, a box for archive.today, never the services' own logos), accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens both providers' submit pages prefilled with the link plus one field to paste the snapshot back, which flips the glyph in place. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="captured at both providers (primary source)">
+            <Variant label="archived at the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{
-                    wayback:
-                      "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-                    archive_today: "https://archive.ph/abcde/https://t.me/channel/12345",
-                    unavailable: false,
+                  copy={{
+                    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
+                    provider: "wayback",
                   }}
+                  url="https://t.me/channel/12345"
+                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="captured at one provider (mirror 2 of a multi-mirror list)">
+            <Variant label="archived at archive.today (mirror 2 of a multi-mirror list)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{
-                    wayback: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-                    archive_today: null,
-                    unavailable: false,
-                  }}
+                  copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+                  url="https://t.me/mirror/1"
+                  eventId="demo"
                   describes={mirrorDescription("t.me", 1, 2)}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="archiving in progress (queued, no copy yet)">
+            <Variant label="no copy yet, seen by a reader (inert)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copies={{ wayback: null, archive_today: null, unavailable: false }}
+                  copy={null}
+                  url="https://t.me/channel/12345"
+                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
+                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="not archived (both providers failed, no retry left)">
+            <Variant label="no copy yet, seen by the owner (opens the providers + paste field)">
               <span className="text-sm text-neutral-300">
-                t.me
+                x.com
                 <ArchivedCopies
-                  copies={{ wayback: null, archive_today: null, unavailable: true }}
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  copy={null}
+                  url="https://x.com/analyst/status/1234567890"
+                  eventId="demo"
+                  describes={DETECTED_FROM_DESCRIPTION}
+                  canArchive
                 />
               </span>
+            </Variant>
+          </Item>
+
+          <Item
+            name="<ArchiveSourceField>"
+            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The two provider links recompute from the current Source URL value and are replaced by one line while it holds nothing usable; `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
+          >
+            <Variant label="a source URL is typed: both providers, one paste field">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value=""
+                onChange={() => {}}
+              />
+            </Variant>
+            <Variant label="no usable source URL yet">
+              <ArchiveSourceField sourceUrl="" value="" onChange={() => {}} />
+            </Variant>
+            <Variant label="a paste that cannot be a snapshot">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value="https://example.com/not-an-archive"
+                onChange={() => {}}
+              />
+            </Variant>
+            <Variant label="the event already carries a copy (edit form)">
+              <ArchiveSourceField
+                sourceUrl="https://t.me/channel/12345"
+                value=""
+                onChange={() => {}}
+                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+              />
             </Variant>
           </Item>
 
@@ -1081,11 +1173,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: detection (no media)" usage="Detections queue: click leads to edit; no-media placeholder">
+          <Item name="<EntityCard variant=compact>: no media" usage="A card whose entity carries no media: the marked no-media placeholder, not a generated stand-in">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/events/demo/edit"
+                detailHref="/events/demo"
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.owner.username }}
@@ -1093,6 +1185,14 @@ export default function PalettePage() {
                 coords={MOCK_DETAIL.event_coords}
                 tags={MOCK_DETAIL.tags}
               />
+            </div>
+          </Item>
+
+          <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several. Hover any badge: every state carries title text saying what it means, which pieces are missing in full, and what to do next.">
+            <div className="w-full max-w-xl space-y-2">
+              <DetectionQueueRow draft={MOCK_DRAFT_READY} />
+              <DetectionQueueRow draft={MOCK_DRAFT_ONE_MISSING} />
+              <DetectionQueueRow draft={MOCK_DRAFT_SEVERAL_MISSING} />
             </div>
           </Item>
 

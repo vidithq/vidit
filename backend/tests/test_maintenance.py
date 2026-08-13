@@ -165,39 +165,6 @@ def test_reap_auth_tokens_endpoint_403_for_regular_user(regular_user):
     assert response.status_code == 403
 
 
-# ── enqueue_source_archival ────────────────────────────────────────────
-
-
-def test_enqueue_source_archival_endpoint_for_admin(admin_user, db):
-    response = client.post(
-        "/api/v1/admin/maintenance/enqueue-source-archival",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert "events_scanned" in body
-    assert "links_enqueued" in body
-
-    event = (
-        db.query(AdminEvent)
-        .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_enqueue_source_archival",
-        )
-        .order_by(AdminEvent.created_at.desc())
-        .first()
-    )
-    assert event is not None
-
-
-def test_enqueue_source_archival_endpoint_403_for_regular_user(regular_user):
-    response = client.post(
-        "/api/v1/admin/maintenance/enqueue-source-archival",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
 # ── send_completion_digests ────────────────────────────────────────────
 
 
