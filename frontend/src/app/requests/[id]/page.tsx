@@ -17,7 +17,8 @@ import { loginNext } from "@/lib/navigation";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { CloseEventForm } from "@/components/event/CloseEventForm";
-import { ReportEventPanel } from "@/components/event/ReportEventPanel";
+import ShareButtons from "@/components/event/ShareButtons";
+import { useReportEvent } from "@/components/event/useReportEvent";
 import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -36,13 +37,18 @@ export default function RequestDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const requestId = typeof params.id === "string" ? params.id : "";
   const {
     data: request,
     error: loadError,
     refetch,
   } = useApiResource<EventDetail>(
-    typeof params.id === "string" ? `/events/${params.id}` : null
+    requestId ? `/events/${requestId}` : null
   );
+  // Same split as the event page: the red trigger joins the share row in the
+  // header, the form opens under it. Before the early returns, as every hook
+  // here must be.
+  const report = useReportEvent(requestId);
   // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
   // Optimistic "I'm working on this": flip locally on click so the button
@@ -130,7 +136,28 @@ export default function RequestDetailPage() {
       back
       title={request.title}
       subtitle={<AuthorByline author={request.owner} avatar />}
+      actions={
+        // A request is served by the same `GET /events/{id}` a located row is,
+        // and `/events/{id}` renders it, so the share row needs nothing the
+        // payload does not already carry: the coordinate pair is simply absent
+        // and the tweet drops that line.
+        <div className="flex items-center gap-1.5">
+          <ShareButtons
+            id={request.id}
+            title={request.title}
+            author={request.owner.username}
+            eventDate={request.event_date}
+            lat={request.event_coords?.lat ?? null}
+            lng={request.event_coords?.lng ?? null}
+            status={request.status}
+          />
+          {report.trigger}
+        </div>
+      }
     >
+        {/* Directly under the header, where the trigger that opened it is. */}
+        {report.panel}
+
         {/* A request is an event with no coordinates, so the body renders with
             an empty Location and the missing detected-from / requested-by rows
             simply drop out. Its two request-only rows slot in via detailExtras. */}
@@ -234,10 +261,6 @@ export default function RequestDetailPage() {
             </Button>
           </div>
         )}
-
-        {/* A request carries footage too, so it is reportable on the same
-            terms as a located event. */}
-        <ReportEventPanel eventId={request.id} />
     </PageShell>
   );
 }

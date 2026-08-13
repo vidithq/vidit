@@ -120,7 +120,7 @@ export default function LegalPage() {
               {CONTACT_EMAIL}
             </a>
             . Chaque contenu publié peut également être signalé depuis sa page,
-            sans compte, à l&apos;aide du bouton « Report this event ». Les
+            sans compte, à l&apos;aide du bouton rouge « Report ». Les
             signalements sont examinés par un administrateur, qui peut retirer
             le contenu de toute consultation publique.
           </p>
