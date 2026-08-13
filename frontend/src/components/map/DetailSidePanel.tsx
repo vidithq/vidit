@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -51,31 +50,31 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
           <div className="space-y-2">
             {/* `pr-6` on the heading alone: it is the line the absolute close
                 button overlaps, and keeping the inset off the block below lets
-                the action row sit flush with the panel's content edge. */}
-            <h2 className="text-lg font-medium text-neutral-100 pr-6">
-              {detail.title}
+                the action row sit flush with the panel's content edge. The
+                title is the permalink to the event page, an explicit TEXT_LINK
+                like every other in-app link in this rich preview (the byline
+                below, requested-by in the body); no external glyph, since that
+                marks external destinations only (ArchivedCopies). */}
+            <h2 className="text-lg font-medium pr-6">
+              <Link
+                href={`/events/${detail.id}`}
+                className={`text-neutral-100 ${TEXT_LINK}`}
+              >
+                {detail.title}
+              </Link>
             </h2>
             {/* The panel's actions ride the byline row, right-aligned under the
                 title and clear of the close button, so this surface puts its
                 controls in the same top-right spot the two detail pages do.
                 The same shared cluster as those pages, so tweet and clipboard
                 output and the report form stay in sync across every surface.
-                The Full page link sits left of it: it navigates away rather
-                than acting on the event, so it is not part of the grammar. */}
+                Navigation lives on the title permalink above, so the row
+                carries actions only. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
                 <AuthorByline author={detail.owner} size="xs" avatar />
               </p>
-              <div className="flex items-center gap-3 shrink-0">
-                <Link
-                  href={`/events/${detail.id}`}
-                  className={`flex items-center gap-1 text-[11px] shrink-0 ${TEXT_LINK}`}
-                >
-                  Full page
-                  <ExternalLink size={11} />
-                </Link>
-                {actions}
-              </div>
+              <div className="flex items-center gap-3 shrink-0">{actions}</div>
             </div>
           </div>
 
