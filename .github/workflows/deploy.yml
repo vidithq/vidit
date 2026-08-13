@@ -218,7 +218,7 @@ jobs:
         run: npm install -g vercel
 
       - name: Pull Vercel env (production)
-        run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build
         env:
@@ -250,10 +250,10 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: vercel build --prod --token=$VERCEL_TOKEN
+        run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy
         run: |
-          URL=$(vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           echo "Deployed to $URL"
           echo "- **URL:** $URL" >> "$GITHUB_STEP_SUMMARY"
