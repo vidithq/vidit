@@ -49,6 +49,42 @@ export function ProfileTitle({
   );
 }
 
+/**
+ * The line under the handle: the analyst's own framing, then the account's
+ * email on your own profile.
+ *
+ * The bio reads here rather than in a card of its own, so a visitor meets the
+ * identity as one compact block (picture, handle, one line of prose) and the
+ * evidence starts immediately below it. `<PageShell>` owns the slot and its
+ * `[overflow-wrap:anywhere]`, which is what keeps a bio holding a bare URL, or
+ * an email that is one unbreakable token, inside the frame on a phone.
+ *
+ * Three shapes, each deliberate. **Empty:** the caller passes no subtitle at
+ * all, so the handle sits alone rather than over a blank slot. **With a
+ * link:** the URL is plain text that breaks where it must, as it was in the
+ * card. **Long:** it wraps instead of clamping. `BIO_MAX_LEN` already caps it
+ * at 500 characters, and hiding the tail behind an ellipsis would drop the
+ * analyst's own framing with nothing offering to reveal it. Line breaks the
+ * author typed collapse into the flow, so a multi-paragraph bio reads as one
+ * line of prose here and keeps its shape in the edit field.
+ */
+export function ProfileIdentity({
+  bio,
+  email,
+}: {
+  bio: string | null;
+  email?: string;
+}) {
+  return (
+    <>
+      {bio && <p>{bio}</p>}
+      {/* `mt-1` only when it follows the bio: alone it is the slot's only
+          line and needs no lead. */}
+      {email && <p className={`text-xs text-neutral-500 ${bio ? "mt-1" : ""}`}>{email}</p>}
+    </>
+  );
+}
+
 /** The header action cluster: share on every profile, plus Follow (someone
  *  else's) or the edit / save pair (your own). */
 export function ProfileActions({

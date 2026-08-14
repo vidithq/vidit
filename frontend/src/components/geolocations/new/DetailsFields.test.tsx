@@ -27,7 +27,7 @@ const baseProps = {
 // The locked box's muted text colour, the one token the link overrides.
 const MUTED = "text-neutral-400";
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
-const SNAPSHOT_PLACEHOLDER = "https://archive.ph/…";
+const SNAPSHOT_PLACEHOLDER = "https://web.archive.org/web/…";
 
 describe("DetailsFields", () => {
   it("renders the Details heading, the date + source fields, and their ? help", () => {
@@ -221,24 +221,24 @@ describe("DetailsFields", () => {
     ).toBeInTheDocument();
   });
 
-  it("prefills both provider pages with the source URL as typed", () => {
+  it("prefills one provider page with the source URL as typed", () => {
     render(
       <DetailsFields {...baseProps} sourceUrl="https://t.me/c/1?x=2 " />
     );
-    // Wayback carries the link as a path (the scheme separator stays readable),
-    // archive.today as a query parameter (every reserved character escaped).
+    // Wayback carries the link as a path, where the scheme separator stays
+    // readable.
     expect(
       screen.getByRole("link", { name: "Open Wayback Machine" })
     ).toHaveAttribute(
       "href",
       "https://web.archive.org/save/https://t.me/c/1?x=2"
     );
+    // The second link is gone. The field still takes a snapshot from the other
+    // hosts, and says so beside the link rather than opening a page for each.
+    expect(screen.queryByRole("link", { name: /archive\.today/ })).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Open archive.today" })
-    ).toHaveAttribute(
-      "href",
-      `https://archive.ph/?url=${encodeURIComponent("https://t.me/c/1?x=2")}`
-    );
+      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
+    ).toBeInTheDocument();
   });
 
   it("flags a paste that cannot be a snapshot, and only once one is typed", () => {

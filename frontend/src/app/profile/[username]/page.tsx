@@ -7,11 +7,12 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import type { PublicProfile } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
-import { BioCard } from "@/components/profile/BioCard";
+import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
 import {
   ProfileActions,
   ProfileHeaderEditFields,
+  ProfileIdentity,
   ProfileTitle,
 } from "@/components/profile/ProfileHeader";
 import { ProfileInsights } from "@/components/profile/ProfileInsights";
@@ -83,28 +84,39 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: who, then the work, then the account. The handle titles
-  // the page, the bio positions it, the linked accounts carry the rest of that
-  // identity (they are where the analyst already posts, so they belong beside
-  // the bio rather than at the far end of the page), and everything below is
-  // evidence, shape of work first (`ProfileInsights`), then where it happened
-  // (`ProfileMap`), then the events themselves. Sign out sinks under all of
-  // it, so a visitor lands on a portfolio and the owner still finds their
-  // controls in one place.
+  // Portfolio order: show the work, then explain the work, then say where to
+  // reach the person. Most probative first, most incidental last.
   //
-  // The detections entry is the exception: it is pending work, not an account
-  // control, so on the owner's own profile it opens the page, above the bio.
-  // A queue of hundreds read as buried at the bottom of the portfolio.
+  // The identity is one compact block and not a section: the handle titles the
+  // page, the avatar sits beside it, and the bio is the line under it
+  // (`ProfileIdentity`), so a visitor is one scroll-free glance from evidence.
+  // Then the counters, then the coverage map, then the submissions themselves:
+  // three readings of the same body of work, widest first. Insights follows,
+  // because a shape-of-work card explains submissions a reader has already
+  // seen. Linked accounts land last of the public blocks: they are where to
+  // find the analyst elsewhere, which is worth nothing until the work has
+  // earned the click. Sign out sinks under all of it.
+  //
+  // The detections entry is the exception to "work first": it is pending work
+  // rather than an account control, so on the owner's own profile it stays
+  // above the fold. A queue of hundreds read as buried at the bottom.
   //
   // Editing collapses that order to the form alone: every editable field sits
   // between the header and Save, with the read-only portfolio sections dropped
-  // for the duration. The bio and the linked-accounts inputs are contiguous in
-  // both modes, which is what keeps Save on screen by the time you reach them.
+  // for the duration. The bio and the linked-accounts inputs stay contiguous,
+  // which is what keeps Save on screen by the time you reach them, and they
+  // stay in the order the page reads them.
+  const bio = edit.editing ? null : profile.bio?.trim() || null;
+  const ownerEmail = isOwn ? currentUser?.email : undefined;
   return (
     <PageShell
       back
       title={<ProfileTitle profile={profile} edit={edit} />}
-      subtitle={isOwn ? currentUser?.email : undefined}
+      // No slot at all when the analyst wrote no bio and the viewer is not the
+      // owner, so the handle stands alone instead of over an empty line.
+      subtitle={
+        bio || ownerEmail ? <ProfileIdentity bio={bio} email={ownerEmail} /> : undefined
+      }
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
       <ProfileHeaderEditFields edit={edit} />
@@ -113,15 +125,11 @@ export default function ProfilePage() {
         <DetectionsEntry username={profile.username} count={detectionCount} />
       )}
 
-      <BioCard profile={profile} edit={edit} />
-
-      <LinkedAccountsCard profile={profile} edit={edit} />
+      <BioField edit={edit} />
 
       {!edit.editing && (
         <>
           <ProfileStats profile={profile} />
-
-          <ProfileInsights username={profile.username} />
 
           <ProfileMap username={profile.username} />
 
@@ -131,18 +139,22 @@ export default function ProfilePage() {
             isOwn={isOwn}
           />
 
-          {isOwn && (
-            <div className="pt-4 border-t border-neutral-800 flex justify-center">
-              <Button
-                variant={signOut.armed ? "danger" : "secondary"}
-                onClick={signOut.trigger}
-              >
-                <LogOut size={14} strokeWidth={1.8} />
-                {signOut.armed ? "Confirm sign out" : "Sign out"}
-              </Button>
-            </div>
-          )}
+          <ProfileInsights username={profile.username} />
         </>
+      )}
+
+      <LinkedAccountsCard profile={profile} edit={edit} />
+
+      {!edit.editing && isOwn && (
+        <div className="pt-4 border-t border-neutral-800 flex justify-center">
+          <Button
+            variant={signOut.armed ? "danger" : "secondary"}
+            onClick={signOut.trigger}
+          >
+            <LogOut size={14} strokeWidth={1.8} />
+            {signOut.armed ? "Confirm sign out" : "Sign out"}
+          </Button>
+        </div>
       )}
     </PageShell>
   );
