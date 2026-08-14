@@ -42,7 +42,7 @@ describe("ProfileMap", () => {
 
     // The whole set frames the camera, drafts included.
     expect(screen.getByTestId("map")).toHaveAttribute("data-points", "3");
-    // The Insights card above splits its own status counts under these two
+    // The Insights card below splits its own status counts under these two
     // names, so the two numbers on the page can't contradict each other.
     expect(screen.getByText("2 geolocated, 1 detected on the map")).toBeInTheDocument();
   });

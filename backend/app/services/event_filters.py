@@ -52,6 +52,40 @@ def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     return Event.deleted_at.is_(None), Event.hidden_at.is_(None)
 
 
+def published_events() -> ColumnElement[bool]:
+    """The predicate for work an analyst has published: ``geolocated`` alone.
+
+    The single home for what counts as one analyst's own published output,
+    as opposed to what is merely visible. ``visible_events`` answers "may a
+    reader see this row"; this answers "did this analyst stand behind it".
+    The public profile feed (:func:`routers.users.get_user_geolocations`)
+    filters on both, so its count and its rows agree, and the profile
+    payload's ``geolocations_count``
+    (:func:`routers.users.get_user_profile`) counts through it too, so the
+    Submitted tile prints the size of the set the feed under it serves.
+
+    Why the other three states are out:
+
+    * ``detected`` is machine output (archive import or the bot) the analyst
+      has not vouched for. Attributing it to them as a submission credits
+      them with a claim they never made.
+    * ``closed`` off ``detected`` is a draft the analyst threw out. Listing a
+      rejected row as their work inverts the decision they took.
+    * ``requested`` is an open call for help, an ask rather than an answer.
+      It carries no vouched location, anyone may fulfil it, and it lives on
+      its own read view (see :data:`VIEWS`). ``closed`` off ``requested`` is
+      a withdrawn ask, out for both reasons.
+
+    Deliberate non-callers: the ``located`` catalog view, which shows drafts
+    beside vouched rows on purpose (:func:`view_predicate`); the profile
+    coverage map, which plots both and splits the count; and
+    :func:`services.user_stats.get_user_stats`, which reports every status as
+    its own tally and sums them into ``total_events``, the one place a reader
+    still gets the analyst's whole body of live work as a single number.
+    """
+    return Event.status == STATUS_GEOLOCATED
+
+
 def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
     """Parse an optional ISO-8601 (YYYY-MM-DD) date. Empty → ``None``; 422 on garbage.
 
