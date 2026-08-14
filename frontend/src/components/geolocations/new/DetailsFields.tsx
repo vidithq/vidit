@@ -11,6 +11,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Switch } from "@/components/ui/Switch";
 import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
+import { OpenLink } from "./OpenLink";
 
 interface DetailsFieldsProps {
   sourceUrl: string;
@@ -157,6 +158,12 @@ export function DetailsFields({
           placeholder="https://t.me/channel/12345"
           invalid={sourceUrlInvalid}
         />
+        {/* Locked, not unreachable: the field cannot be retyped, but the link
+            it holds still opens. Guarded on a value, since a fulfilment can
+            reach here before the request's source has loaded. */}
+        {sourceUrlLocked && sourceUrl && (
+          <OpenLink href={sourceUrl} label="Open the source link" />
+        )}
       </div>
 
       {/* Archival sits under the link it archives, on the form where the link
@@ -223,6 +230,7 @@ export function DetailsFields({
             readOnly
             value={detectedFromUrl}
           />
+          <OpenLink href={detectedFromUrl} label="Open the post it came from" />
         </div>
       )}
     </Card>

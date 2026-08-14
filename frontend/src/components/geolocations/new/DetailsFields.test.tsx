@@ -77,6 +77,58 @@ describe("DetailsFields", () => {
     );
   });
 
+  // A locked field is non-editable, never unreachable: the value it holds is
+  // still a link an analyst has to be able to open.
+  describe("locked URL fields stay openable", () => {
+    it("opens the locked source URL without unlocking the field", () => {
+      render(
+        <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
+      );
+      const link = screen.getByRole("link", { name: "Open the source link" });
+      expect(link).toHaveAttribute("href", "https://t.me/c/1");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      // The affordance is additive: the field itself did not become editable.
+      expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
+        "readonly"
+      );
+      expect(screen.getByText("from request")).toBeInTheDocument();
+    });
+
+    it("opens the provenance URL without unlocking the field", () => {
+      render(
+        <DetailsFields
+          {...baseProps}
+          detectedFromUrl="https://x.com/analyst/status/1"
+        />
+      );
+      const link = screen.getByRole("link", {
+        name: "Open the post it came from",
+      });
+      expect(link).toHaveAttribute("href", "https://x.com/analyst/status/1");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(
+        screen.getByDisplayValue("https://x.com/analyst/status/1")
+      ).toHaveAttribute("readonly");
+      expect(screen.getByText(/provenance, can't change/)).toBeInTheDocument();
+    });
+
+    it("offers no open affordance while the source URL is editable", () => {
+      render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
+      expect(
+        screen.queryByRole("link", { name: "Open the source link" })
+      ).toBeNull();
+    });
+
+    it("offers no open affordance when there is no provenance URL", () => {
+      render(<DetailsFields {...baseProps} />);
+      expect(
+        screen.queryByRole("link", { name: "Open the post it came from" })
+      ).toBeNull();
+    });
+  });
+
   it("flags a missing field's label red, same as its input outline", () => {
     render(
       <DetailsFields
