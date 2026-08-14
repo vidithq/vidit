@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **A public profile lists the work its analyst published, not the drafts they were handed** ([`backend/app/routers/users.py`](backend/app/routers/users.py), [`backend/app/services/event_filters.py`](backend/app/services/event_filters.py), [`frontend/src/components/profile/RecentSubmissions.tsx`](frontend/src/components/profile/RecentSubmissions.tsx), [`docs/api.md`](docs/api.md#get-usersusernameevents), [`docs/design.md`](docs/design.md#public-profile)). `GET /users/{username}/events` filtered on visibility alone, so the profile's Recent submissions block served every lifecycle state the analyst owned. One analyst's first five cards were three machine drafts and one rejected row, titled with the raw tweet text they were imported from, against seven published geolocations and 480 drafts in total. A `detected` row is machine output nobody has vouched for and a `closed` row off `detected` is one the analyst threw out, so presenting either as their submission credits them with a claim they never made or inverts a judgement they did make. The endpoint now serves `geolocated` alone, on the rows and on `total` alike, so the pager cannot count a row it will not hand back. A `requested` event is out for a different reason: it is an open call for help rather than an answer, it carries no vouched location, and it lives on its own read view. Nothing is hidden by this: the owner still works their drafts from the detections queue that opens their own profile, the coverage map still plots drafts beside published rows and still splits its count, and the `Submitted` tile still counts the whole body of work. The block's heading copy now keys off the returned rows instead of that wider count, so an analyst holding drafts alone reads "No geolocations yet." rather than a promise above an empty list, and its `Show more` link carries `status=geolocated` into search so the expansion serves the set the block previewed. Visitors and the owner see the same block.
 
 ## v0.5.3, 2026-08-14
 

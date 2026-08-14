@@ -11,7 +11,7 @@ from app.routers.events._common import build_event_list
 from app.schemas.event import PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
-from app.services.event_filters import visible_events
+from app.services.event_filters import published_events, visible_events
 from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -164,7 +164,18 @@ def get_user_geolocations(
     per_page: int = Query(20, ge=1),
     db: Session = Depends(get_db),
 ):
-    """One analyst's events, newest event date first, capped at 100 per page.
+    """One analyst's published geolocations, newest event date first, capped
+    at 100 per page.
+
+    Published, not merely visible: :func:`published_events` narrows to
+    ``geolocated``, so the portfolio carries only rows the analyst vouched
+    for. Machine drafts and the rows they rejected are theirs to work, not
+    theirs to be credited with; the owner reaches the drafts through their
+    detections queue instead. The filter is applied to the count and to the
+    rows alike, so a page of the feed and its ``total`` agree. It does not
+    apply to ``geolocations_count`` on the profile payload, which counts the
+    whole body of live work by decision (the Submitted tile and the coverage
+    map both count drafts in).
 
     Offset-paged rather than cursor-paged: the ordering the profile reads by
     is ``event_date``, which is nullable and editable and so cannot key a
@@ -177,7 +188,9 @@ def get_user_geolocations(
     # from reaching Postgres as a negative OFFSET (a 500).
     per_page = page_size(per_page)
 
-    total = db.query(Event).filter(Event.owner_id == user.id, *visible_events()).count()
+    owned_and_published = (Event.owner_id == user.id, *visible_events(), published_events())
+
+    total = db.query(Event).filter(*owned_and_published).count()
 
     rows = (
         db.query(
@@ -193,7 +206,7 @@ def get_user_geolocations(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
-        .filter(Event.owner_id == user.id, *visible_events())
+        .filter(*owned_and_published)
         # ``event_date`` alone is neither unique nor non-null, so an OFFSET
         # walk over it lets Postgres return tied rows in any order it likes
         # and a page can repeat a row the previous one already served, or skip

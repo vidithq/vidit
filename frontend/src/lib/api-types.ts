@@ -1263,7 +1263,18 @@ export interface paths {
         };
         /**
          * Get User Geolocations
-         * @description One analyst's events, newest event date first, capped at 100 per page.
+         * @description One analyst's published geolocations, newest event date first, capped
+         *     at 100 per page.
+         *
+         *     Published, not merely visible: :func:`published_events` narrows to
+         *     ``geolocated``, so the portfolio carries only rows the analyst vouched
+         *     for. Machine drafts and the rows they rejected are theirs to work, not
+         *     theirs to be credited with; the owner reaches the drafts through their
+         *     detections queue instead. The filter is applied to the count and to the
+         *     rows alike, so a page of the feed and its ``total`` agree. It does not
+         *     apply to ``geolocations_count`` on the profile payload, which counts the
+         *     whole body of live work by decision (the Submitted tile and the coverage
+         *     map both count drafts in).
          *
          *     Offset-paged rather than cursor-paged: the ordering the profile reads by
          *     is ``event_date``, which is nullable and editable and so cannot key a

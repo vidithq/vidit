@@ -12,8 +12,9 @@ import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
 
 /** One card in the profile's recent-submissions list: the same compact card
- *  shape the located catalogue and the requested queue use. A
- *  coordless / undated event (a ``requested`` row) can surface here too. */
+ *  shape the located catalogue and the requested queue use. The endpoint
+ *  serves published work only (``geolocated``), so every row here carries a
+ *  location the analyst vouched for. */
 export type RecentSubmission = EventListItem;
 
 /** Shape returned by `GET /users/{username}/events`. */
@@ -39,15 +40,24 @@ export function RecentSubmissions({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
+          {/* Gated on the rows, not on ``geolocations_count``: that count is
+              the whole body of live work, drafts included, so an analyst
+              holding only machine drafts would otherwise be promised
+              "latest geolocations" above an empty list. */}
           <p className="text-xs text-neutral-500">
-            {profile.geolocations_count > 0
+            {submissions.length > 0
               ? `${profile.username}'s latest geolocations, newest first.`
               : "No geolocations yet."}
           </p>
         </div>
         {submissions.length > 0 && (
+          // ``status=geolocated`` so the expansion serves the same body of
+          // work the block above does: search's located group otherwise
+          // widens to machine drafts. The value is in the panel's own
+          // vocabulary, so it lands as a removable chip a reader can drop to
+          // widen the view deliberately.
           <Link
-            href={`/search?type=event&author=${encodeURIComponent(profile.username)}`}
+            href={`/search?type=event&author=${encodeURIComponent(profile.username)}&status=geolocated`}
             className={buttonClasses("secondary", {
               className: "shrink-0 whitespace-nowrap",
             })}
