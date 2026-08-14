@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Archive, History } from "lucide-react";
+import { Archive } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
 import { recordArchivedCopy } from "@/lib/events";
@@ -45,17 +45,15 @@ interface ProviderSpec {
   key: ArchivedLink["provider"];
   /** The service's name, as it is announced. */
   label: string;
-  Glyph: typeof History;
   /** The provider page that archives `url`, opened in the analyst's own tab. */
   submitUrl: (url: string) => string;
 }
 
 /**
- * The two services, in the order they read. Distinguishable glyphs rather than
- * the services' own marks: a logo is a trademark, and a clock-with-arrow for
- * the Wayback Machine's history replay against a box for archive.today's
- * snapshot tells them apart on their own. The name is what carries the
- * identity, in the accessible name.
+ * The two services, in the order they read. Neither carries a glyph: archiving
+ * has one mark on this page whatever produced the copy (`ARCHIVE_MARK`), and
+ * the service's name is what carries the identity, in the accessible name and
+ * in the link text. Their own logos are trademarks and are never drawn.
  *
  * `submitUrl` encodes to match each form: the Wayback save page carries the
  * link as a path, where `encodeURI` keeps the scheme separator readable, and
@@ -66,16 +64,28 @@ const PROVIDERS: readonly ProviderSpec[] = [
   {
     key: "wayback",
     label: "Wayback Machine",
-    Glyph: History,
     submitUrl: (url) => `https://web.archive.org/save/${encodeURI(url)}`,
   },
   {
     key: "archive_today",
     label: "archive.today",
-    Glyph: Archive,
     submitUrl: (url) => `https://archive.ph/?url=${encodeURIComponent(url)}`,
   },
 ];
+
+/**
+ * The one mark for an archived copy, in every state and for every provider.
+ *
+ * lucide's `Archive` over its `History`: the lidded box is the concept itself,
+ * a copy put away, and at the 13px this renders at its two blocks stay legible
+ * where a clock face and its arrow collapse into a smudge. A clock also reads
+ * as "recent" or "version history" rather than "a stored copy".
+ *
+ * The shape is fixed so that a reader meeting it on the source row and again on
+ * the provenance row reads one concept, not two. What varies is state, carried
+ * in colour and interactivity, and provider, carried in the accessible name.
+ */
+const ARCHIVE_MARK = Archive;
 
 const PROVIDER_BY_KEY = new Map(PROVIDERS.map((p) => [p.key, p]));
 
@@ -199,12 +209,11 @@ export function ArchivedCopies({
   );
 }
 
-/** The copy that exists: one accent glyph opening it, marked with its service. */
+/** The copy that exists: the accent mark opening it, named for its service. */
 function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: string }) {
-  // A provider the client does not know is still a stored copy, so it opens
-  // under the generic archive mark rather than rendering as no copy at all.
+  // A provider the client does not know is still a stored copy, so it is named
+  // generically rather than rendering as no copy at all.
   const spec = PROVIDER_BY_KEY.get(copy.provider);
-  const Glyph = spec?.Glyph ?? Archive;
   const label = spec ? `${spec.label} copy of ${describes}` : `Archived copy of ${describes}`;
   return (
     <a
@@ -214,7 +223,7 @@ function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: str
       aria-label={label}
       className={`${TEXT_LINK} inline-flex`}
     >
-      <Glyph size={13} aria-hidden />
+      <ARCHIVE_MARK size={13} aria-hidden />
     </a>
   );
 }
@@ -227,7 +236,7 @@ function MissingGlyph({ describes }: { describes: string }) {
       aria-label={`No archived copy of ${describes}`}
       className="inline-flex text-neutral-600"
     >
-      <Archive size={13} aria-hidden />
+      <ARCHIVE_MARK size={13} aria-hidden />
     </span>
   );
 }
@@ -274,7 +283,7 @@ function ArchiveAction({
         aria-label={`Archive ${describes}`}
         className="inline-flex text-neutral-600 hover:text-neutral-300 transition-colors"
       >
-        <Archive size={13} aria-hidden />
+        <ARCHIVE_MARK size={13} aria-hidden />
       </button>
       {open && (
         <span className="absolute right-0 top-5 z-20 flex w-64 flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left shadow-lg">

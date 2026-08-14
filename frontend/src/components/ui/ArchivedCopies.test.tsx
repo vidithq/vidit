@@ -45,6 +45,34 @@ describe("ArchivedCopies", () => {
     ).toHaveAttribute("href", ARCHIVE_TODAY);
   });
 
+  it("draws one mark for archiving, whatever the provider and whatever the state", () => {
+    // The concept has a single shape: a reader meeting the mark on the source
+    // row and again on the provenance row must read one idea, not two. What
+    // varies is state (colour, interactivity) and provider (the accessible
+    // name), never the drawing.
+    const mark = (ui: React.ReactElement) => {
+      const { container, unmount } = render(ui);
+      const svg = container.querySelector("svg")?.outerHTML ?? "";
+      unmount();
+      return svg;
+    };
+    const drawings = new Set([
+      mark(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} help={false} />),
+      mark(
+        <ArchivedCopies
+          {...props}
+          copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }}
+          help={false}
+        />
+      ),
+      mark(<ArchivedCopies {...props} copy={null} help={false} />),
+      mark(<ArchivedCopies {...props} copy={null} canArchive help={false} />),
+    ]);
+
+    expect(drawings.size).toBe(1);
+    expect([...drawings][0]).not.toBe("");
+  });
+
   it("leaves a reader who cannot archive an inert grey glyph", () => {
     render(<ArchivedCopies {...props} copy={null} />);
     // The absence is shown rather than hidden, but no action is offered that

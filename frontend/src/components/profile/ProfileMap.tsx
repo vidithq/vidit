@@ -31,7 +31,7 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * profile exactly as they do on `/map`.
  *
  * The count beside the heading splits on the same statuses, under the status
- * names the Insights card above uses (`Geolocated`, `Detected`), so a reader
+ * names the Insights card below uses (`Geolocated`, `Detected`), so a reader
  * can't find two numbers on one page claiming to count the same thing. The
  * `Submitted` tile is not the same figure and is not the wording to borrow: it
  * counts an analyst's whole body of work, drafts included, where this counts
