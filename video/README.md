@@ -207,8 +207,8 @@ as the app clips; any aspect ratio works, 16:9 crops least.
 
 ## v0.5 promo A, the portfolio (`PromoV05`)
 
-22 seconds, no voice, captions on screen: an analyst's public profile as a
-portfolio. One continuous take, recorded **logged out**.
+An analyst's public profile as a portfolio: the brand intro, ONE unbroken
+take, the closing card. Recorded **logged out**.
 
 ```bash
 make promo-v05       # record + render + both outputs
@@ -219,51 +219,95 @@ Or step by step:
 ```bash
 cd video
 npm run record:v05   # → public/clips/portfolio.mp4 + its marks
-npm run render:v05   # → out/promo-v05.mp4 (1920×1080, 60 fps, 22.0s)
+npm run render:v05   # → out/promo-v05.mp4 (1920×1080, 60 fps)
 ```
 
 `make promo-v05` adds the two staged outputs: `out/promo-v05-master.mp4`
 (the same 1080p stream remuxed with `+faststart`, for S3) and
 `out/promo-v05-readme.mp4` (720p / 30 fps, for a GitHub attachment URL).
 
-The beats, all windows of the one take:
+### One take, no cuts
 
-| # | Beat | What is on camera |
+The recorded part is a single continuous window of `portfolio.mp4`. Nothing
+in it is assembled: the page travels by scrolling, the camera travels by
+easing, and both page changes are in-page router pushes the take performs on
+camera (a submission card, then the sidebar's Map link). The only two
+transitions in the video are the crossfades into and out of the recorded
+part, where the world genuinely changes.
+
+That constraint moves the editing into the capture. `record-v05.js` is paced
+in real time, holds included, and its length IS the promo's recorded length,
+so a hold that runs long there runs long on screen. `PromoV05.tsx` has no
+windowing machinery left: it places three scenes and hangs captions off the
+take's marks.
+
+Two consequences worth knowing before you re-record:
+
+- A route compiling for the first time cannot be cut out, so the take runs a
+  silent warm-up pass over every route it will visit before it starts
+  recording.
+- Never navigate with `page.goto` inside the recorded pass. A reload blinks
+  the page white, and there is no cut available to hide it.
+
+| Beat | What is on camera | Caption |
 |---|---|---|
-| 1 | Identity | Avatar, handle, bio, counters. Motionless, no cursor: the first frame is the thumbnail a tweet shows before anyone presses play. |
-| 2 | Recent submissions | Eased scroll to the list, real footage thumbnails. |
-| 3 | Coverage | The profile map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. |
-| 4 | One event | The click on a submission, then source media, the point map, coordinates, the source row with its archived-copy glyph, and the written proof. |
-| 5 | The archive | The general map, pulling back so the analyst's points sit among everyone else's. |
-| 6 | Closing card | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo). |
+| Intro | The wordmark and the tagline | |
+| 1 | Avatar, handle, bio, the counters strip, the Insights card. Motionless, no cursor. | Your work, on one page. |
+| 2 | The travel down the page: the linked accounts pass by, the counters and the insights land. | Every event you documented. |
+| 3 | The coverage map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. | The ground you covered. |
+| 4 | On down to the submissions, one opens: source media, the point map, coordinates, the source row with its archived copy, the written proof. | The source, and a copy that outlives it. |
+| 5 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
+| Outro | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo) | |
 
-Two constraints the take enforces, both editorial:
+### The window is taller than 16:9
+
+The take captures at 1280x900, not the 1280x720 the other pipelines use, so
+the opening frame holds the identity AND the work: avatar, handle, bio, the
+counters and the Insights card all sit above the fold at that height. At 720
+the insights fell below the fold and the linked-accounts card was the middle
+of the frame, which is the wrong thumbnail for a portfolio.
+
+The comp's browser BODY carries the same aspect ratio (1180x830), so
+`objectFit: cover` has nothing to crop. Change one and you change the other,
+or the recording gets squashed.
+
+### Two editorial rules the take enforces
 
 - **No session.** The owner view of a profile carries the account's email
   address and owner-only chrome (Edit profile, the detections banner, Sign
   out), none of which belongs in a promo. Recording anonymously is also the
-  honest form of the claim beat 5 makes. The take signs in to nothing,
-  submits no form and writes nothing.
-- **Only the analyst's public page.** `HANDLE` at the top of
-  `record-v05.js` names the analyst who consented to being filmed. The take
-  visits their profile, one of their events, and the public map.
+  honest form of the claim the last caption makes. The take signs in to
+  nothing, submits no form and writes nothing.
+- **Only the analyst's public page.** `HANDLE` at the top of `record-v05.js`
+  names the analyst who consented to being filmed. The take visits their
+  profile, one of their events, and the public map.
 
 Retarget it to another analyst by changing `HANDLE`, `COVERAGE_CENTER` and
-`COVERAGE_ZOOM` in `record-v05.js`. The event opened in beat 4 is chosen at
-record time (the newest recent submission carrying source media, coordinates
-and a written proof), so it never needs a hardcoded id.
+`COVERAGE_ZOOM`, and by pointing `TARGET_EVENT` at an event that passes
+`verifyTarget`.
 
-### The archived-copy glyph films in its empty state
+### The event the take opens
 
-Beat 4 frames the `Source` row, where `ArchivedCopies` renders. The glyph has
-three states, and which one you get is a property of the data, not of the
-capture: a link to the snapshot when the event has an archived copy, an
-"Archive the source" button for the owner, and a muted "No archived copy of
-the source" mark for everyone else. Logged out, on an event with no snapshot
-recorded, the take films the third. `record-v05.js` prints a warning when the
-event it picked has no archived copy, and the caption says only what the
-frame shows. Give the beat its archived copy by recording snapshots on the
-events before capture, not by recaptioning.
+`TARGET_EVENT` is checked before a frame is captured, and the script refuses
+to record if any of it stops holding:
+
+- `archived_source` is set. This is the copy of the SOURCE link, which is the
+  one beat 4 frames. An event can carry a copy of a secondary source or of
+  the post it was detected from and still show an empty glyph on the Source
+  row, so those two fields do not qualify it.
+- Source media, coordinates and a written proof, so the frame carries what
+  the caption claims.
+- It is in the Recent submissions the profile lists, since that is the card
+  the cursor clicks.
+
+To give an event its archived copy, capture the source yourself and record
+the snapshot through `POST /events/{id}/archives` as the owner. Look the
+capture up in Wayback's CDX API first (`https://web.archive.org/cdx/search/cdx?url=<source>&output=json&filter=statuscode:200`)
+and submit one through Save Page Now only if none exists. Save Page Now
+structurally refuses `x.com`, which is where most sources here live;
+`t.me` and `tiktok.com` capture fine. Load the replay URL before you record
+it: the CDX index lists captures that the replay layer will not serve, and a
+snapshot URL that does not resolve is worse than an empty glyph.
 
 ## Shared capture harness
 

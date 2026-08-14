@@ -76,10 +76,14 @@ promo: mock-admin
 	@ls -lh video/out/promo-master.mp4 video/out/promo-readme.mp4
 	@echo "Done. Master 2K (S3) → video/out/promo-master.mp4 | README 720p → video/out/promo-readme.mp4"
 
-# The v0.5 promo A, "the portfolio": a 22s logged-out take of an analyst's
-# public profile. Requires `make dev` running in another shell and a populated
-# catalog (`make import-prod` or an archive import); it reads the instance and
-# writes nothing to it.
+# The v0.5 promo A, "the portfolio": the brand intro, one unbroken logged-out
+# take of an analyst's public profile, the closing card. Requires `make dev`
+# running in another shell and a populated catalog (`make import-prod` or an
+# archive import); it reads the instance and writes nothing to it.
+#
+# The take is paced in real time and played uncut, so its length is the
+# promo's recorded length. Re-pace it in `video/record-v05.js`, not in the
+# composition.
 #
 # Two outputs stage off one capture run:
 #   - `promo-v05-master.mp4` — 1920x1080 / 60fps / CRF 16, +faststart

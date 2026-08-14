@@ -1,13 +1,26 @@
-// v0.5 promo A ("the portfolio"): one continuous take of an analyst's public
+// v0.5 promo A ("the portfolio"): ONE unbroken take of an analyst's public
 // profile, recorded LOGGED OUT against a running instance.
 //
-//   portfolio.mp4  identity block → recent submissions → coverage map →
-//                  one event's detail (source, coordinates, proof) → the
-//                  general map.
+//   portfolio.mp4  identity block → the work → the coverage map → one
+//                  submission's detail → the general map.
+//
+// The comp (`src/PromoV05.tsx`) plays this clip as a SINGLE continuous window:
+// there is no cut anywhere in the recorded part, so every transition you see
+// is motion the browser actually made. That constraint is what shapes this
+// file: the take is paced in real time, holds included, and its total length
+// IS the promo's recorded length. There is no windowing left to do in the
+// comp, so a hold that runs long here runs long on screen.
+//
+// The two page changes are in-page navigations, never reloads: a click on a
+// submission card and a click on the sidebar's Map link, both Next `<Link>`
+// pushes. The route swaps under a still camera, so nothing blinks white. A
+// silent warm-up pass visits both routes first, so the dev server's
+// first-visit compile happens off camera rather than inside a take that
+// cannot be cut.
 //
 // The clip lands in public/clips/ next to the v0.4 takes, with its marks in
 // meta.json; `gen-clips-manifest.js` compiles those into src/clips-manifest.ts
-// and `src/PromoV05.tsx` windows the beats out of them.
+// and the comp reads the marks to time its captions.
 //
 // Two rules this take enforces, both editorial:
 //
@@ -33,23 +46,41 @@ const {
   createRecorder,
 } = require("./capture-lib");
 
-const BASE = "http://localhost:3000";
-const API = "http://localhost:8000/api/v1";
+const BASE = process.env.PROMO_BASE || "http://localhost:3000";
+const API = process.env.PROMO_API || "http://localhost:8000/api/v1";
 const FPS = 60;
 const CAPTURE_DPR = 2;
+
+// A taller window than a 16:9 laptop, so the opening frame holds the identity
+// AND the work: avatar, handle, bio, the counters strip and the Insights card
+// all sit above the fold at this height. At 720 the insights fell off the
+// bottom and the linked-accounts card was the middle of the frame, which is
+// the wrong thumbnail for a portfolio. The comp's browser body matches this
+// aspect exactly, so nothing is cropped.
+const VIEWPORT = { width: 1280, height: 900 };
+
 const CLIPS_DIR = path.join(__dirname, "public", "clips");
 const META_PATH = path.join(CLIPS_DIR, "meta.json");
 
 // The analyst whose public profile the promo films, with their consent.
 const HANDLE = "MPGeoint";
 
+// The event the take opens. It has to satisfy three things, and
+// `verifyTarget` refuses to record if any of them stops holding:
+//   - an archived copy of its SOURCE (`archived_source`), so the detail beat
+//     shows the archive affordance doing its job rather than its empty state;
+//   - source media, coordinates and a written proof, so the frame carries
+//     what the caption claims;
+//   - a place in the Recent submissions list the profile renders, since that
+//     is the card the cursor clicks.
+const TARGET_EVENT = process.env.PROMO_EVENT || "2032501c-3c6c-454b-823b-9621007e5f92";
+
 // Where the coverage beat's camera settles. The profile map opens fitted to
 // the analyst's own points, which for a worldwide geolocator is close to a
-// world view; the ease then walks in to the densest worked area so "the
-// ground you covered" reads as ground rather than as a globe. Retarget this
-// when the promo switches analyst.
-const COVERAGE_CENTER = [30, 42];
-const COVERAGE_ZOOM = 3.3;
+// world view; the ease walks it in to the densest worked area so "the ground
+// you covered" reads as ground rather than as a globe.
+const COVERAGE_CENTER = [32, 44];
+const COVERAGE_ZOOM = 3.6;
 
 // The general map opens on its default camera; the closing beat pulls back
 // from it so the analyst's points sit among everyone else's.
@@ -61,9 +92,10 @@ const recordClip = createRecorder({
   outDir: path.join(__dirname, "out"),
   fps: FPS,
   dpr: CAPTURE_DPR,
+  viewport: VIEWPORT,
 });
 
-// ─── the event the take opens ────────────────────────────────────────────
+// ─── preflight ───────────────────────────────────────────────────────────
 
 // Read-only GET against the public API (no cookies): the take never writes.
 async function publicGet(pathname) {
@@ -72,189 +104,163 @@ async function publicGet(pathname) {
   return res.json();
 }
 
-function mediaList(event) {
-  const m = event.media;
-  if (!m) return [];
-  return (Array.isArray(m) ? m : [m]).filter(Boolean);
+function proofLength(doc) {
+  const walk = (n) =>
+    (n.text ? n.text.length : 0) + (n.content || []).reduce((a, c) => a + walk(c), 0);
+  return doc ? walk(doc) : 0;
 }
 
-function proofLength(event) {
-  // The proof is a Tiptap doc; measure the text it actually carries so an
-  // empty document doesn't pass for a written proof.
-  const walk = (node) =>
-    (node.text ? node.text.length : 0) +
-    (node.content || []).reduce((acc, c) => acc + walk(c), 0);
-  return event.proof ? walk(event.proof) : 0;
-}
-
-// The detail beat needs a card that shows all four things the caption
-// promises: source media, coordinates, a written proof, and a source link
-// (whose archived-copy glyph sits beside it). Walk the cards the profile
-// actually renders, newest first, and take the first that qualifies.
-async function pickDetailEvent(hrefs) {
-  for (const href of hrefs) {
-    const id = href.split("/").pop();
-    let event;
-    try {
-      event = await publicGet(`/events/${id}`);
-    } catch {
-      continue;
-    }
-    const media = mediaList(event);
-    const ok =
-      media.some((x) => x.role === "source") &&
-      event.event_coords &&
-      proofLength(event) > 80 &&
-      !!event.source_url &&
-      !event.is_graphic;
-    console.log(
-      `  candidate ${id.slice(0, 8)} media=${media.length} proof=${proofLength(event)} ` +
-        `source=${event.source_url ? "yes" : "no"} archived=${event.archived_copies ? "yes" : "no"}` +
-        (ok ? "  ← chosen" : "")
+async function verifyTarget() {
+  const event = await publicGet(`/events/${TARGET_EVENT}`);
+  const media = (Array.isArray(event.media) ? event.media : [event.media]).filter(Boolean);
+  const problems = [];
+  if (!media.some((m) => m.role === "source")) problems.push("no source media");
+  if (!event.event_coords) problems.push("no coordinates");
+  if (proofLength(event.proof) < 200) problems.push("proof too short to read on camera");
+  if (!event.source_url) problems.push("no source link");
+  // `archived_source` is the copy of the SOURCE link specifically, which is
+  // the one the detail beat frames. An event can carry a copy of a secondary
+  // source or of the post it was detected from and still show an empty glyph
+  // on the Source row, so the other two fields do not qualify it.
+  if (!event.archived_source) {
+    problems.push(
+      "no archived copy of the source, so the detail beat would film the " +
+        "archive glyph's empty state (see video/README.md)"
     );
-    if (ok) {
-      if (!event.archived_copies) {
-        console.log(
-          "  ! the chosen event has no archived copy of its source, so the " +
-            "archive glyph films in its empty state (see video/README.md)"
-        );
-      }
-      return { id, event };
-    }
   }
-  throw new Error("no recent submission carries source media + coordinates + proof");
+  // The cursor clicks this event's card, so it has to be one the profile
+  // actually renders.
+  const feed = await publicGet(`/users/${encodeURIComponent(HANDLE)}/events?per_page=5`);
+  const listed = (feed.items ?? feed ?? []).some((it) => it.id === TARGET_EVENT);
+  if (!listed) problems.push("not in the Recent submissions the profile lists");
+
+  console.log(`→ target: ${event.title}`);
+  console.log(`  source ${event.source_url}`);
+  console.log(`  archived source: ${JSON.stringify(event.archived_source)}`);
+  if (problems.length) {
+    throw new Error(
+      `event ${TARGET_EVENT} cannot carry the detail beat:\n  - ${problems.join("\n  - ")}`
+    );
+  }
+  return { event };
 }
 
 // ─── the take ────────────────────────────────────────────────────────────
 
 const profileUrl = `${BASE}/profile/${HANDLE}`;
 
-async function openProfile(page) {
-  await page.goto(profileUrl, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { level: 1, name: HANDLE }).waitFor({ timeout: 20000 });
-  // The coverage map is WebGL and mounts after its points fetch; wait for the
-  // canvas AND the dev camera handle, then let tiles and pins settle.
-  await page.waitForSelector("canvas.maplibregl-canvas", { timeout: 20000 });
+async function settleProfile(page) {
+  await page.getByRole("heading", { level: 1, name: HANDLE }).waitFor({ timeout: 25000 });
+  await page.waitForSelector("canvas.maplibregl-canvas", { timeout: 25000 });
   await page.waitForFunction(() => {
     const c = document.querySelector("canvas.maplibregl-canvas");
     return c && c.clientWidth > 0 && !!window.__viditMap;
-  }, { timeout: 20000 });
-  await page.waitForFunction(
-    () => [...document.images].every((i) => i.complete),
-    { timeout: 20000 }
-  ).catch(() => {});
-  await wait(4000);
+  }, { timeout: 25000 });
+  await page
+    .waitForFunction(() => [...document.images].every((i) => i.complete), { timeout: 20000 })
+    .catch(() => {});
 }
 
 async function clipPortfolio() {
   await recordClip("portfolio", { cookies: null }, async (page, rec) => {
-    const submissionsHeading = page.getByRole("heading", { name: "Recent submissions" });
-    const coverageHeading = page.getByRole("heading", { name: "Coverage" });
+    const submissions = page.getByRole("heading", { name: "Recent submissions" });
+    const coverage = page.getByRole("heading", { name: "Coverage" });
+    const details = page.getByRole("heading", { name: "Details" });
+    const mapLink = page.locator('aside[aria-label="Primary navigation"] a[href="/map"]');
 
-    // ── setup pass (silent) ──────────────────────────────────────────────
-    // Choose the event to open, and warm the two routes the take navigates
-    // to: the dev server compiles a route on first visit, and a compile
-    // stall inside a recorded beat reads as the product being slow.
-    console.log("→ setup pass: pick the detail event, warm the routes");
-    await openProfile(page);
-    const hrefs = await page.evaluate(() =>
-      [...document.querySelectorAll('a[href^="/events/"]')].map((a) => a.getAttribute("href"))
-    );
-    if (!hrefs.length) throw new Error(`no recent submissions on /profile/${HANDLE}`);
-    const { id: TARGET, event } = await pickDetailEvent(hrefs);
-    console.log(`  detail event: ${TARGET} — ${event.title}`);
-
-    await page.goto(`${BASE}/events/${TARGET}`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Source media" }).waitFor({ timeout: 25000 });
+    // ── warm-up pass (silent) ────────────────────────────────────────────
+    // Visit every route the take navigates to, so the dev server's
+    // first-visit compile and the basemap tiles are already cached. A
+    // compile stall inside an unbroken take cannot be cut out.
+    console.log("→ warm-up pass: compile the routes, fill the tile cache");
+    await page.goto(profileUrl, { waitUntil: "domcontentloaded" });
+    await settleProfile(page);
+    await page.goto(`${BASE}/events/${TARGET_EVENT}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Source media" }).waitFor({ timeout: 30000 });
+    await wait(1500);
     await page.goto(`${BASE}/map`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".maplibregl-canvas", { timeout: 25000 });
-    await wait(2500);
+    await page.waitForSelector(".maplibregl-canvas", { timeout: 30000 });
+    await wait(4000);
 
-    // ── recorded pass ────────────────────────────────────────────────────
-    console.log("→ recorded pass");
-    await openProfile(page);
-    // The mouse is deliberately never moved before the click beat: the DOM
-    // cursor overlay only paints after a mousemove, so the opening frames
-    // (the tweet's thumbnail) carry no cursor at all.
+    // ── the recorded pass, one unbroken session ──────────────────────────
+    console.log("→ recorded pass (single continuous take)");
+    await page.goto(profileUrl, { waitUntil: "domcontentloaded" });
+    await settleProfile(page);
+    await wait(2500); // the coverage map's points land and the camera fits
+    // The mouse is deliberately never moved until the pin click, so the
+    // opening frames carry no cursor: the DOM cursor overlay only paints
+    // after a mousemove, and the first frame is a tweet's thumbnail.
     rec.start();
 
-    // 1. The identity block, motionless. No scroll, no cursor, no camera.
-    console.log("→ identity block (still)");
+    // 1. The identity block, motionless.
+    console.log("→ identity (still)");
     rec.mark("identity");
-    await wait(4600);
+    await wait(2900);
 
-    // 2. Short scroll down to Recent submissions, thumbnails on camera.
-    console.log("→ scroll to Recent submissions");
-    rec.mark("submissions");
-    await slowScrollToLocator(page, submissionsHeading, 1700, 130);
-    await wait(3000);
+    // 2. One long eased travel down the page. The linked accounts pass by on
+    //    the way, which is where they belong: the counters and the Insights
+    //    card are what the travel is going to, and the coverage map is where
+    //    it stops.
+    console.log("→ travel down to the work");
+    rec.mark("work");
+    await slowScrollToLocator(page, coverage, 2700, 80);
+    await wait(500);
 
-    // 3. Back up to the coverage map, then the camera walks into the worked
-    //    area. The profile map is the same <Map> as /map, so the shared
-    //    easeCamera handle drives it.
-    console.log("→ coverage map");
-    await slowScrollToLocator(page, coverageHeading, 1300, 80);
-    await wait(1000);
-    rec.mark("coverageHold");
-    await wait(1200);
-    rec.mark("coverageEase");
+    // 3. The camera walks into the worked area, on the map the page just
+    //    scrolled to.
+    console.log("→ the coverage map");
+    rec.mark("coverage");
     await easeCamera(page, {
       center: COVERAGE_CENTER,
       zoom: COVERAGE_ZOOM,
-      durationMs: 2400,
+      durationMs: 1900,
     });
-    await wait(1100);
+    await wait(400);
 
-    // 4. Open one submission. The cut lands on the recorded click, so the
-    //    beat junction is the navigation itself.
-    console.log("→ open a submission");
-    const card = page.locator(`a[href="/events/${TARGET}"]`).locator("xpath=..");
-    await slowScrollToLocator(page, card, 1400, 210);
-    await wait(700);
-    rec.mark("cardApproach");
-    await glideClickStretchedCard(page, card, TARGET);
-    // Stamped immediately after the click, so the comp can end the profile
-    // half of the beat ON the click instead of guessing how long the glide
-    // and the navigation took.
-    rec.mark("cardClicked");
-    await page.waitForURL(`**/events/${TARGET}`, { timeout: 25000 });
+    // 4. Carry on down to the submissions and open one. `EntityCard` is a
+    //    Next `<Link>`, so the route swaps under the cursor: no reload, no
+    //    white flash, the picture never leaves the page.
+    console.log("→ down to the submissions, open one");
+    rec.mark("submissions");
+    await slowScrollToLocator(page, submissions, 1500, 120);
+    await wait(600);
+    const card = page.locator(`a[href="/events/${TARGET_EVENT}"]`).locator("xpath=..");
+    rec.mark("cardClick");
+    await glideClickStretchedCard(page, card, TARGET_EVENT);
+    await page.waitForURL(`**/events/${TARGET_EVENT}`, { timeout: 25000 });
     await page.getByRole("heading", { name: "Source media" }).waitFor({ timeout: 25000 });
-    await page.waitForFunction(
-      () => {
-        const v = document.querySelector("video");
-        return !v || v.readyState >= 2;
-      },
-      { timeout: 20000 }
-    ).catch(() => {});
-    await wait(500);
+    await page
+      .waitForFunction(
+        () => {
+          const v = document.querySelector("video");
+          return !v || v.readyState >= 2;
+        },
+        { timeout: 15000 }
+      )
+      .catch(() => {});
     rec.mark("eventOpen");
-    await wait(1100);
+    await wait(900);
 
-    // The eased scroll takes the frame from the source media past the point
-    // map down to the details, where the coordinates, the source link with
-    // its archived-copy glyph, and the proof all read at once.
-    console.log("→ scroll the detail: coordinates, source, proof");
+    // 5. The eased scroll takes the frame from the source media past the
+    //    point map down to the details, where the coordinates, the source
+    //    link with its archived-copy glyph, and the proof all read at once.
+    console.log("→ read the event: coordinates, source, archived copy, proof");
     rec.mark("eventScroll");
-    await slowScrollToLocator(page, page.getByRole("heading", { name: "Details" }), 1900, 100);
-    await wait(2400);
+    await slowScrollToLocator(page, details, 1900, 90);
+    await wait(1900);
 
-    // 5. Back to the general map through the sidebar, then pull back so the
-    //    analyst's points sit among everyone else's.
-    console.log("→ the general map");
+    // 6. Out to the general map through the sidebar (another in-page push),
+    //    then the pull back so the analyst's points join everyone else's.
+    console.log("→ out to the general map");
     rec.mark("mapNav");
-    await glideAndClick(
-      page,
-      page.locator('aside[aria-label="Primary navigation"] a[href="/map"]')
-    );
+    await glideAndClick(page, mapLink, { steps: 45, settle: 350 });
     await page.waitForURL("**/map", { timeout: 25000 });
     await page.waitForSelector(".maplibregl-canvas", { timeout: 25000 });
     await page.waitForFunction(() => !!window.__viditMap, { timeout: 25000 });
-    await wait(3200); // tiles + the points fetch settle
+    await wait(1600); // the points fetch lands on the warmed tiles
     rec.mark("mapOpen");
-    await wait(1200);
-    rec.mark("mapEase");
-    await easeCamera(page, { zoom: MAP_PULLBACK_ZOOM, durationMs: 2200 });
-    await wait(1400);
+    await easeCamera(page, { zoom: MAP_PULLBACK_ZOOM, durationMs: 2100 });
+    await wait(900);
   });
 }
 
@@ -265,6 +271,7 @@ async function clipPortfolio() {
       `no public profile for ${HANDLE} at ${API} — is the instance running and imported?`
     );
   }
+  await verifyTarget();
   await clipPortfolio();
   console.log("\n✓ portfolio take recorded");
   console.log(fs.readFileSync(META_PATH, "utf8"));

@@ -285,7 +285,19 @@ async function glideClickStretchedCard(page, locator, eventId) {
 // Build the clip recorder a script uses. `clipsDir` is where the mp4 lands
 // (Remotion's staticFile root) and `metaPath` the timing sidecar
 // gen-clips-manifest.js compiles into src/clips-manifest.ts.
-function createRecorder({ clipsDir, metaPath, outDir, fps = 60, dpr = 2 }) {
+//
+// `viewport` is the page size in CSS px. Whatever you pass, the comp's browser
+// body has to carry the same aspect ratio, or `objectFit: cover` crops the
+// recording. 1280x720 is the 16:9 laptop the v0.4 take films; a taller window
+// fits more of a long page above the fold.
+function createRecorder({
+  clipsDir,
+  metaPath,
+  outDir,
+  fps = 60,
+  dpr = 2,
+  viewport = { width: 1280, height: 720 },
+}) {
   // Opens a fresh context (cookies optional), hands the page to `flow`, and
   // encodes the grabbed frames into <clipsDir>/<name>.mp4 at the measured
   // fps. `flow` gets a `rec` handle: rec.start() begins capture, rec.mark(k)
@@ -311,10 +323,10 @@ function createRecorder({ clipsDir, metaPath, outDir, fps = 60, dpr = 2 }) {
       args: ["--use-angle=metal", `--force-device-scale-factor=${dpr}`],
     });
     const ctx = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      // DPR 2 captures 2560x1440 device px: the comp shows the chrome at
-      // 1370 CSS px of a 1920 frame, so the downscale headroom is what makes
-      // the capture read sharp. Costs capture fps (VFR encoding absorbs it).
+      viewport,
+      // DPR 2 doubles the captured device px: the comp shows the recording
+      // smaller than it was captured, so the downscale headroom is what makes
+      // it read sharp. Costs capture fps (VFR encoding absorbs it).
       deviceScaleFactor: dpr,
     });
     if (cookies) await ctx.addCookies(cookies);
@@ -419,7 +431,13 @@ function createRecorder({ clipsDir, metaPath, outDir, fps = 60, dpr = 2 }) {
           "-f", "concat",
           "-safe", "0",
           "-i", path.join(framesDir, "list.txt"),
-          "-vf", "fps=60,scale=2560:1440:flags=lanczos",
+          // Encode at the captured device resolution, rounded to even
+          // dimensions for yuv420p. Rescaling to a fixed 16:9 here is what
+          // squashed a non-16:9 viewport.
+          "-vf",
+          `fps=60,scale=${Math.round((viewport.width * dpr) / 2) * 2}:${
+            Math.round((viewport.height * dpr) / 2) * 2
+          }:flags=lanczos`,
           "-c:v", "libx264",
           "-pix_fmt", "yuv420p",
           "-crf", "16",
