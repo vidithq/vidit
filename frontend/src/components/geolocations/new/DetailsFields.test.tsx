@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+import { LOCKED_FIELD } from "@/components/ui/Input";
 
 import { DetailsFields } from "./DetailsFields";
 
@@ -23,6 +24,8 @@ const baseProps = {
   sourceUrlLocked: false,
 };
 
+// The locked box's muted text colour, the one token the link overrides.
+const MUTED = "text-neutral-400";
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
 const SNAPSHOT_PLACEHOLDER = "https://archive.ph/…";
 
@@ -72,30 +75,38 @@ describe("DetailsFields", () => {
     render(
       <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
     );
-    expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
-      "readonly"
-    );
+    // The request's source is not the fulfiller's to retype: no editable field
+    // is offered for it at all (the value renders as a link, covered below).
+    expect(screen.queryByPlaceholderText(SOURCE_PLACEHOLDER)).toBeNull();
+    expect(screen.getByText("from request")).toBeInTheDocument();
   });
 
-  // A locked field is non-editable, never unreachable: the value it holds is
-  // still a link an analyst has to be able to open.
-  describe("locked URL fields stay openable", () => {
-    it("opens the locked source URL without unlocking the field", () => {
+  // A locked field is non-editable, never unreachable: the URL it holds is the
+  // link, the way a stored source URL is a link everywhere else in the app.
+  describe("locked URL fields render their value as a link", () => {
+    it("turns a locked source URL into a link, without an editable field", () => {
       render(
         <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
       );
-      const link = screen.getByRole("link", { name: "Open the source link" });
+      const link = screen.getByRole("link", { name: "https://t.me/c/1" });
       expect(link).toHaveAttribute("href", "https://t.me/c/1");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-      // The affordance is additive: the field itself did not become editable.
-      expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
-        "readonly"
-      );
+      // The value left the input entirely, so there is nothing to retype.
+      expect(screen.queryByPlaceholderText(SOURCE_PLACEHOLDER)).toBeNull();
       expect(screen.getByText("from request")).toBeInTheDocument();
+      // It still reads as the locked field it replaces: the same box recipe,
+      // minus the forbidden cursor, which is false of a link. The one token
+      // that must NOT survive is the muted text colour: clickable is accent.
+      for (const token of LOCKED_FIELD.split(" ").filter((t) => t !== MUTED)) {
+        expect(link.className).toContain(token);
+      }
+      expect(link.className).toContain("text-orange-400");
+      expect(link.className).not.toContain(MUTED);
+      expect(link.className).not.toContain("cursor-not-allowed");
     });
 
-    it("opens the provenance URL without unlocking the field", () => {
+    it("turns the provenance URL into a link, without an editable field", () => {
       render(
         <DetailsFields
           {...baseProps}
@@ -103,29 +114,35 @@ describe("DetailsFields", () => {
         />
       );
       const link = screen.getByRole("link", {
-        name: "Open the post it came from",
+        name: "https://x.com/analyst/status/1",
       });
       expect(link).toHaveAttribute("href", "https://x.com/analyst/status/1");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
       expect(
-        screen.getByDisplayValue("https://x.com/analyst/status/1")
-      ).toHaveAttribute("readonly");
+        screen.queryByDisplayValue("https://x.com/analyst/status/1")
+      ).toBeNull();
       expect(screen.getByText(/provenance, can't change/)).toBeInTheDocument();
     });
 
-    it("offers no open affordance while the source URL is editable", () => {
+    it("keeps an editable source URL an editable field, not a link", () => {
       render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
-      expect(
-        screen.queryByRole("link", { name: "Open the source link" })
-      ).toBeNull();
+      expect(screen.queryByRole("link", { name: "https://t.me/c/1" })).toBeNull();
+      expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).not.toHaveAttribute(
+        "readonly"
+      );
     });
 
-    it("offers no open affordance when there is no provenance URL", () => {
+    it("renders no provenance field when there is no provenance URL", () => {
       render(<DetailsFields {...baseProps} />);
-      expect(
-        screen.queryByRole("link", { name: "Open the post it came from" })
-      ).toBeNull();
+      expect(screen.queryByText(/provenance, can't change/)).toBeNull();
+    });
+
+    it("keeps the read-only input when a locked source URL has no value yet", () => {
+      render(<DetailsFields {...baseProps} sourceUrlLocked sourceUrl="" />);
+      expect(screen.getByPlaceholderText(SOURCE_PLACEHOLDER)).toHaveAttribute(
+        "readonly"
+      );
     });
   });
 
