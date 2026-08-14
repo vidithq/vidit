@@ -4,23 +4,30 @@ import { useEffect, useState } from "react";
 import { Archive, Bot, Film, MapPin } from "lucide-react";
 
 import { getUserStats, type UserStats } from "@/lib/users";
-import { ActivityBars } from "@/components/ui/ActivityBars";
+import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { StatGrid, StatTile } from "@/components/ui/StatTile";
 
 /**
  * The shape-of-work section on the public profile: status split, media
- * count, top conflict + capture-source pills, and the activity bars over the
- * span the analyst's events cover, all from `GET /users/{username}/stats`.
- * Renders nothing until the stats arrive and nothing at all for a profile
- * with no events; a failed fetch also hides the section rather than blocking
- * the profile.
+ * count, top conflict + capture-source pills, where the footage came from,
+ * and the month grid over the span the analyst's events cover, all from
+ * `GET /users/{username}/stats`. Renders nothing until the stats arrive and
+ * nothing at all for a profile with no events; a failed fetch also hides the
+ * section rather than blocking the profile.
  *
  * It is the only home for the work figures on the page: the identity line
  * above carries the social and account metadata, and nothing restates
  * `Geolocated` under a second name.
+ *
+ * Every block here describes the same population, and the line under the
+ * heading is where the card says so once. A chart drawn on published work
+ * alone beside tiles counting drafts would print two answers to one question
+ * with nothing on the page to explain the gap, so the backend serves one set
+ * and this card states it.
  */
 export function ProfileInsights({ username }: { username: string }) {
   // The result remembers which username it answers, so navigating to another
@@ -49,7 +56,14 @@ export function ProfileInsights({ username }: { username: string }) {
 
   return (
     <Card as="section">
-      <SectionEyebrow title="Insights" margin="none" />
+      <div>
+        <SectionEyebrow title="Insights" margin="none" />
+        <p className="mt-1 text-xs text-neutral-500">
+          Every figure below counts the same {stats.total_events}{" "}
+          {stats.total_events === 1 ? "event" : "events"}: all the work this
+          analyst has live here, drafts included.
+        </p>
+      </div>
 
       <StatGrid>
         <StatTile icon={MapPin} label="Geolocated" value={stats.geolocated_count} />
@@ -86,6 +100,24 @@ export function ProfileInsights({ username }: { username: string }) {
         </div>
       )}
 
+      {/* Where the footage came from, next to what it shows and how it was
+          shot: the beat an analyst works reads off the hosts. The `?` is the
+          `source_url` definition, so "source" here can't be confused with the
+          capture source above, which is the lens rather than the platform. */}
+      <div>
+        <SectionEyebrow
+          title="Where the footage comes from"
+          concept="source_url"
+          as="h3"
+          margin="sm"
+        />
+        <SourceHostBar
+          hosts={stats.source_hosts}
+          otherCount={stats.other_hosts_count}
+          noSourceCount={stats.no_source_count}
+        />
+      </div>
+
       {/* The axis is the date the event happened, not when the analyst posted
           or imported it, so the heading names the field and the `?` carries
           the registry's own definition of it. */}
@@ -96,7 +128,7 @@ export function ProfileInsights({ username }: { username: string }) {
           as="h3"
           margin="sm"
         />
-        <ActivityBars buckets={stats.activity} />
+        <ActivityHeatmap buckets={stats.activity} />
       </div>
     </Card>
   );

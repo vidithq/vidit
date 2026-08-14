@@ -12,18 +12,13 @@ export function formatDate(input: string): string {
 }
 
 /**
- * Format an activity-bucket period for a reader: `2026-03` → "Mar 2026",
- * `2026-Q1` → "Q1 2026", `2026` → "2026".
+ * Format an activity-bucket month key for a reader: `2026-03` → "Mar 2026".
  *
- * The backend's period key already says which granularity produced it, so
- * this reads the shape rather than taking a second argument. An unparsable
- * key renders as-is, the same fallback `formatDate` takes.
+ * An unparsable key renders as-is, the same fallback `formatDate` takes.
  */
-export function formatPeriod(period: string): string {
-  const [year, part] = period.split("-");
-  if (!part) return year;
-  if (part.startsWith("Q")) return `${part} ${year}`;
-  const date = new Date(Date.UTC(Number(year), Number(part) - 1, 1));
+export function formatMonth(period: string): string {
+  const [year, month] = period.split("-");
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
   if (isNaN(date.getTime())) return period;
   return date.toLocaleDateString("en-GB", {
     month: "short",

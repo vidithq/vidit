@@ -138,6 +138,27 @@ def safe_link_href(value: Any) -> str | None:
     return value
 
 
+def normalised_host(value: str) -> str | None:
+    """The comparable host of a stored link: lower case, no leading ``www.``.
+
+    The one home for reading a host off a URL the app stored. Two callers, and
+    both need the same folding: source archival compares a pasted snapshot
+    against the link it claims to archive (:func:`source_archive._normalised_target`),
+    and the profile stats tally an analyst's events by where the footage came
+    from (:func:`services.user_stats.get_user_stats`). ``tiktok.com`` and
+    ``www.tiktok.com`` are one source, so folding the prefix is what keeps them
+    one row on both surfaces.
+
+    Returns ``None`` for a value with no host to read, malformed input
+    included: callers run it over content they did not author.
+    """
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
+    return (parsed.hostname or "").lower().removeprefix("www.") or None
+
+
 def extract_image_srcs(doc: Any) -> list[str]:
     """Collect image src URLs from a Tiptap document (sanitized or not).
 

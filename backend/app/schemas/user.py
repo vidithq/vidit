@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -130,22 +129,18 @@ class UserProfile(BaseModel):
 
 
 class TagCount(BaseModel):
-    """One (name, count) aggregation entry: a conflict or capture-source tally."""
+    """One (name, count) aggregation entry.
+
+    Carries a conflict tally, a capture-source tally, or a source-host tally:
+    one shape for every head-of-distribution list the stats payload returns.
+    """
 
     name: str
     count: int
 
 
-ActivityGranularity = Literal["month", "quarter", "year"]
-
-
 class ActivityBucket(BaseModel):
-    """One bucket of the activity row.
-
-    ``period`` both keys and names the bucket, and its shape says which
-    granularity produced it: ``YYYY-MM`` for a month, ``YYYY-Qn`` for a
-    quarter, ``YYYY`` for a year.
-    """
+    """One month of the activity grid: ``period`` is ``YYYY-MM``."""
 
     period: str
     count: int
@@ -154,14 +149,22 @@ class ActivityBucket(BaseModel):
 class UserStatsRead(BaseModel):
     """Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
 
-    Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
-    three status counts.
+    One population throughout: the analyst's live events (``deleted_at IS
+    NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
+    + ``detected`` + ``closed``. That set is ``total_events``, and every other
+    field here describes it, drafts included. An open ``requested`` call for
+    help is not documented work and takes part in no aggregate.
+
+    ``source_hosts`` breaks the same set down by the host of ``source_url``,
+    folded to lower case with a leading ``www.`` removed: the top hosts by
+    count, with ``other_hosts_count`` carrying the tail and ``no_source_count``
+    the events that name no readable host. The three add up to
+    ``total_events``.
 
     ``activity`` counts ``event_date``, the date the documented event happened,
-    over the span the analyst's own events cover: earliest bucket first, latest
-    last, zero-filled in between, and empty when no event carries a date.
-    ``activity_granularity`` names the bucket size that span selected, which is
-    also readable from a ``period``'s shape.
+    one bucket per calendar month over the span the analyst's own events cover:
+    earliest month first, latest last, zero-filled in between, and empty when
+    no event carries a date.
     """
 
     geolocated_count: int
@@ -171,7 +174,9 @@ class UserStatsRead(BaseModel):
     media_count: int
     top_conflicts: list[TagCount]
     capture_sources: list[TagCount]
-    activity_granularity: ActivityGranularity
+    source_hosts: list[TagCount]
+    other_hosts_count: int
+    no_source_count: int
     activity: list[ActivityBucket]
 
 

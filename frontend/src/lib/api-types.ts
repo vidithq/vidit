@@ -1396,11 +1396,7 @@ export interface components {
     schemas: {
         /**
          * ActivityBucket
-         * @description One bucket of the activity row.
-         *
-         *     ``period`` both keys and names the bucket, and its shape says which
-         *     granularity produced it: ``YYYY-MM`` for a month, ``YYYY-Qn`` for a
-         *     quarter, ``YYYY`` for a year.
+         * @description One month of the activity grid: ``period`` is ``YYYY-MM``.
          */
         ActivityBucket: {
             /** Count */
@@ -2674,7 +2670,10 @@ export interface components {
         };
         /**
          * TagCount
-         * @description One (name, count) aggregation entry: a conflict or capture-source tally.
+         * @description One (name, count) aggregation entry.
+         *
+         *     Carries a conflict tally, a capture-source tally, or a source-host tally:
+         *     one shape for every head-of-distribution list the stats payload returns.
          */
         TagCount: {
             /** Count */
@@ -2882,23 +2881,26 @@ export interface components {
          * UserStatsRead
          * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
          *
-         *     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
-         *     three status counts.
+         *     One population throughout: the analyst's live events (``deleted_at IS
+         *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
+         *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
+         *     field here describes it, drafts included. An open ``requested`` call for
+         *     help is not documented work and takes part in no aggregate.
+         *
+         *     ``source_hosts`` breaks the same set down by the host of ``source_url``,
+         *     folded to lower case with a leading ``www.`` removed: the top hosts by
+         *     count, with ``other_hosts_count`` carrying the tail and ``no_source_count``
+         *     the events that name no readable host. The three add up to
+         *     ``total_events``.
          *
          *     ``activity`` counts ``event_date``, the date the documented event happened,
-         *     over the span the analyst's own events cover: earliest bucket first, latest
-         *     last, zero-filled in between, and empty when no event carries a date.
-         *     ``activity_granularity`` names the bucket size that span selected, which is
-         *     also readable from a ``period``'s shape.
+         *     one bucket per calendar month over the span the analyst's own events cover:
+         *     earliest month first, latest last, zero-filled in between, and empty when
+         *     no event carries a date.
          */
         UserStatsRead: {
             /** Activity */
             activity: components["schemas"]["ActivityBucket"][];
-            /**
-             * Activity Granularity
-             * @enum {string}
-             */
-            activity_granularity: "month" | "quarter" | "year";
             /** Capture Sources */
             capture_sources: components["schemas"]["TagCount"][];
             /** Closed Count */
@@ -2909,6 +2911,12 @@ export interface components {
             geolocated_count: number;
             /** Media Count */
             media_count: number;
+            /** No Source Count */
+            no_source_count: number;
+            /** Other Hosts Count */
+            other_hosts_count: number;
+            /** Source Hosts */
+            source_hosts: components["schemas"]["TagCount"][];
             /** Top Conflicts */
             top_conflicts: components["schemas"]["TagCount"][];
             /** Total Events */

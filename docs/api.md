@@ -58,7 +58,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
 | **Users** | | | |
 | GET | `/users/{username}` | 🌐 | Public analyst profile |
-| GET | `/users/{username}/stats` | 🌐 | Aggregated shape of an analyst's work (status split, tags, activity) |
+| GET | `/users/{username}/stats` | 🌐 | Aggregated shape of an analyst's work (status split, tags, source hosts, activity) |
 | PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -1281,7 +1281,7 @@ Public profile of an analyst.
 
 ### `GET /users/{username}/stats`
 
-Aggregated shape of an analyst's work, over their live events only (`deleted_at IS NULL`). Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, activity over time).
+Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, source hosts, activity over time).
 
 **Response 200:**
 ```json
@@ -1293,16 +1293,22 @@ Aggregated shape of an analyst's work, over their live events only (`deleted_at 
   "media_count": 2,
   "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
   "capture_sources": [{ "name": "dashcam", "count": 1 }],
-  "activity_granularity": "quarter",
-  "activity": [{ "period": "2025-Q3", "count": 0 }, { "period": "2025-Q4", "count": 3 }]
+  "source_hosts": [{ "name": "x.com", "count": 2 }, { "name": "t.me", "count": 1 }],
+  "other_hosts_count": 0,
+  "no_source_count": 1,
+  "activity": [{ "period": "2025-11", "count": 0 }, { "period": "2025-12", "count": 3 }]
 }
 ```
 
-`total_events` is the sum of the three status counts (`requested` events are not part of the split). `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes drafts. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
 
-`activity` buckets `event_date`, the date the documented event happened, across the span this analyst's own events cover: from their earliest dated event to their latest, oldest bucket first, zero-filled in between. Events with no `event_date` count in the status split and take no bucket. The list is empty when no event carries a date.
+`top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
 
-`activity_granularity` is `month`, `quarter` or `year`, and `period` carries the matching shape: `YYYY-MM`, `YYYY-Qn` or `YYYY`. The granularity is picked so the row never exceeds 24 buckets, the most the profile card holds at 375 px: months up to a 2-year span, quarters up to a 6-year one, years beyond. A span past 24 yearly buckets keeps the 24 most recent years; the dropped events still count in every other aggregate.
+`source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine `detected` draft whose post declared no source). The five counts plus those two totals add up to `total_events`.
+
+`activity` buckets `event_date`, the date the documented event happened, one bucket per calendar month across the span this analyst's own events cover: from their earliest dated event to their latest, oldest bucket first, zero-filled in between. `period` is `YYYY-MM`. Events with no `event_date` count in the status split and take no bucket. The list is empty when no event carries a date.
+
+The span is cut to the 10 most recent calendar years, the number of rows the profile's month grid holds at 375 px, and it then starts at January of the oldest year it shows. The dropped events still count in every other aggregate.
 
 **Errors:**
 | Code | Case |
@@ -1345,7 +1351,7 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The drafts stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies every status, and the owner works their own drafts from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The drafts stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own drafts from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 

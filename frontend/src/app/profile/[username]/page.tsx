@@ -89,11 +89,12 @@ export default function ProfilePage() {
   // The identity is one compact block and not a section: the handle titles the
   // page, the avatar sits beside it, and the bio plus the followers /
   // following / member-since line are what follow it (`ProfileIdentity`), so a
-  // visitor is one scroll-free glance from evidence. Then the coverage map and
-  // the submissions themselves: two readings of the same body of work, widest
-  // first. Insights follows, because a shape-of-work card explains submissions
-  // a reader has already seen, and it is the one home for the work figures.
-  // Linked accounts land last of the public blocks: they are where to find the
+  // visitor is one scroll-free glance from evidence. Then the coverage map,
+  // which shows the work at its widest, and Insights directly under it, since
+  // the summary that interprets that map belongs beside it: the map says where,
+  // and the card says what kind, how much and when. Recent submissions follow,
+  // because a list that grows reads better last of the work blocks. Linked
+  // accounts land last of the public blocks: they are where to find the
   // analyst elsewhere, which is worth nothing until the work has earned the
   // click. Sign out sinks under all of it.
   //
@@ -136,13 +137,13 @@ export default function ProfilePage() {
         <>
           <ProfileMap username={profile.username} />
 
+          <ProfileInsights username={profile.username} />
+
           <RecentSubmissions
             profile={profile}
             submissions={submissions}
             isOwn={isOwn}
           />
-
-          <ProfileInsights username={profile.username} />
         </>
       )}
 

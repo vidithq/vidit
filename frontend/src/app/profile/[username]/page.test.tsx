@@ -74,7 +74,9 @@ const STATS: UserStats = {
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
   capture_sources: [{ name: "Drone", count: 2 }],
-  activity_granularity: "month",
+  source_hosts: [{ name: "t.me", count: 3 }],
+  other_hosts_count: 0,
+  no_source_count: 0,
   activity: Array.from({ length: 7 }, (_, i) => ({
     period: `2026-${String(i + 1).padStart(2, "0")}`,
     count: i,
@@ -143,13 +145,16 @@ describe("public profile order", () => {
 
   it("shows a visitor the work, then the explanation, then where to reach the analyst", async () => {
     const { container } = mountProfile();
-    // Insights arrive from their own fetch, so wait for the last block.
+    // Insights arrive from their own fetch, so wait for the block that needs
+    // them before reading the order.
     await screen.findByText("Insights");
 
+    // The map shows the work at its widest and Insights interprets it, so the
+    // two sit together; the list that grows reads last of the work blocks.
     expect(blockOrder(container)).toEqual([
       "coverage",
-      "recent submissions",
       "insights",
+      "recent submissions",
       "linked accounts",
     ]);
   });
@@ -170,8 +175,8 @@ describe("public profile order", () => {
     expect(blockOrder(container)).toEqual([
       "detections queue",
       "coverage",
-      "recent submissions",
       "insights",
+      "recent submissions",
       "linked accounts",
       "account controls",
     ]);
