@@ -67,6 +67,24 @@ export const RECORDED: Record<string, RecordedClip> = {
       "embedW": 316.8,
       "embedH": 699.84
     }
+  },
+  "portfolio": {
+    "src": "clips/portfolio.mp4",
+    "fps": 60,
+    "durationSec": 36.272,
+    "marks": {
+      "identity": 0,
+      "submissions": 4.569,
+      "coverageHold": 11.715,
+      "coverageEase": 12.916,
+      "cardApproach": 18.999,
+      "cardClicked": 20.292,
+      "eventOpen": 21.031,
+      "eventScroll": 22.132,
+      "mapNav": 26.502,
+      "mapOpen": 30.656,
+      "mapEase": 31.855
+    }
   }
 };
 

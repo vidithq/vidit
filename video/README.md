@@ -12,26 +12,25 @@ browser chrome. One render command produces the final MP4.
 
 ## Prereqs
 
-Local dev environment up and seeded:
+Local dev environment up, against a populated catalog:
 
 ```bash
 make init                       # one-shot bootstrap (install + db + migrate)
-make seed                       # admin user + 50 demo geolocations + curated tags
+make import-prod                # restore the latest production backup locally
 make dev                        # backend on :8000, frontend on :3000
 ```
 
-Then in another shell, prepare the dedicated demo users this pipeline
-needs (idempotent — re-running is safe):
+The catalog on camera comes from a production import (`make import-prod`)
+or from an archive import through `/submit`. Every take reads whatever the
+instance holds, so record against an instance you are willing to publish:
+the recordings show real handles, real media and real coordinates.
 
-```bash
-cd backend && uv run python scripts/mock_demo_user.py
-```
-
-That creates the non-admin users the capture needs, so the request viewer
-in the recording is NOT also the request author: an owner sees "Close this
-request" where the recording expects "Geolocate this". `analyst` is who the
-recording logs in as (community-handle perspective, no admin badge);
-`demo-analyst` owns the seeded requests.
+Takes that sign in need their account to exist on that instance already.
+`record-submit.js` and `record-v04.js` log in as `analyst@vidit.app`;
+`seed-requests.js` posts as `demo-analyst`, deliberately a different user,
+because an owner viewing their own request sees "Close this request" where
+the recording expects "Geolocate this". `record-v05.js` signs in to nothing
+and needs no account.
 
 ## Generate the promo (one command)
 
@@ -127,13 +126,12 @@ For 4K (3840×2160), append `--scale 2` to the render command.
   that have already gone stale once; it runs in `make hygiene` and in
   CI's hygiene job. Selectors are beyond a grep's reach, so a form
   restructure still needs a capture run to catch.
-- **User setup.** If you skip `mock_demo_user.py`, the recording's
-  login (`analyst@vidit.app`) fails outright. Even if you create just
-  `analyst` and skip the rest, requests get posted by `analyst` itself
-  instead of `demo-analyst` — viewing their own request in the recording
-  would then show "Close this request" instead of "Geolocate this", and
-  the recording would fail at that step with a TimeoutError on the
-  missing control.
+- **User setup.** The signed-in takes assume two accounts on the
+  instance. Without `analyst@vidit.app` the recording's login fails
+  outright. With `analyst` but no `demo-analyst`, requests get posted by
+  `analyst` itself, so viewing their own request in the recording shows
+  "Close this request" instead of "Geolocate this" and the take fails at
+  that step with a TimeoutError on the missing control.
 
 ## Why this stack
 
@@ -164,11 +162,10 @@ clip per beat instead of one continuous take, so the comp can pace beats
 independently and slot in real X screen captures.
 
 ```bash
-cd backend && uv run python scripts/mock_demo_user.py   # analyst user
-make seed                                               # demo map data
-make dev-worker                                         # the import worker must run
+make import-prod     # a populated catalog for the map beats
+make dev-worker      # the import worker must run
 cd video
-npm run record:v04   # or: node record-v04.js map,import,queue,promote,bot-embed
+npm run record:v04   # or: node record-v04.js demo,bot-embed
 npm run render:v04   # → out/promo-v04.mp4 (1920×1080, 60 fps)
 ```
 
@@ -207,3 +204,78 @@ as the app clips; any aspect ratio works, 16:9 crops least.
 
 `FeatureImport` is the follow-up feature video on the archive import
 (scaffolded, not rendered for v0.4): `npm run render:feature-import`.
+
+## v0.5 promo A, the portfolio (`PromoV05`)
+
+22 seconds, no voice, captions on screen: an analyst's public profile as a
+portfolio. One continuous take, recorded **logged out**.
+
+```bash
+make promo-v05       # record + render + both outputs
+```
+
+Or step by step:
+
+```bash
+cd video
+npm run record:v05   # → public/clips/portfolio.mp4 + its marks
+npm run render:v05   # → out/promo-v05.mp4 (1920×1080, 60 fps, 22.0s)
+```
+
+`make promo-v05` adds the two staged outputs: `out/promo-v05-master.mp4`
+(the same 1080p stream remuxed with `+faststart`, for S3) and
+`out/promo-v05-readme.mp4` (720p / 30 fps, for a GitHub attachment URL).
+
+The beats, all windows of the one take:
+
+| # | Beat | What is on camera |
+|---|---|---|
+| 1 | Identity | Avatar, handle, bio, counters. Motionless, no cursor: the first frame is the thumbnail a tweet shows before anyone presses play. |
+| 2 | Recent submissions | Eased scroll to the list, real footage thumbnails. |
+| 3 | Coverage | The profile map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. |
+| 4 | One event | The click on a submission, then source media, the point map, coordinates, the source row with its archived-copy glyph, and the written proof. |
+| 5 | The archive | The general map, pulling back so the analyst's points sit among everyone else's. |
+| 6 | Closing card | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo). |
+
+Two constraints the take enforces, both editorial:
+
+- **No session.** The owner view of a profile carries the account's email
+  address and owner-only chrome (Edit profile, the detections banner, Sign
+  out), none of which belongs in a promo. Recording anonymously is also the
+  honest form of the claim beat 5 makes. The take signs in to nothing,
+  submits no form and writes nothing.
+- **Only the analyst's public page.** `HANDLE` at the top of
+  `record-v05.js` names the analyst who consented to being filmed. The take
+  visits their profile, one of their events, and the public map.
+
+Retarget it to another analyst by changing `HANDLE`, `COVERAGE_CENTER` and
+`COVERAGE_ZOOM` in `record-v05.js`. The event opened in beat 4 is chosen at
+record time (the newest recent submission carrying source media, coordinates
+and a written proof), so it never needs a hardcoded id.
+
+### The archived-copy glyph films in its empty state
+
+Beat 4 frames the `Source` row, where `ArchivedCopies` renders. The glyph has
+three states, and which one you get is a property of the data, not of the
+capture: a link to the snapshot when the event has an archived copy, an
+"Archive the source" button for the owner, and a muted "No archived copy of
+the source" mark for everyone else. Logged out, on an event with no snapshot
+recorded, the take films the third. `record-v05.js` prints a warning when the
+event it picked has no archived copy, and the caption says only what the
+frame shows. Give the beat its archived copy by recording snapshots on the
+events before capture, not by recaptioning.
+
+## Shared capture harness
+
+`capture-lib.js` holds everything the takes have in common: the DOM cursor
+overlay, the chrome the recordings must not show (the version pill, the
+Next.js dev indicator), the motion vocabulary (`glideAndClick`,
+`slowScrollToY` / `slowScrollToLocator` / `slowScrollPanel`, `easeCamera`,
+`dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`) and
+`createRecorder`, the frame grabber and encoder. A recorder script owns only
+its storyboard: which pages it visits, what it clicks, and the marks it
+stamps.
+
+`window.__viditMap` is a single global set by whichever `<Map>` mounted last,
+so `easeCamera` drives the profile coverage map on `/profile/<username>` and
+the main map on `/map` with no per-page wiring. It exists in dev builds only.

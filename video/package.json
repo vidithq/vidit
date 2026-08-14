@@ -6,6 +6,8 @@
     "studio": "remotion studio src/index.ts",
     "record:v04": "node record-v04.js",
     "render:v04": "node gen-clips-manifest.js && remotion render src/index.ts PromoV04 out/promo-v04.mp4 --codec h264 --crf 16",
+    "record:v05": "node record-v05.js",
+    "render:v05": "node gen-clips-manifest.js && remotion render src/index.ts PromoV05 out/promo-v05.mp4 --codec h264 --crf 16",
     "render:feature-import": "node gen-clips-manifest.js && remotion render src/index.ts FeatureImport out/feature-import.mp4 --codec h264 --crf 16"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
@@ -24,6 +24,7 @@ help:
 	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
+	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -74,6 +75,31 @@ promo: mock-admin
 	ffmpeg -y -i video/out/promo-4k.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-readme.mp4
 	@ls -lh video/out/promo-master.mp4 video/out/promo-readme.mp4
 	@echo "Done. Master 2K (S3) → video/out/promo-master.mp4 | README 720p → video/out/promo-readme.mp4"
+
+# The v0.5 promo A, "the portfolio": a 22s logged-out take of an analyst's
+# public profile. Requires `make dev` running in another shell and a populated
+# catalog (`make import-prod` or an archive import); it reads the instance and
+# writes nothing to it.
+#
+# Two outputs stage off one capture run:
+#   - `promo-v05-master.mp4` — 1920x1080 / 60fps / CRF 16, +faststart
+#                              (S3 -> the landing `<video>`; also the archive)
+#   - `promo-v05-readme.mp4` — 1280x720  / 30fps / CRF 26, +faststart
+#                              (drag-drop into a GitHub draft for the
+#                               user-attachments URL the README embeds)
+#
+# Unlike `promo`, the master is a plain remux of the 1080p render rather than a
+# 4K render downscaled: the take is captured at 2560x1440 and shown at 1370 CSS
+# px inside the frame, so the downscale headroom is already in the capture and
+# a 4K canvas buys nothing but render time. The master pass only relocates the
+# moov atom for streaming, so it re-encodes nothing.
+promo-v05:
+	cd video && node record-v05.js
+	cd video && npm run render:v05
+	ffmpeg -y -i video/out/promo-v05.mp4 -c copy -movflags +faststart video/out/promo-v05-master.mp4
+	ffmpeg -y -i video/out/promo-v05.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05-readme.mp4
+	@ls -lh video/out/promo-v05-master.mp4 video/out/promo-v05-readme.mp4
+	@echo "Done. Master 1080p (S3) -> video/out/promo-v05-master.mp4 | README 720p -> video/out/promo-v05-readme.mp4"
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."

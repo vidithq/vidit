@@ -1,8 +1,14 @@
-// Turn public/clips/meta.json (written by record-v04.js) + the optional
+// Turn public/clips/meta.json (written by the capture scripts) + the optional
 // maintainer drop-in captures into src/clips-manifest.ts, the single timing
-// source the v0.4 compositions read. Run before every render:
+// source the compositions read. Run before every render:
 //
 //   node gen-clips-manifest.js && npx remotion render src/index.ts PromoV04 ...
+//
+// public/clips/ is gitignored and src/clips-manifest.ts is the committed
+// projection, so a machine that recorded only one promo's takes still has to
+// emit the other's timings: entries whose mp4 is absent locally are carried
+// forward from the manifest already on disk. Re-recording a clip replaces its
+// entry; nothing else moves.
 //
 // Drop-in slots (real X screen recordings the maintainer captures later):
 //   public/clips/bot-x-capture.mp4     the bot beat (tag → like → reply)
@@ -50,11 +56,33 @@ const meta = fs.existsSync(META_PATH)
   ? JSON.parse(fs.readFileSync(META_PATH, "utf8"))
   : {};
 
+// The entries the previous run emitted, read back out of the generated file.
+// This generator owns both ends of that format (a plain JSON.stringify
+// between two literal delimiters), so parsing its own output is safe.
+function previousEntries() {
+  if (!fs.existsSync(OUT_PATH)) return {};
+  const prev = fs.readFileSync(OUT_PATH, "utf8");
+  const m = prev.match(
+    /export const RECORDED: Record<string, RecordedClip> = ([\s\S]*?);\n\nexport const DROP_INS/
+  );
+  try {
+    return m ? JSON.parse(m[1]) : {};
+  } catch {
+    return {};
+  }
+}
+
+const carried = previousEntries();
 const recorded = {};
-for (const name of ["demo", "bot-embed"]) {
+for (const name of ["demo", "bot-embed", "portfolio"]) {
   const file = path.join(CLIPS_DIR, `${name}.mp4`);
   if (!fs.existsSync(file)) {
-    console.warn(`! missing recording public/clips/${name}.mp4`);
+    if (carried[name]) {
+      recorded[name] = carried[name];
+      console.log(`· carried forward ${name} (public/clips/${name}.mp4 not on this machine)`);
+    } else {
+      console.warn(`! missing recording public/clips/${name}.mp4`);
+    }
     continue;
   }
   const p = probe(file) || {};
