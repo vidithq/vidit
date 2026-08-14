@@ -55,8 +55,14 @@ def parse_tweet(url: str, *, client: httpx.Client | None = None) -> ParsedTweet:
 
     The resolution (fetch, quoted tweet, source links, coordinate fallback,
     source URL) is the same one the machine path runs; only the empty-``created_at``
-    guard is human-path specific, since the form needs a real posted-at. The
-    optional ``client`` is for tests (an ``httpx.Client`` on a ``MockTransport``).
+    guard is human-path specific, since the form needs a real posted-at. A tweet
+    the endpoint won't serve unauthenticated is already intercepted upstream as
+    ``TweetNotAccessible`` (a 404 or a tombstone body), and so is every body
+    naming a shape we don't map (``fetch_syndication``'s ``__typename`` gate),
+    so a body that reaches here without a date is a tweet-shaped payload that
+    lost the field: it raises ``TweetFetchFailed``, which the route surfaces as
+    a ``502`` an operator gets paged for. The optional ``client`` is for tests
+    (an ``httpx.Client`` on a ``MockTransport``).
     """
     resolved = resolve_tweet(url, client=client)
     if resolved is None or not resolved.created_at:

@@ -93,7 +93,7 @@ export function TweetImportBanner({
       // Keep ``url`` populated so the post-import view shows it in-place.
     } catch (err) {
       // Render ``ApiError.detail`` verbatim — the backend already speaks
-      // analyst-friendly English for 400 / 404 / 502.
+      // analyst-friendly English for 400 / 404 / 502 / 503.
       const message =
         err instanceof ApiError ? err.message : "Couldn't import tweet";
       setError(message);

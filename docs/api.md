@@ -478,7 +478,7 @@ Inputs are tolerated gracefully:
 
 Parse a public tweet URL into a pre-fill payload for the submit form. Read-only: it never creates a row. You submit the form afterward. Rate-limited to 30/min/IP.
 
-Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated and undocumented; the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"). Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
+Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated and undocumented; the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"), and separates a throttled or wobbling upstream as `503`. Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
 
 **Request body:**
 ```json
@@ -553,8 +553,9 @@ The syndication endpoint doesn't expose reply-chain media, so a video the origin
 | Code | Case |
 |------|------|
 | 400 | Not a tweet URL (wrong host, profile / list / search path, malformed) |
-| 404 | Tweet not accessible (deleted, protected, never existed) |
-| 502 | Syndication endpoint timeout / 5xx / schema drift, frontend renders the "fill the form manually" banner |
+| 404 | Tweet not accessible: deleted, protected, never existed, or readable only behind an X login (age-restricted, withheld in a jurisdiction). The frontend renders `detail` verbatim, so it names the case and tells you to fill the form manually |
+| 502 | Syndication endpoint timeout or schema drift (an unknown payload shape, or the empty body X returns when it rejects the request token), frontend renders the "fill the form manually" banner |
+| 503 | X declined to serve the request for now: it rate-limited us (429) or answered with its own 5xx. `detail` tells you to retry in a minute or fill the form manually |
 
 ---
 
@@ -575,8 +576,9 @@ Requires auth. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com
 | Code | Case |
 |------|------|
 | 400 | `u` host not in the whitelist |
-| 404 | Upstream returned 404 |
+| 404 | The media URL no longer resolves: the CDN answered 404, 403 or 410. X rotates and expires `video.twimg.com` URLs, so re-import the tweet to get fresh ones |
 | 502 | Upstream transport error, 5xx, or response above the size cap |
+| 503 | The CDN rate-limited us (429) |
 
 ---
 

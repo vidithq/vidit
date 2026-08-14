@@ -30,6 +30,7 @@ from app.services.tweet_ingest import (
     InvalidTweetUrl,
     TweetFetchFailed,
     TweetNotAccessible,
+    TweetUpstreamBusy,
     is_trusted_media_url,
     parse_tweet,
 )
@@ -65,6 +66,18 @@ def import_from_tweet(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TweetNotAccessible as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TweetUpstreamBusy as exc:
+        # Ahead of ``TweetFetchFailed`` (its base class): X throttling us reads
+        # as a temporary refusal the analyst can wait out, so it earns a truthful
+        # 503 and its own detail. Still 5xx, so Sentry keeps capturing it, in its
+        # own issue instead of buried in the schema-drift bucket.
+        logger.warning("Tweet syndication busy for %s: %s", scrub_log(body.url), exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "X is not serving tweets right now, retry in a minute or fill the form manually"
+            ),
+        ) from exc
     except TweetFetchFailed as exc:
         # Hide transport / schema-drift detail from the client (the frontend
         # shows a fixed "fill the form manually" banner on 502); log it so
@@ -129,6 +142,15 @@ def import_from_tweet(
     )
 
 
+# Upstream statuses meaning "this media URL no longer resolves", answered as a
+# 404 instead of the 502 the rest of the >= 300 range earns. X rotates and
+# expires ``video.twimg.com`` URLs, so a 403 (signature expired) and a 410
+# (gone) are as routine as the 404: the analyst re-imports the tweet for fresh
+# URLs. Calling them server faults buried real proxy breakage under expected
+# noise, in the logs and in Sentry (which captures the 5xx range).
+_MEDIA_GONE_STATUSES = frozenset({403, 404, 410})
+
+
 @router.get("/import-from-tweet/media")
 @limiter.limit("60/minute")
 def import_from_tweet_media(
@@ -165,8 +187,6 @@ def import_from_tweet_media(
             # media URL 502s below; the analyst falls back to the manual form.
             follow_redirects=False,
         ) as upstream:
-            if upstream.status_code == 404:
-                raise HTTPException(status_code=404, detail="Media not found")
             if upstream.status_code >= 300:
                 # Log the actual upstream status — an X rate-limit (429)
                 # and a 502 look identical client-side but are different
@@ -177,6 +197,13 @@ def import_from_tweet_media(
                     upstream.status_code,
                     scrub_log(u),
                 )
+                if upstream.status_code in _MEDIA_GONE_STATUSES:
+                    raise HTTPException(status_code=404, detail="Media not found")
+                if upstream.status_code == 429:
+                    # Same split the parse route makes: throttling is a wait,
+                    # not a fault, so it groups as its own Sentry issue rather
+                    # than diluting the 502 that means the proxy is broken.
+                    raise HTTPException(status_code=503, detail="X is not serving media right now")
                 raise HTTPException(status_code=502, detail="Couldn't fetch media")
 
             # ``MEDIA_FETCH_MAX_BYTES`` is one ceiling for this proxy and the

@@ -119,9 +119,11 @@ _S_VALUE_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 # inside prose is a proof reference, never a designation.
 _URL_ONLY_LINE_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.IGNORECASE)
 
-# Failure-reason codes ``detect_structured_diagnosed`` surfaces so the bot's
-# failure reply can open with what actually went wrong. Plain strings, one
-# home; the reply copy lives in ``bot._FAILURE_DIAGNOSES``.
+# Failure-reason codes the bot's failure reply opens with, so it can name what
+# actually went wrong. Plain strings, one home; the reply copy lives in
+# ``bot._FAILURE_DIAGNOSES``. ``detect_structured_diagnosed`` surfaces all of
+# them but ``POST_UNREADABLE``, which the bot raises for itself: it means the
+# tagged post never reached a mapper (``TweetNotAccessible`` out of the fetch).
 MARKERS_INCOMPLETE = "markers_incomplete"
 COORDS_MISSING = "coords_missing"
 COORDS_AMBIGUOUS = "coords_ambiguous"
@@ -131,6 +133,7 @@ SOURCE_AMBIGUOUS = "source_ambiguous"
 SOURCE_UNBOUND = "source_unbound"
 SOURCE_OWN = "source_own"
 TITLE_MISSING = "title_missing"
+POST_UNREADABLE = "post_unreadable"
 
 
 def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord | None, str | None]:

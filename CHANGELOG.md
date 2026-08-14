@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- Tweet import tells the truth about a post X will not serve. An age-restricted or withheld tweet answers 404 with its real cause instead of a 502 "fill the form manually", X throttling answers 503, and the bot replies to a tagged unreadable post rather than staying silent. Unknown upstream shapes still raise, now naming what X sent. ([#266](https://github.com/vidithq/vidit/pull/266))
 
 ## v0.5.2, 2026-08-14
 

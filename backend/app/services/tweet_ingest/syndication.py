@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .errors import InvalidTweetUrl, TweetFetchFailed, TweetNotAccessible
+from .errors import InvalidTweetUrl, TweetFetchFailed, TweetNotAccessible, TweetUpstreamBusy
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -216,8 +216,12 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     The optional ``client`` is for tests (a `MockTransport`); production
     never passes it. Returns the parsed JSON body. Raises:
 
-    * ``TweetNotAccessible`` on 404 / deleted / protected tweets.
-    * ``TweetFetchFailed`` on timeout, 5xx, or unparseable response.
+    * ``TweetNotAccessible`` on 404 / deleted / protected / restricted
+      (a ``TweetTombstone`` body) tweets.
+    * ``TweetUpstreamBusy`` on a 429 or an X 5xx, the throttled / wobbling
+      upstream the route answers ``503``.
+    * ``TweetFetchFailed`` on timeout, any other non-2xx, or a body we can't
+      use (unparseable, non-object, empty, unknown ``__typename``).
     """
     cached = _cache_get(tweet_id)
     if cached is not None:
@@ -241,6 +245,11 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
 
     if resp.status_code == 404:
         raise TweetNotAccessible("Tweet not accessible")
+    # Throttling and an X-side wobble are their own failure, ahead of the
+    # catch-all below: the budget is unauthenticated and shared, so a 429 is an
+    # expected outcome that says "retry", not "the payload changed shape".
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise TweetUpstreamBusy(f"upstream returned {resp.status_code}")
     if resp.status_code >= 300:
         raise TweetFetchFailed(f"upstream returned {resp.status_code}")
 
@@ -250,6 +259,37 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
         raise TweetFetchFailed(f"unparseable upstream body: {exc}") from exc
     if not isinstance(body, dict):
         raise TweetFetchFailed("upstream returned non-object body")
+
+    # An exactly-empty object is how X answers a request whose ``token`` it
+    # rejected, and the token is computed locally (``_syndication_token``): an
+    # empty body means the algorithm no longer matches X's, so tweet import is
+    # down for everyone, not drifting on one field. Its own message so the
+    # Sentry issue title says which hypothesis to check first.
+    if not body:
+        raise TweetFetchFailed("upstream returned an empty body, token rejected")
+
+    typename = body.get("__typename")
+
+    # A tombstone is a 200 carrying no tweet: X answers this for a tweet only
+    # readable behind a login (age-restricted, withheld in a jurisdiction). The
+    # ``tombstone`` object may be empty or carry a human string under
+    # ``tombstone.text.text``, so only ``__typename`` is trusted. Raised before
+    # ``_cache_put`` on purpose: the restriction can be lifted upstream, and a
+    # cached tombstone would keep answering "not readable" for an hour after.
+    if typename == "TweetTombstone":
+        raise TweetNotAccessible(
+            "Tweet not readable without an X login (age-restricted or withheld), "
+            "fill the form manually"
+        )
+
+    # Any other named shape is a case this module has never seen. It stays a
+    # ``TweetFetchFailed`` (the 502 that alerts an operator, which is the whole
+    # point of not mapping unknown shapes to a 404), and it carries the value X
+    # sent so the Sentry issue title names the shape instead of needing a
+    # manual repro. A body with no ``__typename`` at all passes: the field is
+    # X's addition, and the mappers below read fields, not the discriminator.
+    if isinstance(typename, str) and typename != "Tweet":
+        raise TweetFetchFailed(f"upstream returned __typename {typename!r}, not a tweet")
 
     _cache_put(tweet_id, body)
     return body
