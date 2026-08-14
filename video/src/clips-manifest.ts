@@ -71,19 +71,19 @@ export const RECORDED: Record<string, RecordedClip> = {
   "portfolio": {
     "src": "clips/portfolio.mp4",
     "fps": 60,
-    "durationSec": 23.448,
+    "durationSec": 23.454,
     "marks": {
       "identity": 0,
-      "work": 2.467,
-      "coverage": 6.135,
-      "submissions": 8.846,
-      "cardClick": 11.012,
-      "eventUrl": 12.346,
-      "eventOpen": 12.443,
-      "eventScroll": 13.344,
-      "mapNav": 17.219,
-      "mapUrl": 17.973,
-      "mapOpen": 19.637
+      "work": 2.483,
+      "coverage": 6.15,
+      "submissions": 8.857,
+      "cardClick": 11.029,
+      "eventUrl": 12.372,
+      "eventOpen": 12.457,
+      "eventScroll": 13.358,
+      "mapNav": 17.228,
+      "mapUrl": 17.985,
+      "mapOpen": 19.646
     }
   }
 };
