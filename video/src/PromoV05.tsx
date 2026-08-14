@@ -50,6 +50,10 @@ const CAPTION_FONT_SIZE = 42;
 
 const INTRO_FRAMES = 240; // 4.0s
 const OUTRO_FRAMES = 156; // 2.6s
+// The intro starts slightly BEFORE the composition does, so the wordmark has
+// already sprung in by frame 0. Frame 0 is the poster frame a tweet shows
+// before anyone presses play, and the spring's own frame 0 is transparent.
+const INTRO_LEAD = 12;
 
 const clip = RECORDED[CLIP];
 const mark = (key: string, fallback: number) => clip?.marks?.[key] ?? fallback;
@@ -119,7 +123,7 @@ const pickAt = <T extends { at: number }>(cues: T[], sec: number): T =>
 
 // ── timeline ──────────────────────────────────────────────────────────────
 
-const TAKE_START = INTRO_FRAMES - CROSSFADE;
+const TAKE_START = INTRO_FRAMES - INTRO_LEAD - CROSSFADE;
 const OUTRO_START = TAKE_START + TAKE_FRAMES - CROSSFADE;
 export const PROMO_V05_DURATION = OUTRO_START + OUTRO_FRAMES;
 
@@ -168,7 +172,7 @@ export const PromoV05: React.FC = () => {
     <AbsoluteFill>
       <Background />
 
-      <Sequence from={0} durationInFrames={INTRO_FRAMES}>
+      <Sequence from={-INTRO_LEAD} durationInFrames={INTRO_FRAMES}>
         <Intro durationInFrames={INTRO_FRAMES} />
       </Sequence>
 
