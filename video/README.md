@@ -265,13 +265,90 @@ event it picked has no archived copy, and the caption says only what the
 frame shows. Give the beat its archived copy by recording snapshots on the
 events before capture, not by recaptioning.
 
+## v0.5 promo B, import and review (`PromoV05B`)
+
+About 31 seconds of take between the brand intro and the closing card: an
+archive import and a review pass, recorded **signed in** as the analyst who
+consented to appear. One continuous take, and the beats dissolve into each
+other rather than cutting, because a hard cut between two frames of the same
+session reads as a glitch.
+
+```bash
+make promo-v05b      # record + render + both outputs
+```
+
+Or step by step:
+
+```bash
+# 1. the fixture: a trimmed copy of the analyst's own export
+backend/.venv/bin/python video/prep-review-take.py \
+    --archive "<their export>.zip" --username MPGeoint \
+    --creating --threads 14 --out video/out/x-archive-trimmed.zip
+
+# 2. the take and the render
+cd video
+VIDIT_DEMO_PASSWORD=… npm run record:v05b   # → public/clips/import-review.mp4
+npm run render:v05b                          # → out/promo-v05b.mp4
+```
+
+The beats, all windows of the one take:
+
+| # | Beat | What is on camera |
+|---|---|---|
+| 1 | Bulk import | The export guide on `/submit`, the mock open dialog, the staged file with its real name and byte size. |
+| 2 | Privacy | The live progress steps, held on `DMs, messages and account data never leave your device.` |
+| 3 | Idempotence | The finished run and its outcome line. |
+| 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts. |
+| 5 | The review pass | `Draft n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
+| 6 | Submit | The proof, both submit clicks, and the next draft opening on its own. |
+| 7 | The map | The camera easing onto the field the pass just worked. |
+| 8 | Closing card | `OutroV04`, shared with the other promos. |
+
+### This take writes to the instance
+
+Unlike promo A, which is a read-only logged-out take, this one signs in,
+imports an archive and submits one draft. Point it at a local instance.
+`record-v05b.js` opens with the editorial rules it enforces; the two that
+constrain the shoot most:
+
+- **One analyst's archive only.** The account it signs into and the export it
+  imports belong to the same analyst, the one who consented. No post is ever
+  attributed to an account other than its author.
+- **The conflict is not guessed.** The review beat fills a conflict, which is
+  a claim about someone else's work. `conflictQueryFor` maps a few coordinate
+  boxes to a conflict by name, and a draft whose coordinates fall outside them
+  is not filmed at all rather than tagged with the nearest plausible war. The
+  capture source stays `Unknown`, which asserts nothing.
+
+### The import beat films an idempotent re-import, on purpose
+
+Since v0.5.2 an import matches the drafts it already produced and updates them
+in place (`_disposition` in `services/detection.py`). On an instance that
+already holds the analyst's whole export, a re-import therefore creates
+nothing, and the panel says so: `Everything in that archive is already up to
+date (N geolocations)`.
+
+That is what beat 3 films, and the caption says exactly that. The tempting fix
+is to caption it as a haul anyway; the honest fixes are to delete the drafts
+first so the import genuinely re-creates them, or to import an export the
+instance has never seen. Run `prep-review-take.py --report` before a shoot: it
+replays the disposition rule against the database and prints how many
+detections the export would create, update and skip, so the storyboard is
+written against what the import will actually do.
+
+`prep-review-take.py` reads the export with the backend's own ingest modules,
+never writes to the database, and produces one file: the trimmed zip. Trimming
+is what the import panel itself recommends, and it keeps a 2 GB export inside
+a single take.
+
 ## Shared capture harness
 
 `capture-lib.js` holds everything the takes have in common: the DOM cursor
 overlay, the chrome the recordings must not show (the version pill, the
 Next.js dev indicator), the motion vocabulary (`glideAndClick`,
 `slowScrollToY` / `slowScrollToLocator` / `slowScrollPanel`, `easeCamera`,
-`dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`) and
+`dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock
+macOS open dialog the import takes drive (`injectFinder` / `closeFinder`) and
 `createRecorder`, the frame grabber and encoder. A recorder script owns only
 its storyboard: which pages it visits, what it clicks, and the marks it
 stamps.

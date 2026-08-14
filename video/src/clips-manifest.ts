@@ -85,6 +85,30 @@ export const RECORDED: Record<string, RecordedClip> = {
       "mapOpen": 30.656,
       "mapEase": 31.855
     }
+  },
+  "import-review": {
+    "src": "clips/import-review.mp4",
+    "fps": 60,
+    "durationSec": 65.696,
+    "marks": {
+      "panel": 0,
+      "finderOpen": 5.135,
+      "finderPick": 8.611,
+      "filePicked": 11.156,
+      "importClick": 13.841,
+      "privacyHold": 15.311,
+      "importDone": 21.819,
+      "queueOpen": 24.994,
+      "filterReady": 27.595,
+      "draftOpen": 34.873,
+      "draftScroll": 36.873,
+      "tagFill": 40.938,
+      "submitClick": 50.548,
+      "nextDraft": 52.682,
+      "mapNav": 55.283,
+      "mapOpen": 59.491,
+      "mapEase": 60.691
+    }
   }
 };
 

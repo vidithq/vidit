@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
@@ -25,6 +25,7 @@ help:
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
 	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
+	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -100,6 +101,27 @@ promo-v05:
 	ffmpeg -y -i video/out/promo-v05.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05-readme.mp4
 	@ls -lh video/out/promo-v05-master.mp4 video/out/promo-v05-readme.mp4
 	@echo "Done. Master 1080p (S3) -> video/out/promo-v05-master.mp4 | README 720p -> video/out/promo-v05-readme.mp4"
+
+# The v0.5 promo B, "import and review": a signed-in take of an archive import
+# and a review pass. Requires `make dev` running in another shell, the demo
+# account's password in VIDIT_DEMO_PASSWORD, and the trimmed export that the
+# take imports:
+#
+#   backend/.venv/bin/python video/prep-review-take.py \
+#       --archive "<the analyst's own export>.zip" --username <account> \
+#       --creating --threads 14 --out video/out/x-archive-trimmed.zip
+#
+# Unlike `promo-v05`, this take WRITES to the instance: it imports an archive
+# and submits one draft. Read the editorial rules at the top of record-v05b.js
+# before pointing it at anything but a local instance. Staging outputs match
+# `promo-v05`.
+promo-v05b:
+	cd video && node record-v05b.js
+	cd video && npm run render:v05b
+	ffmpeg -y -i video/out/promo-v05b.mp4 -c copy -movflags +faststart video/out/promo-v05b-master.mp4
+	ffmpeg -y -i video/out/promo-v05b.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05b-readme.mp4
+	@ls -lh video/out/promo-v05b-master.mp4 video/out/promo-v05b-readme.mp4
+	@echo "Done. Master 1080p (S3) -> video/out/promo-v05b-master.mp4 | README 720p -> video/out/promo-v05b-readme.mp4"
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."

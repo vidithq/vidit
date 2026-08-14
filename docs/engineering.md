@@ -219,12 +219,14 @@ vidit/
 │   └── roadmap.md              # vision + openness commitment
 │
 ├── video/                          # "Promo as code" pipeline (Playwright takes + Remotion comps), see video/README.md
-│   ├── src/                        # Remotion compositions (Demo, PromoV04, PromoV05) + components
-│   ├── capture-lib.js              # Shared harness: frame grabber, DOM cursor overlay, motion helpers
+│   ├── src/                        # Remotion compositions (Demo, PromoV04, PromoV05, PromoV05B) + components
+│   ├── capture-lib.js              # Shared harness: frame grabber, DOM cursor overlay, motion helpers, mock open dialog
 │   ├── seed-requests.js            # Seeds request list from analyst tweets (idempotent)
 │   ├── record-submit.js            # Playwright + DOM cursor overlay → recording-submit.mp4
 │   ├── record-v04.js               # Signed-in take: map → archive import → detections → publish
 │   ├── record-v05.js               # Logged-out take: an analyst's public profile as a portfolio
+│   ├── record-v05b.js              # Signed-in take: archive import → detections queue → review pass
+│   ├── prep-review-take.py         # Trims an X export for that take; reports what importing it would do
 │   ├── gen-clips-manifest.js       # public/clips/meta.json → src/clips-manifest.ts (the comps' timings)
 │   ├── package.json                # remotion + playwright deps
 │   └── README.md                   # Operator guide + brittleness notes
