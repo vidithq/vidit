@@ -30,13 +30,13 @@ import httpx
 
 from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
 from .records import (
-    TOKEN_TRAILING_PUNCT,
     QuotedTweet,
     SourceLink,
     TelegramFootage,
     TweetRecord,
     bound_link,
     expand_shortlinks,
+    written_tokens,
 )
 from .syndication import _TWITTER_URL_HOST_RE, _X_STATUS_URL_RE, ParsedMedia
 
@@ -209,11 +209,19 @@ def _mirror_identity(url: str) -> str:
 
 
 # The OSINT convention for naming the footage source explicitly: a line that is
-# nothing but ``Source:`` and one URL token. Whole-line, like the bot's bare
-# shape: a link inside prose is a proof reference, never a designation. The
-# anchor also caps the line at one token, since ``\S+`` cannot span the space
-# that a second token would need.
-_SOURCE_LINE_RE = re.compile(r"^\s*source\s*:\s*(https?://\S+)\s*$", re.IGNORECASE)
+# nothing but ``Source:`` and URL tokens. Whole-line, like the bot's bare shape:
+# a link inside prose is a proof reference, never a designation, and a line
+# carrying any non-URL word after the label does not match at all.
+#
+# The line is read as several tokens rather than one because X appends the
+# wrapper of the post's OWN attached media to the end of the text, so an
+# analyst's one-token line reaches storage as two tokens. Those wrappers are
+# dropped by name (``records.written_tokens``); what the analyst wrote must
+# still come to exactly one token, so two genuine links stay ambiguous and
+# designate nothing.
+_SOURCE_LINE_RE = re.compile(
+    r"^\s*source\s*:\s*(https?://\S+(?:\s+https?://\S+)*)\s*$", re.IGNORECASE
+)
 
 
 def _is_non_status_x_link(url: str) -> bool:
@@ -247,7 +255,11 @@ def _as_candidate(link: SourceLink) -> FootageCandidate:
 
 
 def designated_source(
-    text: str, links: Iterable[SourceLink], *, owner_handle: str
+    text: str,
+    links: Iterable[SourceLink],
+    *,
+    owner_handle: str,
+    media_shortlinks: Iterable[str] = (),
 ) -> FootageCandidate | None:
     """The footage source a ``Source: <url>`` line designates, or ``None``.
 
@@ -255,6 +267,14 @@ def designated_source(
     X, since the chase vocabulary (X status via syndication, Telegram via embed)
     decides what gets fetched, never what gets stored. So an Instagram / TikTok /
     article link fills ``source_url`` link-only, with no date and no media.
+
+    ``media_shortlinks`` are the post's own attached-media wrappers
+    (``syndication.extract_media_shortlinks``): X appends them to the text, so
+    they sit on whatever line ends the post, designation lines included. They
+    are dropped from the line's tokens (:func:`written_tokens`) before the count,
+    which is what lets the whole-line rule read the line as the analyst wrote it.
+    What is left must be exactly one token: a line naming two genuine links is
+    ambiguous and designates nothing.
 
     The token must bind to one of ``links`` (:func:`bound_link`), which is what
     keeps a link the analyst only wrote about out of the slot. Two links are
@@ -266,12 +286,16 @@ def designated_source(
     designation.
     """
     entries = list(links)
+    own_media = list(media_shortlinks)
     designated: FootageCandidate | None = None
     for line in text.splitlines():
         match = _SOURCE_LINE_RE.match(line)
         if match is None:
             continue
-        link = bound_link(match.group(1).rstrip(TOKEN_TRAILING_PUNCT), entries)
+        tokens = written_tokens(match.group(1).split(), own_media)
+        if len(tokens) != 1:
+            continue
+        link = bound_link(tokens[0], entries)
         if link is None or _is_non_status_x_link(link.url):
             continue
         if _is_own_status_link(link.url, owner_handle):
@@ -292,12 +316,14 @@ def _declared_footage(thread: list[TweetRecord]) -> FootageCandidate | None:
     One home for "which link is the footage" across the source URL, the source
     date, and the media split, so the three cannot disagree. The whole thread is
     read at once, so two records naming different links read as the ambiguity
-    they are and the sole-candidate rule decides instead.
+    they are and the sole-candidate rule decides instead; the own-media wrappers
+    are pooled the same way, since the text is.
     """
     designated = designated_source(
         "\n".join(record.text for record in thread),
         [link for record in thread for link in record.external_sources],
         owner_handle=thread[0].handle if thread else "",
+        media_shortlinks=[token for record in thread for token in record.media_shortlinks],
     )
     return designated if designated is not None else _source_link(thread)
 

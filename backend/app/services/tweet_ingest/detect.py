@@ -33,6 +33,7 @@ from .records import (
     TweetRecord,
     bound_link,
     expand_shortlinks,
+    written_tokens,
 )
 from .resolve import footage_candidates, resolve_thread
 from .syndication import ParsedMedia
@@ -137,7 +138,11 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     ``(None, reason)`` when the line designates nothing valid (a format
     failure, the reason naming which rule broke).
 
-    Exactly one URL token may sit on the line (two or more is a failure). The
+    Exactly one URL token the author wrote may sit on the line (two or more is a
+    failure). The post's own attached-media wrappers do not count as tokens
+    (:func:`written_tokens`): X appends them to the text, so an ``S:`` line that
+    ends the post would otherwise read as two links and fail the format on a
+    post the author wrote correctly. The
     token must bind to one of the record's link entities (:func:`bound_link`).
     Any bound link is a valid designation, whatever its host: the chase
     vocabulary (X status / Telegram / YouTube) decides what gets fetched, never
@@ -152,7 +157,7 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     payloads then strip the trailing ``t.co`` from the text, so the quote is
     the link that was on ``S:``. With no quote either, nothing is designated.
     """
-    tokens = [t.rstrip(TOKEN_TRAILING_PUNCT) for t in _S_VALUE_URL_RE.findall(s_value)]
+    tokens = written_tokens(_S_VALUE_URL_RE.findall(s_value), record.media_shortlinks)
     if len(tokens) > 1:
         return None, SOURCE_AMBIGUOUS
     if not tokens:

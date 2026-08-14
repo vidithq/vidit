@@ -143,6 +143,7 @@ def _struct_rec(
     quoted: QuotedTweet | None = None,
     external_sources: list[SourceLink] | None = None,
     media: list[ParsedMedia] | None = None,
+    media_shortlinks: list[str] | None = None,
 ) -> TweetRecord:
     return TweetRecord(
         tweet_id="10",
@@ -151,6 +152,7 @@ def _struct_rec(
         created_at="2026-03-11T12:00:00Z",
         permalink="https://x.com/analyst/status/10",
         media=media or [],
+        media_shortlinks=media_shortlinks or [],
         quoted=quoted,
         external_sources=external_sources or [],
     )
@@ -423,6 +425,31 @@ def test_structured_s_line_designates_among_several_links():
         (d,), _ = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert d.source_url == "https://t.me/channel/5"
     assert "see also https://x.com/warfootage/status/77" in d.proof_text
+
+
+def test_structured_s_line_survives_the_posts_own_media_wrapper():
+    # The S: line ends the post, so X appends the attached photo's wrapper to it.
+    # That wrapper is not a link the author wrote, so the line still designates
+    # one source instead of failing the format as ambiguous.
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS: https://t.co/s https://t.co/ownPhoto",
+        external_sources=[telegram],
+        media=[
+            ParsedMedia(
+                kind="image", remote_url="https://pbs.twimg.com/own.jpg", content_type="image/jpeg"
+            )
+        ],
+        media_shortlinks=["https://t.co/ownPhoto"],
+    )
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)  # embed unavailable: degrades to link-only
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        (d,), reason = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
+    assert reason is None
+    assert d.source_url == "https://t.me/channel/5"
 
 
 def test_structured_non_designated_quote_does_not_steal_the_source():

@@ -508,6 +508,117 @@ def test_designated_off_vocabulary_link_is_never_fetched(tmp_path, monkeypatch):
     assert resolved.source_posted_at is None
 
 
+def _designation_archive(dest: Path, text: str, urls: list[dict], media_url: str) -> None:
+    """One export entry: ``text``, its ``entities.urls``, and one attached photo
+    whose ``t.co`` wrapper is ``media_url`` (the production shape)."""
+    payload = [
+        {
+            "tweet": {
+                "id_str": "1",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "full_text": text,
+                "entities": {"urls": urls},
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "photo",
+                            "url": media_url,
+                            "expanded_url": "https://twitter.com/ana/status/1/photo/1",
+                            "media_url_https": "https://pbs.twimg.com/media/OWN.jpg",
+                        }
+                    ]
+                },
+            }
+        }
+    ]
+    (dest / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    )
+
+
+def test_archive_designation_survives_the_posts_own_media_wrapper(tmp_path, monkeypatch):
+    """The production shape: the analyst wrote one ``Source:`` token and X
+    appended the wrapper of the post's own photo behind it. The export names that
+    wrapper in ``extended_entities.media``, so the designation reads as written,
+    and the Telegram chase runs on it."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    _designation_archive(
+        archive,
+        "Geolocated the depot\nSource: https://t.co/tg https://t.co/ownPhoto",
+        [{"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"}],
+        "https://t.co/ownPhoto",
+    )
+
+    chased: list[str] = []
+
+    def fake_embed(url, *, client=None):
+        chased.append(url)
+        return TelegramEmbed(posted_at="2025-11-11T08:00:00+00:00", media=[])
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert record.media_shortlinks == ["https://t.co/ownPhoto"]
+    assert chased == ["https://t.me/chan/42"]
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == "https://t.me/chan/42"
+
+
+def test_archive_designation_of_two_written_links_stays_ambiguous(tmp_path, monkeypatch):
+    """Same two-token line through the archive, but both tokens are links the
+    analyst wrote: the designation is ambiguous, nothing is chased, and the
+    sole-candidate rule declines two footage links too."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    _designation_archive(
+        archive,
+        "Geolocated the depot\nSource: https://t.co/tg https://t.co/x",
+        [
+            {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
+            {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
+        ],
+        "https://t.co/ownPhoto",
+    )
+
+    def no_embed(url, *, client=None):
+        raise AssertionError("an ambiguous designation must not be chased")
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert record.telegram is None
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url is None
+
+
+def test_archive_designation_inside_prose_is_not_read(tmp_path):
+    """The whole-line anchor is untouched by the wrapper drop: a ``Source:``
+    written mid-sentence stays a proof reference, wrapper or no wrapper."""
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    _designation_archive(
+        archive,
+        "Filmed by the crew, Source: https://t.co/ig and mirrored elsewhere https://t.co/ownPhoto",
+        [
+            {
+                "url": "https://t.co/ig",
+                "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
+            }
+        ],
+        "https://t.co/ownPhoto",
+    )
+    [record] = read_tweets(archive, handle="ana")
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url is None
+
+
 def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
     """A link to the owner's OWN status in the handle-less ``i/web/status`` form,
     absent from the export (deleted / truncated), slips both the ``by_id`` and the
