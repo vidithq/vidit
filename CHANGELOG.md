@@ -8,7 +8,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.2, 2026-08-14
+
 ### Fixed
+- **A `Source:` designation is read past the post's own media token** ([`backend/app/services/tweet_ingest/resolve.py`](backend/app/services/tweet_ingest/resolve.py), [`backend/app/services/tweet_ingest/records.py`](backend/app/services/tweet_ingest/records.py), [`docs/ingestion.md`](docs/ingestion.md)) (#264). X appends the permalink of a post's own attached media to the end of its text, so a line an analyst wrote as `Source: <url>` is stored with a trailing shortlink, the whole-line designation rule stopped matching, and the source was dropped. The post's own media wrappers are now removed from the line's tokens before the rule runs, read from the tweet's media entities rather than from any `t.co` pattern, so what the analyst wrote must still come to exactly one URL. A designation inside prose, a non-status X link and two written links are refused as before. Measured on a real export of 1419 posts: designation lines read went from 18 to 280, and 39 posts gained a footage link on hosts no fallback places (Instagram, TikTok, Facebook). The archive path, the syndication path and the bot's `S:` line read the one rule.
 - **A locked URL field is a link** ([`frontend/src/components/geolocations/new/LockedUrl.tsx`](frontend/src/components/geolocations/new/LockedUrl.tsx), [`docs/design.md`](docs/design.md#forms)). The provenance URL on an imported draft and the source URL on a request fulfilment both rendered as read-only inputs, so reaching the post they name meant selecting the URL and copying it by hand. Each now renders its value as an anchor opening in a new tab, wearing the same box the locked input wore, so it still reads as the field it is. A stored URL is a link everywhere else on the platform; the locked field was the one place it was not. Neither field becomes editable, and both keep their locked marker.
 
 ### Changed
