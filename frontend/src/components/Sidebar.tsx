@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { Avatar } from "@/components/ui/Avatar";
 import { Dot } from "@/components/ui/Dot";
 import {
   DiscordGlyph,
@@ -16,7 +17,6 @@ import {
 import {
   Globe,
   Plus,
-  User,
   Settings,
   Search,
   Info,
@@ -258,8 +258,18 @@ export default function Sidebar() {
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >
-            <span className="relative size-[18px] rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
-              <User size={11} strokeWidth={1.8} />
+            {/* The analyst's own picture, at the same 18px as every rail glyph,
+                so the identity row reads as "you" instead of a generic user
+                icon. `<Avatar>` owns the circle and the icon fallback; the
+                wrapper exists only to anchor the badge. */}
+            <span className="relative flex shrink-0">
+              <Avatar
+                as="span"
+                src={user.avatar_url}
+                username={user.username}
+                size="size-[18px]"
+                fallback="icon"
+              />
               {/* Pending-submission nudge, the rail's only badge. */}
               {detectionCount > 0 && (
                 <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />

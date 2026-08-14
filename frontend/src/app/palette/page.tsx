@@ -660,7 +660,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
 
-          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial). `size` is the only dimension a caller sets: the icon fallback scales with the circle. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant).">
+          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial) + the sidebar identity row (icon, at the rail's 18px glyph size). `size` is the only dimension a caller sets: the icon fallback scales with the circle. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant, the sidebar row's badge anchor).">
             <Variant label='fallback="icon" (profile header)'>
               <Avatar username="demo" size="w-11 h-11" fallback="icon" />
             </Variant>
