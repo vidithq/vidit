@@ -258,10 +258,15 @@ export default function Sidebar() {
                 : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
             }`}
           >
-            {/* The analyst's own picture, at the same 18px as every rail glyph,
-                so the identity row reads as "you" instead of a generic user
-                icon. `<Avatar>` owns the circle and the icon fallback; the
-                wrapper exists only to anchor the badge. */}
+            {/* The analyst's own picture, in the same 18px box as every rail
+                glyph, so the identity row reads as "you" instead of a generic
+                user icon. `<Avatar>` owns the circle, the image and the icon
+                fallback; the wrapper exists only to anchor the badge.
+                `text-current` keeps the fallback glyph on the row's own colour,
+                so it still brightens on hover and takes the accent when
+                active, like every glyph above it. `decorative` keeps the
+                picture out of the link's accessible name, which stays the
+                handle (plus the pending count) from `title`. */}
             <span className="relative flex shrink-0">
               <Avatar
                 as="span"
@@ -269,6 +274,8 @@ export default function Sidebar() {
                 username={user.username}
                 size="size-[18px]"
                 fallback="icon"
+                iconClassName="text-current"
+                decorative
               />
               {/* Pending-submission nudge, the rail's only badge. */}
               {detectionCount > 0 && (

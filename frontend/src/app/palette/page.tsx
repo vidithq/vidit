@@ -660,7 +660,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
 
-          <Item name="<Avatar>" usage="Profile header (icon) + user search results (initial) + the sidebar identity row (icon, at the rail's 18px glyph size). `size` is the only dimension a caller sets: the icon fallback scales with the circle. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant, the sidebar row's badge anchor).">
+          <Item name="<Avatar>" usage="The profile-picture circle: profile header (icon), feed card author circle via EntityCard + user search results (initial), sidebar identity row (icon, in the rail's 18px glyph box). `size` is the only dimension a caller sets: the icon fallback scales with the circle. A picture that fails to load falls back to the same circle (an avatar_url is typed by its owner), and a new URL retries. iconClassName colours the icon fallback (the sidebar passes text-current so it tracks hover + the active accent); decorative drops the alt text where the host already names itself. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant, the sidebar row's badge anchor).">
             <Variant label='fallback="icon" (profile header)'>
               <Avatar username="demo" size="w-11 h-11" fallback="icon" />
             </Variant>
@@ -669,6 +669,25 @@ export default function PalettePage() {
             </Variant>
             <Variant label='fallback="initial"'>
               <Avatar username="Marius" size="size-10" />
+            </Variant>
+            <Variant label="src that fails to load (falls back)">
+              <Avatar
+                username="Marius"
+                size="size-10"
+                src="/palette/this-avatar-does-not-exist.jpg"
+              />
+            </Variant>
+            <Variant label='iconClassName (row colour, as the rail passes it)'>
+              <span className="text-orange-400">
+                <Avatar
+                  as="span"
+                  username="demo"
+                  size="size-[18px]"
+                  fallback="icon"
+                  iconClassName="text-current"
+                  decorative
+                />
+              </span>
             </Variant>
           </Item>
 
