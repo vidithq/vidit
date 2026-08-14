@@ -264,9 +264,9 @@ class AdminDetectionStatsRead(BaseModel):
     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
     owner vouched (promoted to ``geolocated``) is not a reject, even once
     soft-deleted (it was vouched before removal); a detection still awaiting
-    review is not a reject yet. This mirrors the dismissal semantics in
-    ``services/detection._reimportable``, where soft-delete and owner close are
-    the same judged-and-thrown-out shape. ``reject_rate`` is
+    review is not a reject yet. Both shapes are ones
+    ``services/detection._row_disposition`` refuses to re-import, since each
+    records a judgment a re-import must not undo. ``reject_rate`` is
     ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
     machine detections. Counted over all machine rows, soft-deleted or not: the
     metric measures what the pipeline produced.

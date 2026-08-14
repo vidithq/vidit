@@ -112,7 +112,7 @@ def _import(author, db, zip_bytes: bytes) -> dict:
 
 
 def _counts(job: dict) -> dict:
-    return {k: job[k] for k in ("created", "skipped", "recreated", "failed")}
+    return {k: job[k] for k in ("created", "updated", "skipped", "failed")}
 
 
 # ── The endpoints: presign + upload + enqueue + poll ───────────────────────
@@ -162,7 +162,7 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
     body = accepted.json()
     assert body["status"] == "queued"
     assert body["post_estimate"] == 3  # the client-supplied strip estimate
-    assert _counts(body) == {"created": 0, "skipped": 0, "recreated": 0, "failed": 0}
+    assert _counts(body) == {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
 
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
     assert job is not None and job.owner_id == author.id
@@ -245,7 +245,7 @@ def test_dev_upload_rejects_non_staging_key(author):
 def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     job = _import(author, db, _zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
     assert job["status"] == "done"
-    assert _counts(job) == {"created": 1, "skipped": 0, "recreated": 0, "failed": 0}
+    assert _counts(job) == {"created": 1, "updated": 0, "skipped": 0, "failed": 0}
 
     rows = db.query(Event).filter(Event.owner_id == author.id).all()
     assert len(rows) == 1
@@ -265,19 +265,19 @@ def test_reimport_is_idempotent(db, author, sent_emails):
     assert _counts(_import(author, db, zip_bytes))["created"] == 1
     # Same archive again: the pair already lives, so nothing new is created.
     second = _import(author, db, zip_bytes)
-    assert _counts(second) == {"created": 0, "skipped": 1, "recreated": 0, "failed": 0}
+    assert _counts(second) == {"created": 0, "updated": 0, "skipped": 1, "failed": 0}
 
 
-def test_reimport_recreates_after_the_detection_is_closed_through_the_api(db, author, sent_emails):
+def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_emails):
     """The full owner-facing loop, both halves through their real endpoints:
     import once, reject the resulting detection with the real
-    ``POST /{id}/close``, then re-run the same archive. A closed detection
-    (``before_closed_status='detected'``) is a dismissed pair, so the
-    re-import recreates a fresh live row instead of skipping it.
+    ``POST /{id}/close``, then re-run the same archive. The rejection stands:
+    the re-import skips the pair instead of putting it back in the queue, so
+    nobody rejects the same post twice.
     """
     zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
     first = _import(author, db, zip_bytes)
-    assert _counts(first) == {"created": 1, "skipped": 0, "recreated": 0, "failed": 0}
+    assert _counts(first) == {"created": 1, "updated": 0, "skipped": 0, "failed": 0}
 
     detected = db.query(Event).filter(Event.owner_id == author.id).one()
     assert detected.status == STATUS_DETECTED
@@ -291,19 +291,16 @@ def test_reimport_recreates_after_the_detection_is_closed_through_the_api(db, au
     assert close_response.json()["before_closed_status"] == STATUS_DETECTED
 
     second = _import(author, db, zip_bytes)
-    assert _counts(second) == {"created": 1, "skipped": 0, "recreated": 1, "failed": 0}
+    assert _counts(second) == {"created": 0, "updated": 0, "skipped": 1, "failed": 0}
 
     db.expire_all()
-    rows = db.query(Event).filter(Event.owner_id == author.id).order_by(Event.created_at).all()
-    assert len(rows) == 2
-    # The original stays exactly as the close left it: visible, closed,
-    # dismissed-as-detected. The re-import didn't touch it.
+    rows = db.query(Event).filter(Event.owner_id == author.id).all()
+    # One row, exactly as the close left it: visible, closed,
+    # dismissed-as-detected. The re-import didn't touch it and didn't add one.
+    assert len(rows) == 1
     assert rows[0].id == detected.id
     assert rows[0].status == STATUS_CLOSED
     assert rows[0].before_closed_status == STATUS_DETECTED
-    # The recreated row is a fresh, live detection at the same coordinate pair.
-    assert rows[1].status == STATUS_DETECTED
-    assert rows[1].detected_from_url == detected.detected_from_url
 
 
 def test_malformed_staged_zip_fails_in_the_worker(db, author, sent_emails):

@@ -624,7 +624,7 @@ A tweet that references its footage only through a linked status (`Source: x.com
   "post_estimate": 1240,
   "progress_done": 0,
   "progress_total": null,
-  "created": 0, "skipped": 0, "recreated": 0, "failed": 0,
+  "created": 0, "updated": 0, "skipped": 0, "failed": 0,
   "error": null,
   "created_at": "2026-07-17T12:00:00Z",
   "started_at": null,
@@ -646,7 +646,7 @@ A tweet that references its footage only through a linked status (`Source: x.com
 
 One archive-import job. Owner only: someone else's job ID reads as 404, indistinguishable from unknown. The upload page polls this endpoint until `status` is terminal. The completion email is the durable signal for an analyst who has since left.
 
-`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`: `created` is new `detected` rows; `skipped` a pair a live row already held; `recreated` a previously rejected pair re-detected; `failed` a detection that raised mid-persist (the rest still land). A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
+`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open `detected` draft the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
 
 **Response 200:** the job payload above, counts and timestamps filled per status.
 
@@ -1000,7 +1000,7 @@ The first six are the same stable codes the single-row geolocate answers with, a
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A closed `detected` row is re-importable if the same tweet is later re-detected. Distinct from `DELETE`, which removes the row for good.
+Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
 
 **Request body:**
 ```json

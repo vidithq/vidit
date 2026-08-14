@@ -222,7 +222,7 @@ def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
     return [EventSourceLink(position=index, url=url) for index, url in enumerate(urls)]
 
 
-def _replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
+def replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
     """Swap an existing event's secondary links for ``urls``.
 
     The deletes are FLUSHED before the replacements insert: SQLAlchemy emits a
@@ -778,7 +778,7 @@ async def geolocate(
 
     # The submitted mirrors replace the stored ones wholesale (see the
     # docstring: they carry none of ``source_url``'s requester protection).
-    _replace_source_links(db, geo, secondary_links)
+    replace_source_links(db, geo, secondary_links)
 
     # Drop the source media flagged for removal: snapshot their S3 keys, delete
     # the rows, and FLUSH the deletes so the replacement insert below can't

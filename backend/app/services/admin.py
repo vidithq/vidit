@@ -578,9 +578,9 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        counts as a reject whichever door it left through: an owner close off
        ``detected`` or an admin soft-delete that never left ``detected``. A
        soft-deleted ``geolocated`` row is not a reject (it was vouched before
-       removal). This mirrors :func:`app.services.detection._reimportable`,
-       where soft-delete and owner close are the same judged-and-thrown-out
-       shape.
+       removal). Both shapes are ones
+       :func:`app.services.detection._row_disposition` refuses to re-import,
+       since each records a judgment a re-import must not undo.
     2. The live ``detected`` queue (``deleted_at IS NULL``, human rows
        excluded), counting the drafts missing a source media, a proof image,
        or a source URL, the pieces the geolocate floor will demand.

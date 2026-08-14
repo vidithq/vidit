@@ -2,12 +2,13 @@
 
 Exercises ``assemble_detections`` against the DB + local storage: a DTO
 becomes a ``detected`` row owned by the backfiller, media lands as ``Media``
-with a sha256, and the ``(detected_from_url, coordinate)`` idempotency
-skips / recreates correctly.
+with a sha256, and a detection matching a row the owner already holds resolves
+through the disposition matrix (skip / upsert / create).
 """
 
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -17,16 +18,45 @@ import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import assemble_detections, backfill_from_archive
+from app.services.source_archive import stage_source_snapshot
+from app.services.storage import get_storage
 from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia
 from tests._fixtures import TINY_JPEG
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
+
+
+def _blue_jpeg() -> bytes:
+    """A second, distinct image: "the archive now holds different bytes for this
+    media", which is what forces the upsert down its replacement branch. Real
+    pixels, because the strip pass re-encodes and would erase a doctored copy of
+    ``TINY_JPEG`` back into the same bytes."""
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2), color="blue").save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+OTHER_JPEG = _blue_jpeg()
+
+
+def _stored_objects(event_id: uuid.UUID) -> set[str]:
+    """Every object the local storage backend holds under one event's prefix.
+
+    Scoped to the event, not to the whole backend: the storage root is shared
+    by every test in the run, so a bucket-wide snapshot would move under a
+    parallel worker's uploads.
+    """
+    prefix = Path(settings.local_storage_dir) / "detected" / str(event_id)
+    return {str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()}
 
 
 @pytest.fixture
@@ -75,14 +105,16 @@ def _dto(
     source_url: str | None = None,
     source_posted_at: datetime | None = None,
     secondary_source_urls: list[str] | None = None,
+    title: str = "Strike at Bakhmut",
+    proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
 ) -> DetectedGeoloc:
     """A detection DTO. Source-less by default, matching the resolve contract:
     a tweet that neither quotes nor links footage declares no source. Sourced
     tests pass ``source_url`` / ``source_posted_at`` explicitly."""
     return DetectedGeoloc(
         coordinate=ParsedCoord(lat=lat, lng=lng),
-        title="Strike at Bakhmut",
-        proof_text="Strike at Bakhmut\nGeolocated by analyst",
+        title=title,
+        proof_text=proof_text,
         source_url=source_url,
         detected_from_url=url,
         owner_handle="own",
@@ -160,7 +192,7 @@ async def test_assemble_persists_detected_row(db, owner):
         db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
     )
     assert len(outcome.created) == 1
-    assert outcome.skipped == 0 and outcome.recreated == 0
+    assert outcome.skipped == 0 and outcome.updated == 0
 
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
@@ -234,16 +266,18 @@ async def test_media_less_detection_persists(db, owner):
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
-async def test_idempotency_skips_existing_pair(db, owner):
+async def test_unchanged_pair_is_skipped_not_updated(db, owner):
     await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.skipped == 1
+    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
-async def test_idempotency_recreates_soft_deleted_pair(db, owner):
+async def test_soft_deleted_pair_is_skipped(db, owner):
+    # An admin took the event down. A re-import must not put it back: the row
+    # stays removed and no live twin appears beside it.
     await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.deleted_at = datetime.now(UTC)
@@ -252,15 +286,37 @@ async def test_idempotency_recreates_soft_deleted_pair(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert len(outcome.created) == 1 and outcome.recreated == 1
+    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
     live = db.query(Event).filter(Event.owner_id == owner.id, Event.deleted_at.is_(None)).all()
-    assert len(live) == 1
+    assert live == []
 
 
-async def test_idempotency_recreates_closed_detection(db, owner):
-    # The owner-reject shape since the close verb: the row stays visible as
-    # ``closed`` (before_closed_status='detected'), and a re-import treats the
-    # pair as dismissed → recreate, not skip.
+async def test_withheld_pair_is_skipped(db, owner):
+    # A takedown freezes the row for its owner too, so a re-import neither
+    # overwrites it nor creates a second copy beside it.
+    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    geo.hidden_at = datetime.now(UTC)
+    db.commit()
+    geo_id, stored_title = geo.id, geo.title
+
+    outcome = await assemble_detections(
+        db,
+        owner=owner,
+        detections=[_dto(title="Rewritten by the newer parser")],
+        fetch_media=_missing_fetcher,
+    )
+    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    db.expire_all()
+    rows = db.query(Event).filter(Event.owner_id == owner.id).all()
+    assert [r.id for r in rows] == [geo_id]
+    assert rows[0].title == stored_title
+
+
+async def test_closed_detection_is_skipped(db, owner):
+    # The owner-reject shape: the row stays visible as ``closed``
+    # (before_closed_status='detected'). The rejection is analyst work, so the
+    # re-import respects it instead of queueing the same post again.
     await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.before_closed_status = STATUS_DETECTED
@@ -271,9 +327,11 @@ async def test_idempotency_recreates_closed_detection(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert len(outcome.created) == 1 and outcome.recreated == 1
-    fresh = db.query(Event).filter(Event.owner_id == owner.id, Event.status == "detected").all()
-    assert len(fresh) == 1
+    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
+    assert (
+        db.query(Event).filter(Event.owner_id == owner.id, Event.status == "detected").all() == []
+    )
 
 
 async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):
@@ -338,6 +396,184 @@ async def test_geolocated_pair_is_skipped(db, owner):
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
     assert outcome.skipped == 1 and outcome.created == []
+
+
+# ── The upsert: an open draft takes the newer parse in place ───────────────
+
+
+async def test_detected_draft_is_upserted_in_place(db, owner):
+    # The production shape in miniature: the first import stored a source-less,
+    # mirror-less, media-less draft; today's parser reads the designation. The
+    # newer parse lands on the SAME row, and everything the row is (id, owner,
+    # created_at, detected_at, status, provenance) survives it.
+    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    before = {
+        "id": stored.id,
+        "owner_id": stored.owner_id,
+        "created_at": stored.created_at,
+        "detected_at": stored.detected_at,
+        "detected_from_url": stored.detected_from_url,
+    }
+    assert stored.source_url is None and stored.source_links == []
+
+    richer = _dto(
+        title="Depot hit, Shebekino",
+        proof_text="Depot hit, Shebekino\nGeolocated by analyst",
+        source_url="https://t.me/channel/42",
+        source_posted_at=datetime(2025, 11, 11, 9, 0, tzinfo=UTC),
+        secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
+        media=[_img()],
+    )
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[richer], fetch_media=_image_fetcher
+    )
+    assert outcome.created == [] and outcome.updated == 1 and outcome.skipped == 0
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    # What the row IS, preserved.
+    assert {k: getattr(row, k) for k in before} == before
+    assert row.status == STATUS_DETECTED
+    # What the import OWNS, overwritten.
+    assert row.title == "Depot hit, Shebekino"
+    assert row.source_url == "https://t.me/channel/42"
+    assert row.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
+    assert [link.url for link in row.source_links] == ["https://www.youtube.com/watch?v=M1"]
+    assert row.proof["content"][0]["content"][0]["text"] == "Depot hit, Shebekino"
+    media = db.query(Media).filter(Media.event_id == row.id).all()
+    assert [m.role for m in media] == ["source"]
+
+
+async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner):
+    # Replacing the footage drops the old row AND its objects, but only once the
+    # transaction that dropped the row has landed (commit-then-sweep).
+    await assemble_detections(
+        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=_image_fetcher
+    )
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    old = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
+    old_key = get_storage().key_from_url(old.storage_url)
+    assert old_key is not None and get_storage().get_bytes(old_key)
+
+    async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return OTHER_JPEG, "image/jpeg"
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=other_image
+    )
+    assert outcome.updated == 1
+
+    db.expire_all()
+    fresh = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
+    assert fresh.sha256 != old.sha256
+    with pytest.raises(FileNotFoundError):
+        get_storage().get_bytes(old_key)
+
+
+async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):
+    # Proof images live in the proof document, so a media replacement has to
+    # move both halves or the document points at a swept object.
+    await assemble_detections(
+        db, owner=owner, detections=[_dto(proof_media=[_img()])], fetch_media=_image_fetcher
+    )
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    old_src = stored.proof["content"][-1]["attrs"]["src"]
+
+    async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return OTHER_JPEG, "image/jpeg"
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[_dto(proof_media=[_img()])], fetch_media=other_image
+    )
+    assert outcome.updated == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    new_src = row.proof["content"][-1]["attrs"]["src"]
+    assert new_src != old_src
+    rows = db.query(Media).filter(Media.event_id == row.id).all()
+    assert [m.storage_url for m in rows] == [new_src]
+
+
+async def test_upsert_matched_through_the_source_url_leg(db, owner):
+    # The delete-and-repost duplicate: a second post declaring the same footage
+    # at the same coordinate updates the draft the first one created, under the
+    # provenance URL the draft was filed with.
+    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    stored_id = db.query(Event).filter(Event.owner_id == owner.id).one().id
+
+    second = _dto(
+        url="https://x.com/own/status/2",
+        source_url="https://t.me/chan/1",
+        title="Corrected wording",
+    )
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
+    )
+    assert outcome.created == [] and outcome.updated == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.id == stored_id
+    assert row.title == "Corrected wording"
+    # The provenance the draft was filed under is not the import's to move.
+    assert row.detected_from_url == "https://x.com/own/status/1"
+
+
+async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declares(db, owner):
+    # The one analyst artifact a draft can carry: an archived copy. A copy filed
+    # as the source of a URL the event stops declaring must not survive as the
+    # archived source of a link that is gone.
+    first = _dto(source_url="https://t.me/chan/1")
+    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    stage_source_snapshot(
+        db,
+        event=row,
+        snapshot_url="https://web.archive.org/web/20260101120000/https://t.me/chan/1",
+    )
+    db.commit()
+    assert len(row.archives) == 1
+
+    moved = _dto(source_url="https://t.me/chan/2")
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[moved], fetch_media=_missing_fetcher
+    )
+    assert outcome.updated == 1
+
+    db.expire_all()
+    fresh = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert fresh.source_url == "https://t.me/chan/2"
+    assert fresh.archives == []
+
+
+async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
+    # Idempotence, the whole promise: no field churn, no proof rewrite, no media
+    # re-upload, no new objects in the bucket, and ``updated_at`` does not move.
+    dto = _dto(
+        source_url="https://t.me/chan/1",
+        secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
+        media=[_img()],
+        proof_media=[_img()],
+    )
+    await assemble_detections(db, owner=owner, detections=[dto], fetch_media=_image_fetcher)
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    before_updated_at = stored.updated_at
+    before_media = {(m.id, m.storage_url, m.sha256) for m in stored.media}
+    before_objects = _stored_objects(stored.id)
+
+    outcome = await assemble_detections(
+        db, owner=owner, detections=[dto], fetch_media=_image_fetcher
+    )
+    assert outcome.created == [] and outcome.updated == 0 and outcome.skipped == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.updated_at == before_updated_at
+    assert {(m.id, m.storage_url, m.sha256) for m in row.media} == before_media
+    assert _stored_objects(row.id) == before_objects
 
 
 async def test_backfill_from_archive_end_to_end(db, owner):

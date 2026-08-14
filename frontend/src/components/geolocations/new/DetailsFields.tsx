@@ -11,6 +11,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Switch } from "@/components/ui/Switch";
 import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
+import { LockedUrl } from "./LockedUrl";
 
 interface DetailsFieldsProps {
   sourceUrl: string;
@@ -87,6 +88,17 @@ export function DetailsFields({
   sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
+  // A fulfilment can reach here before the request's source has loaded, so the
+  // link mode needs a value, not just the locked flag.
+  const sourceUrlAsLink = sourceUrlLocked && sourceUrl !== "";
+  // One label, worn by whichever element ends up carrying it.
+  const sourceUrlLabel = (
+    <>
+      Source URL <FieldHelp concept="source_url" />{" "}
+      {sourceUrlLocked && <LockedHint />}
+    </>
+  );
+
   return (
     <Card as="section">
       <SectionHeading title="Details" concept="section_details" />
@@ -139,24 +151,36 @@ export function DetailsFields({
       </div>
 
       <div className="space-y-1.5">
-        <label
-          htmlFor="source_url"
-          className={`${FORM_LABEL}${sourceUrlInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-        >
-          Source URL <FieldHelp concept="source_url" />{" "}
-          {sourceUrlLocked && <LockedHint />}
-        </label>
-        <Input
-          variant={sourceUrlLocked ? "locked" : "default"}
-          id="source_url"
-          type="url"
-          required
-          readOnly={sourceUrlLocked}
-          value={sourceUrl}
-          onChange={(e) => setSourceUrl?.(e.target.value)}
-          placeholder="https://t.me/channel/12345"
-          invalid={sourceUrlInvalid}
-        />
+        {/* A locked field holding a URL shows that URL as a link, so it can be
+            opened without being retyped. A `label` needs a labelable control
+            and an anchor is not one, so the label becomes a `span` in that
+            mode, as the secondary-sources and graphic-content blocks do. An
+            empty locked field keeps the input: there is no link to render. */}
+        {sourceUrlAsLink ? (
+          <span className={FORM_LABEL}>{sourceUrlLabel}</span>
+        ) : (
+          <label
+            htmlFor="source_url"
+            className={`${FORM_LABEL}${sourceUrlInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+          >
+            {sourceUrlLabel}
+          </label>
+        )}
+        {sourceUrlAsLink ? (
+          <LockedUrl href={sourceUrl} />
+        ) : (
+          <Input
+            variant={sourceUrlLocked ? "locked" : "default"}
+            id="source_url"
+            type="url"
+            required
+            readOnly={sourceUrlLocked}
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl?.(e.target.value)}
+            placeholder="https://t.me/channel/12345"
+            invalid={sourceUrlInvalid}
+          />
+        )}
       </div>
 
       {/* Archival sits under the link it archives, on the form where the link
@@ -210,19 +234,15 @@ export function DetailsFields({
         />
       </div>
 
+      {/* Always locked and always populated (the block renders on a value), so
+          it is always the link form. */}
       {detectedFromUrl && (
         <div className="space-y-1.5">
-          <label htmlFor="detected_from_url" className={FORM_LABEL}>
+          <span className={FORM_LABEL}>
             Detected from <FieldHelp concept="detected_from" />
             <LockedHint>provenance, can&apos;t change</LockedHint>
-          </label>
-          <Input
-            variant="locked"
-            id="detected_from_url"
-            type="url"
-            readOnly
-            value={detectedFromUrl}
-          />
+          </span>
+          <LockedUrl href={detectedFromUrl} />
         </div>
       )}
     </Card>

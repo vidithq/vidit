@@ -187,19 +187,19 @@ def archive_import_complete_email(
     *,
     to: str,
     created: int,
+    updated: int,
     skipped: int,
-    recreated: int,
     failed: int,
     detections_link: str,
 ) -> Email:
-    # ``created`` already includes the re-created rows (the assemble outcome
-    # appends them to ``created`` and bumps ``recreated`` on top), so the
-    # headline count is ``created`` alone; recreated is a subset callout.
+    # The four counts are disjoint: every detection in the archive lands in
+    # exactly one of them, so they read as a breakdown rather than as overlapping
+    # callouts. Only the headline is unconditional.
     lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
-    if recreated:
-        lines.append(f"  {recreated} of them re-created after an earlier dismissal")
+    if updated:
+        lines.append(f"  {updated} existing draft{'s' if updated != 1 else ''} updated")
     if skipped:
-        lines.append(f"  {skipped} already imported (skipped)")
+        lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
         lines.append(f"  {failed} could not be imported")
     counts = "\n".join(lines)

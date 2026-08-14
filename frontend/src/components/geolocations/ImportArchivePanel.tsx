@@ -39,6 +39,27 @@ function formatBytes(n: number): string {
   })} MB`;
 }
 
+/** The finished run in one line: what landed, what moved, what was left alone.
+ *  Only the non-zero counts appear, so a first import reads as plainly as a
+ *  re-import that updated a handful of drafts. */
+function importSummary(job: ArchiveImportJob): string {
+  const parts: string[] = [];
+  if (job.created > 0) {
+    parts.push(
+      `${job.created.toLocaleString()} draft${job.created === 1 ? "" : "s"} ready for review`
+    );
+  }
+  if (job.updated > 0) {
+    parts.push(
+      `${job.updated.toLocaleString()} draft${job.updated === 1 ? "" : "s"} updated`
+    );
+  }
+  if (job.skipped > 0) {
+    parts.push(`${job.skipped.toLocaleString()} left unchanged`);
+  }
+  return parts.join(" · ");
+}
+
 const STEPS: NumberedStep[] = [
   ...ARCHIVE_EXPORT_STEPS,
   {
@@ -178,11 +199,11 @@ export function ImportArchivePanel({ username }: { username: string }) {
           setPollLost(true);
           return;
         }
-        // Fresh drafts landed: stay on the page. The finished stepper is the
-        // receipt of the run and the CTA under it opens the review queue.
-        // Only the zero-created outcomes swap to the result view (retry, or
-        // it was all already imported).
-        if (res.created === 0) setResult(res);
+        // Work landed, created or updated: stay on the page. The finished
+        // stepper is the receipt of the run and the CTA under it opens the
+        // review queue. Only a run that wrote nothing swaps to the result
+        // view (retry, or the archive was already up to date).
+        if (res.created === 0 && res.updated === 0) setResult(res);
       },
       onError: importErrorMessage,
     }
@@ -208,7 +229,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
     );
   }
 
-  // Zero-created outcomes (`result`) render UNDER the completed stepper like
+  // Write-nothing outcomes (`result`) render UNDER the completed stepper like
   // the happy path, never as a swapped-out bare view: the stepper stays as
   // the receipt of what ran, the message + action below it say what's next.
   const failedSome = (result?.failed ?? 0) > 0;
@@ -360,18 +381,13 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[4],
                   keepDetail: true,
-                  // Zero-created runs leave the receipt to the outcome message
-                  // below; a "0 drafts ready for review" line would fight it.
-                  ...(phase === "done" && liveJob && liveJob.created > 0
-                    ? {
-                        detail:
-                          `${liveJob.created.toLocaleString()} draft${
-                            liveJob.created === 1 ? "" : "s"
-                          } ready for review` +
-                          (liveJob.skipped > 0
-                            ? ` · ${liveJob.skipped.toLocaleString()} skipped (already imported)`
-                            : ""),
-                      }
+                  // A run that wrote nothing leaves the receipt to the outcome
+                  // message below; a "0 drafts ready for review" line would
+                  // fight it.
+                  ...(phase === "done" &&
+                  liveJob &&
+                  (liveJob.created > 0 || liveJob.updated > 0)
+                    ? { detail: importSummary(liveJob) }
                     : {}),
                 },
               ].map((step, i) =>
@@ -405,7 +421,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                     {failedSome
                       ? `Some posts couldn't be imported (${result.failed} failed). Try the import again.`
                       : alreadyImported
-                        ? `Everything in that archive was already imported (${result.skipped} ${
+                        ? `Everything in that archive is already up to date (${result.skipped} ${
                             result.skipped === 1 ? "geolocation" : "geolocations"
                           }).`
                         : "No geolocations found in that archive. Posts with a coordinate in their text become detections."}

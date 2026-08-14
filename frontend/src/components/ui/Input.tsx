@@ -19,13 +19,20 @@ import { FORM_INVALID_FIELD } from "./form-styles";
 //   with `readOnly`.
 export type InputVariant = "default" | "compact" | "locked";
 
+// The locked field's box, on its own because an input is not the only thing
+// that wears it: a locked URL renders its value as a link instead of an input
+// (`LockedUrl`), and the two have to read as the same field. `cursor-not-allowed`
+// is deliberately NOT part of the recipe. It says "you cannot act on this",
+// which is true of the input and false of the link, so the input adds it below.
+export const LOCKED_FIELD =
+  "w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-md text-neutral-400 text-sm";
+
 const VARIANT: Record<InputVariant, string> = {
   default:
     "w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-hidden focus:border-orange-500",
   compact:
     "w-full px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-300",
-  locked:
-    "w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-md text-neutral-400 text-sm cursor-not-allowed",
+  locked: `${LOCKED_FIELD} cursor-not-allowed`,
 };
 
 function fieldClass(
