@@ -8,6 +8,7 @@ edges and media survive into the pipeline — syndication cannot expose either.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -102,6 +103,24 @@ def written_tokens(tokens: Iterable[str], media_shortlinks: Iterable[str]) -> li
     own = set(media_shortlinks)
     stripped = (token.rstrip(TOKEN_TRAILING_PUNCT) for token in tokens)
     return [token for token in stripped if token and token not in own]
+
+
+# A line carrying URL tokens and nothing else. The one home for the shape a
+# source designation accepts as its value, so the OSINT ``Source:`` rule and the
+# bot's ``S:`` marker read the same line the same way.
+_URL_TOKENS_LINE_RE = re.compile(r"^\s*https?://\S+(?:\s+https?://\S+)*\s*$", re.IGNORECASE)
+
+
+def url_only_tokens(line: str) -> list[str] | None:
+    """``line``'s URL tokens when the line is nothing but URL tokens, ``None``
+    otherwise (a word, a stray character, an empty line).
+
+    Several tokens still match: X appends the wrapper of the post's own attached
+    media behind whatever the analyst wrote, so a one-token line reaches storage
+    as two. :func:`written_tokens` drops those wrappers, and the caller then
+    requires exactly one token, which is what keeps two written links ambiguous.
+    """
+    return line.split() if _URL_TOKENS_LINE_RE.match(line) else None
 
 
 def expand_shortlinks(text: str, links: Iterable[SourceLink]) -> str:

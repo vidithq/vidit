@@ -8,9 +8,14 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.3, 2026-08-14
+
 ### Fixed
 
 - Tweet import tells the truth about a post X will not serve. An age-restricted or withheld tweet answers 404 with its real cause instead of a 502 "fill the form manually", X throttling answers 503, and the bot replies to a tagged unreadable post rather than staying silent. Unknown upstream shapes still raise, now naming what X sent. ([#266](https://github.com/vidithq/vidit/pull/266))
+- **A `Source:` designation written on two lines is read** ([`backend/app/services/tweet_ingest/resolve.py`](backend/app/services/tweet_ingest/resolve.py), [`backend/app/services/tweet_ingest/records.py`](backend/app/services/tweet_ingest/records.py), [`backend/app/services/tweet_ingest/extract.py`](backend/app/services/tweet_ingest/extract.py), [`docs/ingestion.md`](docs/ingestion.md)). Analysts write the label alone on its line and the URL on the next one, and the whole-line rule read that as a label designating nothing. A `Source:` line with no value now takes the following line when that line is one bound URL token and nothing else. A second URL, a word or any other character on it refuses the designation rather than guessing, and a label ending the text designates nothing. The post's own media wrappers are dropped from the continuation line as they are from the label's own line, since X appends its permalink where a two-line designation ends. Every existing guard holds: a label inside prose is not a designation, an X link naming no status credits an author without filling the footage slot, two written links stay ambiguous, and no thread is ever its own source. Measured on the same real export of 1419 posts: designations read went from 280 to 355, and the 75 added name TikTok (30), an X status (29), Instagram (15) and Telegram (1), so 45 of them land on hosts the sole-footage-link rule refuses by design. The bot's `S:` marker reads the same habit through the same shape rule, and the archive path, the syndication path and the bot stay on one contract.
 
 ## v0.5.2, 2026-08-14
 

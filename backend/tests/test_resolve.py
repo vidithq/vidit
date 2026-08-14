@@ -266,6 +266,85 @@ def test_source_line_with_an_unknown_extra_token_designates_nothing():
     assert resolve_source([record]) == (None, None)
 
 
+def test_bare_source_label_takes_the_next_line():
+    # The two-line habit: the label alone on its line, the URL on the next one.
+    # Instagram is host "other", which no other rule can put in the slot, so the
+    # designation is the only thing that fills it.
+    record = _rec(
+        text="Strike on the depot\nSource:\nhttps://t.co/fakeIG",
+        external_sources=[_INSTAGRAM],
+    )
+    assert resolve_source([record]) == (_INSTAGRAM.url, None)
+
+
+def test_bare_source_label_survives_the_posts_own_media_wrapper():
+    # X appends the wrapper of the post's own media at the end of the text,
+    # which is exactly where a two-line designation ends, so the continuation
+    # line reaches storage with the wrapper behind it. Named by the post's media
+    # entities, it is dropped and the line still reads as one written token.
+    record = _rec(
+        text="Strike on the depot\nSource:\nhttps://t.co/fakeIG https://t.co/ownPhoto",
+        external_sources=[_INSTAGRAM],
+        media=[_media("image", "op")],
+        media_shortlinks=["https://t.co/ownPhoto"],
+    )
+    assert resolve_source([record]) == (_INSTAGRAM.url, None)
+
+
+def test_bare_source_label_with_two_links_on_the_next_line_designates_nothing():
+    # Two links the analyst wrote are ambiguous on the continuation line for the
+    # same reason they are on the label's own line.
+    record = _rec(
+        text="Source:\nhttps://t.co/fakeIG https://t.co/fakeFB",
+        external_sources=[_INSTAGRAM, _FACEBOOK],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_bare_source_label_with_a_word_on_the_next_line_designates_nothing():
+    # The continuation must be the URL and nothing else: a line carrying prose
+    # around the link is refused rather than mined for its first URL.
+    record = _rec(
+        text="Source:\nfilmed by https://t.co/fakeIG",
+        external_sources=[_INSTAGRAM],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_bare_source_label_at_the_end_of_the_text_designates_nothing():
+    # No following line to read: the label designates nothing and the read does
+    # not run off the end of the text.
+    record = _rec(text="Strike on the depot\nSource:", external_sources=[_INSTAGRAM])
+    assert resolve_source([record]) == (None, None)
+
+
+def test_bare_source_label_still_rejects_an_x_link_that_names_no_status():
+    # Every guard the one-line rule applies applies to the continuation too: a
+    # profile link credits an author and fills no footage slot.
+    record = _rec(
+        text="Source:\nhttps://x.com/Osinttechnical",
+        external_sources=[SourceLink(url="https://x.com/Osinttechnical", host="other")],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_bare_source_label_still_rejects_the_authors_own_status():
+    # No self-source deduction through the two-line shape either.
+    record = _rec(
+        handle="analyst",
+        text="Source:\nhttps://x.com/Analyst/status/111",
+        external_sources=[SourceLink(url="https://x.com/Analyst/status/111", host="x")],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_bare_source_label_next_line_must_bind_to_an_entity():
+    # A token bound to no link entity is the wrapper X appends, never something
+    # the analyst typed, so the continuation designates nothing.
+    record = _rec(text="Source:\nhttps://t.co/mediaWrapper")
+    assert resolve_source([record]) == (None, None)
+
+
 def test_source_line_inside_prose_is_not_a_designation():
     # Whole-line only: a reference written mid-sentence is a proof link, and the
     # sole-candidate rule (host "other" here) still declines it.

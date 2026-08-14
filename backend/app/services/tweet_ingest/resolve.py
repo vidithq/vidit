@@ -36,6 +36,7 @@ from .records import (
     TweetRecord,
     bound_link,
     expand_shortlinks,
+    url_only_tokens,
     written_tokens,
 )
 from .syndication import _TWITTER_URL_HOST_RE, _X_STATUS_URL_RE, ParsedMedia
@@ -208,20 +209,22 @@ def _mirror_identity(url: str) -> str:
     return _mirror_dedup_key(url, "", match.group(1) if match is not None else None)
 
 
-# The OSINT convention for naming the footage source explicitly: a line that is
-# nothing but ``Source:`` and URL tokens. Whole-line, like the bot's bare shape:
-# a link inside prose is a proof reference, never a designation, and a line
-# carrying any non-URL word after the label does not match at all.
+# The OSINT convention for naming the footage source explicitly: the ``Source:``
+# label at the start of a line. Whole-line, like the bot's bare shape: a label
+# written inside prose is a proof reference, never a designation.
 #
-# The line is read as several tokens rather than one because X appends the
+# The label's value is whatever follows on that line, or, when nothing does, the
+# following line (the two-line habit, see :func:`designated_source`). Either way
+# the value must be URL tokens and nothing else (``records.url_only_tokens``): a
+# word after the label designates nothing rather than a guess.
+#
+# The value is read as several tokens rather than one because X appends the
 # wrapper of the post's OWN attached media to the end of the text, so an
-# analyst's one-token line reaches storage as two tokens. Those wrappers are
-# dropped by name (``records.written_tokens``); what the analyst wrote must
+# analyst's one-token designation reaches storage as two tokens. Those wrappers
+# are dropped by name (``records.written_tokens``); what the analyst wrote must
 # still come to exactly one token, so two genuine links stay ambiguous and
 # designate nothing.
-_SOURCE_LINE_RE = re.compile(
-    r"^\s*source\s*:\s*(https?://\S+(?:\s+https?://\S+)*)\s*$", re.IGNORECASE
-)
+_SOURCE_LABEL_RE = re.compile(r"^\s*source\s*:\s*(.*?)\s*$", re.IGNORECASE)
 
 
 def _is_non_status_x_link(url: str) -> bool:
@@ -268,13 +271,23 @@ def designated_source(
     decides what gets fetched, never what gets stored. So an Instagram / TikTok /
     article link fills ``source_url`` link-only, with no date and no media.
 
+    The label takes its value from its own line, or, when the label sits there
+    alone, from the following line: analysts write the designation both ways,
+    and the two-line habit is the dominant one among the lines the single-line
+    rule left unread. The continuation is accepted only when it is exactly one
+    URL token the analyst wrote and nothing else (:func:`url_only_tokens`); a
+    second URL, a word, or any stray character on it refuses the designation
+    rather than guessing which part was meant. A label ending the text has no
+    following line and designates nothing.
+
     ``media_shortlinks`` are the post's own attached-media wrappers
     (``syndication.extract_media_shortlinks``): X appends them to the text, so
-    they sit on whatever line ends the post, designation lines included. They
-    are dropped from the line's tokens (:func:`written_tokens`) before the count,
-    which is what lets the whole-line rule read the line as the analyst wrote it.
-    What is left must be exactly one token: a line naming two genuine links is
-    ambiguous and designates nothing.
+    they sit on whatever line ends the post, designation lines and continuation
+    lines included. They are dropped from the value's tokens
+    (:func:`written_tokens`) before the count, which is what lets the whole-line
+    rule read the designation as the analyst wrote it. What is left must be
+    exactly one token: a value naming two genuine links is ambiguous and
+    designates nothing.
 
     The token must bind to one of ``links`` (:func:`bound_link`), which is what
     keeps a link the analyst only wrote about out of the slot. Two links are
@@ -288,11 +301,18 @@ def designated_source(
     entries = list(links)
     own_media = list(media_shortlinks)
     designated: FootageCandidate | None = None
-    for line in text.splitlines():
-        match = _SOURCE_LINE_RE.match(line)
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = _SOURCE_LABEL_RE.match(line)
         if match is None:
             continue
-        tokens = written_tokens(match.group(1).split(), own_media)
+        value = match.group(1)
+        if not value:
+            value = lines[index + 1] if index + 1 < len(lines) else ""
+        written = url_only_tokens(value)
+        if written is None:
+            continue
+        tokens = written_tokens(written, own_media)
         if len(tokens) != 1:
             continue
         link = bound_link(tokens[0], entries)

@@ -14,6 +14,8 @@ import pytest
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.services.tweet_ingest import (
+    MARKERS_INCOMPLETE,
+    SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
     SOURCE_OWN,
     ParsedMedia,
@@ -450,6 +452,55 @@ def test_structured_s_line_survives_the_posts_own_media_wrapper():
         (d,), reason = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
     assert reason is None
     assert d.source_url == "https://t.me/channel/5"
+
+
+def test_structured_bare_s_marker_takes_the_next_line():
+    # The same two-line habit the OSINT Source: label carries: S: alone on its
+    # line, the URL on the next one. The continuation is the marker's value, so
+    # it designates the source and leaves the proof.
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS:\nhttps://t.co/s",
+        external_sources=[telegram],
+    )
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)  # embed unavailable: degrades to link-only
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        (d,), reason = detect_structured_diagnosed(record, bot_handle="viditbot", client=client)
+    assert reason is None
+    assert d.source_url == "https://t.me/channel/5"
+    assert "t.me" not in d.proof_text
+
+
+def test_structured_bare_s_marker_with_two_links_on_the_next_line_fails():
+    # Two written links are ambiguous on the continuation line for the same
+    # reason they are on the marker's own line, and the mention fails loudly.
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    other = SourceLink(
+        url="https://x.com/warfootage/status/77", host="x", shortlink="https://t.co/p"
+    )
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS:\nhttps://t.co/s https://t.co/p",
+        external_sources=[telegram, other],
+    )
+    detections, reason = detect_structured_diagnosed(record, bot_handle="viditbot")
+    assert detections == []
+    assert reason == SOURCE_AMBIGUOUS
+
+
+def test_structured_bare_s_marker_with_a_word_on_the_next_line_fails():
+    # The continuation must be the URL and nothing else; prose beside it leaves
+    # the marker empty, which is a half-marked field, not a designation.
+    telegram = SourceLink(url="https://t.me/channel/5", host="telegram", shortlink="https://t.co/s")
+    record = _struct_rec(
+        "@viditbot\nT: Strike\nC: 48.123456, 37.654321\nS:\nfilmed by https://t.co/s",
+        external_sources=[telegram],
+    )
+    detections, reason = detect_structured_diagnosed(record, bot_handle="viditbot")
+    assert detections == []
+    assert reason == MARKERS_INCOMPLETE
 
 
 def test_structured_non_designated_quote_does_not_steal_the_source():
