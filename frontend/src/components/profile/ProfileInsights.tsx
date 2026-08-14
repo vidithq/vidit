@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Archive, Bot, Film, MapPin } from "lucide-react";
 
 import { getUserStats, type UserStats } from "@/lib/users";
@@ -12,9 +12,22 @@ import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { StatGrid, StatTile } from "@/components/ui/StatTile";
 
 /**
+ * The line between a chart's heading and the chart, saying what the chart
+ * counts. Local to this card and deliberately not a `components/ui/` export:
+ * it is prose in the card's own voice, not a control, and a section's *help*
+ * stays the `?` beside the heading (`<FieldHelp>`, the one explanation
+ * affordance). A heading here names a chart in three or four words, which
+ * leaves the population it counts unstated; the note states it without asking
+ * the reader to open anything.
+ */
+function ChartNote({ children }: { children: ReactNode }) {
+  return <p className="mt-1 mb-2 text-xs text-neutral-500">{children}</p>;
+}
+
+/**
  * The shape-of-work section on the public profile: status split, media
- * count, top conflict + capture-source pills, where the footage came from,
- * and the month grid over the span the analyst's events cover, all from
+ * count, top conflict + capture-source pills, the source-origin bar, and the
+ * month grid over the span the analyst's events cover, all from
  * `GET /users/{username}/stats`. Renders nothing until the stats arrive and
  * nothing at all for a profile with no events; a failed fetch also hides the
  * section rather than blocking the profile.
@@ -105,12 +118,11 @@ export function ProfileInsights({ username }: { username: string }) {
           `source_url` definition, so "source" here can't be confused with the
           capture source above, which is the lens rather than the platform. */}
       <div>
-        <SectionEyebrow
-          title="Where the footage comes from"
-          concept="source_url"
-          as="h3"
-          margin="sm"
-        />
+        <SectionEyebrow title="Source origin" concept="source_url" as="h3" margin="none" />
+        <ChartNote>
+          The host of each event&apos;s source link. Events naming no source
+          have their own share.
+        </ChartNote>
         <SourceHostBar
           hosts={stats.source_hosts}
           otherCount={stats.other_hosts_count}
@@ -119,15 +131,21 @@ export function ProfileInsights({ username }: { username: string }) {
       </div>
 
       {/* The axis is the date the event happened, not when the analyst posted
-          or imported it, so the heading names the field and the `?` carries
-          the registry's own definition of it. */}
+          or imported it. The heading says it in the reader's own words and the
+          note settles the ambiguity outright, so neither reading depends on
+          opening the `?`; the `?` still carries the registry's definition of
+          the field. */}
       <div>
         <SectionEyebrow
-          title="Events by event date"
+          title="When the events happened"
           concept="event_date"
           as="h3"
-          margin="sm"
+          margin="none"
         />
+        <ChartNote>
+          The month each event took place, not when it was posted, imported or
+          published.
+        </ChartNote>
         <ActivityHeatmap buckets={stats.activity} />
       </div>
     </Card>

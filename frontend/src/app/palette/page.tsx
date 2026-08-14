@@ -353,7 +353,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="ACCENT_RAMP / CHART_TAIL / CHART_NEUTRAL" usage="The chart scale: the accent as five intensity steps, strongest first, plus the two paints outside it. CHART_TAIL is work under a name the chart does not print (<SourceHostBar>'s Other); CHART_NEUTRAL is absence (an empty month, a slice naming no source). One hue, because both charts order by magnitude, so a hue per category would invent a palette to say what position already says. <ActivityHeatmap> uses the four strongest steps only: the faintest reads as noise beside an empty cell.">
+          <Item name="ACCENT_RAMP / CHART_TAIL / CHART_NEUTRAL" usage="The chart scale: the accent as five intensity steps, strongest first, plus the two paints outside it. CHART_TAIL is work under a name the chart does not print (<SourceHostBar>'s Other); CHART_NEUTRAL is absence (an empty month, a slice naming no source). One hue, because both charts order by magnitude, so a hue per category would invent a palette to say what position already says. <ActivityHeatmap> uses the four strongest steps only: the faintest reads as noise beside an empty cell. The ramp answers to the accent rule rather than sitting outside it: in the grid every ramp-painted cell is a control that names its month, and absence takes CHART_NEUTRAL.">
             <div className="flex flex-wrap items-center gap-3">
               <Variant label="ACCENT_RAMP">
                 <span className="flex gap-1">
@@ -937,7 +937,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActivityHeatmap>" usage="Contribution grid at month resolution (profile insights): one row per calendar year, twelve month cells, intensity off the busiest month. Months rather than days, because an analyst publishes tens of events a year and a daily grid would be blank almost everywhere. Hover, tap or focus a month and the line under the grid names it and its count; only months carrying events are focusable. No dated event renders a sentence; a single month keeps the grid, since the empty cells beside the lit one are what say which month it was.">
+          <Item name="<ActivityHeatmap>" usage="Contribution grid at month resolution (profile insights): one row per calendar year, twelve month cells, intensity off the busiest month. Months rather than days, because an analyst publishes tens of events a year and a daily grid would be blank almost everywhere. A lit month is a control: hover, tap or focus it and the line under the grid names it and its count, under an accent ring held off the cell by the card's colour. Empty months keep the absence paint under a hairline and take no focus stop, so the accent marks exactly what answers. The grid is capped rather than stretched (twelve columns of a full card would be 60px blocks), rows sit further apart than columns, and the Less / More legend is drawn with the grid's own cells. No dated event renders a sentence; a single month keeps the grid, since the empty cells beside the lit one are what say which month it was.">
             <div className="w-full max-w-sm space-y-4">
               <ActivityHeatmap
                 buckets={[

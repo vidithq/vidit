@@ -159,6 +159,28 @@ describe("public profile order", () => {
     ]);
   });
 
+  it("names each chart by what it counts, in words that need no tooltip", async () => {
+    mountProfile();
+    await screen.findByText("Insights");
+
+    // A heading a visitor has to open a `?` to understand is a heading that
+    // said nothing: the calendar counts when the documented events happened,
+    // not when they were posted, and the bar counts the host of a source
+    // link, with the events naming none accounted for rather than dropped.
+    expect(await screen.findByText("When the events happened")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The month each event took place, not when it was posted, imported or published."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source origin")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The host of each event's source link. Events naming no source have their own share."
+      )
+    ).toBeInTheDocument();
+  });
+
   it("keeps the owner's queue above the work and the account controls under it", async () => {
     useAuth.mockReturnValue({
       user: { id: "u1", username: "ana", email: "ana@example.test" },

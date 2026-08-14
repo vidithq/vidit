@@ -45,6 +45,28 @@ describe("<ActivityHeatmap>", () => {
     expect(screen.queryByRole("button", { name: "Feb 2025 · 0 events" })).toBeNull();
   });
 
+  it("paints the accent on the months that answer and on nothing else", () => {
+    const { container } = render(
+      <ActivityHeatmap
+        buckets={[
+          { period: "2025-01", count: 4 },
+          { period: "2025-02", count: 0 },
+        ]}
+      />
+    );
+
+    // The site's rule is that the accent marks what a reader can act on. Here
+    // it holds literally: a lit cell is a control that names its month, and an
+    // empty month is inert, so it keeps the absence paint. The legend under
+    // the grid is the one accent-carrying inert thing, and it is a copy of the
+    // cells it explains rather than an ornament.
+    const painted = container.querySelectorAll("[class*='bg-orange']");
+    const inGrid = [...painted].filter((el) => el.closest("[title]") === el);
+    expect(inGrid.length).toBeGreaterThan(0);
+    expect(inGrid.every((el) => el.tagName === "BUTTON")).toBe(true);
+    expect(screen.getByTitle("Feb 2025 · 0 events").className).not.toMatch(/bg-orange/);
+  });
+
   it("makes every month carrying events reachable and named", () => {
     render(<ActivityHeatmap buckets={[{ period: "2025-06", count: 1 }]} />);
 

@@ -19,6 +19,11 @@ export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 // hue on purpose: the app has one accent, and both charts order their data by
 // magnitude, so a hue per category would invent a palette to say what
 // position already says.
+//
+// The ramp keeps the site's accent rule rather than being excused from it: in
+// <ActivityHeatmap> every cell the ramp paints is a control that names its
+// month on hover, tap or focus, and a month with no event is inert and takes
+// `CHART_NEUTRAL`, so accent and clickable still name the same set of cells.
 export const ACCENT_RAMP = [
   "bg-orange-500",
   "bg-orange-500/75",
