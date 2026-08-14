@@ -1,7 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ArchivedCopies, PRIMARY_SOURCE_DESCRIPTION } from "./ArchivedCopies";
+import {
+  ArchivedCopies,
+  ArchiveSourceField,
+  isSnapshotUrl,
+  PRIMARY_SOURCE_DESCRIPTION,
+  SNAPSHOT_HINT,
+} from "./ArchivedCopies";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 import { recordArchivedCopy } from "@/lib/events";
 
@@ -55,29 +61,25 @@ describe("ArchivedCopies", () => {
     expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();
   });
 
-  it("offers the owner both providers, each prefilled with the link", () => {
+  it("offers the owner one provider page, prefilled with the link", () => {
     render(<ArchivedCopies {...props} copy={null} canArchive />);
     const toggle = screen.getByRole("button", { name: "Archive the source" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    // The link travels in the provider's own URL, so the analyst never copies
-    // it by hand: a path segment for Wayback, a query parameter for
-    // archive.today.
-    expect(screen.getByRole("link", { name: "Open Wayback Machine" })).toHaveAttribute(
-      "href",
-      `https://web.archive.org/save/${SOURCE}`
-    );
-    expect(screen.getByRole("link", { name: "Open archive.today" })).toHaveAttribute(
-      "href",
-      `https://archive.ph/?url=${encodeURIComponent(SOURCE)}`
-    );
-    // The provider pages open beside the catalog, never in place of it.
-    expect(screen.getByRole("link", { name: "Open Wayback Machine" })).toHaveAttribute(
-      "target",
-      "_blank"
-    );
+    // The link travels in the provider's own URL, as a path segment, so the
+    // analyst never copies it by hand.
+    const open = screen.getByRole("link", { name: "Open Wayback Machine" });
+    expect(open).toHaveAttribute("href", `https://web.archive.org/save/${SOURCE}`);
+    // The provider page opens beside the catalog, never in place of it.
+    expect(open).toHaveAttribute("target", "_blank");
+    // One door, not one accepted provider: the second link is gone and the
+    // sentence beside the first says where else a snapshot may come from.
+    expect(screen.queryByRole("link", { name: /archive\.today/ })).toBeNull();
+    expect(
+      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
+    ).toBeInTheDocument();
   });
 
   it("records what the owner pastes back and flips the glyph in place", async () => {
@@ -137,5 +139,66 @@ describe("ArchivedCopies", () => {
       <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} help={false} />
     );
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+/**
+ * What the paste field accepts, which is wider than the one page the affordance
+ * opens. The link is a convenience; the contract is the three allowed hosts,
+ * and an analyst who archives at archive.today themselves must keep working.
+ * Read on both surfaces at once, so neither the popover nor the form field can
+ * narrow it on its own.
+ */
+describe("the pasted snapshot, whichever service produced it", () => {
+  const SOURCE = "https://t.me/channel/1";
+
+  beforeEach(() => {
+    vi.mocked(recordArchivedCopy).mockReset();
+    vi.mocked(recordArchivedCopy).mockResolvedValue({ url: SOURCE, provider: "wayback" });
+  });
+
+  it.each([
+    ["web.archive.org", "https://web.archive.org/web/20260601120000/https://t.me/channel/1"],
+    ["archive.ph", "https://archive.ph/abcde"],
+    ["archive.today", "https://archive.today/abcde"],
+  ])("is accepted from %s", (_host, snapshot) => {
+    // The client-side gate the submit and edit forms refuse a publish on.
+    expect(isSnapshotUrl(snapshot)).toBe(true);
+
+    // The form field: no refusal, and no hint saying it is one.
+    const { unmount } = render(
+      <ArchiveSourceField sourceUrl={SOURCE} value={snapshot} onChange={() => {}} />
+    );
+    expect(screen.queryByText(SNAPSHOT_HINT)).toBeNull();
+    unmount();
+
+    // The popover on a live event: the paste travels to the server as typed.
+    render(
+      <ArchivedCopies
+        copy={null}
+        url={SOURCE}
+        eventId="e1"
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+        canArchive
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
+    fireEvent.change(screen.getByLabelText("Paste the snapshot link"), {
+      target: { value: snapshot },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(recordArchivedCopy).toHaveBeenCalledWith("e1", SOURCE, snapshot);
+  });
+
+  it("is refused when its host archives nothing", () => {
+    expect(isSnapshotUrl("https://example.test/not-an-archive")).toBe(false);
+    render(
+      <ArchiveSourceField
+        sourceUrl={SOURCE}
+        value="https://example.test/not-an-archive"
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByText(SNAPSHOT_HINT)).toBeInTheDocument();
   });
 });

@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+
+- **The archival affordance opens one provider page, not two** ([`frontend/src/components/ui/ArchivedCopies.tsx`](frontend/src/components/ui/ArchivedCopies.tsx), [`frontend/src/lib/fieldHelp.ts`](frontend/src/lib/fieldHelp.ts), [`docs/design.md`](docs/design.md), [`docs/ingestion.md`](docs/ingestion.md#source-archival)). Archiving is an act the analyst performs, so a pair of prefilled links was a hedge from the era when the server tried both services in parallel. The disclosure on an unarchived link and the field under the Source URL input on the submit, request-fulfilment and edit forms now open the Wayback Machine alone: Save Page Now works from a browser and its replay URL embeds the link it captured, which is what lets `validate_snapshot` check a paste against the link it claims to archive, while an archive.today code embeds nothing (the server deliberately never fetches it) and the service throttles bursts. What the field accepts is unchanged: a snapshot from `web.archive.org`, `archive.ph` or `archive.today` is stored under its own provider and renders with its own icon, and the line beside the link says so, so an analyst who prefers archive.today reaches it themselves and pastes the result into the same field.
 
 ## v0.5.3, 2026-08-14
 
