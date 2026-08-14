@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .records import url_only_tokens
+
 # ── Coordinate extractors ─────────────────────────────────────────────────
 
 
@@ -263,11 +265,24 @@ def split_marker_lines(text: str) -> MarkerFields:
     ones; a marker keeps its first NON-EMPTY value, so an empty ``T:`` line
     never shadows a real title further down. Validation (bounds, source
     vocabulary) is the caller's job: this is the pure line split.
+
+    An empty ``S:`` line takes the following line as its value when that line is
+    URL tokens and nothing else (``records.url_only_tokens``), the same two-line
+    habit the OSINT ``Source:`` label carries (``resolve.designated_source``),
+    and that line leaves the proof with it. The continuation is read for ``S:``
+    alone: a title or a coordinate is not a link, so no other marker has the
+    habit. Whether the token binds to an entity stays the caller's check, so a
+    continuation naming an unbound link fails as an unbound source rather than
+    as a missing one.
     """
     values: dict[str, str] = {}
     seen: set[str] = set()
     proof_lines: list[str] = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    continuations: set[int] = set()
+    for index, line in enumerate(lines):
+        if index in continuations:
+            continue
         match = _MARKER_LINE_RE.match(line)
         if match is None:
             proof_lines.append(line)
@@ -275,6 +290,10 @@ def split_marker_lines(text: str) -> MarkerFields:
         key = match.group(1).upper()
         seen.add(key)
         payload = match.group(2).strip()
+        continuation = lines[index + 1] if index + 1 < len(lines) else ""
+        if not payload and key == "S" and url_only_tokens(continuation) is not None:
+            payload = continuation.strip()
+            continuations.add(index + 1)
         if key not in values and payload:
             values[key] = payload
     return MarkerFields(

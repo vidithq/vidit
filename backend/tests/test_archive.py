@@ -597,6 +597,67 @@ def test_archive_designation_of_two_written_links_stays_ambiguous(tmp_path, monk
     assert resolved.source_url is None
 
 
+def test_archive_bare_source_label_takes_the_next_line(tmp_path, monkeypatch):
+    """The two-line habit through the archive, in the production shape: the label
+    alone on its line, the URL on the next one, and X's own-media wrapper behind
+    it because that is where the post ends. The designation reads as written and
+    the Telegram chase runs on it."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    _designation_archive(
+        archive,
+        "Geolocated the depot\nSource:\nhttps://t.co/tg https://t.co/ownPhoto",
+        [{"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"}],
+        "https://t.co/ownPhoto",
+    )
+
+    chased: list[str] = []
+
+    def fake_embed(url, *, client=None):
+        chased.append(url)
+        return TelegramEmbed(posted_at="2025-11-11T08:00:00+00:00", media=[])
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    assert chased == ["https://t.me/chan/42"]
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url == "https://t.me/chan/42"
+
+
+def test_archive_bare_source_label_with_prose_on_the_next_line_is_not_read(tmp_path, monkeypatch):
+    """The continuation line must be the URL and nothing else: a word beside the
+    link refuses the designation, nothing is chased, and the Instagram link stays
+    out of the slot the sole-candidate rule never offers host ``other``."""
+    import app.services.tweet_ingest.archive as archive_mod
+
+    archive = tmp_path / "arc"
+    archive.mkdir()
+    _designation_archive(
+        archive,
+        "Geolocated the depot\nSource:\nfilmed by https://t.co/ig",
+        [
+            {
+                "url": "https://t.co/ig",
+                "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
+            }
+        ],
+        "https://t.co/ownPhoto",
+    )
+
+    def no_embed(url, *, client=None):
+        raise AssertionError("a refused designation must not be chased")
+
+    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
+    [record] = read_tweets(archive, handle="ana", chase=True)
+    resolved = resolve_thread([record])
+    assert resolved is not None
+    assert resolved.source_url is None
+
+
 def test_archive_designation_inside_prose_is_not_read(tmp_path):
     """The whole-line anchor is untouched by the wrapper drop: a ``Source:``
     written mid-sentence stays a proof reference, wrapper or no wrapper."""

@@ -142,7 +142,10 @@ def _designated_source(record: TweetRecord, s_value: str) -> tuple[TweetRecord |
     failure, the reason naming which rule broke).
 
     Exactly one URL token the author wrote may sit on the line (two or more is a
-    failure). The post's own attached-media wrappers do not count as tokens
+    failure). ``s_value`` is the line's own payload, or the following line when
+    the author left the marker bare (``extract.split_marker_lines``), the same
+    two-line habit the OSINT ``Source:`` label carries. The post's own
+    attached-media wrappers do not count as tokens
     (:func:`written_tokens`): X appends them to the text, so an ``S:`` line that
     ends the post would otherwise read as two links and fail the format on a
     post the author wrote correctly. The
@@ -369,7 +372,8 @@ def detect_structured_diagnosed(
     Two spellings of one structure, both all-or-nothing:
 
     * **Marker form**: ``C:`` (one decimal pair inside bounds), ``S:`` (a
-      line designating the source: one URL token bound to a link entity, or
+      line designating the source: one URL token bound to a link entity, on
+      the marker's own line or on the next one when the marker sits bare, or
       the inline quote when X swallowed the token into the quote card, see
       :func:`_designated_source`), and ``T:`` (a non-empty title) when the
       analyst pins one, the first remaining non-empty, non-URL-only,
