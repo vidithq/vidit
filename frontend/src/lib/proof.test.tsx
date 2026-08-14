@@ -283,6 +283,18 @@ describe("proofHasImage", () => {
     );
   });
 
+  it("is false for an image node carrying no src", () => {
+    // The server counts srcs, not nodes (`sanitize.extract_image_srcs` feeding
+    // `events._require_proof_image`), so a srcless node does not clear the
+    // proof-image floor and must not be reported as if it did.
+    expect(proofHasImage(doc({ type: "image" }))).toBe(false);
+    expect(proofHasImage(doc({ type: "image", attrs: {} }))).toBe(false);
+  });
+
+  it("counts a placeholder src, which is an image about to upload", () => {
+    expect(proofHasImage(doc(image("placeholder://shot.jpg")))).toBe(true);
+  });
+
   it("finds an image nested inside another node", () => {
     expect(
       proofHasImage(

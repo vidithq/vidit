@@ -242,12 +242,19 @@ export function renderProof(
   return null;
 }
 
-/** True when the proof document carries at least one image node (anywhere in
- *  the tree). A geolocation's proof is a source-media ↔ satellite cross-
- *  reference, so it must show the imagery — text alone can't be audited. */
+/** True when the proof document carries at least one image node with a `src`
+ *  (anywhere in the tree). A geolocation's proof is a source-media ↔ satellite
+ *  cross-reference, so it must show the imagery: text alone can't be audited.
+ *
+ *  A `src` string is what counts, not the node type, because that is the
+ *  verdict the server reaches: `sanitize.extract_image_srcs` collects srcs and
+ *  `events._require_proof_image` refuses an empty collection, so an image node
+ *  without one never satisfies the floor. A `placeholder://` src counts on both
+ *  sides: it is the not-yet-uploaded image riding in the same request. */
 export function proofHasImage(proof: Record<string, unknown> | null): boolean {
   if (!proof) return false;
   const hasImage = (node: TiptapNode): boolean =>
-    node.type === "image" || (node.content?.some(hasImage) ?? false);
+    (node.type === "image" && typeof node.attrs?.src === "string") ||
+    (node.content?.some(hasImage) ?? false);
   return hasImage(proof as TiptapNode);
 }

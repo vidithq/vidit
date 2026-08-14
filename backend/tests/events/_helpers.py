@@ -44,9 +44,15 @@ def _make_geo(
     db,
     *,
     author: User,
-    lat: float = 48.5,
-    lng: float = 34.5,
+    # ``lat=None`` (or ``lng=None``) models a row without a subject point: a
+    # ``detected`` draft may carry none (``ck_events_coords_status``), and the
+    # detections queue's readiness filter turns on exactly that.
+    lat: float | None = 48.5,
+    lng: float | None = 34.5,
     title: str | None = None,
+    # The proof body. Left ``None``, the row takes the model's empty-doc
+    # default, which carries no image and so fails the proof-image floor.
+    proof: dict[str, Any] | None = None,
     event_date: date | None = None,
     source_posted_at: datetime | None = None,
     deleted: bool = False,
@@ -66,7 +72,9 @@ def _make_geo(
     geo = Event(
         owner_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(lng, lat), srid=4326),
+        event_coords=(
+            from_shape(Point(lng, lat), srid=4326) if lat is not None and lng is not None else None
+        ),
         source_url=source_url,
         event_date=event_date or date(2026, 5, 1),
         source_posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
@@ -74,6 +82,8 @@ def _make_geo(
     )
     if status is not None:
         geo.status = status
+    if proof is not None:
+        geo.proof = proof
     # Stamp per the lifecycle CHECKs (a geolocated row without geolocated_at,
     # or a closed one without closed_at + before_closed_status, is rejected by
     # Postgres), mirroring what every write path stamps.
