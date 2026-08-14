@@ -1271,10 +1271,11 @@ export interface paths {
          *     for. Machine drafts and the rows they rejected are theirs to work, not
          *     theirs to be credited with; the owner reaches the drafts through their
          *     detections queue instead. The filter is applied to the count and to the
-         *     rows alike, so a page of the feed and its ``total`` agree. It does not
-         *     apply to ``geolocations_count`` on the profile payload, which counts the
-         *     whole body of live work by decision (the Submitted tile and the coverage
-         *     map both count drafts in).
+         *     rows alike, so a page of the feed and its ``total`` agree, and
+         *     ``geolocations_count`` on the profile payload counts the same set, so the
+         *     Submitted tile above the block agrees with both. The whole body of live
+         *     work, drafts included, is ``total_events`` on
+         *     :func:`get_user_stats`.
          *
          *     Offset-paged rather than cursor-paged: the ordering the profile reads by
          *     is ``event_date``, which is nullable and editable and so cannot key a
@@ -2800,6 +2801,12 @@ export interface components {
          *     Excludes ``email`` (free-harvest vector) and ``is_admin`` (admin role is
          *     private). Everything else is the analyst's public face: bio, avatar, links,
          *     submission count.
+         *
+         *     ``geolocations_count`` counts the analyst's published geolocations, the
+         *     same set ``GET /users/{username}/events`` serves, so the profile's
+         *     Submitted tile and the feed beneath it print one number. For the whole
+         *     body of live work, drafts included, read ``total_events`` on
+         *     :class:`UserStatsRead`.
          */
         UserProfile: {
             /** Avatar Url */

@@ -1270,7 +1270,7 @@ Public profile of an analyst.
 
 `bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me`, defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
-`geolocations_count` is every live event the analyst owns, machine drafts included. It is deliberately wider than the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which counts published rows only, and matches what the profile's coverage map plots.
+`geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine drafts included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
 
 **Errors:**
 | Code | Case |
@@ -1340,7 +1340,7 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. Both counts stay reachable elsewhere: `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the analyst's whole body of live work, [`GET /users/{username}/stats`](#get-usersusernamestats) splits it by status, and the owner works their drafts from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The drafts stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies every status, and the owner works their own drafts from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 

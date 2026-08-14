@@ -10,9 +10,11 @@ analysts will land on the day they get the invite. Contracts to lock in:
   geolocations: live (`deleted_at IS NULL`, `hidden_at IS NULL`) and
   `status = 'geolocated'`. The feed's own `total` and its rows must
   apply the same filter, otherwise the pager counts rows it never
-  serves. `geolocations_count` on the profile payload is deliberately
-  wider (it counts drafts too, like the Submitted tile and the
-  coverage map), so the two numbers differ by design.
+  serves. `geolocations_count` on the profile payload counts the same
+  set: it is what the Submitted tile prints, directly above that feed,
+  so a tile counting machine drafts makes the page contradict itself.
+  `GET /users/{u}/stats` is where the analyst's whole body of live work
+  is reported, split by status and summed as `total_events`.
 * `UserProfile` carries the public profile fields (bio, avatar_url,
   external_links) but never leaks `email`.
 * `PATCH /users/me` distinguishes "field omitted" from "field set to
@@ -272,19 +274,66 @@ def test_feed_serves_published_work_only(db, live_user):
     assert body["total"] == 1
 
 
-def test_feed_total_and_profile_count_diverge_on_drafts(db, live_user):
-    """`geolocations_count` counts the whole body of live work, the feed
-    counts the published part. The split is deliberate: the Submitted
-    tile and the coverage map both count drafts in, so the feed narrowing
-    must not be read back into the profile payload."""
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, status=STATUS_DETECTED)
-    _make_geo(db, author=live_user, status=STATUS_REQUESTED)
+def test_profile_count_counts_published_work_only(db, live_user):
+    """`geolocations_count` counts the published geolocations and nothing
+    else, across the full lifecycle.
+
+    It is the Submitted tile's number, and the tile sits above a Recent
+    submissions block and a coverage split that both count published
+    rows. An analyst who ran an archive import owns hundreds of machine
+    drafts, so counting those here tiles a figure an order of magnitude
+    above everything under it and credits them with claims they never
+    made.
+    """
+    _make_geo(db, author=live_user, title="published")
+    _make_geo(db, author=live_user, title="draft", status=STATUS_DETECTED)
+    _make_geo(
+        db,
+        author=live_user,
+        title="rejected",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_DETECTED,
+    )
+    _make_geo(db, author=live_user, title="request", status=STATUS_REQUESTED)
+    _make_geo(
+        db,
+        author=live_user,
+        title="withdrawn",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_REQUESTED,
+    )
+    _make_geo(db, author=live_user, title="removed", deleted=True)
 
     profile = client.get(f"/api/v1/users/{live_user.username}").json()
     feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
-    assert profile["geolocations_count"] == 3
-    assert feed["total"] == 1
+    assert profile["geolocations_count"] == feed["total"] == 1
+
+
+def test_profile_count_and_stats_report_different_numbers(db, live_user):
+    """The whole body of live work is still reported, under its own name.
+
+    `/stats` splits by status and sums to `total_events`; the profile
+    payload counts the published part. A change that collapses the two
+    takes the wider figure off the profile entirely, which is what the
+    Insights card and the coverage map read against.
+    """
+    _make_geo(db, author=live_user)
+    _make_geo(db, author=live_user, status=STATUS_DETECTED)
+    _make_geo(
+        db,
+        author=live_user,
+        title="rejected",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_DETECTED,
+    )
+
+    profile = client.get(f"/api/v1/users/{live_user.username}").json()
+    stats = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert profile["geolocations_count"] == 1
+    assert stats["geolocated_count"] == 1
+    assert stats["detected_count"] == 1
+    assert stats["closed_count"] == 1
+    assert stats["total_events"] == 3
 
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):

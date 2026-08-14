@@ -78,8 +78,18 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
+    # Published work, not everything owned: this is the number the profile's
+    # Submitted tile prints, and the tile sits directly above a Recent
+    # submissions block and a coverage split that both count published rows.
+    # Counting machine drafts here made the page contradict itself (a tile of
+    # 496 over a feed of 47) and credited an analyst with claims they never
+    # made. Same predicate as the feed below, so the tile and the feed's
+    # ``total`` cannot drift. The wider "everything this analyst owns" figure
+    # stays available as ``total_events`` on ``GET /users/{username}/stats``.
     geolocations_count = (
-        db.query(Event).filter(Event.owner_id == user.id, *visible_events()).count()
+        db.query(Event)
+        .filter(Event.owner_id == user.id, *visible_events(), published_events())
+        .count()
     )
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
@@ -172,10 +182,11 @@ def get_user_geolocations(
     for. Machine drafts and the rows they rejected are theirs to work, not
     theirs to be credited with; the owner reaches the drafts through their
     detections queue instead. The filter is applied to the count and to the
-    rows alike, so a page of the feed and its ``total`` agree. It does not
-    apply to ``geolocations_count`` on the profile payload, which counts the
-    whole body of live work by decision (the Submitted tile and the coverage
-    map both count drafts in).
+    rows alike, so a page of the feed and its ``total`` agree, and
+    ``geolocations_count`` on the profile payload counts the same set, so the
+    Submitted tile above the block agrees with both. The whole body of live
+    work, drafts included, is ``total_events`` on
+    :func:`get_user_stats`.
 
     Offset-paged rather than cursor-paged: the ordering the profile reads by
     is ``event_date``, which is nullable and editable and so cannot key a

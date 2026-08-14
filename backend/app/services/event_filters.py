@@ -59,7 +59,10 @@ def published_events() -> ColumnElement[bool]:
     as opposed to what is merely visible. ``visible_events`` answers "may a
     reader see this row"; this answers "did this analyst stand behind it".
     The public profile feed (:func:`routers.users.get_user_geolocations`)
-    filters on both, so its count and its rows agree.
+    filters on both, so its count and its rows agree, and the profile
+    payload's ``geolocations_count``
+    (:func:`routers.users.get_user_profile`) counts through it too, so the
+    Submitted tile prints the size of the set the feed under it serves.
 
     Why the other three states are out:
 
@@ -74,8 +77,11 @@ def published_events() -> ColumnElement[bool]:
       a withdrawn ask, out for both reasons.
 
     Deliberate non-callers: the ``located`` catalog view, which shows drafts
-    beside vouched rows on purpose (:func:`view_predicate`), and the profile
-    coverage map, which plots both and splits the count.
+    beside vouched rows on purpose (:func:`view_predicate`); the profile
+    coverage map, which plots both and splits the count; and
+    :func:`services.user_stats.get_user_stats`, which reports every status as
+    its own tally and sums them into ``total_events``, the one place a reader
+    still gets the analyst's whole body of live work as a single number.
     """
     return Event.status == STATUS_GEOLOCATED
 

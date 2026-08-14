@@ -40,10 +40,12 @@ export function RecentSubmissions({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
-          {/* Gated on the rows, not on ``geolocations_count``: that count is
-              the whole body of live work, drafts included, so an analyst
-              holding only machine drafts would otherwise be promised
-              "latest geolocations" above an empty list. */}
+          {/* Gated on the rows this block renders, not on
+              ``geolocations_count``. The two now count the same set, so they
+              agree on the profiles that matter, but only the rows also cover
+              a feed read that failed: keying the copy off a count that
+              arrived on a different request promises "latest geolocations"
+              above an empty list. */}
           <p className="text-xs text-neutral-500">
             {submissions.length > 0
               ? `${profile.username}'s latest geolocations, newest first.`

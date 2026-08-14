@@ -106,6 +106,12 @@ class UserProfile(BaseModel):
     Excludes ``email`` (free-harvest vector) and ``is_admin`` (admin role is
     private). Everything else is the analyst's public face: bio, avatar, links,
     submission count.
+
+    ``geolocations_count`` counts the analyst's published geolocations, the
+    same set ``GET /users/{username}/events`` serves, so the profile's
+    Submitted tile and the feed beneath it print one number. For the whole
+    body of live work, drafts included, read ``total_events`` on
+    :class:`UserStatsRead`.
     """
 
     id: uuid.UUID

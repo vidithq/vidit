@@ -37,14 +37,13 @@ function submission(id: string): RecentSubmission {
 }
 
 describe("RecentSubmissions", () => {
-  it("gates the heading copy on the rows, not on the wider work count", () => {
-    // The analyst holds 480 live events and has published none of them: the
-    // feed serves the published set, `geolocations_count` counts the whole
-    // body of work. Keying the copy off the count would promise "latest
-    // geolocations" above an empty list.
+  it("gates the heading copy on the rows, not on the profile count", () => {
+    // The count and the feed arrive on separate requests, so a feed read that
+    // failed leaves rows empty under a non-zero count. Keying the copy off the
+    // count would promise "latest geolocations" above an empty list.
     render(
       <RecentSubmissions
-        profile={profileFixture({ geolocations_count: 480 })}
+        profile={profileFixture({ geolocations_count: 47 })}
         submissions={[]}
         isOwn={false}
       />
@@ -61,7 +60,7 @@ describe("RecentSubmissions", () => {
     // status filter travels with the link.
     render(
       <RecentSubmissions
-        profile={profileFixture({ geolocations_count: 480 })}
+        profile={profileFixture({ geolocations_count: 47 })}
         submissions={[submission("a")]}
         isOwn={false}
       />
