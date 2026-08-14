@@ -88,16 +88,76 @@ jobs:
             echo "- **Author:** $AUTHOR"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Version-pinned: the deploy step below depends on `railway up --detach`
+      # and on `railway deployment list --json --limit`, so the CLI is not a
+      # floating dependency. Bump this pin deliberately, after checking the
+      # new version still carries those flags.
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@5.35.0
 
       # Each service carries its own dashboard config (Root Directory
       # ``backend``, Config-as-code ``backend/railway.scheduler.json``, start
       # command); the upload is the same repo-root snapshot for all four.
+      #
+      # Why detach + poll rather than `railway up --ci`: `--ci` streams build
+      # logs and exits with the status of that stream, which is not the status
+      # of the deployment. A dropped stream (`Failed to stream build logs`)
+      # failed all five matrix jobs on the v0.5.0 deploy while every service
+      # went on to reach SUCCESS. `--detach` returns once the upload is
+      # accepted, and the deployment status is then read from the API, so the
+      # job's exit status tracks the deployment.
       - name: Deploy ${{ matrix.service }} to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service ${{ matrix.service }} --ci
+          SERVICE: ${{ matrix.service }}
+          # Poll budget, kept under the job's ``timeout-minutes`` so a stuck
+          # deploy fails with the message below instead of a bare job kill.
+          POLL_TIMEOUT_SECONDS: "900"
+          POLL_INTERVAL_SECONDS: "10"
+        run: |
+          set -euo pipefail
+
+          # ``railway deployment list --json`` returns a bare array, newest
+          # first, each entry carrying ``id`` and ``status`` at its root.
+          # Prints "<id> <status>", or nothing when the service has none.
+          newest() {
+            railway deployment list --service "$SERVICE" --json --limit 1 \
+              | jq -r '.[0] | select(. != null) | "\(.id) \(.status)"'
+          }
+
+          # ``railway up --detach`` doesn't report the id it just created, so
+          # the newest id from before the upload is what tells the new
+          # deployment from the previous one: the new one is not registered
+          # the instant the upload returns.
+          BEFORE_ID=$(newest | cut -d' ' -f1 || true)
+          railway up --service "$SERVICE" --detach
+
+          DEADLINE=$(( $(date +%s) + POLL_TIMEOUT_SECONDS ))
+          LAST_STATUS=""
+          while :; do
+            read -r ID STATUS <<<"$(newest || true)"
+            if [ -n "$ID" ] && [ "$ID" != "$BEFORE_ID" ]; then
+              # One line per transition, not one per poll.
+              if [ "$STATUS" != "$LAST_STATUS" ]; then
+                echo "$SERVICE deployment $ID: $STATUS"
+                LAST_STATUS="$STATUS"
+              fi
+              case "$STATUS" in
+                SUCCESS) exit 0 ;;
+                FAILED|CRASHED|REMOVED|SKIPPED)
+                  echo "Build logs: railway logs --build --service $SERVICE"
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "Timed out after ${POLL_TIMEOUT_SECONDS}s waiting for $SERVICE to reach a terminal status."
+              echo "Last seen deployment: ${ID:-none} status ${STATUS:-unknown}"
+              exit 1
+            fi
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
 
   deploy-frontend:
     name: Deploy frontend (Vercel)
@@ -158,7 +218,7 @@ jobs:
         run: npm install -g vercel
 
       - name: Pull Vercel env (production)
-        run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build
         env:
@@ -190,10 +250,10 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: vercel build --prod --token=$VERCEL_TOKEN
+        run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy
         run: |
-          URL=$(vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           echo "Deployed to $URL"
           echo "- **URL:** $URL" >> "$GITHUB_STEP_SUMMARY"
