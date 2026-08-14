@@ -53,6 +53,10 @@ RELAY_TAGGED_TWICE_ID = "9300000000000000013"
 FOREIGN_PARENT_TAG_ID = "9300000000000000014"
 BARE_FMT_ID = "9300000000000000015"
 DERIVED_TITLE_ID = "9300000000000000016"
+# The tagged post X refuses to serve unauthenticated: ``_syndication_client``
+# answers the tombstone body for this id, so nothing is ever read from it. Its
+# ``BODIES`` entry exists only to feed the mentions payload's ``text``.
+TOMBSTONE_ID = "9300000000000000017"
 SOURCE_ID = "9300000000000000042"
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
@@ -212,6 +216,15 @@ BODIES = {
         ),
         "entities": _SOURCE_ENTITIES,
     },
+    # A perfectly conforming tag whose own post X will not serve: the
+    # tombstone alone must stop it, so the format is deliberately valid.
+    TOMBSTONE_ID: {
+        "id_str": TOMBSTONE_ID,
+        "created_at": "2026-03-11T21:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": _STRUCT_TEXT,
+        "entities": _SOURCE_ENTITIES,
+    },
     # The S: link's target, chased for its post date (no media, so the
     # assemble step fetches nothing).
     SOURCE_ID: {
@@ -225,7 +238,12 @@ BODIES = {
 
 def _syndication_client() -> httpx.Client:
     def handler(req: httpx.Request) -> httpx.Response:
-        body = BODIES.get(req.url.params.get("id", ""))
+        tweet_id = req.url.params.get("id", "")
+        if tweet_id == TOMBSTONE_ID:
+            # X's 200-with-no-tweet for a post readable only behind a login
+            # (age-restricted, withheld): the shape conflict footage lands in.
+            return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
+        body = BODIES.get(tweet_id)
         if body is None:
             return httpx.Response(404)
         return httpx.Response(200, json=body)
@@ -516,6 +534,35 @@ async def test_marker_mention_without_a_title_marker_creates_draft(db, linked_ow
     assert "C:" not in proof and "S:" not in proof
 
 
+async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner, monkeypatch):
+    """X age-gates exactly the footage this bot reads, so a tagged post it
+    won't serve unauthenticated recurs. Nothing was readable and nothing here
+    is broken: the mention ledgers ``no_detection``, the linked author gets a
+    reply naming the restriction instead of a wrong format diagnosis, and
+    Sentry hears nothing.
+    """
+    import app.services.bot as bot_service
+
+    captured: list[BaseException] = []
+    monkeypatch.setattr(bot_service.sentry_sdk, "capture_exception", captured.append)
+
+    outcome, _, posted, _ = await _run(db, [TOMBSTONE_ID])
+
+    assert outcome.no_detection == 1
+    assert outcome.failed == 0
+    assert outcome.events_created == 0
+    assert captured == []
+    (payload,) = posted
+    assert payload["text"] == (
+        "❌ Nothing saved\n"
+        "⚠ Post not readable on X (age-restricted, withheld or gone)\n"
+        "Guide in bio (m00017)"
+    )
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TOMBSTONE_ID).one()
+    assert ledger.outcome == "no_detection"
+    assert ledger.reply_tweet_id == "777"
+
+
 @pytest.mark.parametrize("mention_id", [NO_TITLE_ID, MISSING_C_ID, MISSING_S_ID])
 async def test_each_missing_field_fails_the_mention(db, linked_owner, mention_id):
     outcome, _, posted, _ = await _run(db, [mention_id])
@@ -744,11 +791,17 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
             },
         )
 
+    def syn_handler(_req: httpx.Request) -> httpx.Response:
+        # X 5xx, so the pipeline raises and the mention ledgers ``failed``. Not
+        # a 404 or a tombstone: those are the analyst's own ``no_detection``,
+        # which this test already covers elsewhere.
+        return httpx.Response(500)
+
     posted: list[dict[str, object]] = []
     liked: list[dict[str, object]] = []
     try:
         with (
-            _syndication_client() as syn,  # 404s the unknown id, so the pipeline raises
+            httpx.Client(transport=httpx.MockTransport(syn_handler)) as syn,
             httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
             _write_client(posted, liked) as write,
         ):

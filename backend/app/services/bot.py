@@ -84,11 +84,13 @@ from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
     MARKERS_INCOMPLETE,
+    POST_UNREADABLE,
     SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
     SOURCE_OWN,
     SOURCE_UNBOUND,
     TITLE_MISSING,
+    TweetNotAccessible,
     TweetRecord,
     detect_relay_diagnosed,
     detect_structured_diagnosed,
@@ -361,6 +363,7 @@ _FAILURE_DIAGNOSES: dict[str, str] = {
     SOURCE_UNBOUND: "Source line URL matches none of the post's attached links",
     SOURCE_OWN: "Source link points to your own post",
     TITLE_MISSING: "No title line",
+    POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
 }
 
 
@@ -368,7 +371,7 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """The in-thread reply for a linked author whose tag produced nothing.
 
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
-    voice: the ❌ header, one ⚠ line per problem (what the mapper saw; it
+    voice: the ❌ header, one ⚠ line per problem (what the pipeline saw; it
     surfaces one reason per mention today, so one line), and the footer.
     One header for both delivery forms: the diagnosed post is the analyst's
     own thread either way, so naming it added nothing. No recited lesson
@@ -455,7 +458,17 @@ async def _process_mention(
     x_write_client: httpx.Client | None,
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None, str | None]:
-    record = _tagged_record(mention, client=syndication_client)
+    try:
+        record = _tagged_record(mention, client=syndication_client)
+    except TweetNotAccessible:
+        # X serves the tagged post to no unauthenticated reader: a syndication
+        # 404 (deleted, protected) or the tombstone body it answers for an
+        # age-restricted or withheld post. Conflict footage is exactly what X
+        # age-gates, so this recurs. Nothing was readable, and nothing here is
+        # broken: ledger ``no_detection`` and let the failure reply say so,
+        # rather than raise into the pass's ``failed`` + Sentry capture, where
+        # the analyst would get no answer and an operator a false outage.
+        return "no_detection", 0, None, POST_UNREADABLE
     detections, failure_reason = detect_structured_diagnosed(
         record, bot_handle=settings.x_bot_handle, client=syndication_client
     )

@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from app.services.tweet_ingest import (
     InvalidTweetUrl,
+    TweetFetchFailed,
+    TweetNotAccessible,
+    TweetUpstreamBusy,
     acquire,
     clean_proof_text,
     derive_title,
@@ -629,6 +633,137 @@ def test_parse_tweet_coord_extraction_falls_back_to_quoted_text(monkeypatch):
     assert len(parsed.parsed_coords) == 1
     assert parsed.parsed_coords[0].lat == pytest.approx(48.012345)
     assert parsed.parsed_coords[0].lng == pytest.approx(37.802411)
+
+
+def test_parse_tweet_missing_created_at_stays_a_fetch_failure(monkeypatch):
+    """A body with no tombstone and no ``created_at`` is upstream schema
+    drift, and stays a ``TweetFetchFailed`` (the route's 502, which the
+    operator is alerted on). Restricted tweets are classified earlier, in
+    ``fetch_syndication``, so they never reach this guard."""
+    _stub_syndication(
+        monkeypatch,
+        {
+            "user": _user_block("alice"),
+            "text": "Strike at 48.012345, 37.802411",
+            "entities": {"urls": []},
+            "mediaDetails": [],
+        },
+    )
+    with pytest.raises(TweetFetchFailed):
+        parse_tweet("https://x.com/alice/status/1234567890")
+
+
+# ── Restricted tweets (tombstone) ─────────────────────────────────────────
+
+
+_TOMBSTONE_TEXT = "Age-restricted adult content. This content might not be appropriate for all."
+
+
+@pytest.mark.parametrize(
+    "tombstone",
+    [{}, {"text": {"text": _TOMBSTONE_TEXT}}],
+    ids=["empty", "with-text"],
+)
+def test_fetch_syndication_tombstone_is_not_accessible(tombstone):
+    """X answers ``200`` with a ``TweetTombstone`` body for a tweet only
+    readable behind a login (age-restricted, withheld in a jurisdiction).
+    That is an inaccessible tweet, not a broken upstream, so it maps to
+    ``TweetNotAccessible`` (the route's 404). The ``tombstone`` object is
+    sometimes empty and sometimes carries a human string, so only
+    ``__typename`` decides.
+    """
+    body = {"__typename": "TweetTombstone", "tombstone": tombstone}
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=body))
+        ) as client,
+        pytest.raises(TweetNotAccessible) as excinfo,
+    ):
+        syndication.fetch_syndication("1657834636792287232", client=client)
+    assert str(excinfo.value) == (
+        "Tweet not readable without an X login (age-restricted or withheld), fill the form manually"
+    )
+
+
+def test_fetch_syndication_does_not_cache_a_tombstone():
+    """A tombstone never enters the cache: the restriction can be lifted
+    upstream, and a cached one would keep answering "not readable" for the
+    full TTL. The second call re-hits the transport.
+    """
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        for _ in range(2):
+            with pytest.raises(TweetNotAccessible):
+                syndication.fetch_syndication("1657834636792287232", client=client)
+    assert calls == 2
+
+
+# ── Refused upstreams, unusable bodies ────────────────────────────────────
+
+
+def _fetch(response: httpx.Response) -> dict:
+    """Run one ``fetch_syndication`` against a canned upstream response."""
+    with httpx.Client(transport=httpx.MockTransport(lambda _request: response)) as client:
+        return syndication.fetch_syndication("1657834636792287232", client=client)
+
+
+def test_fetch_syndication_carries_an_unknown_typename_into_the_failure():
+    """A named shape this module doesn't map is schema drift and stays a
+    ``TweetFetchFailed`` (the route's 502, the alert we want): mapping every
+    unknown ``__typename`` to a 404 would silence exactly that. The message
+    names the value X sent, so the Sentry issue title says what arrived
+    instead of needing a manual repro to find out.
+    """
+    with pytest.raises(TweetFetchFailed) as excinfo:
+        _fetch(httpx.Response(200, json={"__typename": "TweetUnavailable"}))
+    assert "TweetUnavailable" in str(excinfo.value)
+
+
+def test_fetch_syndication_empty_body_names_the_rejected_token():
+    """X answers ``200 {}`` when it rejects the request ``token``, and the
+    token is computed locally (``_syndication_token``): an empty body means
+    the algorithm no longer matches X's, so tweet import is down for
+    everyone. Its own message, still a ``TweetFetchFailed`` (the 502), so the
+    Sentry title says which hypothesis to check first.
+    """
+    with pytest.raises(TweetFetchFailed) as excinfo:
+        _fetch(httpx.Response(200, json={}))
+    assert str(excinfo.value) == "upstream returned an empty body, token rejected"
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_fetch_syndication_maps_a_refused_upstream_to_busy(status):
+    """The syndication budget is unauthenticated and shared by every analyst
+    and the bot, so throttling happens and reads as "wait, then retry", not
+    "the payload changed shape". ``TweetUpstreamBusy`` carries that to the
+    route's 503, X's own 5xx alongside it.
+    """
+    with pytest.raises(TweetUpstreamBusy):
+        _fetch(httpx.Response(status))
+
+
+def test_fetch_syndication_other_client_errors_stay_plain_failures():
+    """Only 429 and X's 5xx are the busy case. Any other refusal keeps the
+    catch-all ``TweetFetchFailed``, so widening the busy class can't quietly
+    downgrade a broken request into "retry in a minute".
+    """
+    with pytest.raises(TweetFetchFailed) as excinfo:
+        _fetch(httpx.Response(403))
+    assert not isinstance(excinfo.value, TweetUpstreamBusy)
+    assert "403" in str(excinfo.value)
+
+
+def test_fetch_syndication_serves_a_tweet_typed_body_untouched():
+    """The production shape: ``__typename: "Tweet"`` clears every gate above
+    and comes back as sent."""
+    body = {"__typename": "Tweet", "id_str": "1657834636792287232", "text": "hello"}
+    assert _fetch(httpx.Response(200, json=body)) == body
 
 
 # ── Cache behaviour ───────────────────────────────────────────────────────

@@ -1,13 +1,16 @@
 """`POST /geolocations/import-from-tweet` (+ its media proxy).
 
 The human pre-fill path: parsed-payload happy path, the no-persist detection
-preview, the 400/404/502 error mapping, and the media-proxy host/size guards.
-Shared fixtures live in `conftest.py`; `client` / `_make_geo` in `_helpers.py`.
+preview, the 400/404/502/503 error mapping, and the media-proxy status/host/size
+guards. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
+`_helpers.py`.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+
+import pytest
 
 from app.models.event import Event
 from tests.conftest import login_as
@@ -170,6 +173,42 @@ def test_import_from_tweet_returns_404_for_inaccessible_tweet(author, monkeypatc
     assert response.json()["detail"] == "Tweet not accessible"
 
 
+def test_import_from_tweet_returns_404_for_restricted_tweet(author, monkeypatch):
+    """A tweet X only serves behind a login answers ``200`` with a
+    ``TweetTombstone`` body. It reads as an inaccessible tweet: a 404 the
+    analyst can act on, not a 502 that pages an operator.
+
+    No ``parse_tweet`` stub here. The whole fetch runs against a mocked
+    transport (``httpx.Client`` swapped for a ``MockTransport`` factory, the
+    way the CDN tests do it) so the tombstone is classified exactly where
+    production classifies it.
+    """
+    import httpx
+
+    headers = login_as(client, author)
+    real_client = httpx.Client
+
+    def make_client(**_kwargs):
+        return real_client(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    200, json={"__typename": "TweetTombstone", "tombstone": {}}
+                )
+            )
+        )
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    response = client.post(
+        "/api/v1/events/import-from-tweet",
+        headers=headers,
+        json={"url": "https://x.com/PaulJawin/status/1657834636792287232"},
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == (
+        "Tweet not readable without an X login (age-restricted or withheld), fill the form manually"
+    )
+
+
 def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatch):
     from app.services.tweet_ingest import TweetFetchFailed
 
@@ -183,6 +222,58 @@ def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatc
     # The graceful banner string the frontend renders verbatim: the
     # transport detail is hidden behind it so a syndication outage and
     # a schema-drift bug are operationally identical to the caller.
+    assert response.json()["detail"] == "Couldn't read tweet, fill the form manually"
+
+
+def test_import_from_tweet_returns_503_when_x_throttles_us(author, monkeypatch):
+    """X refusing to serve for now (a 429, or its own 5xx) is a wait, not
+    schema drift: the analyst is told to retry, and the 503 keeps the
+    throttling in its own Sentry issue instead of the 502 drift bucket.
+
+    No stub on the raise path: the whole fetch runs against a mocked
+    transport so the 429 is classified where production classifies it.
+    """
+    import httpx
+
+    headers = login_as(client, author)
+    real_client = httpx.Client
+
+    def make_client(**_kwargs):
+        return real_client(transport=httpx.MockTransport(lambda _request: httpx.Response(429)))
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    response = client.post(
+        "/api/v1/events/import-from-tweet",
+        headers=headers,
+        json={"url": "https://x.com/handle/status/1657834636792287233"},
+    )
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == (
+        "X is not serving tweets right now, retry in a minute or fill the form manually"
+    )
+
+
+def test_import_from_tweet_returns_502_when_x_rejects_the_token(author, monkeypatch):
+    """An exactly-empty ``{}`` body is X rejecting the locally computed
+    token, so import is down for everyone: a 502 an operator is alerted on,
+    behind the same analyst-facing banner as any other drift."""
+    import httpx
+
+    headers = login_as(client, author)
+    real_client = httpx.Client
+
+    def make_client(**_kwargs):
+        return real_client(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={}))
+        )
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    response = client.post(
+        "/api/v1/events/import-from-tweet",
+        headers=headers,
+        json={"url": "https://x.com/handle/status/1657834636792287234"},
+    )
+    assert response.status_code == 502, response.text
     assert response.json()["detail"] == "Couldn't read tweet, fill the form manually"
 
 
@@ -339,6 +430,49 @@ def test_media_proxy_disallowed_content_type_falls_back_to_octet_stream(author, 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize(
+    ("upstream_status", "expected", "detail"),
+    [
+        (404, 404, "Media not found"),
+        (403, 404, "Media not found"),
+        (410, 404, "Media not found"),
+        (429, 503, "X is not serving media right now"),
+        (500, 502, "Couldn't fetch media"),
+    ],
+)
+def test_media_proxy_maps_upstream_status(author, monkeypatch, upstream_status, expected, detail):
+    """X rotates and expires ``video.twimg.com`` URLs, so a 403 (signature
+    expired) and a 410 (gone) are as routine as the 404 and answer the same
+    way: an outcome the analyst re-imports past, not a 5xx that alerts an
+    operator. Throttling gets the 503 the parse route uses, and everything
+    else >= 300 keeps the 502 that means the proxy itself is broken.
+    """
+    import httpx
+
+    class _MockStream:
+        status_code = upstream_status
+        headers: dict[str, str] = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def iter_bytes(self):
+            raise AssertionError("body stream must not be read on a refused upstream")
+
+    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
+
+    login_as(client, author)
+    response = client.get(
+        "/api/v1/events/import-from-tweet/media",
+        params={"u": "https://video.twimg.com/ext_tw_video/1/pu/vid/720x1280/x.mp4"},
+    )
+    assert response.status_code == expected, response.text
+    assert response.json()["detail"] == detail
 
 
 def test_media_proxy_does_not_follow_redirects(author, monkeypatch):

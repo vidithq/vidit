@@ -28,6 +28,7 @@ from .detect import (
     COORDS_INVALID,
     COORDS_MISSING,
     MARKERS_INCOMPLETE,
+    POST_UNREADABLE,
     SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
     SOURCE_OWN,
@@ -43,6 +44,7 @@ from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
     TweetNotAccessible,
+    TweetUpstreamBusy,
 )
 from .extract import (
     ParsedCoord,
@@ -67,6 +69,7 @@ __all__ = [
     "COORDS_MISSING",
     "MARKERS_INCOMPLETE",
     "MEDIA_FETCH_MAX_BYTES",
+    "POST_UNREADABLE",
     "SOURCE_AMBIGUOUS",
     "SOURCE_MISSING",
     "SOURCE_OWN",
@@ -80,6 +83,7 @@ __all__ = [
     "TweetFetchFailed",
     "TweetNotAccessible",
     "TweetRecord",
+    "TweetUpstreamBusy",
     "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",

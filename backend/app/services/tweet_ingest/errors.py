@@ -22,9 +22,13 @@ class InvalidTweetUrl(TweetImportError):
 
 
 class TweetNotAccessible(TweetImportError):
-    """The syndication endpoint returned 404 / the tweet is gone / protected.
+    """The tweet exists for X but not for an unauthenticated reader.
 
-    Routes turn this into a ``404``.
+    Covers the syndication 404 (gone, protected, never existed) and the
+    ``TweetTombstone`` body X answers with a 200 for a tweet readable only
+    behind a login (age-restricted, withheld in a jurisdiction). Routes turn
+    this into a ``404`` carrying the message as ``detail``, so the message is
+    analyst-facing prose.
     """
 
 
@@ -34,4 +38,20 @@ class TweetFetchFailed(TweetImportError):
     Routes turn this into a ``502``: the frontend's "fill the form
     manually" banner doesn't distinguish transport blips from schema drift
     (operationally identical — "retry later or do it by hand").
+    """
+
+
+class TweetUpstreamBusy(TweetFetchFailed):
+    """X declined to serve the request for now: a 429, or X's own 5xx.
+
+    The syndication budget is unauthenticated and shared by every analyst and
+    the bot, so throttling is an expected outcome with its own operational
+    story: wait, then retry. Routes turn this into a ``503`` naming the retry,
+    apart from the ``502`` that means the payload drifted under us. Both stay
+    5xx, so both keep reaching Sentry, as two issues instead of one bucket.
+
+    A subclass of ``TweetFetchFailed`` on purpose: every fail-soft caller
+    (``acquire.quoted_from_syndication``, ``detect.fetch_relay_parent``) keeps
+    degrading exactly as before, and only a caller that wants the distinction
+    catches this class first.
     """
