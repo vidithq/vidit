@@ -36,11 +36,11 @@ export async function generateMetadata({
   const handle = ogTruncate(profile?.username ?? username, 40);
   const title = `@${handle} on Vidit`;
 
-  // `geolocations_count` is the analyst's published geolocations, which the
-  // card and the page both label SUBMITTED; the word here matches that label
-  // so an unfurl and the page it opens read the same.
+  // `geolocations_count` is the analyst's published geolocations, the figure
+  // the card headlines under GEOLOCATED and the page names the same way in
+  // Insights, so an unfurl and the page it opens read the same word.
   const counts = profile
-    ? `${ogCount(profile.geolocations_count)} submissions, ${ogCount(profile.followers_count)} followers.`
+    ? `${ogCount(profile.geolocations_count)} geolocations, ${ogCount(profile.followers_count)} followers.`
     : "This handle has no profile on Vidit.";
   const description = ogTruncate(
     profile?.bio ? `${counts} ${profile.bio}` : counts,

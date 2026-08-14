@@ -17,7 +17,6 @@ import {
 } from "@/components/profile/ProfileHeader";
 import { ProfileInsights } from "@/components/profile/ProfileInsights";
 import { ProfileMap } from "@/components/profile/ProfileMap";
-import { ProfileStats } from "@/components/profile/ProfileStats";
 import {
   RecentSubmissions,
   type PaginatedSubmissions,
@@ -88,14 +87,15 @@ export default function ProfilePage() {
   // reach the person. Most probative first, most incidental last.
   //
   // The identity is one compact block and not a section: the handle titles the
-  // page, the avatar sits beside it, and the bio is the line under it
-  // (`ProfileIdentity`), so a visitor is one scroll-free glance from evidence.
-  // Then the counters, then the coverage map, then the submissions themselves:
-  // three readings of the same body of work, widest first. Insights follows,
-  // because a shape-of-work card explains submissions a reader has already
-  // seen. Linked accounts land last of the public blocks: they are where to
-  // find the analyst elsewhere, which is worth nothing until the work has
-  // earned the click. Sign out sinks under all of it.
+  // page, the avatar sits beside it, and the bio plus the followers /
+  // following / member-since line are what follow it (`ProfileIdentity`), so a
+  // visitor is one scroll-free glance from evidence. Then the coverage map and
+  // the submissions themselves: two readings of the same body of work, widest
+  // first. Insights follows, because a shape-of-work card explains submissions
+  // a reader has already seen, and it is the one home for the work figures.
+  // Linked accounts land last of the public blocks: they are where to find the
+  // analyst elsewhere, which is worth nothing until the work has earned the
+  // click. Sign out sinks under all of it.
   //
   // The detections entry is the exception to "work first": it is pending work
   // rather than an account control, so on the owner's own profile it stays
@@ -112,10 +112,15 @@ export default function ProfilePage() {
     <PageShell
       back
       title={<ProfileTitle profile={profile} edit={edit} />}
-      // No slot at all when the analyst wrote no bio and the viewer is not the
-      // owner, so the handle stands alone instead of over an empty line.
+      // The metadata line makes the slot unconditional in view mode. Editing
+      // drops it (the page collapses to the form), so the slot goes back to
+      // carrying only what the owner is given there: the account email.
       subtitle={
-        bio || ownerEmail ? <ProfileIdentity bio={bio} email={ownerEmail} /> : undefined
+        <ProfileIdentity
+          bio={bio}
+          email={ownerEmail}
+          meta={edit.editing ? null : profile}
+        />
       }
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
@@ -129,8 +134,6 @@ export default function ProfilePage() {
 
       {!edit.editing && (
         <>
-          <ProfileStats profile={profile} />
-
           <ProfileMap username={profile.username} />
 
           <RecentSubmissions

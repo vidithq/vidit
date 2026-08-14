@@ -3,20 +3,20 @@
 import { useState } from "react";
 import { notFound } from "next/navigation";
 import {
+  Archive,
   AtSign,
   BookOpen,
-  Calendar,
+  Bot,
   Check,
   Circle,
   Copy,
   Download,
+  Film,
   Mail,
   MapPin,
   MessageCircle,
   Search as SearchIcon,
   Upload,
-  UserPlus,
-  Users,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
@@ -878,35 +878,46 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
+          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: the profile's Insights row, admin metric grids">
             <div className="w-full max-w-xl">
               <StatGrid>
-                <StatTile icon={MapPin} label="Submitted" value={42} />
-                <StatTile icon={Users} label="Followers" value={128} />
-                <StatTile icon={UserPlus} label="Following" value={37} />
-                <StatTile icon={Calendar} label="Since" value="27 Jun 2026" small />
+                <StatTile icon={MapPin} label="Geolocated" value={42} />
+                <StatTile icon={Bot} label="Detected" value={128} />
+                <StatTile icon={Archive} label="Closed" value={37} />
+                <StatTile icon={Film} label="Media" value={96} />
               </StatGrid>
             </div>
           </Item>
 
-          <Item name="<ActivityBars>" usage="Fixed-width monthly activity row (profile insights): one bar per bucket, heights relative to the max, accent for active months, neutral stub for empty ones. Hover a bar for month + count.">
-            <div className="w-full max-w-xs">
+          <Item name="<ActivityBars>" usage="Activity row (profile insights): one bar per bucket over the span the caller supplies, heights relative to the max, accent for active buckets, neutral stub for empty ones, the two end periods labelled. Hover a bar for period + count. A row of one bucket and a row of none each render a sentence instead: a lone bar carries no shape, and an empty frame reads as a bug.">
+            <div className="w-full max-w-xs space-y-3">
               <ActivityBars
                 buckets={[
-                  { month: "2025-08", count: 0 },
-                  { month: "2025-09", count: 2 },
-                  { month: "2025-10", count: 5 },
-                  { month: "2025-11", count: 1 },
-                  { month: "2025-12", count: 0 },
-                  { month: "2026-01", count: 3 },
-                  { month: "2026-02", count: 8 },
-                  { month: "2026-03", count: 4 },
-                  { month: "2026-04", count: 0 },
-                  { month: "2026-05", count: 6 },
-                  { month: "2026-06", count: 2 },
-                  { month: "2026-07", count: 7 },
+                  { period: "2025-08", count: 0 },
+                  { period: "2025-09", count: 2 },
+                  { period: "2025-10", count: 5 },
+                  { period: "2025-11", count: 1 },
+                  { period: "2025-12", count: 0 },
+                  { period: "2026-01", count: 3 },
+                  { period: "2026-02", count: 8 },
+                  { period: "2026-03", count: 4 },
+                  { period: "2026-04", count: 0 },
+                  { period: "2026-05", count: 6 },
+                  { period: "2026-06", count: 2 },
+                  { period: "2026-07", count: 7 },
                 ]}
               />
+              <ActivityBars
+                buckets={[
+                  { period: "2023-Q1", count: 4 },
+                  { period: "2023-Q2", count: 11 },
+                  { period: "2023-Q3", count: 0 },
+                  { period: "2023-Q4", count: 6 },
+                  { period: "2024-Q1", count: 2 },
+                ]}
+              />
+              <ActivityBars buckets={[{ period: "2024-05", count: 12 }]} />
+              <ActivityBars buckets={[]} />
             </div>
           </Item>
 

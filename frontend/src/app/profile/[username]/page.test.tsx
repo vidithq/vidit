@@ -74,8 +74,9 @@ const STATS: UserStats = {
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
   capture_sources: [{ name: "Drone", count: 2 }],
-  monthly_activity: Array.from({ length: 12 }, (_, i) => ({
-    month: `2026-${String(i + 1).padStart(2, "0")}`,
+  activity_granularity: "month",
+  activity: Array.from({ length: 7 }, (_, i) => ({
+    period: `2026-${String(i + 1).padStart(2, "0")}`,
     count: i,
   })),
 };
@@ -94,7 +95,6 @@ const BLOCKS: Record<string, string> = {
   Insights: "insights",
   Coverage: "coverage",
   "Linked accounts": "linked accounts",
-  Submitted: "counters",
   "1 detection to submit": "detections queue",
   "Sign out": "account controls",
 };
@@ -147,7 +147,6 @@ describe("public profile order", () => {
     await screen.findByText("Insights");
 
     expect(blockOrder(container)).toEqual([
-      "counters",
       "coverage",
       "recent submissions",
       "insights",
@@ -170,7 +169,6 @@ describe("public profile order", () => {
     // Pending work outranks the portfolio; signing out sinks below all of it.
     expect(blockOrder(container)).toEqual([
       "detections queue",
-      "counters",
       "coverage",
       "recent submissions",
       "insights",
@@ -215,13 +213,36 @@ describe("public profile identity", () => {
     expect(screen.queryByText("Bio")).not.toBeInTheDocument();
   });
 
-  it("leaves the handle alone when the analyst wrote no bio", () => {
+  it("leaves the metadata line under the handle when the analyst wrote no bio", () => {
     withProfile({ bio: null });
     const { container } = mountProfile();
 
-    // Nothing under the heading: no empty line, no orphaned card.
-    expect(container.querySelector("h1 + div")).toBeNull();
+    // No empty line and no orphaned card: the identity line is what the
+    // handle sits over.
+    expect(container.querySelector("h1 + div")?.textContent).toBe(
+      "4 followers·2 following·Member since 5 Jan 2026"
+    );
     expect(screen.getByText("ana")).toBeInTheDocument();
+  });
+
+  it("prints the analyst's zeros in the identity line rather than hiding them", () => {
+    withProfile({ followers_count: 0, following_count: 0 });
+    mountProfile();
+
+    // A profile that hides its zeros is one whose numbers cannot be read.
+    expect(screen.getByText("0 followers")).toBeInTheDocument();
+    expect(screen.getByText("0 following")).toBeInTheDocument();
+    expect(screen.getByText("Member since 5 Jan 2026")).toBeInTheDocument();
+  });
+
+  it("keeps the work figures to the Insights card", () => {
+    withProfile({});
+    mountProfile();
+
+    // The counters strip named the same figure Insights calls `Geolocated`,
+    // under a vaguer word and in the more prominent slot.
+    expect(screen.queryByText("Submitted")).not.toBeInTheDocument();
+    expect(screen.queryByText("Since")).not.toBeInTheDocument();
   });
 
   it("keeps a bio that carries a link inside the frame", () => {

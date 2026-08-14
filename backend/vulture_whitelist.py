@@ -70,7 +70,9 @@ closed_count  # schemas/user.py UserStatsRead
 total_events  # schemas/user.py UserStatsRead
 top_conflicts  # schemas/user.py UserStatsRead
 capture_sources  # schemas/user.py UserStatsRead
-monthly_activity  # schemas/user.py UserStatsRead
+activity  # schemas/user.py UserStatsRead
+activity_granularity  # schemas/user.py UserStatsRead
+period  # schemas/user.py ActivityBucket (wire field)
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only

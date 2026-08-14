@@ -84,7 +84,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.9*. The recognition layer:
 |---|---|---|---|
 | P1 | Recognition | Virtual community-credit rewards on fulfilled requests | Visible counter on the profile, no money. Requests are the natural starting point. |
 | P1 | Recognition | Achievement badges | First 100 geolocations, first request fulfilled, longest streak, top contributor by conflict, etc. |
-| P1 | Recognition | Activity surfacing on the profile | Streaks, monthly activity bar. |
+| P1 | Recognition | Activity surfacing on the profile | The activity row ships on the Insights card, over the span the analyst's own event dates cover ([`ActivityBars.tsx`](../frontend/src/components/ui/ActivityBars.tsx), `services/user_stats`). What stays open is recognition on top of it: streaks, and whether a row that measures documented events should sit beside one that measures the analyst's own cadence (when they submitted), which is a different question and a different column. |
 | P2 | Recognition | Public leaderboards | Filterable by conflict + time window. |
 | P2 | Recognition | Conflict-specific contributor recognition | |
 | P2 | Discovery | Suggested analysts (curated → friend-of-friend) | One-hop relational self-join is fine. |

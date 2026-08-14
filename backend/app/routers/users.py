@@ -79,13 +79,13 @@ def get_user_profile(
     user = _get_live_user_or_404(db, username)
 
     # Published work, not everything owned: this is the number the profile's
-    # Submitted tile prints, and the tile sits directly above a Recent
-    # submissions block and a coverage split that both count published rows.
-    # Counting machine drafts here made the page contradict itself (a tile of
-    # 496 over a feed of 47) and credited an analyst with claims they never
-    # made. Same predicate as the feed below, so the tile and the feed's
-    # ``total`` cannot drift. The wider "everything this analyst owns" figure
-    # stays available as ``total_events`` on ``GET /users/{username}/stats``.
+    # share card headlines and the size of the set the Recent submissions
+    # block and the coverage split's ``geolocated`` leg both count. Counting
+    # machine drafts here made the page contradict itself (a headline of 496
+    # over a feed of 47) and credited an analyst with claims they never made.
+    # Same predicate as the feed below, so the card and the feed's ``total``
+    # cannot drift. The wider "everything this analyst owns" figure stays
+    # available as ``total_events`` on ``GET /users/{username}/stats``.
     geolocations_count = (
         db.query(Event)
         .filter(Event.owner_id == user.id, *visible_events(), published_events())
@@ -184,7 +184,7 @@ def get_user_geolocations(
     detections queue instead. The filter is applied to the count and to the
     rows alike, so a page of the feed and its ``total`` agree, and
     ``geolocations_count`` on the profile payload counts the same set, so the
-    Submitted tile above the block agrees with both. The whole body of live
+    share card's headline agrees with both. The whole body of live
     work, drafts included, is ``total_events`` on
     :func:`get_user_stats`.
 

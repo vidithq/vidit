@@ -1281,7 +1281,7 @@ Public profile of an analyst.
 
 ### `GET /users/{username}/stats`
 
-Aggregated shape of an analyst's work, over their live events only (`deleted_at IS NULL`). Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, 12-month activity).
+Aggregated shape of an analyst's work, over their live events only (`deleted_at IS NULL`). Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, activity over time).
 
 **Response 200:**
 ```json
@@ -1293,11 +1293,16 @@ Aggregated shape of an analyst's work, over their live events only (`deleted_at 
   "media_count": 2,
   "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
   "capture_sources": [{ "name": "dashcam", "count": 1 }],
-  "monthly_activity": [{ "month": "2025-08", "count": 0 }, { "month": "2025-09", "count": 3 }]
+  "activity_granularity": "quarter",
+  "activity": [{ "period": "2025-Q3", "count": 0 }, { "period": "2025-Q4", "count": 3 }]
 }
 ```
 
-`total_events` is the sum of the three status counts (`requested` events are not part of the split). `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name. `monthly_activity` buckets `event_date` into the last 12 calendar months (current month last), zero-filled.
+`total_events` is the sum of the three status counts (`requested` events are not part of the split). `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
+
+`activity` buckets `event_date`, the date the documented event happened, across the span this analyst's own events cover: from their earliest dated event to their latest, oldest bucket first, zero-filled in between. Events with no `event_date` count in the status split and take no bucket. The list is empty when no event carries a date.
+
+`activity_granularity` is `month`, `quarter` or `year`, and `period` carries the matching shape: `YYYY-MM`, `YYYY-Qn` or `YYYY`. The granularity is picked so the row never exceeds 24 buckets, the most the profile card holds at 375 px: months up to a 2-year span, quarters up to a 6-year one, years beyond. A span past 24 yearly buckets keeps the 24 most recent years; the dropped events still count in every other aggregate.
 
 **Errors:**
 | Code | Case |

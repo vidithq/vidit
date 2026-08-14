@@ -12,10 +12,15 @@ import { StatGrid, StatTile } from "@/components/ui/StatTile";
 
 /**
  * The shape-of-work section on the public profile: status split, media
- * count, top conflict + capture-source pills, and the 12-month activity
- * bars, all from `GET /users/{username}/stats`. Renders nothing until the
- * stats arrive and nothing at all for a profile with no events; a failed
- * fetch also hides the section rather than blocking the profile.
+ * count, top conflict + capture-source pills, and the activity bars over the
+ * span the analyst's events cover, all from `GET /users/{username}/stats`.
+ * Renders nothing until the stats arrive and nothing at all for a profile
+ * with no events; a failed fetch also hides the section rather than blocking
+ * the profile.
+ *
+ * It is the only home for the work figures on the page: the identity line
+ * above carries the social and account metadata, and nothing restates
+ * `Geolocated` under a second name.
  */
 export function ProfileInsights({ username }: { username: string }) {
   // The result remembers which username it answers, so navigating to another
@@ -81,9 +86,17 @@ export function ProfileInsights({ username }: { username: string }) {
         </div>
       )}
 
+      {/* The axis is the date the event happened, not when the analyst posted
+          or imported it, so the heading names the field and the `?` carries
+          the registry's own definition of it. */}
       <div>
-        <SectionEyebrow title="Last 12 months" as="h3" margin="sm" />
-        <ActivityBars buckets={stats.monthly_activity} />
+        <SectionEyebrow
+          title="Events by event date"
+          concept="event_date"
+          as="h3"
+          margin="sm"
+        />
+        <ActivityBars buckets={stats.activity} />
       </div>
     </Card>
   );

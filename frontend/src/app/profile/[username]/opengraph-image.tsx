@@ -123,10 +123,12 @@ export default async function ProfileOpenGraphImage({
   const avatar = await ogAvatarDataUri(profile.avatar_url);
 
   // The card leads with the analyst's published geolocations, under the page's
-  // own label for that number. It reads off the profile payload, which counts
-  // that set and equals `stats.geolocated_count`, so the headline survives a
-  // stats read that failed and never disagrees with the page it links to. The
-  // stats payload still fills the caption and the media tile.
+  // own label for that number: `Geolocated`, the status vocabulary the
+  // Insights card reads in and the page's only name for the figure. It reads
+  // off the profile payload, which counts that set and equals
+  // `stats.geolocated_count`, so the headline survives a stats read that
+  // failed and never disagrees with the page it links to. The stats payload
+  // still fills the caption and the media tile.
   const conflicts = (stats?.top_conflicts ?? []).map((c) => c.name).join(" · ");
 
   return ogImageResponse(
@@ -161,7 +163,7 @@ export default async function ProfileOpenGraphImage({
         </div>
 
         <div style={{ display: "flex", gap: "72px" }}>
-          <StatTile value={ogCount(profile.geolocations_count)} label="Submitted" />
+          <StatTile value={ogCount(profile.geolocations_count)} label="Geolocated" />
           <StatTile value={ogCount(profile.followers_count)} label="Followers" />
           {stats ? <StatTile value={ogCount(stats.media_count)} label="Media" /> : null}
         </div>

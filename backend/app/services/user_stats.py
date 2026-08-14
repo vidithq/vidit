@@ -2,13 +2,13 @@
 
 Pure read-side queries over existing columns (no new model, no migration):
 status split, media count, top conflicts, capture-source breakdown, and a
-zero-filled 12-month activity row. Every query filters visible rows only
-(``deleted_at IS NULL AND hidden_at IS NULL``), matching the rest of the
-public read surface.
+zero-filled activity row spanning the analyst's own event dates. Every query
+filters visible rows only (``deleted_at IS NULL AND hidden_at IS NULL``),
+matching the rest of the public read surface.
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -22,27 +22,56 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.tag import Tag, event_tags
-from app.schemas.user import MonthBucket, TagCount, UserStatsRead
+from app.schemas.user import ActivityBucket, ActivityGranularity, TagCount, UserStatsRead
 from app.services.event_filters import visible_events
 
-# The activity row is a fixed-width sparkline: always this many buckets,
-# newest last, zero-filled so the frontend never has to pad.
-ACTIVITY_MONTHS = 12
+# The activity row paints one bar per bucket inside the profile card, so the
+# bucket count is what the layout caps, not the period. 24 bars still read at
+# roughly 7 px each at 375 px, the narrowest width the profile renders at, so
+# 24 is the ceiling and the bucket size steps up whenever the span exceeds it.
+MAX_ACTIVITY_BUCKETS = 24
+
+# Postgres ``to_char`` patterns, one per granularity. The quarter pattern
+# quotes its literal ``Q`` so the output reads ``2024-Q3``.
+PERIOD_FORMATS: dict[ActivityGranularity, str] = {
+    "month": "YYYY-MM",
+    "quarter": 'YYYY-"Q"Q',
+    "year": "YYYY",
+}
 
 # The profile shows the head of each distribution, not the full tail.
 TOP_N = 5
 
 
-def _last_months(today: date, n: int) -> list[str]:
-    """The last ``n`` calendar months including ``today``'s, as ``YYYY-MM``,
-    oldest first."""
-    # Months since year 0 make the wrap-around arithmetic branch-free.
-    ordinal = today.year * 12 + today.month - 1
-    months = []
-    for i in range(n - 1, -1, -1):
-        m = ordinal - i
-        months.append(f"{m // 12:04d}-{m % 12 + 1:02d}")
-    return months
+def _pick_granularity(span_months: int) -> ActivityGranularity:
+    """The largest-resolution bucket whose count fits the row.
+
+    Months up to a 2-year span (24 buckets), then quarters up to a 6-year one
+    (24 buckets again), then years.
+    """
+    if span_months <= MAX_ACTIVITY_BUCKETS:
+        return "month"
+    # Ceiling division: a span ending mid-quarter still needs that quarter.
+    if -(-span_months // 3) <= MAX_ACTIVITY_BUCKETS:
+        return "quarter"
+    return "year"
+
+
+def _period_keys(earliest: date, latest: date, granularity: ActivityGranularity) -> list[str]:
+    """Every bucket key from ``earliest`` to ``latest`` inclusive, oldest first.
+
+    Counting in periods since year 0 keeps the wrap-around arithmetic
+    branch-free.
+    """
+    if granularity == "year":
+        return [f"{year:04d}" for year in range(earliest.year, latest.year + 1)]
+    if granularity == "quarter":
+        start = earliest.year * 4 + (earliest.month - 1) // 3
+        end = latest.year * 4 + (latest.month - 1) // 3
+        return [f"{i // 4:04d}-Q{i % 4 + 1}" for i in range(start, end + 1)]
+    start = earliest.year * 12 + earliest.month - 1
+    end = latest.year * 12 + latest.month - 1
+    return [f"{i // 12:04d}-{i % 12 + 1:02d}" for i in range(start, end + 1)]
 
 
 def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
@@ -86,18 +115,29 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
 
-    # UTC-anchored like every other timestamp: a local-time month boundary
-    # could disagree with the UTC-stamped data by a day.
-    months = _last_months(datetime.now(UTC).date(), ACTIVITY_MONTHS)
-    window_start = date.fromisoformat(f"{months[0]}-01")
-    month_col = func.to_char(func.date_trunc("month", Event.event_date), "YYYY-MM")
-    activity_rows = (
-        db.query(month_col, func.count(Event.id))
-        .filter(*live, Event.event_date.isnot(None), Event.event_date >= window_start)
-        .group_by(month_col)
-        .all()
+    # The window is the analyst's own coverage, not a window off today: an
+    # archive spanning years is the shape the product asks for, and a fixed
+    # recent window would drop most of it off the left edge.
+    dated = (*live, Event.event_date.isnot(None))
+    earliest, latest = (
+        db.query(func.min(Event.event_date), func.max(Event.event_date)).filter(*dated).one()
     )
-    by_month = dict(activity_rows)
+
+    granularity: ActivityGranularity = "month"
+    periods: list[str] = []
+    if earliest is not None and latest is not None:
+        span_months = (latest.year - earliest.year) * 12 + latest.month - earliest.month + 1
+        granularity = _pick_granularity(span_months)
+        # The clamp only bites past 24 years of yearly buckets, where the row
+        # keeps the recent end rather than shrinking every bar.
+        periods = _period_keys(earliest, latest, granularity)[-MAX_ACTIVITY_BUCKETS:]
+
+    by_period: dict[str, int] = {}
+    if periods:
+        period_col = func.to_char(Event.event_date, PERIOD_FORMATS[granularity])
+        by_period = dict(
+            db.query(period_col, func.count(Event.id)).filter(*dated).group_by(period_col).all()
+        )
 
     return UserStatsRead(
         geolocated_count=geolocated,
@@ -107,5 +147,6 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         media_count=media_count,
         top_conflicts=[TagCount(name=name, count=count) for name, count in conflict_rows],
         capture_sources=[TagCount(name=name, count=count) for name, count in capture_rows],
-        monthly_activity=[MonthBucket(month=m, count=by_month.get(m, 0)) for m in months],
+        activity_granularity=granularity,
+        activity=[ActivityBucket(period=p, count=by_period.get(p, 0)) for p in periods],
     )

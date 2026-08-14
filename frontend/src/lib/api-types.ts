@@ -1273,7 +1273,7 @@ export interface paths {
          *     detections queue instead. The filter is applied to the count and to the
          *     rows alike, so a page of the feed and its ``total`` agree, and
          *     ``geolocations_count`` on the profile payload counts the same set, so the
-         *     Submitted tile above the block agrees with both. The whole body of live
+         *     share card's headline agrees with both. The whole body of live
          *     work, drafts included, is ``total_events`` on
          *     :func:`get_user_stats`.
          *
@@ -1394,6 +1394,20 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityBucket
+         * @description One bucket of the activity row.
+         *
+         *     ``period`` both keys and names the bucket, and its shape says which
+         *     granularity produced it: ``YYYY-MM`` for a month, ``YYYY-Qn`` for a
+         *     quarter, ``YYYY`` for a year.
+         */
+        ActivityBucket: {
+            /** Count */
+            count: number;
+            /** Period */
+            period: string;
+        };
         /**
          * AdminDetectionStatsRead
          * @description Quality signal on the machine-extraction pipeline (admin-only).
@@ -2410,16 +2424,6 @@ export interface components {
             storage_url: string;
         };
         /**
-         * MonthBucket
-         * @description One calendar-month activity bucket. ``month`` is ``YYYY-MM``.
-         */
-        MonthBucket: {
-            /** Count */
-            count: number;
-            /** Month */
-            month: string;
-        };
-        /**
          * PaginatedEventDetails
          * @description Full-detail paginated events: the owner Detections-queue payload.
          *
@@ -2803,9 +2807,9 @@ export interface components {
          *     submission count.
          *
          *     ``geolocations_count`` counts the analyst's published geolocations, the
-         *     same set ``GET /users/{username}/events`` serves, so the profile's
-         *     Submitted tile and the feed beneath it print one number. For the whole
-         *     body of live work, drafts included, read ``total_events`` on
+         *     same set ``GET /users/{username}/events`` serves, so the profile's share
+         *     card and the feed on the page print one number. For the whole body of
+         *     live work, drafts included, read ``total_events`` on
          *     :class:`UserStatsRead`.
          */
         UserProfile: {
@@ -2879,11 +2883,22 @@ export interface components {
          * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
          *
          *     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
-         *     three status counts. ``monthly_activity`` is always 12 buckets (the last 12
-         *     calendar months including the current one, zero-filled), so the frontend
-         *     renders a fixed-width bar row.
+         *     three status counts.
+         *
+         *     ``activity`` counts ``event_date``, the date the documented event happened,
+         *     over the span the analyst's own events cover: earliest bucket first, latest
+         *     last, zero-filled in between, and empty when no event carries a date.
+         *     ``activity_granularity`` names the bucket size that span selected, which is
+         *     also readable from a ``period``'s shape.
          */
         UserStatsRead: {
+            /** Activity */
+            activity: components["schemas"]["ActivityBucket"][];
+            /**
+             * Activity Granularity
+             * @enum {string}
+             */
+            activity_granularity: "month" | "quarter" | "year";
             /** Capture Sources */
             capture_sources: components["schemas"]["TagCount"][];
             /** Closed Count */
@@ -2894,8 +2909,6 @@ export interface components {
             geolocated_count: number;
             /** Media Count */
             media_count: number;
-            /** Monthly Activity */
-            monthly_activity: components["schemas"]["MonthBucket"][];
             /** Top Conflicts */
             top_conflicts: components["schemas"]["TagCount"][];
             /** Total Events */

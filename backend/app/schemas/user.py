@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -108,9 +109,9 @@ class UserProfile(BaseModel):
     submission count.
 
     ``geolocations_count`` counts the analyst's published geolocations, the
-    same set ``GET /users/{username}/events`` serves, so the profile's
-    Submitted tile and the feed beneath it print one number. For the whole
-    body of live work, drafts included, read ``total_events`` on
+    same set ``GET /users/{username}/events`` serves, so the profile's share
+    card and the feed on the page print one number. For the whole body of
+    live work, drafts included, read ``total_events`` on
     :class:`UserStatsRead`.
     """
 
@@ -135,10 +136,18 @@ class TagCount(BaseModel):
     count: int
 
 
-class MonthBucket(BaseModel):
-    """One calendar-month activity bucket. ``month`` is ``YYYY-MM``."""
+ActivityGranularity = Literal["month", "quarter", "year"]
 
-    month: str
+
+class ActivityBucket(BaseModel):
+    """One bucket of the activity row.
+
+    ``period`` both keys and names the bucket, and its shape says which
+    granularity produced it: ``YYYY-MM`` for a month, ``YYYY-Qn`` for a
+    quarter, ``YYYY`` for a year.
+    """
+
+    period: str
     count: int
 
 
@@ -146,9 +155,13 @@ class UserStatsRead(BaseModel):
     """Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
 
     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
-    three status counts. ``monthly_activity`` is always 12 buckets (the last 12
-    calendar months including the current one, zero-filled), so the frontend
-    renders a fixed-width bar row.
+    three status counts.
+
+    ``activity`` counts ``event_date``, the date the documented event happened,
+    over the span the analyst's own events cover: earliest bucket first, latest
+    last, zero-filled in between, and empty when no event carries a date.
+    ``activity_granularity`` names the bucket size that span selected, which is
+    also readable from a ``period``'s shape.
     """
 
     geolocated_count: int
@@ -158,7 +171,8 @@ class UserStatsRead(BaseModel):
     media_count: int
     top_conflicts: list[TagCount]
     capture_sources: list[TagCount]
-    monthly_activity: list[MonthBucket]
+    activity_granularity: ActivityGranularity
+    activity: list[ActivityBucket]
 
 
 class UserUpdate(BaseModel):

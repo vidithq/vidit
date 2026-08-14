@@ -62,7 +62,7 @@ def published_events() -> ColumnElement[bool]:
     filters on both, so its count and its rows agree, and the profile
     payload's ``geolocations_count``
     (:func:`routers.users.get_user_profile`) counts through it too, so the
-    Submitted tile prints the size of the set the feed under it serves.
+    profile's share card headlines the size of the set the feed serves.
 
     Why the other three states are out:
 
