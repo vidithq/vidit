@@ -251,25 +251,63 @@ Two consequences worth knowing before you re-record:
 
 | Beat | What is on camera | Caption |
 |---|---|---|
-| Intro | The wordmark and the tagline | |
-| 1 | Avatar, handle, bio, the counters strip, the Insights card. Motionless, no cursor. | Your work, on one page. |
-| 2 | The travel down the page: the linked accounts pass by, the counters and the insights land. | Every event you documented. |
+| Intro | The wordmark, the release, and the tagline | |
+| 1 | Avatar, handle, bio, the linked accounts. Motionless, no cursor. | Your work, on one page. |
+| 2 | The travel down the page: the counters pass through, the Insights card lands. | Every event you documented. |
 | 3 | The coverage map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. | The ground you covered. |
 | 4 | On down to the submissions, one opens: source media, the point map, coordinates, the source row with its archived copy, the written proof. | The source, and a copy that outlives it. |
 | 5 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
 | Outro | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo) | |
 
-### The window is taller than 16:9
+### Why the capture window is short and wide
 
-The take captures at 1280x900, not the 1280x720 the other pipelines use, so
-the opening frame holds the identity AND the work: avatar, handle, bio, the
-counters and the Insights card all sit above the fold at that height. At 720
-the insights fell below the fold and the linked-accounts card was the middle
-of the frame, which is the wrong thumbnail for a portfolio.
+The take captures at 1040x560, not the 1280x720 the other pipelines use,
+because on a phone the product has to be readable. How big the page reads in
+the frame comes out to:
 
-The comp's browser BODY carries the same aspect ratio (1180x830), so
-`objectFit: cover` has nothing to crop. Change one and you change the other,
-or the recording gets squashed.
+    on-screen column width = comp body height x (page column width / capture height)
+
+The profile's content column caps at 848 CSS px whatever the window width, so
+a wider capture only buys dark gutters. A SHORT capture is what magnifies the
+page. At 1040x560 the comp shows the recording at 1.56x rather than shrinking
+it to 0.92x, the window covers 85% of the frame width instead of 61%, and the
+counters and Insights numbers survive a 400 px downscale.
+
+The two dimensions are chosen, not rounded:
+
+- **1040 wide** keeps the desktop layout (above Tailwind's `lg`) with the
+  content column at its 848 px cap.
+- **560 tall** ends the frame in the gap between the linked-accounts card
+  (ends at 542) and the counters strip (starts at 566), so the opening holds
+  the identity with nothing cut in half. The counters stay out of the still
+  opening on purpose: zero followers is the weakest thing on the page, so the
+  travelling passes through it rather than resting on it.
+
+`CAPTURE` in `PromoV05.tsx` derives the browser body from those numbers, so
+the body always carries the take's aspect ratio and `objectFit: cover` has
+nothing to crop. Change the viewport in `record-v05.js` and change `CAPTURE`
+with it, or the recording gets squashed.
+
+Judge any change to this the way it will be watched: export a frame, scale it
+to 400 px wide, and check the counters and the Insights labels.
+
+### Where the intro's version comes from
+
+`gen-clips-manifest.js` writes `src/build-version.ts` on every render. It
+mirrors the resolution order in
+[`frontend/next.config.mjs`](../frontend/next.config.mjs), the one that bakes
+`NEXT_PUBLIC_BUILD_VERSION` for the app's version pill: an explicit env var
+first, then `git describe --tags --always --dirty`, then `dev`. Change one and
+change the other.
+
+The comp renders only the RELEASE part of it, so `v0.5.3-4-gf3ae76f` becomes
+`0.5`: a promo names the release, not the build. A version that is not
+tag-derived (a bare SHA, `dev`) has no release to name and the intro renders
+the plain wordmark.
+
+The release rides the wordmark's own entry spring rather than the tagline's
+later fade, so it is legible in frame 0, which is the poster a tweet shows
+before anyone presses play.
 
 ### Two editorial rules the take enforces
 

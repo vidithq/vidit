@@ -51,13 +51,25 @@ const API = process.env.PROMO_API || "http://localhost:8000/api/v1";
 const FPS = 60;
 const CAPTURE_DPR = 2;
 
-// A taller window than a 16:9 laptop, so the opening frame holds the identity
-// AND the work: avatar, handle, bio, the counters strip and the Insights card
-// all sit above the fold at this height. At 720 the insights fell off the
-// bottom and the linked-accounts card was the middle of the frame, which is
-// the wrong thumbnail for a portfolio. The comp's browser body matches this
-// aspect exactly, so nothing is cropped.
-const VIEWPORT = { width: 1280, height: 900 };
+// A short, wide window, chosen so the PRODUCT fills the promo frame.
+//
+// The profile's content column caps at 848 CSS px whatever the window width,
+// so a wider capture only adds dark gutters; what magnifies the page in the
+// comp is a SHORT capture, because the on-screen column works out to
+// (comp body height) x (848 / capture height). At 560 the comp shows the
+// capture at 1.56x instead of shrinking it, and the window covers 85% of the
+// frame width.
+//
+// 1040 wide keeps the desktop layout (above Tailwind's `lg`) with the column
+// at its cap. 560 tall ends the frame in the gap between the linked-accounts
+// card (ends 542) and the counters strip (starts 566), so the opening holds
+// the identity and nothing is cut in half. The counters are deliberately NOT
+// in the still opening: zero followers is the weakest thing on the page, so
+// the travelling passes through it rather than resting on it.
+//
+// The comp's browser body matches this aspect exactly, so nothing is cropped.
+// Change one and change `CAPTURE` in src/PromoV05.tsx.
+const VIEWPORT = { width: 1040, height: 560 };
 
 const CLIPS_DIR = path.join(__dirname, "public", "clips");
 const META_PATH = path.join(CLIPS_DIR, "meta.json");
@@ -195,7 +207,7 @@ async function clipPortfolio() {
     // 1. The identity block, motionless.
     console.log("→ identity (still)");
     rec.mark("identity");
-    await wait(2900);
+    await wait(2500);
 
     // 2. One long eased travel down the page. The linked accounts pass by on
     //    the way, which is where they belong: the counters and the Insights
@@ -203,7 +215,7 @@ async function clipPortfolio() {
     //    it stops.
     console.log("→ travel down to the work");
     rec.mark("work");
-    await slowScrollToLocator(page, coverage, 2700, 80);
+    await slowScrollToLocator(page, coverage, 3100, 70);
     await wait(500);
 
     // 3. The camera walks into the worked area, on the map the page just

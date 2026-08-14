@@ -11,6 +11,7 @@ import { Intro } from "./components/Intro";
 import { OutroV04 } from "./components/OutroV04";
 import { VideoChrome } from "./components/VideoChrome";
 import { RECORDED } from "./clips-manifest";
+import { RELEASE } from "./build-version";
 
 // The v0.5 promo A, "the portfolio": the brand intro, then ONE unbroken take
 // of an analyst's public profile, then the closing card.
@@ -35,18 +36,31 @@ const CROSSFADE = 18;
 
 const CLIP = "portfolio";
 
-// Stage layout. The browser BODY carries the take's aspect ratio exactly
-// (1280x900 captured), so `objectFit: cover` has nothing to crop; the chrome
-// adds its own title bar on top of that. The band below the window is
-// reserved for captions, so a caption can never overlap the demo.
-const BODY_WIDTH = 1180;
-const BODY_HEIGHT = 830;
+// Stage layout, sized so the PRODUCT fills the frame rather than floating in
+// dark margins. Two numbers decide how big the page reads on a phone:
+//
+//   on-screen column width = BODY_HEIGHT x (page column width / capture height)
+//
+// The page's content column caps at 848 CSS px whatever the window width, so
+// widening the capture only adds gutters. What enlarges the product is a
+// SHORT capture (the take records 1040x560) and a tall body, which is why the
+// caption band and the top margin are trimmed to what the type actually
+// needs. The result magnifies the capture 1.56x instead of shrinking it to
+// 0.92x, and the window covers 85% of the frame width instead of 61%.
+//
+// The body carries the take's aspect ratio exactly, so `objectFit: cover` has
+// nothing to crop. Change the capture viewport in record-v05.js and these
+// move with it.
+const CAPTURE = { width: 1040, height: 560 };
 const CHROME_HEADER = 60; // must match BrowserChrome.CHROME_HEADER_HEIGHT
+const CHROME_TOP = 14;
+const CAPTION_BAND = 132;
+const BODY_HEIGHT = 1080 - CHROME_TOP - CAPTION_BAND - CHROME_HEADER;
+const BODY_WIDTH = Math.round((BODY_HEIGHT * CAPTURE.width) / CAPTURE.height);
 const CHROME_WIDTH = BODY_WIDTH;
 const CHROME_HEIGHT = BODY_HEIGHT + CHROME_HEADER;
-const CHROME_LEFT = (1920 - CHROME_WIDTH) / 2;
-const CHROME_TOP = 20;
-const CAPTION_FONT_SIZE = 42;
+const CHROME_LEFT = Math.round((1920 - CHROME_WIDTH) / 2);
+const CAPTION_FONT_SIZE = 40;
 
 const INTRO_FRAMES = 240; // 4.0s
 const OUTRO_FRAMES = 156; // 2.6s
@@ -173,7 +187,7 @@ export const PromoV05: React.FC = () => {
       <Background />
 
       <Sequence from={-INTRO_LEAD} durationInFrames={INTRO_FRAMES}>
-        <Intro durationInFrames={INTRO_FRAMES} />
+        <Intro durationInFrames={INTRO_FRAMES} release={RELEASE} />
       </Sequence>
 
       <Sequence from={TAKE_START} durationInFrames={TAKE_FRAMES}>
