@@ -167,7 +167,9 @@ describe("public profile order", () => {
     // said nothing: the calendar counts when the documented events happened,
     // not when they were posted, and the bar counts the host of a source
     // link, with the events naming none accounted for rather than dropped.
-    expect(await screen.findByText("When the events happened")).toBeInTheDocument();
+    // The calendar's heading is the field's own name, the one the submit and
+    // edit forms print, so one concept keeps one name across the app.
+    expect(await screen.findByText("Event dates")).toBeInTheDocument();
     expect(
       screen.getByText(
         "The month each event took place, not when it was posted, imported or published."

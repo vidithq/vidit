@@ -131,17 +131,13 @@ export function ProfileInsights({ username }: { username: string }) {
       </div>
 
       {/* The axis is the date the event happened, not when the analyst posted
-          or imported it. The heading says it in the reader's own words and the
-          note settles the ambiguity outright, so neither reading depends on
-          opening the `?`; the `?` still carries the registry's definition of
-          the field. */}
+          or imported it. The heading is the name the field already carries on
+          the submit and edit forms, so one concept keeps one name across the
+          app, and the note settles the ambiguity outright, so the reading does
+          not depend on opening the `?`; the `?` still carries the registry's
+          definition of the field. */}
       <div>
-        <SectionEyebrow
-          title="When the events happened"
-          concept="event_date"
-          as="h3"
-          margin="none"
-        />
+        <SectionEyebrow title="Event dates" concept="event_date" as="h3" margin="none" />
         <ChartNote>
           The month each event took place, not when it was posted, imported or
           published.

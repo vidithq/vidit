@@ -27,24 +27,6 @@ const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
 // count.
 const LEVELS = ACCENT_RAMP.slice(0, 4);
 
-// One corner treatment and one empty-month hairline, shared by the grid and by
-// the legend under it, so the swatch explaining the scale is drawn as the thing
-// it explains rather than as a second shape that can drift from it. The
-// hairline is what keeps a quiet stretch reading as a drawn cell rather than as
-// a hole, and it rules the grid the way a calendar is ruled; `neutral-700` is
-// the <Card> border value, so it stays a hairline in both themes.
-// The radius follows the cell: 4px on the 36px cell of a full card reads as a
-// calendar tile, while the same 4px on the 14px cell a 375 px screen leaves
-// rounds it into a capsule.
-const CELL_CORNER = "rounded-[3px] sm:rounded-sm";
-const EMPTY_RING = `${CHART_NEUTRAL} ring-1 ring-inset ring-neutral-700`;
-
-// The grid's own box: full column width, capped height. Twelve square cells
-// across a full-width card become a wall of 55px blocks; a bounded row reads as
-// a month strip, and 24px still takes a thumb at 375 px.
-const GRID_CELL = `${CELL_CORNER} h-6 w-full sm:h-7`;
-const LEGEND_CELL = `${CELL_CORNER} h-3 w-4`;
-
 /**
  * A contribution grid at month resolution: one row per calendar year, twelve
  * month cells wide, intensity carrying the count.
@@ -88,14 +70,8 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
       : `Covering ${firstYear} to ${lastYear}`;
 
   return (
-    // Capped rather than stretched: across a full-width card twelve columns
-    // give 60px cells, and a calendar month is not a banner. The cap holds the
-    // cell near its own height, and the caption line under the grid takes the
-    // same width so the legend stays at the grid's right edge.
-    <div className="max-w-lg">
-      {/* Months sit tighter than years: the wider row gap is what groups a
-          twelve-cell run into one calendar year rather than one long strip. */}
-      <div className="grid grid-cols-[auto_repeat(12,minmax(0,1fr))] items-center gap-x-1 gap-y-1.5">
+    <div>
+      <div className="grid grid-cols-[auto_repeat(12,minmax(0,1fr))] items-center gap-[3px]">
         {/* The header names the columns for a sighted reader; every cell
             carries its own month and count for everyone else, so repeating
             the row to a screen reader would only double the grid. */}
@@ -126,7 +102,11 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
               }`;
               if (count === 0) {
                 return (
-                  <div key={period} title={label} className={`${GRID_CELL} ${EMPTY_RING}`} />
+                  <div
+                    key={period}
+                    title={label}
+                    className={`aspect-square rounded-[2px] ${CHART_NEUTRAL}`}
+                  />
                 );
               }
               // Level 1 to 4 off the month's share of the busiest month, then
@@ -143,14 +123,12 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
                   onFocus={() => setReadout(label)}
                   onBlur={() => setReadout(null)}
                   onClick={() => setReadout(label)}
-                  // The picked month lifts out of the grid: a ring held off the
-                  // cell by the card's own colour, so the outline reads on a
-                  // faint month and on a full-strength one alike. Hover and
-                  // keyboard focus land on the same state, since both mean the
-                  // same thing here, the month the readout is naming. The ring
-                  // is the accent at full strength, which is the one step of
-                  // the scale that holds on the dark card and on the light one.
-                  className={`${GRID_CELL} outline-hidden ring-offset-1 ring-offset-neutral-900 transition-shadow hover:ring-2 hover:ring-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500 ${paint}`}
+                  // The focus ring is the accent at full strength: the light
+                  // theme repoints the neutral scale but leaves the accent
+                  // alone, so a 300-stop ring on the near-white card is the
+                  // same pale tint as the card and disappears. The 500 stop is
+                  // the one step that holds on the dark card and the light one.
+                  className={`aspect-square rounded-[2px] outline-hidden focus-visible:ring-1 focus-visible:ring-orange-500 ${paint}`}
                 />
               );
             })}
@@ -158,15 +136,15 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
         ))}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-neutral-500">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-neutral-500">
         <span aria-live="polite">{readout ?? span}</span>
         <span className="flex items-center gap-1">
           Less
-          <span className={`${LEGEND_CELL} ${EMPTY_RING}`} />
+          <span className={`size-2 rounded-[2px] ${CHART_NEUTRAL}`} />
           {LEVELS.slice()
             .reverse()
             .map((paint) => (
-              <span key={paint} className={`${LEGEND_CELL} ${paint}`} />
+              <span key={paint} className={`size-2 rounded-[2px] ${paint}`} />
             ))}
           More
         </span>
