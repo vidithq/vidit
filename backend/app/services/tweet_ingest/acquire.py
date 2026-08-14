@@ -18,6 +18,7 @@ from .errors import TweetFetchFailed, TweetNotAccessible
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import (
     _extract_media,
+    extract_media_shortlinks,
     extract_source_links,
     fetch_syndication,
     normalise_tweet_url,
@@ -105,6 +106,7 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
         created_at=created_at if isinstance(created_at, str) else "",
         permalink=normalised.canonical,
         media=list(_extract_media(body, origin="op")),
+        media_shortlinks=extract_media_shortlinks(body),
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),

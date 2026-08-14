@@ -19,6 +19,11 @@ _INSTAGRAM = SourceLink(
     host="other",
     shortlink="https://t.co/fakeIG",
 )
+_FACEBOOK = SourceLink(
+    url="https://www.facebook.com/watch/?v=FAKEVIDEO02",
+    host="other",
+    shortlink="https://t.co/fakeFB",
+)
 
 
 def _media(kind: str, origin: str) -> ParsedMedia:
@@ -219,6 +224,45 @@ def test_source_line_ignores_a_token_bound_to_nothing():
     # The wrapper X appends for attached media sits on no entity, so it
     # designates nothing and the thread declares no source.
     record = _rec(text="Source: https://t.co/mediaWrapper")
+    assert resolve_source([record]) == (None, None)
+
+
+def test_source_line_survives_the_posts_own_media_wrapper():
+    # X appends the wrapper of the post's own attached media to the end of the
+    # text, so a one-token designation line reaches storage as two tokens. The
+    # wrapper is named by the post's media entities, so the line still reads as
+    # the analyst wrote it. Instagram is host "other", which the sole-candidate
+    # rule can never pick: only the designation puts it in the slot.
+    record = _rec(
+        text="Strike on the depot\nSource: https://t.co/fakeIG https://t.co/ownPhoto",
+        external_sources=[_INSTAGRAM],
+        media=[_media("image", "op")],
+        media_shortlinks=["https://t.co/ownPhoto"],
+    )
+    assert resolve_source([record]) == (_INSTAGRAM.url, None)
+
+
+def test_source_line_with_two_written_links_designates_nothing():
+    # Same two-token shape, but neither token is the post's own media: the
+    # analyst named two links, which is ambiguous, so the line designates
+    # nothing and the slot stays empty for review.
+    record = _rec(
+        text="Source: https://t.co/fakeIG https://t.co/fakeFB",
+        external_sources=[_INSTAGRAM, _FACEBOOK],
+        media_shortlinks=["https://t.co/ownPhoto"],
+    )
+    assert resolve_source([record]) == (None, None)
+
+
+def test_source_line_with_an_unknown_extra_token_designates_nothing():
+    # An extra token the post's media entities do not name is not assumed to be
+    # a wrapper: only entity-declared media is dropped, so the line stays
+    # two-token and reads as ambiguous rather than silently taking the first.
+    record = _rec(
+        text="Source: https://t.co/fakeIG https://t.co/unknown",
+        external_sources=[_INSTAGRAM],
+        media_shortlinks=["https://t.co/ownPhoto"],
+    )
     assert resolve_source([record]) == (None, None)
 
 

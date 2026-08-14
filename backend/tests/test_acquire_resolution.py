@@ -7,7 +7,11 @@ source from off-platform Telegram / YouTube.
 """
 
 from app.services.tweet_ingest.acquire import _quoted_record
-from app.services.tweet_ingest.syndication import classify_source_host, extract_source_links
+from app.services.tweet_ingest.syndication import (
+    classify_source_host,
+    extract_media_shortlinks,
+    extract_source_links,
+)
 
 
 def test_classify_source_host():
@@ -66,6 +70,31 @@ def test_extract_source_links_profile_link_is_not_footage():
 
 def test_extract_source_links_empty_without_entities():
     assert extract_source_links({}) == []
+
+
+def test_extract_media_shortlinks_reads_both_payload_shapes():
+    # The export names the wrappers under extended_entities / entities.media,
+    # a syndication body under mediaDetails. One wrapper is shared by a
+    # multi-photo post, so the list de-dupes and keeps order.
+    export = {
+        "entities": {"media": [{"type": "photo", "url": "https://t.co/own"}]},
+        "extended_entities": {
+            "media": [
+                {"type": "photo", "url": "https://t.co/own"},
+                {"type": "photo", "url": "https://t.co/own"},
+            ]
+        },
+    }
+    assert extract_media_shortlinks(export) == ["https://t.co/own"]
+
+    body = {"mediaDetails": [{"type": "video", "url": "https://t.co/clip"}, {"type": "photo"}]}
+    assert extract_media_shortlinks(body) == ["https://t.co/clip"]
+
+
+def test_extract_media_shortlinks_empty_without_media():
+    # A link-only post declares no wrapper, so no token is ever dropped from a
+    # designation line by accident.
+    assert extract_media_shortlinks({"entities": {"urls": [{"url": "https://t.co/a"}]}}) == []
 
 
 def test_quoted_record_carries_date_and_media():

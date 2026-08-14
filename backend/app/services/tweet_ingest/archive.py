@@ -27,6 +27,7 @@ from .syndication import (
     _X_STATUS_URL_RE,
     MEDIA_FETCH_MAX_BYTES,
     ParsedMedia,
+    extract_media_shortlinks,
     extract_source_links,
     is_trusted_media_url,
 )
@@ -216,7 +217,12 @@ def _chase_candidate(
         for url, host, shortlink in extract_source_links(tweet)
         if _linked_status_id(url) not in by_id
     ]
-    designated = designated_source(_tweet_text(tweet), links, owner_handle=owner_handle)
+    designated = designated_source(
+        _tweet_text(tweet),
+        links,
+        owner_handle=owner_handle,
+        media_shortlinks=extract_media_shortlinks(tweet),
+    )
     if designated is not None:
         return designated
     candidates = footage_candidates(
@@ -336,6 +342,7 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 permalink=f"https://x.com/{handle}/status/{tweet_id}",
                 media=_archive_media(tweet, tweet_id),
+                media_shortlinks=extract_media_shortlinks(tweet),
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
                 quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),

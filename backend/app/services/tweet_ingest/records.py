@@ -82,6 +82,28 @@ def bound_link(token: str, links: Iterable[SourceLink]) -> SourceLink | None:
     return next((link for link in links if token in (link.shortlink, link.url)), None)
 
 
+def written_tokens(tokens: Iterable[str], media_shortlinks: Iterable[str]) -> list[str]:
+    """The URL tokens on a designation line the analyst actually wrote:
+    ``tokens`` with the trailing punctuation stripped and the post's own media
+    wrappers dropped.
+
+    The one home for that drop, run by both designation rules (the OSINT
+    ``Source:`` line in ``resolve.designated_source`` and the bot's ``S:`` line
+    in ``detect``), so a designation reads the same on every entry path.
+
+    X appends one ``t.co`` wrapper per attached media to the end of the post's
+    text; it expands to a photo / video permalink of that same status, so it is
+    not something the analyst typed. Left in, it turns a one-token designation
+    line into a two-token one and defeats the whole-line anchor, dropping the
+    designation. The wrappers come from the record's own media entities
+    (``TweetRecord.media_shortlinks``), never from pattern-matching a bare
+    ``t.co``, so a link the analyst shortened themselves still counts.
+    """
+    own = set(media_shortlinks)
+    stripped = (token.rstrip(TOKEN_TRAILING_PUNCT) for token in tokens)
+    return [token for token in stripped if token and token not in own]
+
+
 def expand_shortlinks(text: str, links: Iterable[SourceLink]) -> str:
     """Replace each entity's opaque ``t.co`` token in ``text`` with its expanded
     URL, so an analyst's reference link survives readable in the stored proof.
@@ -108,6 +130,13 @@ class TweetRecord:
     # where ``source_url`` (the footage origin) may be absent.
     permalink: str
     media: list[ParsedMedia] = field(default_factory=list)
+    # The ``t.co`` wrappers X wrote into ``text`` for this post's OWN attached
+    # media (``syndication.extract_media_shortlinks``). Not links the analyst
+    # typed, so every designation rule drops them from a line's tokens before
+    # counting (:func:`written_tokens`). Kept beside ``media`` rather than on
+    # ``ParsedMedia``: the wrapper exists whether or not the attachment survived
+    # extraction (an untrusted host, an unreadable variant).
+    media_shortlinks: list[str] = field(default_factory=list)
     # Reply edges — inline from an archive; from syndication the parent pointer
     # maps when the payload carries it (the chain itself still takes one fetch
     # per parent, the bot's walk). ``stitch`` unions on them.
