@@ -228,6 +228,10 @@ async function clipPortfolio() {
     rec.mark("cardClick");
     await glideClickStretchedCard(page, card, TARGET_EVENT);
     await page.waitForURL(`**/events/${TARGET_EVENT}`, { timeout: 25000 });
+    // The instant the route actually changed. The comp swaps the faked
+    // address bar here, so the chrome never names a page the recording has
+    // not reached yet.
+    rec.mark("eventUrl");
     await page.getByRole("heading", { name: "Source media" }).waitFor({ timeout: 25000 });
     await page
       .waitForFunction(
@@ -255,6 +259,7 @@ async function clipPortfolio() {
     rec.mark("mapNav");
     await glideAndClick(page, mapLink, { steps: 45, settle: 350 });
     await page.waitForURL("**/map", { timeout: 25000 });
+    rec.mark("mapUrl");
     await page.waitForSelector(".maplibregl-canvas", { timeout: 25000 });
     await page.waitForFunction(() => !!window.__viditMap, { timeout: 25000 });
     await wait(1600); // the points fetch lands on the warmed tiles

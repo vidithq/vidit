@@ -106,10 +106,12 @@ const CUES: CaptionCue[] = [
 
 // The address bar follows the take's real navigation, so the faked chrome
 // never claims a page the recording is not on.
+// `eventUrl` and `mapUrl` are stamped the instant each route actually
+// changed, so the bar never names a page ahead of the picture.
 const URL_CUES: { at: number; url: string }[] = [
   { at: mark("identity", 0), url: "vidit.app/profile/MPGeoint" },
-  { at: mark("cardClick", 11.01) + 0.35, url: "vidit.app/events/…" },
-  { at: mark("mapNav", 17.36) + 0.6, url: "vidit.app/map" },
+  { at: mark("eventUrl", 12.51), url: "vidit.app/events/…" },
+  { at: mark("mapUrl", 18.25), url: "vidit.app/map" },
 ];
 
 const pickAt = <T extends { at: number }>(cues: T[], sec: number): T =>
