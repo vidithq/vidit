@@ -674,11 +674,24 @@ export interface paths {
          *     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
-         *     ``EventRead`` (media + tags) so the queue shows the evidence and the
-         *     frontend computes submit-readiness (source media + a ``conflict`` + a
-         *     ``capture_source`` tag) with no per-row round-trip. Ordered by
+         *     ``EventRead`` (media + tags) so the queue shows the evidence and names, per
+         *     row, what a draft is still missing with no per-row round-trip. Ordered by
          *     ``created_at DESC, id DESC``: the latest import is the first thing to
          *     triage.
+         *
+         *     ``readiness`` narrows the queue server-side to the drafts that clear the
+         *     publish floor (``ready``) or to those that don't (``incomplete``), ``all``
+         *     being the whole queue; anything else is a 422, as ``view`` is on
+         *     :func:`list_events`. The floor is :func:`draft_ready_predicate`, the SQL
+         *     projection of the one ``services.events._publish_draft`` enforces. Filtering
+         *     here rather than over the loaded page is the point: the queue pages at 10
+         *     rows over imports of several hundred, so a page-local filter answers about
+         *     ten drafts while the analyst reads it as an answer about the queue.
+         *
+         *     ``total`` counts the filtered set, so the page arithmetic describes what is
+         *     being walked; ``ready_total`` and ``incomplete_total`` always count the
+         *     whole queue, so the two numbers are readable at a glance under any
+         *     ``readiness`` and without paging.
          *
          *     Walked with the ``page`` / ``per_page`` offset pager the queue renders,
          *     capped at 100 rows per page.
@@ -2401,16 +2414,26 @@ export interface components {
          *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
          *     (media + tags + provenance) rather than the lightweight ``EventList``
          *     card: the Detections queue needs the media to judge a detection and the
-         *     tags + conflicts to compute submit-readiness (source media + a conflict +
-         *     a ``capture_source`` tag) without a per-row round-trip.
+         *     tags + conflicts to name what a draft is still missing without a per-row
+         *     round-trip.
+         *
+         *     ``total`` counts the set the ``readiness`` filter selected, so the page
+         *     count the queue renders describes what it is paging through.
+         *     ``ready_total`` and ``incomplete_total`` split the whole queue whatever
+         *     ``readiness`` asks for, so the queue states both figures without a second
+         *     call and without paging: they sum to ``total`` on the unfiltered queue.
          */
         PaginatedEventDetails: {
+            /** Incomplete Total */
+            incomplete_total: number;
             /** Items */
             items: components["schemas"]["EventRead"][];
             /** Page */
             page: number;
             /** Per Page */
             per_page: number;
+            /** Ready Total */
+            ready_total: number;
             /** Total */
             total: number;
         };
@@ -3876,6 +3899,7 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
+                readiness?: string;
             };
             header?: never;
             path?: never;

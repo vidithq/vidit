@@ -66,18 +66,36 @@ const DETECTIONS_PER_PAGE = 10;
  *  row leaving the queue can't shift the position under the analyst. */
 const DETECTIONS_REVIEW_QUEUE = 100;
 
+/** The queue filter `GET /events/detections` accepts: the whole queue, the
+ *  drafts that clear the publish floor, or the ones that don't. Hand-written
+ *  rather than generated for the same reason as `EventView`: the router takes
+ *  `readiness` as a plain `str` so it can hand-build its 422, and codegen
+ *  carries no union for it. Mirrors `services/events.DRAFT_READINESS`. */
+export type DetectionReadiness = "all" | "ready" | "incomplete";
+
 /** Shape of `GET /events/detections`: full-detail items (media + tags) so
- *  the queue renders the evidence and computes submit-readiness without a
- *  per-row round-trip. Mirrors the backend `PaginatedEventDetails`. */
+ *  the queue renders the evidence and names what each draft is missing without
+ *  a per-row round-trip. Mirrors the backend `PaginatedEventDetails`.
+ *
+ *  `total` counts the set `readiness` selected, so the page arithmetic
+ *  describes what is being walked. `ready_total` and `incomplete_total` count
+ *  the whole queue whatever the filter is, so the queue can state both figures
+ *  under any filter and on any page. */
 export interface PaginatedEventDetails {
   items: EventDetail[];
   total: number;
   page: number;
   per_page: number;
+  ready_total: number;
+  incomplete_total: number;
 }
 
-export function detectionsPath(page = 1, perPage = DETECTIONS_PER_PAGE): string {
-  return `/events/detections?page=${page}&per_page=${perPage}`;
+export function detectionsPath(
+  page = 1,
+  perPage = DETECTIONS_PER_PAGE,
+  readiness: DetectionReadiness = "all",
+): string {
+  return `/events/detections?page=${page}&per_page=${perPage}&readiness=${readiness}`;
 }
 
 /** The queue a review pass steps through: one batch, newest first. */
@@ -583,6 +601,12 @@ export async function awaitImportJob(
  * `missingEventFields` (the geolocate floor it publishes through). The two
  * agree on which drafts are publishable: a source-less draft carries neither
  * `source_url` nor `source_posted_at`, and the title a review always carries.
+ *
+ * Same rule, third expression: `services/events.draft_ready_predicate` is the
+ * SQL the queue's `readiness` filter pages on. The queue labels each row from
+ * here and asks the server which rows to show, so the two must agree. Both are
+ * held to one table of draft shapes: `backend/tests/events/_readiness_cases.py`
+ * on the server side, its mirror in `events.test.ts` here.
  */
 export function batchCompletionBlockers(geo: {
   event_coords: unknown | null;

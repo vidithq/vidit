@@ -330,14 +330,22 @@ class PaginatedEventDetails(BaseModel):
     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
     (media + tags + provenance) rather than the lightweight ``EventList``
     card: the Detections queue needs the media to judge a detection and the
-    tags + conflicts to compute submit-readiness (source media + a conflict +
-    a ``capture_source`` tag) without a per-row round-trip.
+    tags + conflicts to name what a draft is still missing without a per-row
+    round-trip.
+
+    ``total`` counts the set the ``readiness`` filter selected, so the page
+    count the queue renders describes what it is paging through.
+    ``ready_total`` and ``incomplete_total`` split the whole queue whatever
+    ``readiness`` asks for, so the queue states both figures without a second
+    call and without paging: they sum to ``total`` on the unfiltered queue.
     """
 
     items: list[EventRead]
     total: int
     page: int
     per_page: int
+    ready_total: int
+    incomplete_total: int
 
 
 class PossibleDuplicateRead(BaseModel):

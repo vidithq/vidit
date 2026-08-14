@@ -453,6 +453,42 @@ def classify_source_host(url: str) -> str:
     return "other"
 
 
+def extract_media_shortlinks(payload: dict[str, Any]) -> list[str]:
+    """Every ``t.co`` wrapper the payload's own attached media occupies in its text.
+
+    X appends one wrapper per attachment to the end of a post's text, expanding
+    to a photo / video permalink of that same status. The designation rules must
+    not count it as a link the analyst wrote (see ``records.written_tokens``),
+    and it is read here from the media entities rather than guessed from the
+    text, so a genuine shortened link is never mistaken for one.
+
+    Shape-agnostic on purpose, since both acquire adapters feed it: an export
+    entry carries the wrappers under ``extended_entities.media`` /
+    ``entities.media``, a syndication body under ``mediaDetails``. Deduplicated,
+    order preserved: a multi-photo post shares one wrapper across its entries.
+    """
+    containers: list[Any] = []
+    for key in ("extended_entities", "entities"):
+        container = payload.get(key)
+        if isinstance(container, dict):
+            containers.append(container.get("media"))
+    containers.append(payload.get("mediaDetails"))
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for entries in containers:
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            wrapper = entry.get("url")
+            if isinstance(wrapper, str) and wrapper and wrapper not in seen:
+                seen.add(wrapper)
+                out.append(wrapper)
+    return out
+
+
 def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, str | None]]:
     """Every host-classified source URL from ``entities.urls``, as
     ``(expanded_url, host, shortlink)`` triples.

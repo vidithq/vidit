@@ -13,6 +13,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
+from sqlalchemy import ColumnElement, func, not_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
@@ -41,6 +42,7 @@ from app.services.event_filters import (
     validate_status_filter,
     visible_events,
 )
+from app.services.events import DRAFT_READINESS, draft_ready_predicate
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -342,6 +344,7 @@ def list_detections(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
+    readiness: str = Query("all"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -350,15 +353,33 @@ def list_detections(
     Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
     "Detections" queue behind ``/profile/{username}/detections`` where a
     ``detected`` row becomes ``geolocated`` over time. Returns full
-    ``EventRead`` (media + tags) so the queue shows the evidence and the
-    frontend computes submit-readiness (source media + a ``conflict`` + a
-    ``capture_source`` tag) with no per-row round-trip. Ordered by
+    ``EventRead`` (media + tags) so the queue shows the evidence and names, per
+    row, what a draft is still missing with no per-row round-trip. Ordered by
     ``created_at DESC, id DESC``: the latest import is the first thing to
     triage.
+
+    ``readiness`` narrows the queue server-side to the drafts that clear the
+    publish floor (``ready``) or to those that don't (``incomplete``), ``all``
+    being the whole queue; anything else is a 422, as ``view`` is on
+    :func:`list_events`. The floor is :func:`draft_ready_predicate`, the SQL
+    projection of the one ``services.events._publish_draft`` enforces. Filtering
+    here rather than over the loaded page is the point: the queue pages at 10
+    rows over imports of several hundred, so a page-local filter answers about
+    ten drafts while the analyst reads it as an answer about the queue.
+
+    ``total`` counts the filtered set, so the page arithmetic describes what is
+    being walked; ``ready_total`` and ``incomplete_total`` always count the
+    whole queue, so the two numbers are readable at a glance under any
+    ``readiness`` and without paging.
 
     Walked with the ``page`` / ``per_page`` offset pager the queue renders,
     capped at 100 rows per page.
     """
+    if readiness not in DRAFT_READINESS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"readiness must be one of: {', '.join(sorted(DRAFT_READINESS))}",
+        )
     # A too-large page size is clamped (over-asking buys nothing, it isn't an
     # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
     # negative OFFSET / non-positive LIMIT, which Postgres answers with a 500.
@@ -369,8 +390,31 @@ def list_detections(
         Event.status == STATUS_DETECTED,
         *visible_events(),
     )
+    ready = draft_ready_predicate()
 
-    total = db.query(Event).filter(*detected).count()
+    # Both counts in one pass with ``FILTER``, rather than a count per branch:
+    # the payload carries them whatever ``readiness`` asks for, and the filtered
+    # total is one of the two (or their sum) rather than a third query.
+    ready_total, incomplete_total = (
+        db.query(
+            func.count().filter(ready),
+            func.count().filter(not_(ready)),
+        )
+        .select_from(Event)
+        .filter(*detected)
+        .one()
+    )
+    total = {
+        "ready": ready_total,
+        "incomplete": incomplete_total,
+        "all": ready_total + incomplete_total,
+    }[readiness]
+
+    page_filters: tuple[ColumnElement[bool], ...] = detected
+    if readiness == "ready":
+        page_filters = (*detected, ready)
+    elif readiness == "incomplete":
+        page_filters = (*detected, not_(ready))
 
     window = (
         db.query(
@@ -397,7 +441,7 @@ def list_detections(
             selectinload(Event.archives),
             selectinload(Event.source_links),
         )
-        .filter(*detected)
+        .filter(*page_filters)
         .order_by(Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
@@ -408,4 +452,11 @@ def list_detections(
         for geo, lat, lng, capture_lat, capture_lng in window.all()
     ]
 
-    return PaginatedEventDetails(items=items, total=total, page=page, per_page=per_page)
+    return PaginatedEventDetails(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        ready_total=ready_total,
+        incomplete_total=incomplete_total,
+    )
