@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Archive, History } from "lucide-react";
+import { Archive } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
 import { recordArchivedCopy } from "@/lib/events";
@@ -40,44 +40,70 @@ interface ArchivedCopiesProps {
   help?: boolean;
 }
 
-/** How a provider's own submit page is opened, prefilled with the link. */
+/** How a stored copy announces the service that holds it. */
 interface ProviderSpec {
   key: ArchivedLink["provider"];
   /** The service's name, as it is announced. */
   label: string;
-  Glyph: typeof History;
-  /** The provider page that archives `url`, opened in the analyst's own tab. */
-  submitUrl: (url: string) => string;
 }
 
 /**
- * The two services, in the order they read. Distinguishable glyphs rather than
- * the services' own marks: a logo is a trademark, and a clock-with-arrow for
- * the Wayback Machine's history replay against a box for archive.today's
- * snapshot tells them apart on their own. The name is what carries the
- * identity, in the accessible name.
+ * The two services, in the order they read. A name and nothing else: archiving
+ * has one mark on this page whatever produced the copy (`ARCHIVE_MARK`), so the
+ * service's identity travels in the accessible name rather than in a shape, and
+ * their own logos are trademarks and are never drawn. No submit page hangs off
+ * an entry either, since the affordance opens exactly one (`savePageUrl`).
  *
- * `submitUrl` encodes to match each form: the Wayback save page carries the
- * link as a path, where `encodeURI` keeps the scheme separator readable, and
- * archive.today carries it as a query parameter, where every reserved
- * character has to be escaped.
+ * Both stay here whatever the affordance opens: the field takes a snapshot from
+ * any of the three allowed hosts, so a stored archive.today copy has to render
+ * under its own name.
  */
 const PROVIDERS: readonly ProviderSpec[] = [
-  {
-    key: "wayback",
-    label: "Wayback Machine",
-    Glyph: History,
-    submitUrl: (url) => `https://web.archive.org/save/${encodeURI(url)}`,
-  },
-  {
-    key: "archive_today",
-    label: "archive.today",
-    Glyph: Archive,
-    submitUrl: (url) => `https://archive.ph/?url=${encodeURIComponent(url)}`,
-  },
+  { key: "wayback", label: "Wayback Machine" },
+  { key: "archive_today", label: "archive.today" },
 ];
 
+/**
+ * The one mark for an archived copy, in every state and for every provider.
+ *
+ * lucide's `Archive` over its `History`: the lidded box is the concept itself,
+ * a copy put away, and at the 13px this renders at its two blocks stay legible
+ * where a clock face and its arrow collapse into a smudge. A clock also reads
+ * as "recent" or "version history" rather than "a stored copy".
+ *
+ * The shape is fixed so that a reader meeting it on the source row and again on
+ * the provenance row reads one concept, not two. What varies is state, carried
+ * in colour and interactivity, and provider, carried in the accessible name.
+ */
+const ARCHIVE_MARK = Archive;
+
 const PROVIDER_BY_KEY = new Map(PROVIDERS.map((p) => [p.key, p]));
+
+/** The one provider page the affordance opens, prefilled with the link.
+ *
+ *  The Wayback Machine rather than archive.today, on two grounds: Save Page Now
+ *  works from a browser and mints a replay URL that embeds the link it
+ *  captured, which is what lets `source_archive.validate_snapshot` check the
+ *  paste against the link it claims to archive, while an archive.today code
+ *  embeds nothing and the server must not fetch it to find out; and
+ *  archive.today throttles or blocks bursts. The link carries the URL as a path
+ *  segment, where `encodeURI` keeps the scheme separator readable.
+ *
+ *  One door, not one accepted provider: an analyst who prefers archive.today
+ *  goes there themselves and pastes the result into the same field. */
+const SAVE_PAGE_LABEL = "Wayback Machine";
+
+function savePageUrl(url: string): string {
+  return `https://web.archive.org/save/${encodeURI(url)}`;
+}
+
+/** Said beside the one link, so a single door never reads as a single accepted
+ *  provider. */
+const OTHER_PROVIDERS_HINT = "or paste a snapshot from archive.ph or archive.today";
+
+/** What the paste field shows while it is empty: the shape the link above
+ *  produces, which is what most pastes will be. */
+const SNAPSHOT_PLACEHOLDER = "https://web.archive.org/web/…";
 
 /** Every host a snapshot may live on. Mirrors `PROVIDER_HOSTS` in
  *  `services/source_archive.py`; change it with its backend counterpart. */
@@ -110,9 +136,9 @@ export function isSnapshotUrl(value: string): boolean {
   }
 }
 
-/** The link the provider pages can be opened for, or null while the source
+/** The link the provider page can be opened for, or null while the source
  *  field holds nothing usable. `http(s)` only, matching what the catalog will
- *  accept as a source, so the two links appear exactly when they would work. */
+ *  accept as a source, so the link appears exactly when it would work. */
 function archivable(url: string): string | null {
   try {
     const parsed = new URL(url.trim());
@@ -122,21 +148,25 @@ function archivable(url: string): string | null {
   }
 }
 
-/** The two provider pages, each prefilled with the link. One row of links,
- *  shared by the popover on a live event and the field on the submit / edit
- *  forms, so "archive it yourself" is the same two links wherever it appears. */
-function ProviderLinks({ url }: { url: string }) {
-  return PROVIDERS.map(({ key, label, submitUrl }) => (
-    <a
-      key={key}
-      href={submitUrl(url)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`text-xs ${TEXT_LINK}`}
-    >
-      Open {label}
-    </a>
-  ));
+/** The provider page prefilled with the link, and the sentence saying the field
+ *  below takes a snapshot from any allowed host. Shared by the popover on a
+ *  live event and the field on the submit / edit forms, so "archive it
+ *  yourself" is the same one link wherever it appears. Wraps to two lines in
+ *  the popover's width and sits on one in the form. */
+function SavePageLink({ url }: { url: string }) {
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+      <a
+        href={savePageUrl(url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={TEXT_LINK}
+      >
+        Open {SAVE_PAGE_LABEL}
+      </a>
+      <span className="text-neutral-500">{OTHER_PROVIDERS_HINT}</span>
+    </span>
+  );
 }
 
 /**
@@ -150,10 +180,11 @@ function ProviderLinks({ url }: { url: string }) {
  * while none does.
  *
  * Archiving is an act the analyst performs, not something the server attempts.
- * Both services refuse or throttle server-side submissions of exactly the hosts
- * this catalog cites, and both work from a browser, so the grey glyph opens the
- * two provider pages prefilled with the link and takes the snapshot URL back in
- * one field. A viewer who does not own the event sees the grey glyph inert.
+ * Every service refuses or throttles server-side submissions of exactly the
+ * hosts this catalog cites, and all of them work from a browser, so the grey
+ * glyph opens one provider page prefilled with the link and takes the snapshot
+ * URL back in one field, from whichever host the analyst used. A viewer who
+ * does not own the event sees the grey glyph inert.
  *
  * The glyph is a small mark with no label beside it, so the affordance closes
  * on a `?`: the glyph's accessible name carries its own state for a screen
@@ -199,12 +230,11 @@ export function ArchivedCopies({
   );
 }
 
-/** The copy that exists: one accent glyph opening it, marked with its service. */
+/** The copy that exists: the accent mark opening it, named for its service. */
 function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: string }) {
-  // A provider the client does not know is still a stored copy, so it opens
-  // under the generic archive mark rather than rendering as no copy at all.
+  // A provider the client does not know is still a stored copy, so it is named
+  // generically rather than rendering as no copy at all.
   const spec = PROVIDER_BY_KEY.get(copy.provider);
-  const Glyph = spec?.Glyph ?? Archive;
   const label = spec ? `${spec.label} copy of ${describes}` : `Archived copy of ${describes}`;
   return (
     <a
@@ -214,7 +244,7 @@ function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: str
       aria-label={label}
       className={`${TEXT_LINK} inline-flex`}
     >
-      <Glyph size={13} aria-hidden />
+      <ARCHIVE_MARK size={13} aria-hidden />
     </a>
   );
 }
@@ -227,19 +257,20 @@ function MissingGlyph({ describes }: { describes: string }) {
       aria-label={`No archived copy of ${describes}`}
       className="inline-flex text-neutral-600"
     >
-      <Archive size={13} aria-hidden />
+      <ARCHIVE_MARK size={13} aria-hidden />
     </span>
   );
 }
 
 /**
- * The owner's path from no copy to one: open a provider, paste what it gives
+ * The owner's path from no copy to one: open the provider, paste what it gives
  * back.
  *
  * Collapsed to the same grey glyph a reader sees, so an unarchived link reads
  * identically whoever is looking at it until they ask for the action. Expanded,
- * the two provider links carry the URL already filled in, so the analyst never
- * copies it by hand, and the field beside them is where the snapshot returns.
+ * the provider link carries the URL already filled in, so the analyst never
+ * copies it by hand, and the field under it is where the snapshot returns, from
+ * that provider or from any other allowed host.
  */
 function ArchiveAction({
   url,
@@ -274,12 +305,12 @@ function ArchiveAction({
         aria-label={`Archive ${describes}`}
         className="inline-flex text-neutral-600 hover:text-neutral-300 transition-colors"
       >
-        <Archive size={13} aria-hidden />
+        <ARCHIVE_MARK size={13} aria-hidden />
       </button>
       {open && (
         <span className="absolute right-0 top-5 z-20 flex w-64 flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left shadow-lg">
           <span className={FORM_LABEL_COMPACT}>Archive it yourself</span>
-          <ProviderLinks url={url} />
+          <SavePageLink url={url} />
           <label className={FORM_LABEL_COMPACT} htmlFor={fieldId}>
             Paste the snapshot link
           </label>
@@ -288,7 +319,7 @@ function ArchiveAction({
             variant="compact"
             value={snapshot}
             onChange={(e) => setSnapshot(e.target.value)}
-            placeholder="https://archive.ph/…"
+            placeholder={SNAPSHOT_PLACEHOLDER}
           />
           {save.error && <span className={FORM_ERROR_BANNER}>{save.error}</span>}
           <Button
@@ -308,16 +339,16 @@ function ArchiveAction({
  * The archival affordance on the submit and edit forms: archive the source you
  * just typed, paste the snapshot, publish both together.
  *
- * The same two provider links and one paste field as the popover on a live
- * event, minus its mutation: nothing is written until the form is submitted, so
- * the value travels with the event as `source_snapshot_url` and lands in the
- * same write. That is what lets an analyst archive a source while it is still
- * in front of them, rather than after the event exists.
+ * The same provider link and paste field as the popover on a live event, minus
+ * its mutation: nothing is written until the form is submitted, so the value
+ * travels with the event as `source_snapshot_url` and lands in the same write.
+ * That is what lets an analyst archive a source while it is still in front of
+ * them, rather than after the event exists.
  *
  * Optional, and shaped to read that way: no required marker, no readiness
- * entry, and while the source field holds nothing usable the links are replaced
+ * entry, and while the source field holds nothing usable the link is replaced
  * by one line saying what to do first, so an empty source URL never presents a
- * dead link. The links recompute from the current field value, so archiving a
+ * dead link. The link recomputes from the current field value, so archiving a
  * corrected URL is a re-click, not a reload.
  *
  * `copy` is the copy the event already carries (the edit form): it renders as
@@ -361,9 +392,7 @@ export function ArchiveSourceField({
         </p>
       )}
       {target ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <ProviderLinks url={target} />
-        </div>
+        <SavePageLink url={target} />
       ) : (
         <p className="text-xs text-neutral-500">
           Fill in the source URL above to archive it.
@@ -375,7 +404,7 @@ export function ArchiveSourceField({
         variant="compact"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="https://archive.ph/…"
+        placeholder={SNAPSHOT_PLACEHOLDER}
         invalid={invalid}
       />
       {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
