@@ -67,6 +67,48 @@ export const RECORDED: Record<string, RecordedClip> = {
       "embedW": 316.8,
       "embedH": 699.84
     }
+  },
+  "portfolio": {
+    "src": "clips/portfolio.mp4",
+    "fps": 60,
+    "durationSec": 23.454,
+    "marks": {
+      "identity": 0,
+      "work": 2.483,
+      "coverage": 6.15,
+      "submissions": 8.857,
+      "cardClick": 11.029,
+      "eventUrl": 12.372,
+      "eventOpen": 12.457,
+      "eventScroll": 13.358,
+      "mapNav": 17.228,
+      "mapUrl": 17.985,
+      "mapOpen": 19.646
+    }
+  },
+  "import-review": {
+    "src": "clips/import-review.mp4",
+    "fps": 60,
+    "durationSec": 65.696,
+    "marks": {
+      "panel": 0,
+      "finderOpen": 5.135,
+      "finderPick": 8.611,
+      "filePicked": 11.156,
+      "importClick": 13.841,
+      "privacyHold": 15.311,
+      "importDone": 21.819,
+      "queueOpen": 24.994,
+      "filterReady": 27.595,
+      "draftOpen": 34.873,
+      "draftScroll": 36.873,
+      "tagFill": 40.938,
+      "submitClick": 50.548,
+      "nextDraft": 52.682,
+      "mapNav": 55.283,
+      "mapOpen": 59.491,
+      "mapEase": 60.691
+    }
   }
 };
 
