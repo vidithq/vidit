@@ -55,7 +55,7 @@ from app.models.source_archive import (
     SourceArchiveOrigin,
     SourceArchiveProvider,
 )
-from app.services.sanitize import extract_link_hrefs, safe_link_href
+from app.services.sanitize import extract_link_hrefs, normalised_host, safe_link_href
 
 # Every host a snapshot may live on, and the provider each one is. The
 # allowlist is the abuse bound: the field takes a URL from an authenticated
@@ -174,14 +174,15 @@ def _normalised_target(url: str) -> tuple[str, str, str] | None:
     case, a leading ``www.`` and a trailing slash come off both sides. What is
     left is host, path and query, which is what makes the snapshot a snapshot
     *of this link*.
+
+    The host leg is :func:`sanitize.normalised_host`, the one home for that
+    folding.
     """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
+    host = normalised_host(url)
+    if host is None:
         return None
-    host = (parsed.hostname or "").lower().removeprefix("www.")
-    if not host:
-        return None
+    # Safe to parse again: ``normalised_host`` already proved the value parses.
+    parsed = urlparse(url)
     return host, parsed.path.rstrip("/"), parsed.query
 
 

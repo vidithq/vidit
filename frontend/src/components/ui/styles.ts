@@ -11,6 +11,35 @@
 // The neutral grey counterpart lives inside <Pill> (its only consumer).
 export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 
+// The accent as a five-step intensity ramp, strongest first. One scale for
+// every chart on the site, so a segment and a cell of the same weight are the
+// same orange: <SourceHostBar> paints its ranked segments with the whole ramp,
+// <ActivityHeatmap> paints a month's magnitude with the four strongest steps
+// (the faintest reads too close to an empty cell to carry a count). Single
+// hue on purpose: the app has one accent, and both charts order their data by
+// magnitude, so a hue per category would invent a palette to say what
+// position already says.
+//
+// The ramp keeps the site's accent rule rather than being excused from it: in
+// <ActivityHeatmap> every cell the ramp paints is a control that names its
+// month on hover, tap or focus, and a month with no event is inert and takes
+// `CHART_NEUTRAL`, so accent and clickable still name the same set of cells.
+export const ACCENT_RAMP = [
+  "bg-orange-500",
+  "bg-orange-500/75",
+  "bg-orange-500/50",
+  "bg-orange-500/30",
+  "bg-orange-500/15",
+] as const;
+
+// The two counterparts to the ramp, for the parts of a chart the accent scale
+// must not claim. `CHART_TAIL` is a bucket that holds real work under no name
+// the chart prints (<SourceHostBar>'s "Other"). `CHART_NEUTRAL` is absence:
+// a month with no event, a slice of events naming no source. Both read against
+// the `bg-neutral-900` <Card> they sit on.
+export const CHART_TAIL = "bg-neutral-500";
+export const CHART_NEUTRAL = "bg-neutral-800";
+
 // Tappable card / row — orange border on hover. Only the hover is the
 // invariant; pair with whatever bg + default border the card uses.
 export const TAPPABLE_HOVER = "hover:border-orange-500/40 transition-colors";

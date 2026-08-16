@@ -122,13 +122,13 @@ export default async function ProfileOpenGraphImage({
   // and a miss costs the monogram, not the card.
   const avatar = await ogAvatarDataUri(profile.avatar_url);
 
-  // The card leads with published geolocations when the stats payload answered,
-  // since that is the portfolio number; the profile's own count (every live
-  // event, machine drafts included) is the fallback, and it takes the page's
-  // own label for that count rather than borrowing the narrower one.
-  const headline = stats
-    ? { value: stats.geolocated_count, label: "Geolocated" }
-    : { value: profile.geolocations_count, label: "Submitted" };
+  // The card leads with the analyst's published geolocations, under the page's
+  // own label for that number: `Geolocated`, the status vocabulary the
+  // Insights card reads in and the page's only name for the figure. It reads
+  // off the profile payload, which counts that set and equals
+  // `stats.geolocated_count`, so the headline survives a stats read that
+  // failed and never disagrees with the page it links to. The stats payload
+  // still fills the caption and the media tile.
   const conflicts = (stats?.top_conflicts ?? []).map((c) => c.name).join(" · ");
 
   return ogImageResponse(
@@ -163,7 +163,7 @@ export default async function ProfileOpenGraphImage({
         </div>
 
         <div style={{ display: "flex", gap: "72px" }}>
-          <StatTile value={ogCount(headline.value)} label={headline.label} />
+          <StatTile value={ogCount(profile.geolocations_count)} label="Geolocated" />
           <StatTile value={ogCount(profile.followers_count)} label="Followers" />
           {stats ? <StatTile value={ogCount(stats.media_count)} label="Media" /> : null}
         </div>

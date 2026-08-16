@@ -1263,7 +1263,19 @@ export interface paths {
         };
         /**
          * Get User Geolocations
-         * @description One analyst's events, newest event date first, capped at 100 per page.
+         * @description One analyst's published geolocations, newest event date first, capped
+         *     at 100 per page.
+         *
+         *     Published, not merely visible: :func:`published_events` narrows to
+         *     ``geolocated``, so the portfolio carries only rows the analyst vouched
+         *     for. Machine drafts and the rows they rejected are theirs to work, not
+         *     theirs to be credited with; the owner reaches the drafts through their
+         *     detections queue instead. The filter is applied to the count and to the
+         *     rows alike, so a page of the feed and its ``total`` agree, and
+         *     ``geolocations_count`` on the profile payload counts the same set, so the
+         *     share card's headline agrees with both. The whole body of live
+         *     work, drafts included, is ``total_events`` on
+         *     :func:`get_user_stats`.
          *
          *     Offset-paged rather than cursor-paged: the ordering the profile reads by
          *     is ``event_date``, which is nullable and editable and so cannot key a
@@ -1382,6 +1394,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityBucket
+         * @description One month of the activity grid: ``period`` is ``YYYY-MM``.
+         */
+        ActivityBucket: {
+            /** Count */
+            count: number;
+            /** Period */
+            period: string;
+        };
         /**
          * AdminDetectionStatsRead
          * @description Quality signal on the machine-extraction pipeline (admin-only).
@@ -2398,16 +2420,6 @@ export interface components {
             storage_url: string;
         };
         /**
-         * MonthBucket
-         * @description One calendar-month activity bucket. ``month`` is ``YYYY-MM``.
-         */
-        MonthBucket: {
-            /** Count */
-            count: number;
-            /** Month */
-            month: string;
-        };
-        /**
          * PaginatedEventDetails
          * @description Full-detail paginated events: the owner Detections-queue payload.
          *
@@ -2658,7 +2670,10 @@ export interface components {
         };
         /**
          * TagCount
-         * @description One (name, count) aggregation entry: a conflict or capture-source tally.
+         * @description One (name, count) aggregation entry.
+         *
+         *     Carries a conflict tally, a capture-source tally, or a source-host tally:
+         *     one shape for every head-of-distribution list the stats payload returns.
          */
         TagCount: {
             /** Count */
@@ -2789,6 +2804,12 @@ export interface components {
          *     Excludes ``email`` (free-harvest vector) and ``is_admin`` (admin role is
          *     private). Everything else is the analyst's public face: bio, avatar, links,
          *     submission count.
+         *
+         *     ``geolocations_count`` counts the analyst's published geolocations, the
+         *     same set ``GET /users/{username}/events`` serves, so the profile's share
+         *     card and the feed on the page print one number. For the whole body of
+         *     live work, drafts included, read ``total_events`` on
+         *     :class:`UserStatsRead`.
          */
         UserProfile: {
             /** Avatar Url */
@@ -2860,12 +2881,26 @@ export interface components {
          * UserStatsRead
          * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
          *
-         *     Live rows only (``deleted_at IS NULL``). ``total_events`` is the sum of the
-         *     three status counts. ``monthly_activity`` is always 12 buckets (the last 12
-         *     calendar months including the current one, zero-filled), so the frontend
-         *     renders a fixed-width bar row.
+         *     One population throughout: the analyst's live events (``deleted_at IS
+         *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
+         *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
+         *     field here describes it, drafts included. An open ``requested`` call for
+         *     help is not documented work and takes part in no aggregate.
+         *
+         *     ``source_hosts`` breaks the same set down by the host of ``source_url``,
+         *     folded to lower case with a leading ``www.`` removed: the top hosts by
+         *     count, with ``other_hosts_count`` carrying the tail and ``no_source_count``
+         *     the events that name no readable host. The three add up to
+         *     ``total_events``.
+         *
+         *     ``activity`` counts ``event_date``, the date the documented event happened,
+         *     one bucket per calendar month over the span the analyst's own events cover:
+         *     earliest month first, latest last, zero-filled in between, and empty when
+         *     no event carries a date.
          */
         UserStatsRead: {
+            /** Activity */
+            activity: components["schemas"]["ActivityBucket"][];
             /** Capture Sources */
             capture_sources: components["schemas"]["TagCount"][];
             /** Closed Count */
@@ -2876,8 +2911,12 @@ export interface components {
             geolocated_count: number;
             /** Media Count */
             media_count: number;
-            /** Monthly Activity */
-            monthly_activity: components["schemas"]["MonthBucket"][];
+            /** No Source Count */
+            no_source_count: number;
+            /** Other Hosts Count */
+            other_hosts_count: number;
+            /** Source Hosts */
+            source_hosts: components["schemas"]["TagCount"][];
             /** Top Conflicts */
             top_conflicts: components["schemas"]["TagCount"][];
             /** Total Events */

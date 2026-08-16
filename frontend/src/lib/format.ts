@@ -12,6 +12,22 @@ export function formatDate(input: string): string {
 }
 
 /**
+ * Format an activity-bucket month key for a reader: `2026-03` → "Mar 2026".
+ *
+ * An unparsable key renders as-is, the same fallback `formatDate` takes.
+ */
+export function formatMonth(period: string): string {
+  const [year, month] = period.split("-");
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+  if (isNaN(date.getTime())) return period;
+  return date.toLocaleDateString("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
  * Format a UTC instant (ISO datetime) as "28 Mar 2026, 14:30 UTC". Returns
  * the placeholder dash when `iso` is null (an unknown source post time, e.g.
  * a machine detection with no dated source): `new Date(null)` resolves to
