@@ -14,8 +14,6 @@ or a ``skip`` for a shape no live post can carry.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from app.services.bot import acquire_tagged_thread
@@ -34,34 +32,14 @@ def _detections(typology: str) -> tuple[list[DetectedGeoloc], str | None]:
     return detect_diagnosed(acquired.records)
 
 
-def _roles(media: list[Any]) -> list[list[str]]:
-    return [[m.kind, m.origin] for m in media]
-
-
 @pytest.mark.parametrize("typology", loader.typology_names())
 def test_typology_matches_the_bot_contract(typology: str) -> None:
     block = loader.load_expected(typology).get("paths", {}).get(_PATH, {})
     if "skip" in block:
         pytest.skip(block["skip"])
-    expected = loader.expected_for_path(typology, _PATH)
-
     detections, reason = _detections(typology)
 
-    # One draft per coordinate, the same count every entry reaches.
-    assert len(detections) == len(expected["coords"]), typology
-    if "reason" in block:
-        assert reason == block["reason"], typology
-    for detection in detections:
-        assert detection.title == expected["title"], typology
-        assert detection.source_url == expected["source_url"], typology
-        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
-        assert detection.warnings == expected["warnings"], typology
-        assert _roles(detection.source_media) == [
-            list(pair) for pair in expected["source_media"]
-        ], typology
-        assert _roles(detection.proof_media) == [list(pair) for pair in expected["proof_media"]], (
-            typology
-        )
+    loader.assert_detections_match(typology, _PATH, detections, reason)
 
 
 def test_the_bot_reads_the_same_authors_parent() -> None:

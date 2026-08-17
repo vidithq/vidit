@@ -4,8 +4,7 @@ A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
 the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
 ``resolve_thread`` is the single core every entry runs, so the bot, the pasted
 import and the archive backfill cannot drift on coordinates, source, dates, or
-media. ``resolve_tweet(url)`` is the pasted-post convenience (acquire, then
-resolve).
+media.
 
 Every derived field follows one contract: filled only on an explicit signal in
 the analyst's own text (a quote, a link, a coordinate), otherwise empty. No
@@ -27,8 +26,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-import httpx
-
 from .extract import (
     ParsedCoord,
     clean_proof_text,
@@ -38,7 +35,6 @@ from .extract import (
     strip_bot_tag,
 )
 from .records import (
-    QuotedTweet,
     TelegramFootage,
     TweetRecord,
     expand_shortlinks,
@@ -48,7 +44,6 @@ from .syndication import (
     _TWITTER_URL_HOST_RE,
     _X_STATUS_URL_RE,
     ParsedMedia,
-    normalise_tweet_url,
 )
 
 
@@ -345,19 +340,12 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 class ResolvedTweet:
     """Everything a tweet / thread resolves to: the "tweet id → all info" object.
 
-    ``parse`` and ``detect`` are thin mappers over this: nothing derived lives in
-    either of them.
+    ``detect`` is a thin mapper over this: nothing derived lives in it.
     """
 
     # Identity / provenance (from the thread head, the geoloc tweet).
     detected_from_url: str
     owner_handle: str
-    # The thread's own text with each entity's ``t.co`` wrapper expanded back to
-    # the real URL, carried for the mappers.
-    text: str
-    created_at: str  # the geoloc tweet's post time, ISO 8601 (raw)
-    quoted: QuotedTweet | None
-    op_media: list[ParsedMedia]  # the thread's own media (op + quote origins)
     # Derived.
     coords: list[ParsedCoord]
     # A coordinate-shaped string was read and dropped for sitting outside the
@@ -423,10 +411,6 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
     return ResolvedTweet(
         detected_from_url=head.permalink,
         owner_handle=head.handle,
-        text=own_text,
-        created_at=head.created_at,
-        quoted=next((record.quoted for record in posts if record.quoted is not None), None),
-        op_media=[media for record in posts for media in record.media],
         coords=scan.coords,
         coords_out_of_bounds=scan.out_of_bounds,
         title=derive_title(own_text),
@@ -439,21 +423,6 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
         source_media=source_media,
         proof_media=proof_media,
     )
-
-
-def resolve_tweet(url: str, *, client: httpx.Client | None = None) -> ResolvedTweet | None:
-    """The pasted-tweet entry: acquire the post at ``url`` and resolve it.
-
-    ``resolve_thread`` over :func:`acquire.acquire_thread`, so the paste reads
-    the same one hop the bot reads: a coordinate in a post and a source link in
-    its author's own reply resolve together, whichever of the two was pasted.
-    The archive passes its own stitched thread to ``resolve_thread`` instead.
-    """
-    from .acquire import acquire_thread
-
-    normalised = normalise_tweet_url(url)
-    acquired = acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)
-    return resolve_thread(acquired.records)
 
 
 def _posted_at(created_at: str) -> datetime | None:

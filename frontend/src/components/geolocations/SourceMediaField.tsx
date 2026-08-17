@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import { MediaManager } from "@/components/geolocations/MediaManager";
 import { LockedHint } from "@/components/geolocations/new/LockedHint";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
@@ -23,8 +21,6 @@ interface SourceMediaFieldProps {
   isGraphic?: boolean;
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
-  /** Extra note rendered inside the card under the grid. */
-  children?: ReactNode;
 }
 
 /**
@@ -33,7 +29,6 @@ interface SourceMediaFieldProps {
  * `MediaManager` with the section heading.
  */
 export function SourceMediaField({
-  children,
   invalid = false,
   ...media
 }: SourceMediaFieldProps) {
@@ -49,7 +44,6 @@ export function SourceMediaField({
         invalid={invalid}
       />
       <MediaManager {...media} />
-      {children}
     </Card>
   );
 }

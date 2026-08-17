@@ -1,87 +1,42 @@
-"""Tweet-import DTOs: the pre-fill payloads for ``import-from-tweet``.
+"""Tweet-import DTOs: the request and the outcome of ``import-from-tweet``.
 
-The shapes the ``GET/POST /geolocations/import-from-tweet`` endpoints return: the
-human pre-fill ``TweetImportResponse`` plus its ``Coord`` / ``Media`` /
-``QuotedTweet`` parts. Kept separate from the core geolocation read/write
-schemas in ``event.py``: they are a self-contained sub-feature, consumed only by
-the import router.
+The paste runs the shared detection engine and writes drafts, so the response
+is the outcome of that run, not a form pre-fill. Kept separate from the core
+geolocation read/write schemas in ``event.py``: they are a self-contained
+sub-feature, consumed only by the import router.
 """
 
-from typing import Literal
+import uuid
 
 from pydantic import BaseModel, Field
 
-from app.models.media import MediaType
-
 
 class TweetImportRequest(BaseModel):
-    """Body of ``POST /geolocations/import-from-tweet``."""
+    """Body of ``POST /events/import-from-tweet``."""
 
     url: str = Field(..., min_length=1, max_length=2048)
 
 
-class TweetImportCoord(BaseModel):
-    lat: float
-    lng: float
+class TweetImportRead(BaseModel):
+    """What one pasted post did, in the order the engine produced it.
 
+    One coordinate makes one draft, so a thread carrying several lands several
+    ids. ``created`` holds the new drafts, ``updated`` the open drafts a
+    re-import overwrote, and ``skipped`` the rows the import must not touch
+    (published, closed, withheld) or found already up to date. The caller opens
+    the first id it gets.
 
-class TweetImportMedia(BaseModel):
-    kind: MediaType
-    # Upstream X CDN URL — the frontend fetches it directly when CORS permits
-    # (usually it doesn't) or proxies via ``GET /geolocations/import-from-tweet/media``.
-    remote_url: str
-    content_type: str
-    # Where the media came from in the OP/quote pair. Informational only — the
-    # primary-vs-proof split is by ``kind`` (videos → primary, images → proof),
-    # see api.md.
-    origin: Literal["op", "quote"] = "op"
-
-
-class TweetImportQuotedTweet(BaseModel):
-    """The tweet quoted by the OP, when present.
-
-    Surfaced so the frontend can credit the original author in the proof body
-    even though ``source_url`` already points at this quoted tweet.
+    ``warnings`` carries the engine's warning codes for the drafts of this post
+    (``several_coordinates``, ``source_ambiguous``, ``source_missing``): what
+    review still has to answer, never a refusal. ``reason`` is the refusal code
+    when the post produced no draft at all (``coords_missing``,
+    ``coords_invalid``), and null whenever drafts were produced. ``failed``
+    counts the detections that raised mid-persist.
     """
 
-    source_url: str
-    author_handle: str
-    tweet_text: str
-
-
-class TweetImportResponse(BaseModel):
-    """Pre-fill payload for the submit form.
-
-    All fields best-effort: ``suggested_title`` empty when the text yields
-    nothing usable, ``parsed_coords`` empty when no recognised coordinate
-    format, ``media`` empty when no attached image / video. The analyst reviews
-    everything before submitting — a typing shortcut, not an authority.
-
-    When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
-    OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
-    ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
-    Without a quote or a footage link ``source_url`` is None (required-nullable)
-    and the form field starts empty; the OP's own URL is never a fallback.
-    ``source_posted_at`` follows the same rule for the source's post time: it
-    carries the quote's actual timestamp, never the OP's, and is None when
-    that timestamp isn't known.
-    """
-
-    source_url: str | None
-    # Mirrors of the same media: the post's other declared links, ordered and
-    # capped at the event's secondary-link ceiling. Prefills the form's
-    # secondary-source rows; empty when the post linked nothing else.
-    secondary_source_urls: list[str]
-    original_tweet_url: str
-    posted_at: str  # ISO 8601 from X — frontend truncates to date for the form
-    # The source's own post instant (the quote's timestamp), ISO 8601 UTC.
-    # None when the source has no known date (no quote, or a footage link
-    # whose timestamp isn't derivable): the form field then starts empty
-    # rather than falling back to the OP's own date (required-nullable).
-    source_posted_at: str | None
-    author_handle: str
-    tweet_text: str
-    suggested_title: str
-    parsed_coords: list[TweetImportCoord]
-    media: list[TweetImportMedia]
-    quoted_tweet: TweetImportQuotedTweet | None = None
+    created: list[uuid.UUID]
+    updated: list[uuid.UUID]
+    skipped: list[uuid.UUID]
+    warnings: list[str]
+    reason: str | None
+    failed: int

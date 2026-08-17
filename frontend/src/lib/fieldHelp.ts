@@ -87,7 +87,7 @@ export const FIELD_HELP = {
     label: "What goes in Location?",
   },
   section_import: {
-    text: "Paste a public tweet to pre-fill the form: title, source, date, media, and best-effort coordinates. You review everything before submitting.",
+    text: "Paste one of your own X posts and we read it into a draft: the coordinates, the source, the media and the title. Own posts only, matched against the X account linked to your profile. You review the draft before publishing.",
     label: "What does importing do?",
   },
   section_details: {

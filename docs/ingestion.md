@@ -61,7 +61,7 @@ Each entry surfaces them its own way: the bot in its [reply](#the-bot), the arch
 
 Three refusals are all the engine can tell apart, and only the bot names them back: `post_unreadable` (X served no body), `coords_missing` (the analyst's own text carries no coordinate) and `coords_invalid` (a coordinate-shaped string sat outside the world).
 
-**Coverage is text-only.** Coordinates are read from post text and nothing else. Measured on a 48.5k-tweet external OSINT corpus (853 analysts), this recovers about 86% of the geolocations at about 0% false positives. Decimal pairs dominate; DMS and hemisphere spellings make up the handled long tail. The remaining about 14% carry the coordinate only inside the image. Reading those would require running vision over every backfilled media item, which is out of scope. The analyst sees this limit stated where it bites: the import panel's zero-result message says a post needs a coordinate in its text to become a detection.
+**Coverage is text-only.** Coordinates are read from post text and nothing else. Measured on a 48.5k-tweet external OSINT corpus (853 analysts), this recovers about 86% of the geolocations at about 0% false positives. Decimal pairs dominate; DMS and hemisphere spellings make up the handled long tail. The remaining about 14% carry the coordinate only inside the image. Reading those would require running vision over every backfilled media item, which is out of scope. The analyst sees this limit stated where it bites: the import panel says so when a pasted post produces no draft.
 
 ## Grammar table
 
@@ -158,9 +158,11 @@ Register the webhook **after** you deploy the endpoint: X fires a CRC at registe
 
 ## The pasted-tweet import
 
-An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` answers a pre-fill: the coordinates, the source, the media and the title the engine read, for the analyst to review and submit. The request and response contract is [`api.md`](api.md#post-eventsimport-from-tweet); the media the form uploads comes back through [`GET /events/import-from-tweet/media`](api.md#get-eventsimport-from-tweetmedia), the CDN proxy, since the X CDN sets no CORS headers.
+An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer, and the browser opens the first draft. The request and response contract is [`api.md`](api.md#post-eventsimport-from-tweet).
 
-The entry reads the same acquisition and the same engine as the bot, so a coordinate in a post and a source link in its author's own reply resolve together whichever of the two was pasted.
+**Own posts only.** The post's author must equal the X handle linked to the caller's account (`users.x_handle`), the bot's rule; anything else answers `not_your_post`. A third party's footage goes through the plain submit form with a `source_url`.
+
+The entry reads the same acquisition, the same engine and the same write path as the bot, so a coordinate in a post and a source link in its author's own reply resolve together whichever of the two was pasted, and pasting the same post twice overwrites the open draft instead of duplicating it (see [re-import](#re-import)).
 
 ## Archive formats
 

@@ -7,8 +7,7 @@ Each concern (``read`` / ``duplicates`` / ``import_tweet`` / ``import_archive``
 They're exposed as an **ordered** tuple because the order is load-bearing:
 ``item`` (``GET /{id}`` and the other ``/{geolocation_id}`` ops) must mount
 **last**, or its single-segment catch-all path would shadow the literal-path
-GETs (``/points``, ``/possible-duplicates``, ``/import-from-tweet/media``) and
-422 on the non-UUID segment.
+GETs (``/points``, ``/possible-duplicates``) and 422 on the non-UUID segment.
 """
 
 from app.routers.events import (

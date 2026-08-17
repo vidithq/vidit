@@ -25,6 +25,7 @@ from .syndication import (
     _extract_media,
     extract_source_links,
     fetch_syndication,
+    normalise_tweet_url,
 )
 from .telegram import fetch_telegram_embed
 
@@ -257,3 +258,15 @@ def acquire_thread(
     parent = _self_reply_parent(post, client=client)
     records = _chase_source([parent, post] if parent is not None else [post], client=client)
     return AcquiredThread(records=records, post=post, parent=parent)
+
+
+def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> AcquiredThread:
+    """The thread behind a pasted post URL.
+
+    The paste's twin of the bot's ``acquire_tagged_thread``: the URL is parsed
+    once here (:func:`syndication.normalise_tweet_url`, which raises
+    ``InvalidTweetUrl``), then the shared one hop reads the post and, when it
+    replies to one of its own author's posts, that parent.
+    """
+    normalised = normalise_tweet_url(url)
+    return acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)

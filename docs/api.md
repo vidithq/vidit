@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_not_accessible`, `upstream_unreadable` and `upstream_busy`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -33,8 +33,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
 | GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
-| POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
-| GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
+| POST | `/events/import-from-tweet` | 🔒 | Import your own X post as `detected` drafts |
 | POST | `/events/import-archive/presign` | 🔒 | Mint a presigned direct-to-storage upload for your X data archive |
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + assemble counts) |
@@ -110,7 +109,6 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `GET /events/points` | 60/min |
 | `GET /events/possible-duplicates` | 60/min |
 | `POST /events/import-from-tweet` | 30/min |
-| `GET /events/import-from-tweet/media` | 60/min |
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
@@ -148,7 +146,7 @@ The key is `User.id`, read from the signature-verified session cookie. A forged 
 
 This quota is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
 
-Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. Two endpoints are absent by decision rather than by nature: `GET /events/import-archive/{job_id}` and `GET /events/import-from-tweet/media`. A single import flow polls both hard enough to drain a shared budget on one import. Exempting them cannot widen the catalog surface, because neither returns catalog rows. The archive poll returns one job's own progress counters, and the media proxy returns bytes for a URL you already hold, one attachment per call, with no listing, search, or enumeration to walk.
+Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. One endpoint is absent by decision rather than by nature: `GET /events/import-archive/{job_id}`. A single import polls it hard enough to drain a shared budget on its own. Exempting it cannot widen the catalog surface, because it returns no catalog rows: one job's own progress counters, with no listing, search, or enumeration to walk.
 
 ---
 
@@ -479,9 +477,11 @@ Inputs are tolerated gracefully:
 
 ### `POST /events/import-from-tweet` 🔒
 
-Parse a public tweet URL into a pre-fill payload for the submit form. Read-only: it never creates a row. You submit the form afterward. Rate-limited to 30/min/IP.
+Import one of your own X posts. The route runs the shared detection engine over the post and writes what it reads as `detected` drafts owned by you, one per coordinate the post carries. It is the same engine and the same write path the bot and the archive backfill run, so a post produces the same drafts whichever entry read it (see [`ingestion.md`](ingestion.md#the-contract)). Rate-limited to 30/min/IP.
 
-Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated and undocumented; the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"), and separates a throttled or wobbling upstream as `503`. Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
+**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Third-party footage goes through [`POST /events`](#post-events) with a `source_url` instead.
+
+Acquisition reads one hop: the pasted post plus, when it replies to one of its own author's posts, that parent. A reply posted under the pasted post is not read, so paste the reply itself to include it. Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It is unauthenticated and undocumented; responses are cached in-memory for 1h per post ID to bound repeat fetches.
 
 **Request body:**
 ```json
@@ -493,76 +493,31 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 **Response 200:**
 ```json
 {
-  "source_url": "https://x.com/source_handle/status/1234567890123456789",
-  "secondary_source_urls": ["https://t.me/mirror_channel/456"],
-  "original_tweet_url": "https://x.com/analyst_handle/status/1234567890123456790",
-  "posted_at": "2025-11-12T14:33:00.000Z",
-  "author_handle": "analyst_handle",
-  "tweet_text": "<full OP tweet text>",
-  "suggested_title": "<first non-empty line, trimmed to 120 chars>",
-  "parsed_coords": [
-    { "lat": 48.012345, "lng": 37.802411 }
-  ],
-  "media": [
-    { "kind": "video", "remote_url": "https://video.twimg.com/...", "content_type": "video/mp4", "origin": "quote" },
-    { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
-  ],
-  "quoted_tweet": {
-    "source_url": "https://x.com/source_handle/status/1234567890123456789",
-    "author_handle": "source_handle",
-    "tweet_text": "<full quoted tweet text>"
-  }
+  "created": ["9a2b…"],
+  "updated": [],
+  "skipped": [],
+  "warnings": ["several_coordinates"],
+  "reason": null,
+  "failed": 0
 }
 ```
 
-Every field is best-effort, and every one comes from the shared detection engine, so the pre-fill shows exactly what the bot and the archive backfill would read from the same post. See [`ingestion.md`](ingestion.md#the-contract) for the full contract.
+`created`, `updated` and `skipped` carry event ids in the order the engine produced them: new drafts, open drafts a re-import overwrote, and rows the import left alone. Open the first id you get. Re-importing is safe and idempotent: the match key is `(detected_from_url OR source_url, coordinate)` scoped to you, and what happens to a matched row follows the [re-import matrix](ingestion.md#re-import), so a published or closed row is skipped rather than overwritten.
 
-`parsed_coords` runs four coordinate extractors (decimal, decimal plus hemisphere, DMS, Google Maps URL) over the thread's own text, in the analyst's own posts only, with no cap: every coordinate found is a candidate, deduplicated on six decimal places. `suggested_title` is the head's first line that is neither a coordinate alone nor a URL alone, taken verbatim and truncated to 120 chars on a word boundary; empty when no line qualifies. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
+`warnings` carries the engine's codes for what review still has to answer on these drafts: `several_coordinates` (one thread, one draft per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). They are warnings, not refusals: the drafts landed.
 
-`source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. A quote outranks links; otherwise the thread's one candidate link fills the slot, whatever its host, and several candidates leave it empty. Without either signal both are `null` and the form field starts empty. The OP's own URL is never a fallback.
+`reason` names the refusal when the post produced no draft at all, and is null whenever drafts were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the drafts that did land are unaffected.
 
-`secondary_source_urls` carries the candidate links the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post linked nothing else. It prefills the submit form's secondary-source rows.
+Media travels with the drafts: the engine fetches the post's own attachments from the X CDN, stores the footage in the source slot and the analyst's images as proof, and inlines the proof images into the draft's proof document. A draft whose media could not be fetched lands media-incomplete and is completed at review.
 
-`original_tweet_url` is always the canonical URL of the thread head, kept separately so the proof body can credit the analyst even when `source_url` points at the source. The head is the pasted post itself, or the post it replies to when that parent has the same author (see the one-hop acquisition in [`ingestion.md`](ingestion.md#the-contract)).
+**Errors:** all four carry the typed `{"code", "message"}` envelope.
 
-`media[].origin` (`op` = own attachment, `quote` = quoted tweet) is informational; the frontend routes by media type:
-
-- `kind: "video"` → **primary** (lands in `files[]` on the submit form).
-- `kind: "image"` → **proof** (loaded into the Tiptap proof body inline; it uploads as one of the create/geolocate multipart's `proof_files[]` at publish, see [`POST /events`](#post-events)).
-- No video in the response → no primary media is loaded; you attach the source media manually.
-
-Acquisition reads one hop upward, so the media of the pasted post's same-author parent is included. A reply posted *under* the pasted post is not read, so a video the analyst added there is invisible to this route: paste that reply instead.
-
-**Errors:**
 | Code | Case |
 |------|------|
-| 400 | Not a tweet URL (wrong host, profile / list / search path, malformed) |
-| 404 | Tweet not accessible: deleted, protected, never existed, or readable only behind an X login (age-restricted, withheld in a jurisdiction). The frontend renders `detail` verbatim, so it names the case and tells you to fill the form manually |
-| 502 | Syndication endpoint timeout or schema drift (an unknown payload shape, or the empty body X returns when it rejects the request token), frontend renders the "fill the form manually" banner |
-| 503 | X declined to serve the request for now: it rate-limited us (429) or answered with its own 5xx. `detail` tells you to retry in a minute or fill the form manually |
-
----
-
-### `GET /events/import-from-tweet/media?u=<url>` 🔒
-
-Thin proxy that fetches a single X CDN media URL and streams the bytes back.
-
-Requires auth. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com`; any other host returns 400 (SSRF guard). The per-stream byte cap (~110 MB) matches the upload pipeline's video ceiling plus HTTP framing overhead.
-
-**Query params:**
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `u` | string | yes | Absolute X CDN URL (`pbs.twimg.com` / `video.twimg.com`, `https://` only). |
-
-**Response 200:** the upstream bytes, with the upstream `Content-Type` preserved and `Cache-Control: private, max-age=300`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `u` host not in the whitelist |
-| 404 | The media URL no longer resolves: the CDN answered 404, 403 or 410. X rotates and expires `video.twimg.com` URLs, so re-import the tweet to get fresh ones |
-| 502 | Upstream transport error, 5xx, or response above the size cap |
-| 503 | The CDN rate-limited us (429) |
+| 400 | `invalid_tweet_url`: not a post URL (wrong host, profile / list / search path, malformed). `not_your_post`: the post's author is not the X handle linked to your account, or your account has none. `message` names both handles |
+| 404 | `post_not_accessible`: deleted, protected, never existed, or readable only behind an X login (age-restricted, withheld in a jurisdiction) |
+| 502 | `upstream_unreadable`: syndication timeout or schema drift (an unknown payload shape, or the empty body X returns when it rejects the request token) |
+| 503 | `upstream_busy`: X declined to serve for now, either rate-limiting us (429) or answering with its own 5xx. Retry in a minute |
 
 ---
 

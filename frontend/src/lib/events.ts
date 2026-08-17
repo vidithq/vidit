@@ -11,6 +11,7 @@ import type {
   EventStatus,
   Media,
   TagCategory,
+  TweetImportOutcome,
 } from "@/types";
 
 /** A required field a create/edit form is still missing. `key` drives the
@@ -414,6 +415,18 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
   return apiFetch<EventDetail>("/events/requests", {
     method: "POST",
     body: fd,
+  });
+}
+
+/**
+ * Import one of your own X posts: `POST /events/import-from-tweet` runs the
+ * detection engine over it and answers with the drafts it created, updated or
+ * left alone, plus the warnings review has to answer.
+ */
+export function importFromPost(url: string): Promise<TweetImportOutcome> {
+  return apiFetch<TweetImportOutcome>("/events/import-from-tweet", {
+    method: "POST",
+    body: JSON.stringify({ url }),
   });
 }
 

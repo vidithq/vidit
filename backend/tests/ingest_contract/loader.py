@@ -72,6 +72,35 @@ def expected_for_path(typology: str, path: str) -> dict[str, Any]:
     return {**expected, **overrides}
 
 
+def assert_detections_match(
+    typology: str, path: str, detections: list[Any], reason: str | None
+) -> None:
+    """Assert one entry's detections answer the typology's expectation.
+
+    The shared assertion the live entries run (the bot's tag, the analyst's
+    paste): one draft per coordinate, and every draft carrying the title,
+    source, mirrors, warnings and media split the expectation names. A
+    ``paths.<path>.reason`` override pins the refusal that entry reports.
+    """
+    block = load_expected(typology).get("paths", {}).get(path, {})
+    expected = expected_for_path(typology, path)
+
+    assert len(detections) == len(expected["coords"]), typology
+    if "reason" in block:
+        assert reason == block["reason"], typology
+    for detection in detections:
+        assert detection.title == expected["title"], typology
+        assert detection.source_url == expected["source_url"], typology
+        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert detection.warnings == expected["warnings"], typology
+        assert [[m.kind, m.origin] for m in detection.source_media] == [
+            list(pair) for pair in expected["source_media"]
+        ], typology
+        assert [[m.kind, m.origin] for m in detection.proof_media] == [
+            list(pair) for pair in expected["proof_media"]
+        ], typology
+
+
 def is_self_thread(body: dict[str, Any]) -> bool:
     """A ``self_thread`` fixture holds raw archive entries under ``thread``,
     not a single syndication body."""

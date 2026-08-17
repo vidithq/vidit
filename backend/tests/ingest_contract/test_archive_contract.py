@@ -116,7 +116,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     # One row per coordinate-bearing typology, two for multi_coord, none for
     # no_coord: 7 single + 2 (multi) + 0 = 9.
     assert len(outcome.created) == 9
-    assert outcome.skipped == 0 and outcome.failed == 0
+    assert len(outcome.skipped) == 0 and outcome.failed == 0
 
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert len(rows) == 9
@@ -208,7 +208,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     # Re-running the same archive is a no-op (idempotent on permalink + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=archive)
-    assert again.created == [] and again.skipped == 9
+    assert again.created == [] and len(again.skipped) == 9
 
 
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
@@ -403,7 +403,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     # The same export with the chase on: the Telegram embed answers with the
     # date and the footage.
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, chase=True)
-    assert outcome.created == [] and outcome.updated == 1 and outcome.failed == 0
+    assert outcome.created == [] and len(outcome.updated) == 1 and outcome.failed == 0
 
     db.expire_all()
     [row] = db.query(Event).filter(Event.owner_id == owner.id).all()

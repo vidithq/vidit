@@ -1,475 +1,244 @@
-"""`POST /geolocations/import-from-tweet` (+ its media proxy).
+"""`POST /events/import-from-tweet`: the paste creates a draft of your own post.
 
-The human pre-fill path: parsed-payload happy path, the no-persist detection
-preview, the 400/404/502/503 error mapping, and the media-proxy status/host/size
-guards. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
-`_helpers.py`.
+The route runs the shared engine and the shared write path, so what is pinned
+here is the entry: the own-post check, the outcome payload, the re-import
+upsert, and the error mapping. X is mocked at the transport (``httpx.Client``
+swapped for a ``MockTransport`` factory), so the acquisition runs exactly where
+production runs it. The grammar itself is pinned by ``tests/ingest_contract``.
+Shared fixtures live in `conftest.py`; `client` in `_helpers.py`.
 """
 
 from __future__ import annotations
 
+import uuid
+
+import httpx
 import pytest
 
-from app.models.event import Event
+from app.models.event import STATUS_DETECTED, Event
+from app.services.tweet_ingest.syndication import _cache_clear
 from tests.conftest import login_as
 from tests.events._helpers import client
 
-# ── POST /geolocations/import-from-tweet ──────────────────────────────────
+HANDLE = f"paste{uuid.uuid4().hex[:8]}"
+
+COORD_ID = "9400000000000000001"
+NO_COORD_ID = "9400000000000000002"
+MULTI_COORD_ID = "9400000000000000003"
+OTHER_AUTHOR_ID = "9400000000000000004"
+TOMBSTONE_ID = "9400000000000000005"
+BUSY_ID = "9400000000000000006"
+DRIFT_ID = "9400000000000000007"
+
+BODIES: dict[str, dict] = {
+    COORD_ID: {
+        "id_str": COORD_ID,
+        "created_at": "2026-04-02T10:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "Strike on the depot\n48.123456, 37.654321",
+    },
+    NO_COORD_ID: {
+        "id_str": NO_COORD_ID,
+        "created_at": "2026-04-02T11:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "No coordinate here, just a thought",
+    },
+    MULTI_COORD_ID: {
+        "id_str": MULTI_COORD_ID,
+        "created_at": "2026-04-02T12:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "Two impacts\n48.123456, 37.654321\n49.223456, 38.754321",
+    },
+    OTHER_AUTHOR_ID: {
+        "id_str": OTHER_AUTHOR_ID,
+        "created_at": "2026-04-02T13:00:00.000Z",
+        "user": {"screen_name": "someone_else"},
+        "text": "Strike on the depot\n48.123456, 37.654321",
+    },
+}
 
 
-def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None):
-    """Replace ``parse_tweet`` on the router module, at its own binding, so the
-    test stays off the network."""
-    from app.routers.events import import_tweet as geolocations_router
+def _url(tweet_id: str, handle: str = HANDLE) -> str:
+    return f"https://x.com/{handle}/status/{tweet_id}"
 
-    def fake(url, *, client=None):
-        if raises is not None:
-            raise raises
-        return returns
 
-    monkeypatch.setattr(geolocations_router, "parse_tweet", fake)
+@pytest.fixture(autouse=True)
+def _mock_syndication(monkeypatch):
+    """Serve the fixture bodies for every syndication fetch, 404 elsewhere.
+
+    Returns the list of tweet ids the route actually asked X for, so a test can
+    pin that a refusal happened before any budget was spent.
+    """
+    _cache_clear()
+    asked: list[str] = []
+    real_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        tweet_id = request.url.params.get("id", "")
+        asked.append(tweet_id)
+        if tweet_id == TOMBSTONE_ID:
+            return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
+        if tweet_id == BUSY_ID:
+            return httpx.Response(429)
+        if tweet_id == DRIFT_ID:
+            return httpx.Response(200, json={})
+        body = BODIES.get(tweet_id)
+        return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
+
+    def make_client(**_kwargs):
+        return real_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    yield asked
+    _cache_clear()
+
+
+@pytest.fixture
+def linked_author(db, author):
+    """The caller, with ``HANDLE`` linked as their X account."""
+    author.x_handle = HANDLE
+    db.commit()
+    return author
+
+
+def _post(user, tweet_id: str, handle: str = HANDLE):
+    return client.post(
+        "/api/v1/events/import-from-tweet",
+        headers=login_as(client, user),
+        json={"url": _url(tweet_id, handle)},
+    )
+
+
+def _drafts(db, owner) -> list[Event]:
+    db.expire_all()
+    return db.query(Event).filter(Event.owner_id == owner.id).all()
 
 
 def test_import_from_tweet_requires_auth():
     response = client.post(
         "/api/v1/events/import-from-tweet",
-        json={"url": "https://x.com/handle/status/1234567890"},
+        json={"url": _url(COORD_ID)},
     )
     assert response.status_code == 401
 
 
-def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
-    from app.services.tweet_ingest import ParsedCoord, ParsedMedia, ParsedTweet
+def test_your_own_post_creates_a_draft(db, linked_author):
+    response = _post(linked_author, COORD_ID)
 
-    _stub_parse_tweet(
-        monkeypatch,
-        returns=ParsedTweet(
-            source_url="https://x.com/handle/status/1234567890",
-            secondary_source_urls=["https://t.me/mirror/1"],
-            source_posted_at=None,
-            original_tweet_url="https://x.com/handle/status/1234567890",
-            posted_at="2025-11-12T14:33:00.000Z",
-            author_handle="handle",
-            tweet_text="Strike at 48.012345, 37.802411",
-            suggested_title="Strike at 48.012345, 37.802411",
-            parsed_coords=[ParsedCoord(lat=48.012345, lng=37.802411)],
-            media=[
-                ParsedMedia(
-                    kind="image",
-                    remote_url="https://pbs.twimg.com/media/foo.jpg",
-                    content_type="image/jpeg",
-                    origin="op",
-                )
-            ],
-            quoted_tweet=None,
-        ),
-    )
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=login_as(client, author),
-        json={"url": "https://x.com/handle/status/1234567890"},
-    )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["source_url"] == "https://x.com/handle/status/1234567890"
-    assert body["author_handle"] == "handle"
-    assert body["suggested_title"].startswith("Strike")
-    assert body["parsed_coords"] == [{"lat": 48.012345, "lng": 37.802411}]
-    assert body["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
-    # The mirrors ride along so the form can prefill its secondary-source rows.
-    assert body["secondary_source_urls"] == ["https://t.me/mirror/1"]
+    assert len(body["created"]) == 1
+    assert body["updated"] == [] and body["skipped"] == []
+    assert body["reason"] is None and body["failed"] == 0
+
+    [draft] = _drafts(db, linked_author)
+    assert str(draft.id) == body["created"][0]
+    assert draft.status == STATUS_DETECTED
+    assert draft.detected_from_url == _url(COORD_ID)
+    assert draft.title == "Strike on the depot"
 
 
-def test_import_from_tweet_writes_nothing(author, monkeypatch, db):
-    """The pre-fill is a read: the analyst reviews and submits the form."""
-    from app.services.tweet_ingest import ParsedTweet
+def test_several_coordinates_land_several_drafts_and_a_warning(db, linked_author):
+    response = _post(linked_author, MULTI_COORD_ID)
 
-    before = db.query(Event).count()
-    _stub_parse_tweet(
-        monkeypatch,
-        returns=ParsedTweet(
-            source_url="https://x.com/handle/status/1",
-            secondary_source_urls=[],
-            source_posted_at=None,
-            original_tweet_url="https://x.com/handle/status/1",
-            posted_at="2025-11-12T14:33:00.000Z",
-            author_handle="handle",
-            tweet_text="Strike at 48.012345, 37.802411",
-            suggested_title="Strike at 48.012345, 37.802411",
-            parsed_coords=[],
-            media=[],
-            quoted_tweet=None,
-        ),
-    )
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=login_as(client, author),
-        json={"url": "https://x.com/handle/status/1"},
-    )
     assert response.status_code == 200, response.text
-    assert "detected" not in response.json()
-    assert db.query(Event).count() == before
+    body = response.json()
+    assert len(body["created"]) == 2
+    # The engine's own vocabulary, surfaced verbatim so the page can name what
+    # review has to answer: two drafts, and no source on either.
+    assert body["warnings"] == ["several_coordinates", "source_missing"]
+    assert len(_drafts(db, linked_author)) == 2
 
 
-def test_import_from_tweet_returns_400_for_invalid_url(author, monkeypatch):
-    from app.services.tweet_ingest import InvalidTweetUrl
+def test_a_post_with_no_coordinate_creates_nothing_and_names_why(db, linked_author):
+    response = _post(linked_author, NO_COORD_ID)
 
-    _stub_parse_tweet(monkeypatch, raises=InvalidTweetUrl("Not a tweet URL"))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [] and body["reason"] == "coords_missing"
+    assert _drafts(db, linked_author) == []
+
+
+def test_pasting_the_same_post_twice_never_duplicates_the_draft(db, linked_author):
+    first = _post(linked_author, COORD_ID)
+    assert first.status_code == 200, first.text
+    created = first.json()["created"]
+
+    second = _post(linked_author, COORD_ID)
+
+    assert second.status_code == 200, second.text
+    body = second.json()
+    # Nothing moved between the two passes, so the re-import leaves the draft
+    # exactly as it stands and says so: one draft, never a duplicate.
+    assert body["created"] == [] and body["skipped"] == created
+    assert len(_drafts(db, linked_author)) == 1
+
+
+def test_pasting_an_edited_post_overwrites_the_open_draft(db, linked_author, monkeypatch):
+    first = _post(linked_author, COORD_ID)
+    assert first.status_code == 200, first.text
+    monkeypatch.setitem(BODIES[COORD_ID], "text", "Strike on the fuel depot\n48.123456, 37.654321")
+    _cache_clear()  # else the hour-long fetch cache answers with the old body
+
+    response = _post(linked_author, COORD_ID)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [] and body["updated"] == first.json()["created"]
+    [draft] = _drafts(db, linked_author)
+    assert draft.title == "Strike on the fuel depot"
+
+
+def test_someone_elses_post_is_refused(db, linked_author):
+    response = _post(linked_author, OTHER_AUTHOR_ID, handle="someone_else")
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "not_your_post"
+    # Names both handles, so an accidental colleague-URL paste self-corrects.
+    assert "@someone_else" in detail["message"] and f"@{HANDLE}" in detail["message"]
+    assert _drafts(db, linked_author) == []
+
+
+def test_an_account_with_no_linked_handle_is_refused_before_the_fetch(author, _mock_syndication):
+    response = _post(author, COORD_ID)
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "not_your_post"
+    # No syndication call: an unlinked caller never spends the shared budget.
+    assert _mock_syndication == []
+
+
+def test_a_url_that_names_no_post_is_a_400(linked_author):
     response = client.post(
         "/api/v1/events/import-from-tweet",
-        headers=login_as(client, author),
+        headers=login_as(client, linked_author),
         json={"url": "https://example.com"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == "Not a tweet URL"
+    assert response.json()["detail"]["code"] == "invalid_tweet_url"
 
 
-def test_import_from_tweet_returns_404_for_inaccessible_tweet(author, monkeypatch):
-    from app.services.tweet_ingest import TweetNotAccessible
+def test_a_post_x_will_not_serve_is_a_404(linked_author):
+    """A post readable only behind an X login answers a ``TweetTombstone``
+    body: a 404 the analyst can act on, not a 502 that pages an operator."""
+    response = _post(linked_author, TOMBSTONE_ID)
 
-    _stub_parse_tweet(monkeypatch, raises=TweetNotAccessible("Tweet not accessible"))
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=login_as(client, author),
-        json={"url": "https://x.com/handle/status/9999999999"},
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Tweet not accessible"
-
-
-def test_import_from_tweet_returns_404_for_restricted_tweet(author, monkeypatch):
-    """A tweet X only serves behind a login answers ``200`` with a
-    ``TweetTombstone`` body. It reads as an inaccessible tweet: a 404 the
-    analyst can act on, not a 502 that pages an operator.
-
-    No ``parse_tweet`` stub here. The whole fetch runs against a mocked
-    transport (``httpx.Client`` swapped for a ``MockTransport`` factory, the
-    way the CDN tests do it) so the tombstone is classified exactly where
-    production classifies it.
-    """
-    import httpx
-
-    headers = login_as(client, author)
-    real_client = httpx.Client
-
-    def make_client(**_kwargs):
-        return real_client(
-            transport=httpx.MockTransport(
-                lambda _request: httpx.Response(
-                    200, json={"__typename": "TweetTombstone", "tombstone": {}}
-                )
-            )
-        )
-
-    monkeypatch.setattr(httpx, "Client", make_client)
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=headers,
-        json={"url": "https://x.com/PaulJawin/status/1657834636792287232"},
-    )
     assert response.status_code == 404, response.text
-    assert response.json()["detail"] == (
-        "Tweet not readable without an X login (age-restricted or withheld), fill the form manually"
-    )
+    assert response.json()["detail"]["code"] == "post_not_accessible"
 
 
-def test_import_from_tweet_returns_502_on_syndication_failure(author, monkeypatch):
-    from app.services.tweet_ingest import TweetFetchFailed
+def test_a_throttled_upstream_is_a_503(linked_author):
+    response = _post(linked_author, BUSY_ID)
 
-    _stub_parse_tweet(monkeypatch, raises=TweetFetchFailed("upstream timeout"))
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=login_as(client, author),
-        json={"url": "https://x.com/handle/status/1234567890"},
-    )
-    assert response.status_code == 502
-    # The graceful banner string the frontend renders verbatim: the
-    # transport detail is hidden behind it so a syndication outage and
-    # a schema-drift bug are operationally identical to the caller.
-    assert response.json()["detail"] == "Couldn't read tweet, fill the form manually"
-
-
-def test_import_from_tweet_returns_503_when_x_throttles_us(author, monkeypatch):
-    """X refusing to serve for now (a 429, or its own 5xx) is a wait, not
-    schema drift: the analyst is told to retry, and the 503 keeps the
-    throttling in its own Sentry issue instead of the 502 drift bucket.
-
-    No stub on the raise path: the whole fetch runs against a mocked
-    transport so the 429 is classified where production classifies it.
-    """
-    import httpx
-
-    headers = login_as(client, author)
-    real_client = httpx.Client
-
-    def make_client(**_kwargs):
-        return real_client(transport=httpx.MockTransport(lambda _request: httpx.Response(429)))
-
-    monkeypatch.setattr(httpx, "Client", make_client)
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=headers,
-        json={"url": "https://x.com/handle/status/1657834636792287233"},
-    )
     assert response.status_code == 503, response.text
-    assert response.json()["detail"] == (
-        "X is not serving tweets right now, retry in a minute or fill the form manually"
-    )
+    assert response.json()["detail"]["code"] == "upstream_busy"
 
 
-def test_import_from_tweet_returns_502_when_x_rejects_the_token(author, monkeypatch):
-    """An exactly-empty ``{}`` body is X rejecting the locally computed
-    token, so import is down for everyone: a 502 an operator is alerted on,
-    behind the same analyst-facing banner as any other drift."""
-    import httpx
+def test_an_unusable_upstream_body_is_a_502(linked_author):
+    """An exactly-empty ``{}`` body is X rejecting the locally computed token,
+    so import is down for everyone: a 502 an operator is alerted on."""
+    response = _post(linked_author, DRIFT_ID)
 
-    headers = login_as(client, author)
-    real_client = httpx.Client
-
-    def make_client(**_kwargs):
-        return real_client(
-            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={}))
-        )
-
-    monkeypatch.setattr(httpx, "Client", make_client)
-    response = client.post(
-        "/api/v1/events/import-from-tweet",
-        headers=headers,
-        json={"url": "https://x.com/handle/status/1657834636792287234"},
-    )
     assert response.status_code == 502, response.text
-    assert response.json()["detail"] == "Couldn't read tweet, fill the form manually"
-
-
-# ── GET /geolocations/import-from-tweet/media ─────────────────────────────
-
-
-def test_import_from_tweet_media_requires_auth():
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
-    )
-    assert response.status_code == 401
-
-
-def test_import_from_tweet_media_rejects_non_twitter_host(author):
-    """SSRF guard: only ``pbs.twimg.com`` / ``video.twimg.com`` are
-    fetchable through the proxy."""
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://evil.example.com/foo.jpg"},
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "URL host not allowed"
-
-
-def test_import_from_tweet_media_aborts_above_size_cap(author, monkeypatch):
-    """A hostile / buggy upstream that streams past the cap must be
-    rejected mid-stream — not allowed to OOM the worker by buffering
-    the full body and then checking the size.
-
-    Patches ``httpx.stream`` with a mock that yields chunks summing to
-    well past the cap. The mock counts how many bytes it actually
-    emitted; the assert checks the route consumed less than the full
-    body (i.e. the streaming abort fired). Without the byte-counter
-    check, the previous buffered implementation would *also* pass
-    this test — the cap check would just run after the full body
-    landed, hiding the regression we're guarding against.
-    """
-    import httpx
-
-    from app.routers.events import import_tweet as geolocations_router
-
-    cap = geolocations_router.MEDIA_FETCH_MAX_BYTES
-    chunk_size = max(1, cap // 4)
-    # Total body is 10× the cap so a buffered implementation would
-    # land all of it in memory before the size check fires.
-    total_body = cap * 10
-    yielded_bytes = 0
-
-    class _MockStream:
-        status_code = 200
-        headers = {"content-type": "video/mp4"}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def iter_bytes(self):
-            nonlocal yielded_bytes
-            remaining = total_body
-            while remaining > 0:
-                step = min(chunk_size, remaining)
-                yielded_bytes += step
-                yield b"\x00" * step
-                remaining -= step
-
-    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
-
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
-    )
-    assert response.status_code == 502
-    assert response.json()["detail"] == "Media exceeded size cap"
-    # The crux: the loop must have stopped early, not consumed the
-    # full body. ``cap + chunk_size`` is the worst case under correct
-    # streaming behaviour (cap detected on the chunk that crosses
-    # it). Anything close to ``total_body`` means the route reverted
-    # to the buffered-then-check anti-pattern.
-    assert yielded_bytes < total_body, (
-        f"route consumed the full {total_body}-byte body before bailing — streaming abort regressed"
-    )
-    assert yielded_bytes <= cap + chunk_size, (
-        f"route consumed {yielded_bytes} bytes; expected ≤ {cap + chunk_size} "
-        f"(cap + one chunk to detect the overrun)"
-    )
-
-
-def test_import_from_tweet_media_rejects_giant_content_length_upfront(author, monkeypatch):
-    """Advertised ``Content-Length`` over the cap → 502 without opening
-    the body stream (cheap pre-check)."""
-    import httpx
-
-    from app.routers.events import import_tweet as geolocations_router
-
-    cap = geolocations_router.MEDIA_FETCH_MAX_BYTES
-
-    class _MockStream:
-        status_code = 200
-        headers = {"content-type": "video/mp4", "content-length": str(cap + 1)}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def iter_bytes(self):
-            raise AssertionError("body stream must not be read after a giant content-length")
-
-    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
-
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
-    )
-    assert response.status_code == 502
-    assert response.json()["detail"] == "Media exceeded size cap"
-
-
-def test_media_proxy_disallowed_content_type_falls_back_to_octet_stream(author, monkeypatch):
-    """The proxy never forwards an arbitrary upstream ``content-type``
-    verbatim: only the image/video MIMEs this app accepts on upload are
-    passed through, so a spoofed or unexpected upstream type (here
-    ``text/html``, which a browser would happily sniff and execute) is
-    downgraded to a safe, inert default."""
-    import httpx
-
-    class _MockStream:
-        status_code = 200
-        headers = {"content-type": "text/html; charset=utf-8"}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def iter_bytes(self):
-            yield b"<script>alert(1)</script>"
-
-    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
-
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
-    )
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/octet-stream"
-    assert response.headers["x-content-type-options"] == "nosniff"
-
-
-@pytest.mark.parametrize(
-    ("upstream_status", "expected", "detail"),
-    [
-        (404, 404, "Media not found"),
-        (403, 404, "Media not found"),
-        (410, 404, "Media not found"),
-        (429, 503, "X is not serving media right now"),
-        (500, 502, "Couldn't fetch media"),
-    ],
-)
-def test_media_proxy_maps_upstream_status(author, monkeypatch, upstream_status, expected, detail):
-    """X rotates and expires ``video.twimg.com`` URLs, so a 403 (signature
-    expired) and a 410 (gone) are as routine as the 404 and answer the same
-    way: an outcome the analyst re-imports past, not a 5xx that alerts an
-    operator. Throttling gets the 503 the parse route uses, and everything
-    else >= 300 keeps the 502 that means the proxy itself is broken.
-    """
-    import httpx
-
-    class _MockStream:
-        status_code = upstream_status
-        headers: dict[str, str] = {}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def iter_bytes(self):
-            raise AssertionError("body stream must not be read on a refused upstream")
-
-    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _MockStream())
-
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://video.twimg.com/ext_tw_video/1/pu/vid/720x1280/x.mp4"},
-    )
-    assert response.status_code == expected, response.text
-    assert response.json()["detail"] == detail
-
-
-def test_media_proxy_does_not_follow_redirects(author, monkeypatch):
-    """SSRF guard: ``is_trusted_media_url`` only vets the first hop, so the proxy
-    must refuse to chase a 3xx to an unvetted host. Locks ``follow_redirects``
-    off so a revert can't silently reopen the bypass."""
-    import httpx
-
-    captured = {}
-
-    class _Ok:
-        status_code = 200
-        headers = {"content-type": "image/jpeg"}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def iter_bytes(self):
-            yield b"x"
-
-    def _capture_stream(method, url, **kwargs):
-        captured.update(kwargs)
-        return _Ok()
-
-    monkeypatch.setattr(httpx, "stream", _capture_stream)
-
-    login_as(client, author)
-    response = client.get(
-        "/api/v1/events/import-from-tweet/media",
-        params={"u": "https://pbs.twimg.com/media/foo.jpg"},
-    )
-    assert response.status_code == 200
-    assert captured.get("follow_redirects") is False
+    assert response.json()["detail"]["code"] == "upstream_unreadable"

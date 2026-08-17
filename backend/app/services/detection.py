@@ -1,8 +1,9 @@
 """Persist machine detections: ``DetectedGeoloc`` DTOs become ``detected`` rows.
 
 :func:`import_thread` is the one write path from a thread to drafts, and every
-entry runs it: the bot over the thread it acquired, the archive backfill over
-each stitched self-thread. It detects, then turns the resulting DTOs into
+entry runs it: the bot over the thread it acquired, :func:`import_pasted_post`
+over the post an analyst pasted, the archive backfill over each stitched
+self-thread. It detects, then turns the resulting DTOs into
 ``Event`` rows owned by the importer, with media through the evidence pipeline
 and idempotency on ``(detected_from_url OR source_url, coordinate)``. The DTO
 never reaches the ORM, which is what keeps ``detect`` pure.
@@ -22,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import httpx
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy import or_
@@ -48,9 +50,11 @@ from app.services.tweet_ingest import (
     DetectedGeoloc,
     ParsedMedia,
     TweetRecord,
+    acquire_pasted_thread,
     archive_media_fetcher,
     detect,
     detect_diagnosed,
+    fetch_cdn_media,
     read_tweets,
     stitch,
 )
@@ -75,9 +79,19 @@ _COORD_PLACES = 6
 
 @dataclass
 class AssembleOutcome:
+    """What one import pass did, row by row.
+
+    The three verdicts carry the rows themselves, in the order the engine
+    produced them, so an entry that answers a single post (the paste) can point
+    its caller at the draft it landed on, and an entry that counts a whole
+    export reads ``len()``.
+    """
+
     created: list[Event] = field(default_factory=list)
-    updated: int = 0  # an open ``detected`` draft was overwritten with a newer parse
-    skipped: int = 0  # a matched row the import must not touch, or one already up to date
+    # An open ``detected`` draft overwritten with a newer parse.
+    updated: list[Event] = field(default_factory=list)
+    # A matched row the import must not touch, or one already up to date.
+    skipped: list[Event] = field(default_factory=list)
     failed: int = 0  # a detection raised mid-persist and was skipped
     # How many detections carried each warning the engine raised, keyed by the
     # ``tweet_ingest`` warning constants. One home for the count, so the bot's
@@ -147,6 +161,9 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
     tagged on both, and the two provenance URLs differ while the footage source
     and coordinate are identical. Source-less DTOs keep the provenance-only
     match — NULL declares nothing, so it can't collide.
+
+    A ``skip`` carries the row that earned it, so a caller answering one post
+    can still name the draft its detection landed on. Only ``create`` has no row.
     """
     match = Event.detected_from_url == dto.detected_from_url
     if dto.source_url is not None:
@@ -172,7 +189,7 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
         if not _same_coordinate(row, dto):
             continue
         if _row_disposition(row) == "skip":
-            return "skip", None
+            return "skip", row
         if draft is None:
             draft = row
     if draft is None:
@@ -566,7 +583,8 @@ async def assemble_detections(
             cache_url, media_cache = dto.detected_from_url, {}
         verdict, matched = _disposition(db, owner, dto)
         if verdict == "skip":
-            outcome.skipped += 1
+            if matched is not None:  # always: a skip names the row it protects
+                outcome.skipped.append(matched)
         elif matched is not None:  # ``upsert``: the verdict carries its row
             try:
                 changed = await _upsert_one(
@@ -582,9 +600,9 @@ async def assemble_detections(
                 outcome.failed += 1
             else:
                 if changed:
-                    outcome.updated += 1
+                    outcome.updated.append(matched)
                 else:
-                    outcome.skipped += 1
+                    outcome.skipped.append(matched)
         else:
             try:
                 geo = await _persist_one(
@@ -628,6 +646,58 @@ async def import_thread(
     )
     outcome.reason = reason
     return outcome
+
+
+class NotYourPost(RuntimeError):
+    """The pasted post is not the caller's own.
+
+    Raised by :func:`import_pasted_post` when the caller has no linked
+    ``x_handle`` or when the post's author is a different handle. Carries the
+    stable ``code`` the router turns into its 400.
+    """
+
+    code = "not_your_post"
+
+
+async def import_pasted_post(
+    db: Session,
+    *,
+    owner: User,
+    url: str,
+    client: httpx.Client | None = None,
+) -> AssembleOutcome:
+    """The paste entry: acquire the post at ``url``, then run the shared import.
+
+    Own posts only, the bot's rule: the post's author must be the handle linked
+    to ``owner`` (``users.x_handle``, case-insensitive), else
+    :class:`NotYourPost`. Someone else's footage goes through the plain submit
+    form with a ``source_url``. The handle is checked before the fetch when the
+    account has none, so an unlinked caller never spends the shared syndication
+    budget.
+
+    Raises what the acquisition raises (``InvalidTweetUrl`` on a URL that names
+    no post, ``TweetNotAccessible`` when X serves nothing, ``TweetFetchFailed``
+    / ``TweetUpstreamBusy`` on an unusable upstream). The optional ``client`` is
+    for tests (an ``httpx.Client`` on a ``MockTransport``).
+    """
+    linked = owner.x_handle
+    if linked is None:
+        raise NotYourPost(
+            "Link your X account to your Vidit profile first: the import only reads "
+            "posts from the handle linked to your account."
+        )
+    # The acquisition is blocking network I/O; a thread keeps the event loop
+    # serving siblings while X answers.
+    acquired = await asyncio.to_thread(acquire_pasted_thread, url, client=client)
+    author = acquired.post.handle
+    if author.lower() != linked.lower():
+        raise NotYourPost(
+            f"That post is by @{author}. The import only reads posts from @{linked}, "
+            "the X account linked to your Vidit profile."
+        )
+    return await import_thread(
+        db, owner=owner, thread=acquired.records, fetch_media=fetch_cdn_media
+    )
 
 
 async def backfill_from_archive(

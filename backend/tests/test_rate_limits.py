@@ -527,13 +527,6 @@ _DOCUMENTED_LIMITS = [
     _Case(
         "get", "/api/v1/events/possible-duplicates", 60, "user", {"params": {"lat": 0, "lng": 0}}
     ),
-    _Case(
-        "get",
-        "/api/v1/events/import-from-tweet/media",
-        60,
-        "user",
-        {"params": {"u": "https://example.com/photo.jpg"}},
-    ),
     _Case("get", f"/api/v1/events/import-archive/{_MISSING_ID}", 60),
     _Case("get", "/api/v1/timeline", 120),
     # Events: writes.

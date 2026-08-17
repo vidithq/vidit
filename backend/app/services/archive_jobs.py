@@ -299,8 +299,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
         stop_heartbeat.set()
         heartbeat.join(timeout=5)
     job.created_count = len(outcome.created)
-    job.updated_count = outcome.updated
-    job.skipped_count = outcome.skipped
+    job.updated_count = len(outcome.updated)
+    job.skipped_count = len(outcome.skipped)
     job.failed_count = outcome.failed
     _finish(db, job, status="done")
     if owner.email is None:

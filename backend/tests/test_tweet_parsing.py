@@ -7,8 +7,6 @@ so the cookie/CSRF fixtures stay in one place.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import httpx
 import pytest
 
@@ -17,13 +15,11 @@ from app.services.tweet_ingest import (
     TweetFetchFailed,
     TweetNotAccessible,
     TweetUpstreamBusy,
-    acquire,
     clean_proof_text,
     derive_title,
     extract_coords,
     is_trusted_media_url,
     normalise_tweet_url,
-    parse_tweet,
     syndication,
 )
 
@@ -411,248 +407,6 @@ def test_is_trusted_media_url(url, expected):
     assert is_trusted_media_url(url) is expected
 
 
-# ── parse_tweet end-to-end ────────────────────────────────────────────────
-
-
-def _stub_syndication(monkeypatch, body: dict) -> None:
-    """Replace ``fetch_syndication`` with a constant-returning stub.
-
-    The real ``fetch_syndication`` makes a network call; these tests
-    exercise everything *around* the fetch so we keep them hermetic.
-    """
-
-    def _stub(tweet_id: str, client: object | None = None) -> dict:
-        return body
-
-    monkeypatch.setattr(syndication, "fetch_syndication", _stub)
-    # ``acquire`` binds ``fetch_syndication`` at import (``from .syndication
-    # import ...``), and both parse + the machine path fetch through it, so the
-    # module-level patch above doesn't reach that call site: patch it too.
-    monkeypatch.setattr(acquire, "fetch_syndication", _stub)
-
-
-def _user_block(handle: str) -> dict:
-    return {"id_str": "1", "screen_name": handle}
-
-
-def _photo_media(filename: str) -> dict:
-    return {"type": "photo", "media_url_https": f"https://pbs.twimg.com/media/{filename}"}
-
-
-def _video_media(url: str) -> dict:
-    return {
-        "type": "video",
-        "video_info": {
-            "variants": [{"content_type": "video/mp4", "bitrate": 2_000_000, "url": url}]
-        },
-    }
-
-
-def test_parse_tweet_source_url_prefers_quoted_tweet(monkeypatch):
-    """When the OP quote-retweets, ``source_url`` points at the quoted
-    tweet — that's the OSINT-correct attribution. The OP's URL is
-    kept on ``original_tweet_url`` so the form can still credit the
-    analyst in the proof body."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike near Konstyantynivka — 48.012345, 37.802411",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/realsource/9"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage of an attack",
-                "mediaDetails": [_video_media("https://video.twimg.com/v.mp4")],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/victim/status/9999"
-    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
-    assert parsed.quoted_tweet is not None
-    assert parsed.quoted_tweet.author_handle == "victim"
-    # The Telegram link the quote outranked is a mirror, not a discard: it
-    # prefills the form's secondary-source rows.
-    assert parsed.secondary_source_urls == ["https://t.me/realsource/9"]
-
-
-def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
-    """No quote → first non-X URL in ``entities.urls`` wins. Catches
-    the OSINT convention of typing ``Source: https://t.me/...`` in
-    the body."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike — Source: https://t.co/abc",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/somechannel/100"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://t.me/somechannel/100"
-    assert parsed.quoted_tweet is None
-    # The sole link took the source slot, so nothing is left to mirror it.
-    assert parsed.secondary_source_urls == []
-
-
-def test_parse_tweet_secondary_sources_skip_non_footage_links(monkeypatch):
-    """A profile link and a maps pin are not mirrors of the footage any more
-    than they are sources: only footage-host links prefill the secondary rows."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike 48.012345, 37.802411, credit https://t.co/abc",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/somechannel/100"},
-                    {"expanded_url": "https://x.com/Osinttechnical"},
-                    {"expanded_url": "https://maps.google.com/?q=48.01,37.80"},
-                    {"expanded_url": "https://www.youtube.com/watch?v=MIRROR001"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    # Two footage candidates make the source ambiguous, so both stay for review.
-    assert parsed.source_url is None
-    assert parsed.secondary_source_urls == [
-        "https://t.me/somechannel/100",
-        "https://www.youtube.com/watch?v=MIRROR001",
-    ]
-
-
-def test_parse_tweet_source_posted_at_from_quoted_date(monkeypatch):
-    """The quoted tweet carries the true source post instant, so
-    ``source_posted_at`` is the quote's date parsed to an aware UTC datetime."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike 48.012345, 37.802411",
-            "mediaDetails": [_photo_media("op.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage of an attack",
-                "created_at": "2026-04-30T09:15:00.000Z",
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/victim/status/9999"
-    assert parsed.source_posted_at == datetime(2026, 4, 30, 9, 15, tzinfo=UTC)
-
-
-def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
-    """No quote and no footage link: the tweet declared no source, so
-    ``source_url`` is None and the form field starts empty. No date is
-    fabricated from the OP's own post time either. The OP's own URL is
-    provenance (``original_tweet_url``), never a deduced source."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike at 48.012345, 37.802411 — no link",
-            "entities": {"urls": []},
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url is None
-    assert parsed.source_posted_at is None
-    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
-
-
-def test_parse_tweet_merges_op_and_quote_media_with_origin_tags(monkeypatch):
-    """OP media is tagged ``origin="op"``, quoted-tweet media
-    ``origin="quote"`` — informational only on the frontend but
-    used in the proof-body attribution and for future smarter
-    splits."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "annotated screenshots",
-            "entities": {"urls": []},
-            "mediaDetails": [_photo_media("a.jpg"), _photo_media("b.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "the actual footage",
-                "mediaDetails": [_video_media("https://video.twimg.com/v.mp4")],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    op_media = [m for m in parsed.media if m.origin == "op"]
-    quote_media = [m for m in parsed.media if m.origin == "quote"]
-    assert len(op_media) == 2
-    assert all(m.kind == "image" for m in op_media)
-    assert len(quote_media) == 1
-    assert quote_media[0].kind == "video"
-
-
-def test_parse_tweet_reads_no_coordinate_from_the_quoted_text(monkeypatch):
-    """A coordinate counts only in the analyst's own text. One that lives solely
-    in a third party's quoted post is that party's geolocation, so the paste
-    offers the form no coordinate at all."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "here ↓",
-            "entities": {"urls": []},
-            "mediaDetails": [],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage at 48.012345, 37.802411",
-                "mediaDetails": [],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.parsed_coords == []
-
-
-def test_parse_tweet_missing_created_at_stays_a_fetch_failure(monkeypatch):
-    """A body with no tombstone and no ``created_at`` is upstream schema
-    drift, and stays a ``TweetFetchFailed`` (the route's 502, which the
-    operator is alerted on). Restricted tweets are classified earlier, in
-    ``fetch_syndication``, so they never reach this guard."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "text": "Strike at 48.012345, 37.802411",
-            "entities": {"urls": []},
-            "mediaDetails": [],
-        },
-    )
-    with pytest.raises(TweetFetchFailed):
-        parse_tweet("https://x.com/alice/status/1234567890")
-
-
 # ── Restricted tweets (tombstone) ─────────────────────────────────────────
 
 
@@ -681,7 +435,7 @@ def test_fetch_syndication_tombstone_is_not_accessible(tombstone):
     ):
         syndication.fetch_syndication("1657834636792287232", client=client)
     assert str(excinfo.value) == (
-        "Tweet not readable without an X login (age-restricted or withheld), fill the form manually"
+        "Post not readable without an X login (age-restricted or withheld)"
     )
 
 

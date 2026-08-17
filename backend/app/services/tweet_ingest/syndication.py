@@ -9,9 +9,9 @@ X's public *syndication* endpoint:
 
 The same backend the embeddable ``<blockquote class="twitter-tweet">``
 widget uses — unauthenticated, unofficial, no documented contract; X can
-change the schema or move it anytime. The route surfaces failures as `502`
-so the frontend shows a "fill the form manually" banner and stays usable
-even when this service is fully broken. The ``token`` algorithm is copied
+change the schema or move it anytime. The paste route surfaces failures as a
+`502` naming the upstream, so the rest of the app stays usable even when this
+service is fully broken. The ``token`` algorithm is copied
 verbatim from Vercel's `react-tweet` (MIT) — a deterministic hash X
 requires on every request.
 
@@ -278,8 +278,7 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     # cached tombstone would keep answering "not readable" for an hour after.
     if typename == "TweetTombstone":
         raise TweetNotAccessible(
-            "Tweet not readable without an X login (age-restricted or withheld), "
-            "fill the form manually"
+            "Post not readable without an X login (age-restricted or withheld)"
         )
 
     # Any other named shape is a case this module has never seen. It stays a
@@ -438,22 +437,6 @@ def _extract_media(
                     )
 
     return media
-
-
-@dataclass(frozen=True)
-class ParsedQuotedTweet:
-    """The tweet quoted by the OP, when present.
-
-    In OSINT workflows an analyst geolocating someone else's footage
-    quote-tweets the original and attaches annotated screenshots, so the
-    quoted tweet is the actual *source* and the OP is just commentary. When
-    a quote is detected, the frontend uses the quote URL as ``source_url``
-    rather than the OP's (which would credit the analyst, not the source).
-    """
-
-    source_url: str
-    author_handle: str
-    tweet_text: str
 
 
 _TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)

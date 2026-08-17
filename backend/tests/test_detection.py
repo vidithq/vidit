@@ -191,7 +191,7 @@ async def test_assemble_persists_detected_row(db, owner):
         db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
     )
     assert len(outcome.created) == 1
-    assert outcome.skipped == 0 and outcome.updated == 0
+    assert len(outcome.skipped) == 0 and len(outcome.updated) == 0
 
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
@@ -270,7 +270,7 @@ async def test_unchanged_pair_is_skipped_not_updated(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
@@ -285,7 +285,7 @@ async def test_soft_deleted_pair_is_skipped(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     live = db.query(Event).filter(Event.owner_id == owner.id, Event.deleted_at.is_(None)).all()
     assert live == []
 
@@ -305,7 +305,7 @@ async def test_withheld_pair_is_skipped(db, owner):
         detections=[_dto(title="Rewritten by the newer parser")],
         fetch_media=_missing_fetcher,
     )
-    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     db.expire_all()
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert [r.id for r in rows] == [geo_id]
@@ -326,7 +326,7 @@ async def test_closed_detection_is_skipped(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.skipped == 1 and outcome.updated == 0
+    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
     assert (
         db.query(Event).filter(Event.owner_id == owner.id, Event.status == "detected").all() == []
@@ -343,7 +343,7 @@ async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner
     outcome = await assemble_detections(
         db, owner=owner, detections=[second], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.skipped == 1
+    assert outcome.created == [] and len(outcome.skipped) == 1
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
@@ -358,7 +358,7 @@ async def test_same_source_different_coordinate_still_creates(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[second], fetch_media=_missing_fetcher
     )
-    assert len(outcome.created) == 1 and outcome.skipped == 0
+    assert len(outcome.created) == 1 and len(outcome.skipped) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 2
 
 
@@ -371,7 +371,7 @@ async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[second], fetch_media=_missing_fetcher
     )
-    assert len(outcome.created) == 1 and outcome.skipped == 0
+    assert len(outcome.created) == 1 and len(outcome.skipped) == 0
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
@@ -394,7 +394,7 @@ async def test_geolocated_pair_is_skipped(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
     )
-    assert outcome.skipped == 1 and outcome.created == []
+    assert len(outcome.skipped) == 1 and outcome.created == []
 
 
 # ── The upsert: an open draft takes the newer parse in place ───────────────
@@ -427,7 +427,7 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[richer], fetch_media=_image_fetcher
     )
-    assert outcome.created == [] and outcome.updated == 1 and outcome.skipped == 0
+    assert outcome.created == [] and len(outcome.updated) == 1 and len(outcome.skipped) == 0
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -461,7 +461,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=other_image
     )
-    assert outcome.updated == 1
+    assert len(outcome.updated) == 1
 
     db.expire_all()
     fresh = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
@@ -485,7 +485,7 @@ async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner
     outcome = await assemble_detections(
         db, owner=owner, detections=[_dto(proof_media=[_img()])], fetch_media=other_image
     )
-    assert outcome.updated == 1
+    assert len(outcome.updated) == 1
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -511,7 +511,7 @@ async def test_upsert_matched_through_the_source_url_leg(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[second], fetch_media=_missing_fetcher
     )
-    assert outcome.created == [] and outcome.updated == 1
+    assert outcome.created == [] and len(outcome.updated) == 1
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -540,7 +540,7 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
     outcome = await assemble_detections(
         db, owner=owner, detections=[moved], fetch_media=_missing_fetcher
     )
-    assert outcome.updated == 1
+    assert len(outcome.updated) == 1
 
     db.expire_all()
     fresh = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -566,7 +566,7 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     outcome = await assemble_detections(
         db, owner=owner, detections=[dto], fetch_media=_image_fetcher
     )
-    assert outcome.created == [] and outcome.updated == 0 and outcome.skipped == 1
+    assert outcome.created == [] and len(outcome.updated) == 0 and len(outcome.skipped) == 1
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -603,7 +603,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
 
     # Re-running the same archive is a no-op (idempotent on the permalink+coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
-    assert again.created == [] and again.skipped == 6
+    assert again.created == [] and len(again.skipped) == 6
 
 
 async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, owner):

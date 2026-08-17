@@ -790,42 +790,18 @@ export interface paths {
         put?: never;
         /**
          * Import From Tweet
-         * @description Parse a public tweet into a submit-form pre-fill payload.
+         * @description Import the caller's own X post as ``detected`` drafts.
          *
-         *     Auth-only because (a) the result feeds a write flow only logged-in
-         *     analysts can complete and (b) the syndication endpoint's rate budget is
-         *     finite — an anonymous client shouldn't burn it to scrape X via our
-         *     proxy. Per-IP 30/minute to bound the same risk per logged-in caller.
+         *     The paste runs the same engine and the same write path as the bot and the
+         *     archive backfill (``detection.import_pasted_post``), so one post yields one
+         *     draft per coordinate it carries, owned by the caller. A second paste of the
+         *     same post overwrites the open draft instead of duplicating it.
+         *
+         *     Auth-only, and own posts only: the post's author must be the handle linked
+         *     to the caller's account. Per-IP 30/minute bounds what one caller can spend
+         *     of the shared, finite syndication budget.
          */
         post: operations["import_from_tweet_api_v1_events_import_from_tweet_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/import-from-tweet/media": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Import From Tweet Media
-         * @description Stream an X-CDN media URL back to the browser.
-         *
-         *     The submit form needs ``File`` objects in ``files[]`` (the contract
-         *     ``services/evidence_processing.py`` keys off), but the X CDN sets no
-         *     CORS headers for a direct browser ``fetch``, so this thin proxy is the
-         *     only path. Strict host whitelist on ``u`` (the X CDN hosts plus the
-         *     Telegram CDN hosts ``is_trusted_media_url`` allows, see
-         *     ``tweet_ingest``) keeps it from becoming an SSRF / open-redirect vector;
-         *     auth-required so it can't be abused as a bandwidth pipe.
-         */
-        get: operations["import_from_tweet_media_api_v1_events_import_from_tweet_media_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2709,94 +2685,44 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** TweetImportCoord */
-        TweetImportCoord: {
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-        };
-        /** TweetImportMedia */
-        TweetImportMedia: {
-            /** Content Type */
-            content_type: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "image" | "video";
-            /**
-             * Origin
-             * @default op
-             * @enum {string}
-             */
-            origin: "op" | "quote";
-            /** Remote Url */
-            remote_url: string;
-        };
         /**
-         * TweetImportQuotedTweet
-         * @description The tweet quoted by the OP, when present.
+         * TweetImportRead
+         * @description What one pasted post did, in the order the engine produced it.
          *
-         *     Surfaced so the frontend can credit the original author in the proof body
-         *     even though ``source_url`` already points at this quoted tweet.
+         *     One coordinate makes one draft, so a thread carrying several lands several
+         *     ids. ``created`` holds the new drafts, ``updated`` the open drafts a
+         *     re-import overwrote, and ``skipped`` the rows the import must not touch
+         *     (published, closed, withheld) or found already up to date. The caller opens
+         *     the first id it gets.
+         *
+         *     ``warnings`` carries the engine's warning codes for the drafts of this post
+         *     (``several_coordinates``, ``source_ambiguous``, ``source_missing``): what
+         *     review still has to answer, never a refusal. ``reason`` is the refusal code
+         *     when the post produced no draft at all (``coords_missing``,
+         *     ``coords_invalid``), and null whenever drafts were produced. ``failed``
+         *     counts the detections that raised mid-persist.
          */
-        TweetImportQuotedTweet: {
-            /** Author Handle */
-            author_handle: string;
-            /** Source Url */
-            source_url: string;
-            /** Tweet Text */
-            tweet_text: string;
+        TweetImportRead: {
+            /** Created */
+            created: string[];
+            /** Failed */
+            failed: number;
+            /** Reason */
+            reason: string | null;
+            /** Skipped */
+            skipped: string[];
+            /** Updated */
+            updated: string[];
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * TweetImportRequest
-         * @description Body of ``POST /geolocations/import-from-tweet``.
+         * @description Body of ``POST /events/import-from-tweet``.
          */
         TweetImportRequest: {
             /** Url */
             url: string;
-        };
-        /**
-         * TweetImportResponse
-         * @description Pre-fill payload for the submit form.
-         *
-         *     All fields best-effort: ``suggested_title`` empty when the text yields
-         *     nothing usable, ``parsed_coords`` empty when no recognised coordinate
-         *     format, ``media`` empty when no attached image / video. The analyst reviews
-         *     everything before submitting — a typing shortcut, not an authority.
-         *
-         *     When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
-         *     OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
-         *     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
-         *     Without a quote or a footage link ``source_url`` is None (required-nullable)
-         *     and the form field starts empty; the OP's own URL is never a fallback.
-         *     ``source_posted_at`` follows the same rule for the source's post time: it
-         *     carries the quote's actual timestamp, never the OP's, and is None when
-         *     that timestamp isn't known.
-         */
-        TweetImportResponse: {
-            /** Author Handle */
-            author_handle: string;
-            /** Media */
-            media: components["schemas"]["TweetImportMedia"][];
-            /** Original Tweet Url */
-            original_tweet_url: string;
-            /** Parsed Coords */
-            parsed_coords: components["schemas"]["TweetImportCoord"][];
-            /** Posted At */
-            posted_at: string;
-            quoted_tweet?: components["schemas"]["TweetImportQuotedTweet"] | null;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string | null;
-            /** Source Url */
-            source_url: string | null;
-            /** Suggested Title */
-            suggested_title: string;
-            /** Tweet Text */
-            tweet_text: string;
         };
         /**
          * UserProfile
@@ -4091,40 +4017,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TweetImportResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_from_tweet_media_api_v1_events_import_from_tweet_media_get: {
-        parameters: {
-            query: {
-                u: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TweetImportRead"];
                 };
             };
             /** @description Validation Error */

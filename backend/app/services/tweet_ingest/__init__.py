@@ -13,8 +13,6 @@ Single-responsibility bricks behind one import surface:
   replies to, which is the thread the bot and the paste both resolve.
 * ``stitch``: recombine records into threads (union-find on reply edges).
 * ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs.
-* ``parse``: the human pre-fill orchestration behind ``import-from-tweet``,
-  sibling of ``detect``.
 
 Callers import the public surface from this package; the module layout is an
 internal detail. ``errors`` is a leaf module so any brick can raise the
@@ -23,7 +21,7 @@ shared failures without a cycle.
 
 from __future__ import annotations
 
-from .acquire import AcquiredThread, acquire_thread
+from .acquire import AcquiredThread, acquire_pasted_thread, acquire_thread
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .detect import (
     COORDS_INVALID,
@@ -48,11 +46,9 @@ from .extract import (
     derive_title,
     extract_coords,
 )
-from .parse import ParsedTweet, parse_tweet
 from .records import TweetRecord
 from .stitch import stitch
 from .syndication import (
-    MEDIA_FETCH_MAX_BYTES,
     ParsedMedia,
     fetch_syndication,
     is_trusted_media_url,
@@ -62,7 +58,6 @@ from .syndication import (
 __all__ = [
     "COORDS_INVALID",
     "COORDS_MISSING",
-    "MEDIA_FETCH_MAX_BYTES",
     "POST_UNREADABLE",
     "SEVERAL_COORDINATES",
     "SOURCE_AMBIGUOUS",
@@ -72,11 +67,11 @@ __all__ = [
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",
-    "ParsedTweet",
     "TweetFetchFailed",
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
+    "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
     "clean_proof_text",
@@ -88,7 +83,6 @@ __all__ = [
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
-    "parse_tweet",
     "read_tweets",
     "stitch",
 ]
