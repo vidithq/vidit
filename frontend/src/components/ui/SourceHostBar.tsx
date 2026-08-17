@@ -1,13 +1,13 @@
+import type { components } from "@/lib/api-types";
 import { Pill } from "./Pill";
 import { ACCENT_RAMP, CHART_NEUTRAL, CHART_TAIL } from "./styles";
 
-/** One (host, count) entry of the breakdown. Mirrors the backend's
- *  `source_hosts` entry; `name` is the host, already folded to lower case
- *  with any leading `www.` removed server side. */
-export interface SourceHostCount {
-  name: string;
-  count: number;
-}
+/** One (host, count) entry of the breakdown, aliased from the generated
+ *  schema rather than restated (the single-source rule: payload types come
+ *  from the OpenAPI spec). It is the shape `source_hosts` carries, where
+ *  `name` is the host, already folded to lower case with any leading `www.`
+ *  removed server side. */
+export type SourceHostCount = components["schemas"]["TagCount"];
 
 interface Segment {
   key: string;
@@ -91,9 +91,11 @@ export function SourceHostBar({
               icon={
                 // The hairline ring is what keeps the absence paint legible:
                 // the neutral pill it sits in is the same value, so an
-                // unringed "No source" swatch would vanish into its chip.
+                // unringed "No source" swatch would vanish into its chip. The
+                // ring is the neutral border the pill and the card already
+                // carry, so it repoints with the theme.
                 <span
-                  className={`size-2 shrink-0 rounded-full ring-1 ring-white/15 ${segment.paint}`}
+                  className={`size-2 shrink-0 rounded-full ring-1 ring-neutral-700 ${segment.paint}`}
                   aria-hidden="true"
                 />
               }

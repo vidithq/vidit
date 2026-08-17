@@ -3,15 +3,14 @@
 import { Fragment, useState } from "react";
 
 import { formatMonth } from "@/lib/format";
+import type { components } from "@/lib/api-types";
 import { ACCENT_RAMP, CHART_NEUTRAL } from "./styles";
 
-/** One month of the grid. `period` is the backend's bucket key (`YYYY-MM`);
- *  it keys the cell and names it in the readout. Mirrors the backend's
- *  zero-filled activity bucket. */
-export interface ActivityBucket {
-  period: string;
-  count: number;
-}
+/** One month of the grid, aliased from the generated schema rather than
+ *  restated (the single-source rule: enum and payload types come from the
+ *  OpenAPI spec). `period` is the backend's zero-filled bucket key
+ *  (`YYYY-MM`); it keys the cell and names it in the readout. */
+export type ActivityBucket = components["schemas"]["ActivityBucket"];
 
 // The twelve column labels, derived rather than listed so the month names come
 // from the same formatter and locale as the readout below the grid.
@@ -109,8 +108,9 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
                   />
                 );
               }
-              // Level 1 to 4 off the month's share of the busiest month, then
-              // read off the ramp strongest-last.
+              // Level 1 to 4 off the month's share of the busiest month, read
+              // off the ramp, which runs strongest-first: the busiest month
+              // takes index 0 and the quietest the last step held.
               const paint = LEVELS[LEVELS.length - Math.ceil((count / max) * LEVELS.length)];
               return (
                 <button

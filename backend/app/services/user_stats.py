@@ -9,8 +9,9 @@ One population for every field, so the card the payload feeds can state it
 once: the analyst's visible events (``deleted_at IS NULL AND hidden_at IS
 NULL``) in the three worked statuses, :data:`COUNTED_STATUSES`. That is the set
 ``total_events`` counts. A ``requested`` row is an open call for help rather
-than work the analyst documented, so it is out of every aggregate here, and no
-two figures on the card describe different sets.
+than work the analyst documented, so it is out of every aggregate here, and so
+is a ``closed`` row that was withdrawn from ``requested``, which is the same
+ask in its retired form. No two figures on the card describe different sets.
 """
 
 import uuid
@@ -25,6 +26,7 @@ from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
     Event,
 )
 from app.models.media import Media
@@ -57,7 +59,19 @@ def _month_keys(earliest: date, latest: date) -> list[str]:
     Oldest first, and cut to the :data:`MAX_ACTIVITY_YEARS` most recent
     calendar years. Counting in months since year 0 keeps the wrap-around
     arithmetic branch-free.
+
+    Both ends are clamped to today, because the write path accepts any valid
+    ISO ``event_date`` and the year cap is anchored on the late end. One
+    mistyped year (``2925-06-01`` for ``2025-06-01``) would otherwise open the
+    window on 2916 to 2925 and drop every real event out of the grid. A span
+    holding nothing but future dates has no coverage left after the clamp and
+    returns an empty grid rather than a nonsense one; the events themselves
+    still count in every other aggregate.
     """
+    today = date.today()
+    if earliest > today:
+        return []
+    latest = min(latest, today)
     first_year = max(earliest.year, latest.year - MAX_ACTIVITY_YEARS + 1)
     start = max(earliest.year * 12 + earliest.month - 1, first_year * 12)
     end = latest.year * 12 + latest.month - 1
@@ -68,6 +82,14 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     live = (
         Event.owner_id == user_id,
         Event.status.in_(COUNTED_STATUSES),
+        # ``closed`` covers two different rows. Off ``detected`` it is a
+        # machine draft the analyst threw out, a judgement they made, so it is
+        # documented work. Off ``requested`` it is a call for help they
+        # withdrew, and a ``requested`` row takes part in no aggregate here, so
+        # its retired form must not either. ``is_distinct_from`` rather than
+        # ``!=``: ``before_closed_status`` is NULL on every non-closed row, and
+        # ``!=`` would evaluate NULL there and drop all of them.
+        Event.before_closed_status.is_distinct_from(STATUS_REQUESTED),
         *visible_events(),
     )
 
@@ -111,16 +133,24 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
 
     # The host comes off the URL in Python, not in SQL, so the folding rule has
     # one home (:func:`sanitize.normalised_host`, shared with source archival)
-    # rather than a second spelling in a regex. One narrow column over one
-    # analyst's events is the read that pays for it.
+    # rather than a second spelling in a regex. SQL still does the counting:
+    # grouping on the URL hands back one row per distinct link, so this loop is
+    # bounded by how many links an analyst reuses rather than by how much work
+    # they have, on an endpoint anyone can call.
     tally: Counter[str] = Counter()
     no_source_count = 0
-    for (url,) in db.query(Event.source_url).filter(*live).all():
+    url_rows = (
+        db.query(Event.source_url, func.count(Event.id))
+        .filter(*live)
+        .group_by(Event.source_url)
+        .all()
+    )
+    for url, url_count in url_rows:
         host = normalised_host(url) if url else None
         if host is None:
-            no_source_count += 1
+            no_source_count += url_count
         else:
-            tally[host] += 1
+            tally[host] += url_count
     ranked = sorted(tally.items(), key=lambda item: (-item[1], item[0]))
     source_hosts = ranked[:TOP_N]
     other_hosts_count = sum(count for _, count in ranked[TOP_N:])

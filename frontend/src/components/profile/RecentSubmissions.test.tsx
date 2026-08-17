@@ -53,6 +53,20 @@ describe("RecentSubmissions", () => {
     expect(screen.queryByText(/latest geolocations/)).not.toBeInTheDocument();
     // Nothing to expand into, so no "Show more" either.
     expect(screen.queryByRole("link", { name: "Show more" })).not.toBeInTheDocument();
+    // And the heading says it once: a visitor gets no second sentence under
+    // it repeating that the block is empty.
+    expect(screen.queryByText("Nothing yet.")).not.toBeInTheDocument();
+  });
+
+  it("gives the owner of an empty block a next action", () => {
+    render(
+      <RecentSubmissions profile={profileFixture()} submissions={[]} isOwn={true} />
+    );
+
+    expect(screen.getByText("No geolocations submitted yet.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Submit your first geolocation →" })
+    ).toHaveAttribute("href", "/submit");
   });
 
   it("expands into the same published set the block shows", () => {

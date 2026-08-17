@@ -79,9 +79,11 @@ def published_events() -> ColumnElement[bool]:
     Deliberate non-callers: the ``located`` catalog view, which shows drafts
     beside vouched rows on purpose (:func:`view_predicate`); the profile
     coverage map, which plots both and splits the count; and
-    :func:`services.user_stats.get_user_stats`, which reports every status as
-    its own tally and sums them into ``total_events``, the one place a reader
-    still gets the analyst's whole body of live work as a single number.
+    :func:`services.user_stats.get_user_stats`, which reports each of the three
+    worked statuses as its own tally and sums them into ``total_events``, the
+    one place a reader still gets the analyst's documented work as a single
+    number. That set is ``geolocated`` + ``detected`` + ``closed``, minus the
+    ``closed`` rows withdrawn from ``requested``.
     """
     return Event.status == STATUS_GEOLOCATED
 

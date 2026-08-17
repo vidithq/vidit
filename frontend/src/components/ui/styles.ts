@@ -20,10 +20,13 @@ export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 // magnitude, so a hue per category would invent a palette to say what
 // position already says.
 //
-// The ramp keeps the site's accent rule rather than being excused from it: in
-// <ActivityHeatmap> every cell the ramp paints is a control that names its
-// month on hover, tap or focus, and a month with no event is inert and takes
-// `CHART_NEUTRAL`, so accent and clickable still name the same set of cells.
+// The ramp is the site's one sanctioned inert accent (elsewhere accent means
+// clickable): a mark whose step encodes a magnitude carries the ramp whether
+// or not a reader can act on it, and so does its legend, drawn with the same
+// cells as the data it explains. <SourceHostBar>'s ranked segments are inert
+// and <ActivityHeatmap>'s lit months are controls that name their month on
+// hover, tap or focus; both are ranked marks, so both take the ramp. What
+// stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL instead.
 export const ACCENT_RAMP = [
   "bg-orange-500",
   "bg-orange-500/75",

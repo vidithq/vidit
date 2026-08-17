@@ -12,13 +12,13 @@ import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { StatGrid, StatTile } from "@/components/ui/StatTile";
 
 /**
- * The line between a chart's heading and the chart, saying what the chart
- * counts. Local to this card and deliberately not a `components/ui/` export:
- * it is prose in the card's own voice, not a control, and a section's *help*
- * stays the `?` beside the heading (`<FieldHelp>`, the one explanation
- * affordance). A heading here names a chart in three or four words, which
- * leaves the population it counts unstated; the note states it without asking
- * the reader to open anything.
+ * The line under a heading saying what the block below it counts: the card's
+ * own population line, and one per chart. Local to this card and deliberately
+ * not a `components/ui/` export: it is prose in the card's own voice, not a
+ * control, and a section's *help* stays the `?` beside the heading
+ * (`<FieldHelp>`, the one explanation affordance). A heading here names a
+ * chart in three or four words, which leaves the population it counts
+ * unstated; the note states it without asking the reader to open anything.
  */
 function ChartNote({ children }: { children: ReactNode }) {
   return <p className="mt-1 mb-2 text-xs text-neutral-500">{children}</p>;
@@ -36,11 +36,13 @@ function ChartNote({ children }: { children: ReactNode }) {
  * above carries the social and account metadata, and nothing restates
  * `Geolocated` under a second name.
  *
- * Every block here describes the same population, and the line under the
- * heading is where the card says so once. A chart drawn on published work
- * alone beside tiles counting drafts would print two answers to one question
- * with nothing on the page to explain the gap, so the backend serves one set
- * and this card states it.
+ * One population feeds every block: the analyst's live events in the three
+ * worked statuses, drafts included. A chart drawn on published work alone
+ * beside tiles counting drafts would print two answers to one question with
+ * nothing on the page to explain the gap, so the backend serves one set. Each
+ * note says what its own block makes of that set, because the blocks do not
+ * all count events: `Media` counts the media hanging off them, and the month
+ * grid can only draw the events that carry a date.
  */
 export function ProfileInsights({ username }: { username: string }) {
   // The result remembers which username it answers, so navigating to another
@@ -67,15 +69,23 @@ export function ProfileInsights({ username }: { username: string }) {
     return null;
   }
 
+  // Summed off the buckets rather than taken from `total_events`: an undated
+  // event gets no bucket and the span stops at ten years, so the grid's own
+  // sum is the only figure that matches the cells on screen.
+  const datedCount = stats.activity.reduce((sum, bucket) => sum + bucket.count, 0);
+
   return (
     <Card as="section">
       <div>
         <SectionEyebrow title="Insights" margin="none" />
-        <p className="mt-1 text-xs text-neutral-500">
-          Every figure below counts the same {stats.total_events}{" "}
-          {stats.total_events === 1 ? "event" : "events"}: all the work this
-          analyst has live here, drafts included.
-        </p>
+        {/* The tiles' population, stated once. It is not every figure on the
+            card: `Media` counts media rows rather than events, and the month
+            grid draws only the dated ones, which its own note says. */}
+        <ChartNote>
+          The tiles below describe one set of {stats.total_events}{" "}
+          {stats.total_events === 1 ? "event" : "events"}: this analyst&apos;s
+          geolocations, machine drafts and closed rows.
+        </ChartNote>
       </div>
 
       <StatGrid>
@@ -140,7 +150,8 @@ export function ProfileInsights({ username }: { username: string }) {
         <SectionEyebrow title="Event dates" concept="event_date" as="h3" margin="none" />
         <ChartNote>
           The month each event took place, not when it was posted, imported or
-          published.
+          published. It covers the {datedCount}{" "}
+          {datedCount === 1 ? "event" : "events"} dated in the years shown.
         </ChartNote>
         <ActivityHeatmap buckets={stats.activity} />
       </div>

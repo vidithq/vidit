@@ -84,8 +84,9 @@ def get_user_profile(
     # machine drafts here made the page contradict itself (a headline of 496
     # over a feed of 47) and credited an analyst with claims they never made.
     # Same predicate as the feed below, so the card and the feed's ``total``
-    # cannot drift. The wider "everything this analyst owns" figure stays
-    # available as ``total_events`` on ``GET /users/{username}/stats``.
+    # cannot drift. The wider figure, the three worked statuses minus the
+    # withdrawn requests, stays available as ``total_events`` on
+    # ``GET /users/{username}/stats``.
     geolocations_count = (
         db.query(Event)
         .filter(Event.owner_id == user.id, *visible_events(), published_events())

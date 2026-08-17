@@ -33,9 +33,10 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * The count beside the heading splits on the same statuses, under the status
  * names the Insights card below uses (`Geolocated`, `Detected`), so a reader
  * can't find two numbers on one page claiming to count the same thing. Its
- * `geolocated` leg is the `Submitted` tile's figure, which is why the split is
- * spelled out rather than totalled: an unsplit count here would print a number
- * larger than the tile with nothing on the page to explain the gap.
+ * `geolocated` leg is the `Geolocated` tile's figure on the Insights card,
+ * which is why the split is spelled out rather than totalled: an unsplit count
+ * here would print a number larger than that tile with nothing on the page to
+ * explain the gap.
  *
  * Renders nothing until the points arrive and nothing at all for an analyst
  * with no located events (a requests-only profile gets no empty world map);

@@ -47,7 +47,10 @@ const PROFILE: PublicProfile = {
   external_links: { x: "ana_osint", website: "https://ana.example" },
   followers_count: 4,
   following_count: 2,
-  geolocations_count: 3,
+  // Equal to `geolocated_count` below on purpose: both count the analyst's
+  // published geolocations, so a fixture splitting them would let a component
+  // read the wrong one and still pass.
+  geolocations_count: 2,
   created_at: "2026-01-05T09:00:00Z",
   is_following: false,
 };
@@ -170,9 +173,19 @@ describe("public profile order", () => {
     // The calendar's heading is the field's own name, the one the submit and
     // edit forms print, so one concept keeps one name across the app.
     expect(await screen.findByText("Event dates")).toBeInTheDocument();
+    // The grid's own population, summed off the buckets (0 + 1 + ... + 6),
+    // not the card's `total_events`: an undated event has no cell here.
     expect(
       screen.getByText(
-        "The month each event took place, not when it was posted, imported or published."
+        "The month each event took place, not when it was posted, imported or published. It covers the 21 events dated in the years shown."
+      )
+    ).toBeInTheDocument();
+    // The population line is scoped to the tiles, because it is not true of
+    // everything under it: `Media` counts media rows, which routinely run
+    // past `total_events`, and the grid counts dated events only.
+    expect(
+      screen.getByText(
+        "The tiles below describe one set of 3 events: this analyst's geolocations, machine drafts and closed rows."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();

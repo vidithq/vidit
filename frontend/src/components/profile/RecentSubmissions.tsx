@@ -87,21 +87,23 @@ export function RecentSubmissions({
             />
           ))}
         </div>
-      ) : isOwn ? (
-        // Own profile, nothing submitted yet — give the freshly-invited
-        // analyst a clear next action instead of dead-ending on an italic
-        // sentence.
-        <EmptyState
-          variant="plain"
-          lead="No geolocations submitted yet."
-          cta={
-            <Link href="/submit" className={`text-xs ${TEXT_LINK}`}>
-              Submit your first geolocation →
-            </Link>
-          }
-        />
       ) : (
-        <p className="text-xs text-neutral-500 italic">Nothing yet.</p>
+        // Own profile, nothing submitted yet: the freshly-invited analyst gets
+        // a next action instead of dead-ending. A visitor gets nothing further,
+        // because the heading above already reads "No geolocations yet." and a
+        // second sentence saying the same thing is the block printing its empty
+        // state twice.
+        isOwn && (
+          <EmptyState
+            variant="plain"
+            lead="No geolocations submitted yet."
+            cta={
+              <Link href="/submit" className={`text-xs ${TEXT_LINK}`}>
+                Submit your first geolocation →
+              </Link>
+            }
+          />
+        )
       )}
     </Card>
   );

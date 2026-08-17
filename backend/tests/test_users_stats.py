@@ -10,9 +10,11 @@ The profile insights aggregation. Contracts to lock in:
   ``no_source_count``, and adds up to ``total_events``.
 * The activity row spans the analyst's own earliest and latest event date, one
   bucket per month, zero-filled, cut to the ``MAX_ACTIVITY_YEARS`` most recent
-  calendar years.
+  calendar years, with both ends clamped to today so a mistyped future year
+  cannot push the real events out of the window.
 * Every aggregate describes one population: visible events in the three
-  worked statuses. Soft-deleted rows and ``requested`` calls take no part.
+  worked statuses. Soft-deleted rows, ``requested`` calls and the withdrawn
+  asks they close into take no part.
 * Unknown and soft-deleted usernames 404 the same way as the profile.
 
 Fixtures are local on purpose: the events package fixtures live in its own
@@ -142,6 +144,7 @@ def _make_geo(
     *,
     author: User,
     status: str = STATUS_GEOLOCATED,
+    before_closed_status: str = STATUS_DETECTED,
     event_date: date | None = None,
     source_url: str | None = "https://example.com/source",
     deleted: bool = False,
@@ -154,7 +157,9 @@ def _make_geo(
     ``event_date=None`` stores NULL, which the column allows in every status
     and which the activity row has to survive. ``source_url=None`` needs a
     ``detected`` or ``closed`` status: ``ck_events_source_url_status`` requires
-    the column on the other two.
+    the column on the other two. ``before_closed_status`` only applies to a
+    ``closed`` row and says which of the two closures it is, a rejected
+    detection or a withdrawn ask.
     """
     now = datetime.now(UTC)
     geo = Event(
@@ -171,7 +176,7 @@ def _make_geo(
         geo.detected_at = now
     elif status == STATUS_CLOSED:
         geo.closed_at = now
-        geo.before_closed_status = "detected"
+        geo.before_closed_status = before_closed_status
     if deleted:
         geo.deleted_at = now
     if tags:
@@ -305,6 +310,43 @@ def test_stats_activity_caps_the_span_at_ten_calendar_years(db, live_user):
     assert body["total_events"] == 2
 
 
+def test_stats_activity_ignores_a_future_event_date(db, live_user):
+    """A date past today takes no bucket and cannot drag the window with it.
+
+    ``event_date`` accepts any valid ISO date on the write path, and the ten
+    year cap is anchored on the late end of the span, so an un-clamped typo
+    (``2925`` for ``2025``) would open the grid on 2916 to 2925 and blank it.
+    The mistyped row still counts in the status split, like any other event
+    the grid has no cell for.
+    """
+    today = date.today()
+    real = date(today.year - 1, 3, 1)
+    _make_geo(db, author=live_user, event_date=real)
+    _make_geo(db, author=live_user, event_date=date(2925, 6, 1))
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["total_events"] == 2
+    assert body["geolocated_count"] == 2
+    # The window runs from the real event to today rather than out to 2925.
+    # Un-clamped, the ten year cap would start it at 2916 and the real event
+    # would fall off the left edge with nothing left on the grid.
+    row = body["activity"]
+    assert row[0] == {"period": _month_str(real), "count": 1}
+    assert row[-1]["period"] == _month_str(today)
+    # The mistyped row has no cell anywhere, so the grid sums to the real one.
+    assert sum(bucket["count"] for bucket in row) == 1
+
+
+def test_stats_activity_all_future_dates_draw_no_grid(db, live_user):
+    """Nothing but future dates leaves no coverage to draw, so the grid is
+    empty rather than a window on a century that has not happened."""
+    _make_geo(db, author=live_user, event_date=date(2925, 6, 1))
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["total_events"] == 1
+    assert body["activity"] == []
+
+
 def test_stats_excludes_soft_deleted_events(db, live_user, conflict, capture_source_tag):
     _make_geo(db, author=live_user, event_date=date.today())
     _make_geo(
@@ -349,6 +391,54 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, captur
     assert body["top_conflicts"] == []
     assert body["capture_sources"] == []
     assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
+    assert body["activity"] == [{"period": "2025-04", "count": 1}]
+
+
+def test_stats_excludes_a_withdrawn_request(db, live_user, conflict, capture_source_tag):
+    """Withdrawing a call for help moves no figure on the card.
+
+    A ``closed`` row off ``requested`` is the same ask in its retired form,
+    not work the analyst documented, so it stays out of the population the
+    open ``requested`` row is already out of. The other closure, off
+    ``detected``, is a judgement the analyst made and does count.
+    """
+    _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
+    _make_geo(
+        db,
+        author=live_user,
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_REQUESTED,
+        conflicts=[conflict],
+        tags=[capture_source_tag],
+        with_media=True,
+        event_date=date(2025, 9, 9),
+        source_url="https://withdrawn.example/post",
+    )
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["total_events"] == 1
+    assert body["closed_count"] == 0
+    assert body["media_count"] == 0
+    assert body["top_conflicts"] == []
+    assert body["capture_sources"] == []
+    assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
+    assert body["activity"] == [{"period": "2025-04", "count": 1}]
+
+
+def test_stats_counts_a_rejected_detection(db, live_user):
+    """The other half of the ``closed`` split: a thrown-out machine draft is
+    documented work and keeps its place in the tally."""
+    _make_geo(
+        db,
+        author=live_user,
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_DETECTED,
+        event_date=date(2025, 4, 2),
+    )
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["total_events"] == 1
+    assert body["closed_count"] == 1
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
 

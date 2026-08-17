@@ -11,10 +11,11 @@ analysts will land on the day they get the invite. Contracts to lock in:
   `status = 'geolocated'`. The feed's own `total` and its rows must
   apply the same filter, otherwise the pager counts rows it never
   serves. `geolocations_count` on the profile payload counts the same
-  set: it is what the Submitted tile prints, directly above that feed,
-  so a tile counting machine drafts makes the page contradict itself.
-  `GET /users/{u}/stats` is where the analyst's whole body of live work
-  is reported, split by status and summed as `total_events`.
+  set: it is what the Insights card's Geolocated tile prints, directly
+  above that feed, so a tile counting machine drafts makes the page
+  contradict itself. `GET /users/{u}/stats` is where the analyst's
+  documented work is reported: the three worked statuses, minus the
+  requests they withdrew, split by status and summed as `total_events`.
 * `UserProfile` carries the public profile fields (bio, avatar_url,
   external_links) but never leaks `email`.
 * `PATCH /users/me` distinguishes "field omitted" from "field set to
@@ -278,12 +279,12 @@ def test_profile_count_counts_published_work_only(db, live_user):
     """`geolocations_count` counts the published geolocations and nothing
     else, across the full lifecycle.
 
-    It is the Submitted tile's number, and the tile sits above a Recent
-    submissions block and a coverage split that both count published
-    rows. An analyst who ran an archive import owns hundreds of machine
-    drafts, so counting those here tiles a figure an order of magnitude
-    above everything under it and credits them with claims they never
-    made.
+    It is the Insights card's Geolocated tile number, and the tile sits
+    above a Recent submissions block and a coverage split that both count
+    published rows. An analyst who ran an archive import owns hundreds of
+    machine drafts, so counting those here tiles a figure an order of
+    magnitude above everything under it and credits them with claims they
+    never made.
     """
     _make_geo(db, author=live_user, title="published")
     _make_geo(db, author=live_user, title="draft", status=STATUS_DETECTED)

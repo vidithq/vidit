@@ -74,6 +74,9 @@ activity  # schemas/user.py UserStatsRead
 source_hosts  # schemas/user.py UserStatsRead
 other_hosts_count  # schemas/user.py UserStatsRead
 no_source_count  # schemas/user.py UserStatsRead
+# ``ActivityBucket(period=...)`` does not clear it: vulture's visit_Call reads
+# keyword arguments for getattr / hasattr / %-format only, so a keyword name at
+# a call site is never a use. Every wire field above is here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
