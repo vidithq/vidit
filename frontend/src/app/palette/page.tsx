@@ -3,20 +3,20 @@
 import { useState } from "react";
 import { notFound } from "next/navigation";
 import {
+  Archive,
   AtSign,
   BookOpen,
-  Calendar,
+  Bot,
   Check,
   Circle,
   Copy,
   Download,
+  Film,
   Mail,
   MapPin,
   MessageCircle,
   Search as SearchIcon,
   Upload,
-  UserPlus,
-  Users,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
@@ -37,7 +37,8 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
-import { ActivityBars } from "@/components/ui/ActivityBars";
+import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
+import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import {
   MOCK_ANALYST,
@@ -75,6 +76,9 @@ import {
   TEXT_LINK,
   TAPPABLE_HOVER,
   ACCENT_SURFACE,
+  ACCENT_RAMP,
+  CHART_TAIL,
+  CHART_NEUTRAL,
   HOVER_REVEAL,
   ARMED_RING,
   WARNING_CALLOUT,
@@ -347,6 +351,24 @@ export default function PalettePage() {
                 Active
               </span>
             </Variant>
+          </Item>
+
+          <Item name="ACCENT_RAMP / CHART_TAIL / CHART_NEUTRAL" usage="The chart scale: the accent as five intensity steps, strongest first, plus the two paints outside it. CHART_TAIL is work under a name the chart does not print (<SourceHostBar>'s Other); CHART_NEUTRAL is absence (an empty month, a slice naming no source). One hue, because both charts order by magnitude, so a hue per category would invent a palette to say what position already says. <ActivityHeatmap> uses the four strongest steps only: the faintest reads as noise beside an empty cell. The ramp is the site's one sanctioned inert accent: a mark whose step encodes a magnitude carries it whether or not a reader can act on it, and so does its legend. The bar's ranked segments and the grid's lit months are both inert ranked marks; both take the ramp, and what stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL.">
+            <div className="flex flex-wrap items-center gap-3">
+              <Variant label="ACCENT_RAMP">
+                <span className="flex gap-1">
+                  {ACCENT_RAMP.map((paint) => (
+                    <span key={paint} className={`size-5 rounded-xs ${paint}`} />
+                  ))}
+                </span>
+              </Variant>
+              <Variant label="CHART_TAIL">
+                <span className={`size-5 rounded-xs ${CHART_TAIL}`} />
+              </Variant>
+              <Variant label="CHART_NEUTRAL">
+                <span className={`size-5 rounded-xs ${CHART_NEUTRAL}`} />
+              </Variant>
+            </div>
           </Item>
 
           <Item name="TEXT_LINK" usage="Accent links: bylines, retry, empty-state CTAs">
@@ -878,35 +900,59 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: profile stats, future metric grids">
+          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: the profile's Insights row, admin metric grids">
             <div className="w-full max-w-xl">
               <StatGrid>
-                <StatTile icon={MapPin} label="Submitted" value={42} />
-                <StatTile icon={Users} label="Followers" value={128} />
-                <StatTile icon={UserPlus} label="Following" value={37} />
-                <StatTile icon={Calendar} label="Since" value="27 Jun 2026" small />
+                <StatTile icon={MapPin} label="Geolocated" value={42} />
+                <StatTile icon={Bot} label="Detected" value={128} />
+                <StatTile icon={Archive} label="Closed" value={37} />
+                <StatTile icon={Film} label="Media" value={96} />
               </StatGrid>
             </div>
           </Item>
 
-          <Item name="<ActivityBars>" usage="Fixed-width monthly activity row (profile insights): one bar per bucket, heights relative to the max, accent for active months, neutral stub for empty ones. Hover a bar for month + count.">
-            <div className="w-full max-w-xs">
-              <ActivityBars
+          <Item name="<SourceHostBar>" usage="Where a body of work's footage came from (profile insights): one stacked bar over the ranked hosts, widest slice on the strongest accent step, with the unnamed tail and the source-less events in their own neutral slices so the bar accounts for every event counted. The legend is the readable half; the bar is aria-hidden, since a phone has no hover to reveal a title with. Bare hosts, the vocabulary <SourceLabel> already shows a source under.">
+            <div className="w-full max-w-xs space-y-4">
+              <SourceHostBar
+                hosts={[
+                  { name: "x.com", count: 33 },
+                  { name: "t.me", count: 14 },
+                  { name: "tiktok.com", count: 1 },
+                ]}
+                otherCount={0}
+                noSourceCount={0}
+              />
+              <SourceHostBar
+                hosts={[
+                  { name: "x.com", count: 12 },
+                  { name: "t.me", count: 9 },
+                  { name: "youtube.com", count: 5 },
+                  { name: "vk.com", count: 4 },
+                  { name: "tiktok.com", count: 2 },
+                ]}
+                otherCount={6}
+                noSourceCount={3}
+              />
+              <SourceHostBar hosts={[]} otherCount={0} noSourceCount={0} />
+            </div>
+          </Item>
+
+          <Item name="<ActivityHeatmap>" usage="Contribution grid at month resolution (profile insights): one row per calendar year, twelve month cells, intensity off the busiest month. Months rather than days, because an analyst publishes tens of events a year and a daily grid would be blank almost everywhere. Hover or tap a lit month and the line under the grid names it and its count; the cells are paint, not controls, so the grid takes no focus stop. Empty months keep the absence paint, so the ramp marks exactly what carries a count. No dated event renders a sentence; a single month keeps the grid, since the empty cells beside the lit one are what say which month it was.">
+            <div className="w-full max-w-sm space-y-4">
+              <ActivityHeatmap
                 buckets={[
-                  { month: "2025-08", count: 0 },
-                  { month: "2025-09", count: 2 },
-                  { month: "2025-10", count: 5 },
-                  { month: "2025-11", count: 1 },
-                  { month: "2025-12", count: 0 },
-                  { month: "2026-01", count: 3 },
-                  { month: "2026-02", count: 8 },
-                  { month: "2026-03", count: 4 },
-                  { month: "2026-04", count: 0 },
-                  { month: "2026-05", count: 6 },
-                  { month: "2026-06", count: 2 },
-                  { month: "2026-07", count: 7 },
+                  ...Array.from({ length: 10 }, (_, i) => ({
+                    period: `2025-${String(i + 3).padStart(2, "0")}`,
+                    count: [4, 0, 7, 2, 0, 0, 11, 5, 1, 3][i],
+                  })),
+                  ...Array.from({ length: 6 }, (_, i) => ({
+                    period: `2026-${String(i + 1).padStart(2, "0")}`,
+                    count: [0, 2, 9, 6, 0, 1][i],
+                  })),
                 ]}
               />
+              <ActivityHeatmap buckets={[{ period: "2024-05", count: 12 }]} />
+              <ActivityHeatmap buckets={[]} />
             </div>
           </Item>
 
