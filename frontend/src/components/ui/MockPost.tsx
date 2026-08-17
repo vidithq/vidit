@@ -15,8 +15,8 @@ import { Bot, ImageIcon, Play } from "lucide-react";
 /** The one fake analyst the guides attribute their examples to, so a reader
  *  moving between them reads one person's posts rather than three accounts. */
 export const MOCK_ANALYST = {
-  name: "an analyst",
-  handle: "@an_analyst",
+  name: "analyst",
+  handle: "@analyst",
   avatar: "bg-gradient-to-br from-orange-500 to-red-600",
 } as const;
 
