@@ -71,11 +71,15 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
  *
  * `isFetchableAvatarUrl` filters the name, which is only half of it. A name is
  * free to point anywhere: `169.254.169.254.nip.io` is a public dotted hostname
- * whose A record is the cloud metadata address, and an owner controls the DNS
- * behind whatever URL they type into `avatar_url`. Checking the resolved
- * address is what closes that, and doing it in the connector rather than as a
+ * whose A record is the cloud metadata address. Checking the resolved address
+ * is what closes that, and doing it in the connector rather than as a
  * pre-resolve step means the address the guard judged is the address the
  * socket uses.
+ *
+ * `avatar_url` is server-minted today and only ever names the media host, so
+ * this fetch has no owner-controlled destination to reach. The guard stays as
+ * defense in depth: it is the card renderer's own floor on where it will open
+ * a socket, and it holds whatever a future column or a bad value does.
  *
  * A mixed answer is rejected whole rather than filtered down to its public
  * entries: a host that answers with any private address has no business

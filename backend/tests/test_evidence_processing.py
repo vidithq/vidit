@@ -393,3 +393,44 @@ def test_make_jpeg_derivative_bakes_in_exif_orientation():
     assert decoded.size == (100, 200), (
         f"EXIF Orientation 6 not baked into derivative — got {decoded.size}, expected (100, 200)"
     )
+
+
+def _jpeg_with_orientation(orientation: int, size: tuple[int, int]) -> bytes:
+    """A JPEG carrying an EXIF Orientation tag and nothing else.
+
+    Tag 274 is Orientation; value 6 means "the camera was rotated, display
+    this raster turned 90 degrees clockwise". Pillow writes the tag into the
+    APP1 block and leaves the raster as-is, which is exactly what a phone
+    produces.
+    """
+    img = Image.new("RGB", size, "red")
+    exif = img.getexif()
+    exif[274] = orientation
+    buf = BytesIO()
+    img.save(buf, format="JPEG", exif=exif)
+    return buf.getvalue()
+
+
+def test_strip_metadata_applies_exif_orientation_before_dropping_it():
+    """A rotated photo comes out upright, not sideways.
+
+    The strip rebuilds the image from raw pixel bytes, which drops the whole
+    metadata block, Orientation included. Dropping the tag without first
+    applying it silently rotates the picture: the raster still says landscape
+    and nothing is left to tell a viewer otherwise. Every derivative cut from
+    the stripped copy inherits that, so this is the one place it can be fixed.
+    """
+    stripped = strip_metadata(_jpeg_with_orientation(6, (200, 100)), "image/jpeg")
+
+    out = Image.open(BytesIO(stripped))
+    # 200x100 landscape raster + "rotate 90" = a 100x200 portrait image.
+    assert out.size == (100, 200)
+    # And the tag is gone, so no viewer applies the rotation a second time.
+    assert out.getexif().get(274) is None
+
+
+def test_strip_metadata_leaves_an_unrotated_image_alone():
+    """Orientation 1 ("as stored") is the common case; dimensions must not move."""
+    stripped = strip_metadata(_jpeg_with_orientation(1, (200, 100)), "image/jpeg")
+
+    assert Image.open(BytesIO(stripped)).size == (200, 100)

@@ -1237,6 +1237,35 @@ export interface paths {
         patch: operations["update_my_profile_api_v1_users_me_patch"];
         trace?: never;
     };
+    "/api/v1/users/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set My Avatar
+         * @description Replace your profile picture with an uploaded image.
+         *
+         *     The stored object is the only thing ``avatar_url`` ever points at, so
+         *     every surface that renders an avatar loads it from our own media host.
+         *     Accepts one image (JPEG / PNG / WebP), stores a stripped and resized JPEG,
+         *     and deletes the picture it replaced.
+         */
+        put: operations["set_my_avatar_api_v1_users_me_avatar_put"];
+        post?: never;
+        /**
+         * Delete My Avatar
+         * @description Drop your profile picture. Surfaces fall back to the monogram icon.
+         */
+        delete: operations["delete_my_avatar_api_v1_users_me_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}": {
         parameters: {
             query?: never;
@@ -2022,6 +2051,11 @@ export interface components {
             tag_ids?: string | null;
             /** Title */
             title: string;
+        };
+        /** Body_set_my_avatar_api_v1_users_me_avatar_put */
+        Body_set_my_avatar_api_v1_users_me_avatar_put: {
+            /** File */
+            file: string;
         };
         /**
          * ChangePasswordRequest
@@ -2894,10 +2928,12 @@ export interface components {
          *     ``external_links`` is wholesale-replaced, not deep-merged: send the full
          *     desired object on any change. Matches how the edit form submits the whole
          *     panel at once.
+         *
+         *     ``avatar_url`` is absent on purpose: the column is server-minted, written
+         *     only by ``PUT`` / ``DELETE /users/me/avatar``. ``extra="forbid"`` turns an
+         *     attempt to set it here into a 422.
          */
         UserUpdate: {
-            /** Avatar Url */
-            avatar_url?: string | null;
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
@@ -4614,6 +4650,72 @@ export interface operations {
                 "application/json": components["schemas"]["UserUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_my_avatar_api_v1_users_me_avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_my_avatar_api_v1_users_me_avatar_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_avatar_api_v1_users_me_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -10,8 +10,8 @@ vi.mock("@tiptap/react", () => ({
   EditorContent: () => null,
 }));
 
+import { fileToDataUrl } from "@/lib/files";
 import ProofEditor, {
-  fileToDataUrl,
   isProofLinkUri,
   matchInitialProofFiles,
   resolveProofDoc,

@@ -165,20 +165,18 @@ class UserUpdate(BaseModel):
     ``external_links`` is wholesale-replaced, not deep-merged: send the full
     desired object on any change. Matches how the edit form submits the whole
     panel at once.
+
+    ``avatar_url`` is absent on purpose: the column is server-minted, written
+    only by ``PUT`` / ``DELETE /users/me/avatar``. ``extra="forbid"`` turns an
+    attempt to set it here into a 422.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     bio: str | None = Field(default=None)
-    avatar_url: str | None = Field(default=None)
     external_links: ExternalLinks | None = Field(default=None)
 
     @field_validator("bio")
     @classmethod
     def _bio(cls, v: str | None) -> str | None:
         return _normalise_optional(v, max_len=BIO_MAX_LEN, field="bio")
-
-    @field_validator("avatar_url")
-    @classmethod
-    def _avatar(cls, v: str | None) -> str | None:
-        return _normalise_url(v, field="avatar_url")

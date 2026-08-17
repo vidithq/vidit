@@ -23,7 +23,9 @@ from app.models.event import (
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
+from app.services import storage as storage_module
 from app.services.auth import hash_password
+from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -801,6 +803,33 @@ def test_hard_delete_user_sweeps_source_image_derivatives(
     assert f"request_uploads/{request_id}/x_hero.jpg" in swept
     assert f"request_uploads/{request_id}/x_thumb.jpg" in swept
     assert response.json()["media_count"] == len(swept)
+
+
+def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monkeypatch, tmp_path):
+    """The profile picture goes with the account.
+
+    It is personal data covered by the same erasure request, and once the row
+    is gone nothing references the object, so leaving it behind would keep an
+    addressable picture of a person who asked to be forgotten.
+    """
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    storage = storage_module.get_storage()
+    key = f"avatars/{regular_user.id}/{uuid.uuid4()}.jpg"
+    storage.put_bytes_sync(TINY_JPEG, key, "image/jpeg")
+    stored = tmp_path / key
+    assert stored.is_file()
+
+    regular_user.avatar_url = storage.public_url(key)
+    db.commit()
+
+    response = client.delete(
+        f"/api/v1/admin/users/{regular_user.id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+    assert not stored.exists()
 
 
 def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation):

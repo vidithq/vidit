@@ -107,7 +107,7 @@ export default function ProfilePage() {
       subtitle={isOwn ? currentUser?.email : undefined}
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
-      <ProfileHeaderEditFields edit={edit} />
+      <ProfileHeaderEditFields profile={profile} edit={edit} />
 
       {!edit.editing && isOwn && detectionCount > 0 && (
         <DetectionsEntry username={profile.username} count={detectionCount} />

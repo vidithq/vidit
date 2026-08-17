@@ -1,5 +1,5 @@
 """End-to-end tests for `/users/{username}` + `/users/{username}/events`
-plus `PATCH /users/me` (self-edit of bio / avatar / links).
+plus `PATCH /users/me` (self-edit of bio / links) and the avatar endpoints.
 
 The public profile is the second surface (after geolocations) that
 analysts will land on the day they get the invite. Contracts to lock in:
@@ -13,12 +13,18 @@ analysts will land on the day they get the invite. Contracts to lock in:
   external_links) but never leaks `email`.
 * `PATCH /users/me` distinguishes "field omitted" from "field set to
   null/empty" — omitting preserves, null/empty clears.
+* `avatar_url` is server-minted. `PUT /users/me/avatar` stores one image
+  on our own media host and points the column at it, `DELETE` clears
+  both, and the self-edit body cannot set it. Anything the owner could
+  type there would be a URL every viewer's browser fetches, which is the
+  beacon the upload pipeline closes.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,7 +35,10 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.event import Event
 from app.models.user import User
+from app.services import storage as storage_module
 from app.services.auth import hash_password
+from app.services.storage import LOCAL_STORAGE_URL_PREFIX
+from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -253,24 +262,18 @@ def test_patch_me_requires_auth():
     assert response.status_code == 401
 
 
-def test_patch_me_sets_bio_and_avatar(live_user, db):
+def test_patch_me_sets_bio(live_user, db):
     response = client.patch(
         "/api/v1/users/me",
-        json={
-            "bio": "OSINT analyst, Eastern Ukraine armoured movement.",
-            "avatar_url": "https://example.com/me.jpg",
-        },
+        json={"bio": "OSINT analyst, Eastern Ukraine armoured movement."},
         headers=login_as(client, live_user),
     )
     assert response.status_code == 200
-    body = response.json()
-    assert body["bio"] == "OSINT analyst, Eastern Ukraine armoured movement."
-    assert body["avatar_url"] == "https://example.com/me.jpg"
+    assert response.json()["bio"] == "OSINT analyst, Eastern Ukraine armoured movement."
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.bio == "OSINT analyst, Eastern Ukraine armoured movement."
-    assert refreshed.avatar_url == "https://example.com/me.jpg"
 
 
 def test_patch_me_replaces_external_links_wholesale(live_user, db):
@@ -303,12 +306,12 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
 def test_patch_me_omitted_fields_preserved(live_user, db):
     """Omitting a field leaves the column alone — distinct from sending null."""
     live_user.bio = "seeded bio"
-    live_user.avatar_url = "https://example.com/a.jpg"
+    live_user.external_links = {"x": "@seeded"}
     db.commit()
 
     response = client.patch(
         "/api/v1/users/me",
-        json={"avatar_url": "https://example.com/b.jpg"},
+        json={"external_links": {"x": "@edited"}},
         headers=login_as(client, live_user),
     )
     assert response.status_code == 200
@@ -316,7 +319,7 @@ def test_patch_me_omitted_fields_preserved(live_user, db):
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.bio == "seeded bio"
-    assert refreshed.avatar_url == "https://example.com/b.jpg"
+    assert refreshed.external_links == {"x": "@edited"}
 
 
 def test_patch_me_empty_string_clears_bio(live_user, db):
@@ -341,18 +344,23 @@ def test_patch_me_empty_string_clears_bio(live_user, db):
     assert refreshed.bio is None
 
 
-def test_patch_me_rejects_non_http_avatar(live_user):
-    """``javascript:`` URLs would XSS the moment the avatar is rendered.
+def test_patch_me_cannot_set_avatar_url(live_user, db):
+    """The self-edit body has no ``avatar_url``, and the schema forbids extras.
 
-    The schema validator gates the column at write time so the badly-
-    sanitised render path never has to make that decision later.
+    The column is the address every viewer's browser fetches, so it may only
+    hold a URL the server minted. Leaving the field writable here would keep
+    the beacon the upload endpoints exist to close.
     """
     response = client.patch(
         "/api/v1/users/me",
-        json={"avatar_url": "javascript:alert(1)"},
+        json={"avatar_url": "https://tracker.example.com/beacon.gif"},
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.avatar_url is None
 
 
 def test_patch_me_rejects_overlong_bio(live_user):
@@ -373,3 +381,123 @@ def test_patch_me_ignores_extra_fields(live_user):
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422
+
+
+# ── PUT / DELETE /users/me/avatar ─────────────────────────────────────────
+
+
+@pytest.fixture
+def local_storage(monkeypatch, tmp_path):
+    """Point the storage backend at a scratch directory for one test.
+
+    The avatar contract is "the object physically lands on our own media host,
+    and the replaced one physically goes away", which only the local backend
+    lets a test read back off disk.
+    """
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+    return tmp_path
+
+
+def _stored_path(root: Path, url: str) -> Path:
+    """The on-disk file a local-storage public URL resolves to."""
+    return root / url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
+
+
+def _put_avatar(live_user, content: bytes = TINY_JPEG, content_type: str = "image/jpeg"):
+    return client.put(
+        "/api/v1/users/me/avatar",
+        files={"file": ("me.jpg", content, content_type)},
+        headers=login_as(client, live_user),
+    )
+
+
+def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, db):
+    """The minted URL is under our storage prefix, so no viewer's browser is
+    sent to a host the profile owner chose."""
+    response = _put_avatar(live_user)
+    assert response.status_code == 200
+    url = response.json()["avatar_url"]
+    assert url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/avatars/{live_user.id}/")
+    assert url.endswith(".jpg")
+    # One object, not the hero/thumb trio the evidence pipeline writes.
+    stored = _stored_path(local_storage, url)
+    assert stored.is_file()
+    assert list(stored.parent.iterdir()) == [stored]
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.avatar_url == url
+
+
+def test_put_avatar_replaces_and_removes_the_previous_object(local_storage, live_user, db):
+    """A replaced picture is deleted, not left addressable: the old URL keeps
+    working for anyone who saved it otherwise."""
+    first_url = _put_avatar(live_user).json()["avatar_url"]
+    first_path = _stored_path(local_storage, first_url)
+    assert first_path.is_file()
+
+    second_url = _put_avatar(live_user).json()["avatar_url"]
+    assert second_url != first_url
+    assert not first_path.exists()
+    assert _stored_path(local_storage, second_url).is_file()
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.avatar_url == second_url
+
+
+def test_delete_avatar_clears_the_column_and_the_object(local_storage, live_user, db):
+    url = _put_avatar(live_user).json()["avatar_url"]
+    stored = _stored_path(local_storage, url)
+    assert stored.is_file()
+
+    response = client.delete("/api/v1/users/me/avatar", headers=login_as(client, live_user))
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] is None
+    assert not stored.exists()
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.avatar_url is None
+
+
+def test_delete_avatar_is_idempotent(local_storage, live_user):
+    """Nothing to clear is a success, so a double-click can't 500."""
+    response = client.delete("/api/v1/users/me/avatar", headers=login_as(client, live_user))
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] is None
+
+
+@pytest.mark.parametrize(
+    ("content", "content_type"),
+    [
+        (b"not an image at all", "text/plain"),
+        (b"\x00\x00\x00\x18ftypmp42", "video/mp4"),
+    ],
+)
+def test_put_avatar_rejects_non_images(local_storage, live_user, db, content, content_type):
+    """Only the image types the evidence pipeline accepts can become an avatar:
+    a video would land unstripped and unresized."""
+    response = _put_avatar(live_user, content=content, content_type=content_type)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_avatar"
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.avatar_url is None
+
+
+def test_put_avatar_rejects_undecodable_image(local_storage, live_user):
+    """A JPEG content type on bytes Pillow can't open is a 422, not a 500."""
+    response = _put_avatar(live_user, content=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_avatar"
+
+
+def test_avatar_endpoints_require_auth():
+    assert (
+        client.put("/api/v1/users/me/avatar", files={"file": ("me.jpg", TINY_JPEG)}).status_code
+        == 401
+    )
+    assert client.delete("/api/v1/users/me/avatar").status_code == 401

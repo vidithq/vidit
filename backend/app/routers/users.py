@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -7,10 +7,12 @@ from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
+from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.event import PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
+from app.services import users as users_service
 from app.services.event_filters import visible_events
 from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
@@ -50,8 +52,6 @@ def update_my_profile(
     update_data = body.model_dump(exclude_unset=True)
     if "bio" in update_data:
         current_user.bio = update_data["bio"]
-    if "avatar_url" in update_data:
-        current_user.avatar_url = update_data["avatar_url"]
     if "external_links" in update_data:
         links = update_data["external_links"]
         # ``None`` clears every platform; a partial dict (e.g. ``{x:...}``)
@@ -65,6 +65,40 @@ def update_my_profile(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+# Declared ahead of the ``/{username}`` routes below so ``/me/avatar`` is not
+# read as a username with a trailing segment.
+@router.put("/me/avatar", response_model=UserRead)
+@limiter.limit("20/minute")
+async def set_my_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Replace your profile picture with an uploaded image.
+
+    The stored object is the only thing ``avatar_url`` ever points at, so
+    every surface that renders an avatar loads it from our own media host.
+    Accepts one image (JPEG / PNG / WebP), stores a stripped and resized JPEG,
+    and deletes the picture it replaced.
+    """
+    try:
+        return await users_service.set_avatar(db, user=current_user, file=file)
+    except users_service.AvatarError as exc:
+        raise_typed_error(exc, users_service.AVATAR_ERROR_STATUS)
+
+
+@router.delete("/me/avatar", response_model=UserRead)
+@limiter.limit("20/minute")
+def delete_my_avatar(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Drop your profile picture. Surfaces fall back to the monogram icon."""
+    return users_service.clear_avatar(db, user=current_user)
 
 
 @router.get("/{username}", response_model=UserProfile)

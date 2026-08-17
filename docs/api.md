@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -59,7 +59,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Users** | | | |
 | GET | `/users/{username}` | 🌐 | Public analyst profile |
 | GET | `/users/{username}/stats` | 🌐 | Aggregated shape of an analyst's work (status split, tags, activity) |
-| PATCH | `/users/me` | 🔒 | Edit your bio, avatar, external links |
+| PATCH | `/users/me` | 🔒 | Edit your bio and external links |
+| PUT | `/users/me/avatar` | 🔒 | Upload your profile picture (multipart) |
+| DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's geolocations |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
@@ -126,6 +128,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Users / Timeline** | |
 | `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
+| `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
@@ -1253,7 +1256,7 @@ Public profile of an analyst.
   "id": "uuid",
   "username": "kalush",
   "bio": "OSINT analyst tracking armoured movement in Eastern Ukraine.",
-  "avatar_url": "https://cdn.example.com/avatars/kalush.jpg",
+  "avatar_url": "https://<cloudfront-domain>/avatars/<user_id>/<uuid>.jpg",
   "external_links": {
     "x": "@kalush",
     "discord": null,
@@ -1268,7 +1271,7 @@ Public profile of an analyst.
 }
 ```
 
-`bio` / `avatar_url` / `external_links` are self-set via `PATCH /users/me`, defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
+`bio` and `external_links` are self-set via `PATCH /users/me`; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
 **Errors:**
 | Code | Case |
@@ -1306,13 +1309,12 @@ Aggregated shape of an analyst's work, over their live events only (`deleted_at 
 
 ### `PATCH /users/me` 🔒
 
-Edit your own profile, bio, avatar URL, and Linktree-style external account handles.
+Edit your own bio and Linktree-style external account handles.
 
 **Body** (all fields optional; absent = leave column alone, explicit `null` or empty string = clear):
 ```json
 {
   "bio": "OSINT analyst, Eastern Ukraine armoured movement.",
-  "avatar_url": "https://cdn.example.com/avatars/me.jpg",
   "external_links": {
     "x": "@me",
     "discord": "me",
@@ -1322,7 +1324,9 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 }
 ```
 
-`bio` is capped at 500 characters. `avatar_url` must be `http` or `https`, `javascript:` and other schemes are rejected (XSS class blocked at write time). `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Per-platform values are 200 chars max; values are free-form strings (handle or URL).
+`bio` is capped at 500 characters. `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Per-platform values are 200 chars max; values are free-form strings (handle or URL).
+
+The body rejects unknown fields, `avatar_url` among them. The profile picture is server-minted, so it changes only through the two endpoints below.
 
 **Response 200:** the updated `UserRead` (same shape as `GET /auth/me`).
 
@@ -1330,7 +1334,38 @@ Edit your own profile, bio, avatar URL, and Linktree-style external account hand
 | Code | Case |
 |------|------|
 | 401 | Not authenticated |
-| 422 | Validation failure (bio too long, non-http(s) URL, unknown field) |
+| 422 | Validation failure (bio too long, non-http(s) website, unknown field) |
+
+---
+
+### `PUT /users/me/avatar` 🔒
+
+Upload your profile picture. The backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `avatars/{user_id}/`. It then points `users.avatar_url` at that object and deletes the picture it replaced, the same delete every other media path performs: the bucket is versioned with Object Lock, so the delete writes a delete marker and the noncurrent version stays for the retention period (see the Media row in [`engineering.md`](engineering.md#deployment)).
+
+The picture every viewer's browser loads therefore comes from the media host, not from an address the profile owner chose. A typed URL would fetch from a host the owner controls on every page that renders the avatar, handing that host the IP address and User-Agent of everyone who reads the profile, an event page, the map, or a search result.
+
+**Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp`, up to `MAX_IMAGE_SIZE`. Video types are rejected.
+
+**Response 200:** the updated `UserRead`, carrying the new `avatar_url`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 422 | `{"code": "invalid_avatar", "message": …}`: not an accepted image type, over the size ceiling, or undecodable |
+
+---
+
+### `DELETE /users/me/avatar` 🔒
+
+Remove your profile picture. Clears `users.avatar_url` and deletes the stored object, under the same versioning and retention as every other media delete (see the Media row in [`engineering.md`](engineering.md#deployment)). Surfaces fall back to the handle's initial or a neutral icon. Idempotent: removing a picture you do not have returns 200.
+
+**Response 200:** the updated `UserRead`, with `avatar_url` null.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
 
 ---
 

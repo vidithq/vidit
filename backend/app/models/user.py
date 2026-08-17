@@ -53,10 +53,15 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
-    # Public profile fields, opt-in via PATCH /users/me. Bio is plain text (no
-    # Tiptap, no inline media — a short signal, not a post). Avatar is a
-    # free-form URL; no upload pipeline for it yet.
+    # Public profile fields. Bio is plain text (no Tiptap, no inline media: a
+    # short signal, not a post), opt-in via PATCH /users/me.
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Server-minted, never a value the owner types: PUT /users/me/avatar stores
+    # one stripped 400 px JPEG under `avatars/<user id>/` and writes its public
+    # URL here, DELETE clears both. Every viewer's browser therefore fetches
+    # the picture from our own media host, so a profile field cannot become a
+    # beacon that collects the IP and User-Agent of everyone who loads a page
+    # the avatar appears on.
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSONB keyed by platform (x, discord, website, github). Default ``{}`` so
     # the read path is always a dict (never NULL); PATCH is wholesale-replace,
