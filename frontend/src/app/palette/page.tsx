@@ -738,9 +738,9 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph (a clock-with-arrow for the Wayback Machine, a box for archive.today, never the services' own logos), accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens both providers' submit pages prefilled with the link plus one field to paste the snapshot back, which flips the glyph in place. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy and in the text of the prefill link, never in the shape. Accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens one submit page prefilled with the link (the Wayback Machine, whose replay URL the server can check against the link it claims to archive) plus one field to paste the snapshot back, which flips the glyph in place. One door, not one accepted provider: the field takes a snapshot from web.archive.org, archive.ph or archive.today alike, and the line beside the link says so. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="archived at the Wayback Machine (primary source)">
+            <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
@@ -755,7 +755,7 @@ export default function PalettePage() {
                 />
               </span>
             </Variant>
-            <Variant label="archived at archive.today (mirror 2 of a multi-mirror list)">
+            <Variant label="a stored copy named for archive.today, same mark (mirror 2 of a multi-mirror list)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
@@ -779,7 +779,7 @@ export default function PalettePage() {
                 />
               </span>
             </Variant>
-            <Variant label="no copy yet, seen by the owner (opens the providers + paste field)">
+            <Variant label="no copy yet, seen by the owner (opens the provider + paste field)">
               <span className="text-sm text-neutral-300">
                 x.com
                 <ArchivedCopies
@@ -795,9 +795,9 @@ export default function PalettePage() {
 
           <Item
             name="<ArchiveSourceField>"
-            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The two provider links recompute from the current Source URL value and are replaced by one line while it holds nothing usable; `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
+            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The one provider link recomputes from the current Source URL value and is replaced by one line while it holds nothing usable, with the sentence naming the other accepted hosts beside it in both states (and wired to the paste field through aria-describedby); `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
           >
-            <Variant label="a source URL is typed: both providers, one paste field">
+            <Variant label="a source URL is typed: one provider link, one paste field">
               <ArchiveSourceField
                 sourceUrl="https://t.me/channel/12345"
                 value=""
