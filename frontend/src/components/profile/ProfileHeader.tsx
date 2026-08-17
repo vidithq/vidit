@@ -2,6 +2,7 @@
 
 import { Pencil } from "lucide-react";
 
+import { formatDate } from "@/lib/format";
 import type { PublicProfile } from "@/lib/users";
 import FollowButton from "./FollowButton";
 import { CopyProfileLink } from "./CopyProfileLink";
@@ -48,6 +49,82 @@ export function ProfileTitle({
           this page cannot afford to lose. */}
       <span className="min-w-0 break-words">{profile.username}</span>
     </span>
+  );
+}
+
+/**
+ * The lines under the handle: the analyst's own framing, then the account
+ * metadata, then the account's email on your own profile.
+ *
+ * The bio reads here rather than in a card of its own, so a visitor meets the
+ * identity as one compact block (picture, handle, one line of prose) and the
+ * evidence starts immediately below it. `<PageShell>` owns the slot and its
+ * `[overflow-wrap:anywhere]`, which is what keeps a bio holding a bare URL, or
+ * an email that is one unbreakable token, inside the frame on a phone.
+ *
+ * The bio has three shapes, each deliberate. **Empty:** it renders nothing, so
+ * the handle sits over the metadata line alone. **With a link:** the URL is
+ * plain text that breaks where it must. **Long:** it wraps instead of
+ * clamping. `BIO_MAX_LEN` already caps it at 500 characters, and hiding the
+ * tail behind an ellipsis would drop the analyst's own framing with nothing
+ * offering to reveal it. Line breaks the author typed collapse into the flow,
+ * so a multi-paragraph bio reads as one line of prose here and keeps its shape
+ * in the edit field.
+ *
+ * `meta` is the followers / following / member-since line: social and account
+ * age, which say who the analyst is rather than what they documented. It reads
+ * as secondary text inside the identity block instead of as tiles, because a
+ * grid weighing as much as the Insights card is a grid claiming to say as
+ * much. The work figures have one home, the Insights card. Zero values print:
+ * a profile that hides its zeros is one whose numbers cannot be read at all.
+ * Each segment holds together on its own line, so the row wraps between
+ * segments rather than inside one at 375 px. Passing `null` drops the line,
+ * which is what edit mode does: the page collapses to the form there.
+ */
+export function ProfileIdentity({
+  bio,
+  email,
+  meta,
+}: {
+  bio: string | null;
+  email?: string;
+  meta: PublicProfile | null;
+}) {
+  const segments = meta
+    ? [
+        `${meta.followers_count} follower${meta.followers_count === 1 ? "" : "s"}`,
+        `${meta.following_count} following`,
+        `Member since ${formatDate(meta.created_at)}`,
+      ]
+    : [];
+
+  return (
+    <>
+      {bio && <p>{bio}</p>}
+      {segments.length > 0 && (
+        <p
+          className={`flex flex-wrap items-center text-xs text-neutral-500 ${bio ? "mt-1" : ""}`}
+        >
+          {segments.map((segment, i) => (
+            <span key={segment} className="whitespace-nowrap">
+              {i > 0 && (
+                <span aria-hidden="true" className="px-1.5 text-neutral-700">
+                  ·
+                </span>
+              )}
+              {segment}
+            </span>
+          ))}
+        </p>
+      )}
+      {/* `mt-1` only when a line precedes it: alone it is the slot's only
+          line and needs no lead. */}
+      {email && (
+        <p className={`text-xs text-neutral-500 ${bio || segments.length ? "mt-1" : ""}`}>
+          {email}
+        </p>
+      )}
+    </>
   );
 }
 

@@ -13,7 +13,7 @@ from app.schemas.event import PaginatedEvents
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import social, user_stats
 from app.services import users as users_service
-from app.services.event_filters import visible_events
+from app.services.event_filters import published_events, visible_events
 from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -112,8 +112,19 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
+    # Published work, not everything owned: this is the number the profile's
+    # share card headlines and the size of the set the Recent submissions
+    # block and the coverage split's ``geolocated`` leg both count. Counting
+    # machine drafts here made the page contradict itself (a headline of 496
+    # over a feed of 47) and credited an analyst with claims they never made.
+    # Same predicate as the feed below, so the card and the feed's ``total``
+    # cannot drift. The wider figure, the three worked statuses minus the
+    # withdrawn requests, stays available as ``total_events`` on
+    # ``GET /users/{username}/stats``.
     geolocations_count = (
-        db.query(Event).filter(Event.owner_id == user.id, *visible_events()).count()
+        db.query(Event)
+        .filter(Event.owner_id == user.id, *visible_events(), published_events())
+        .count()
     )
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
@@ -198,7 +209,19 @@ def get_user_geolocations(
     per_page: int = Query(20, ge=1),
     db: Session = Depends(get_db),
 ):
-    """One analyst's events, newest event date first, capped at 100 per page.
+    """One analyst's published geolocations, newest event date first, capped
+    at 100 per page.
+
+    Published, not merely visible: :func:`published_events` narrows to
+    ``geolocated``, so the portfolio carries only rows the analyst vouched
+    for. Machine drafts and the rows they rejected are theirs to work, not
+    theirs to be credited with; the owner reaches the drafts through their
+    detections queue instead. The filter is applied to the count and to the
+    rows alike, so a page of the feed and its ``total`` agree, and
+    ``geolocations_count`` on the profile payload counts the same set, so the
+    share card's headline agrees with both. The whole body of live
+    work, drafts included, is ``total_events`` on
+    :func:`get_user_stats`.
 
     Offset-paged rather than cursor-paged: the ordering the profile reads by
     is ``event_date``, which is nullable and editable and so cannot key a
@@ -211,7 +234,9 @@ def get_user_geolocations(
     # from reaching Postgres as a negative OFFSET (a 500).
     per_page = page_size(per_page)
 
-    total = db.query(Event).filter(Event.owner_id == user.id, *visible_events()).count()
+    owned_and_published = (Event.owner_id == user.id, *visible_events(), published_events())
+
+    total = db.query(Event).filter(*owned_and_published).count()
 
     rows = (
         db.query(
@@ -227,7 +252,7 @@ def get_user_geolocations(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
-        .filter(Event.owner_id == user.id, *visible_events())
+        .filter(*owned_and_published)
         # ``event_date`` alone is neither unique nor non-null, so an OFFSET
         # walk over it lets Postgres return tied rows in any order it likes
         # and a page can repeat a row the previous one already served, or skip

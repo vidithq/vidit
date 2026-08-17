@@ -7,16 +7,16 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import type { PublicProfile } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
-import { BioCard } from "@/components/profile/BioCard";
+import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
 import {
   ProfileActions,
   ProfileHeaderEditFields,
+  ProfileIdentity,
   ProfileTitle,
 } from "@/components/profile/ProfileHeader";
 import { ProfileInsights } from "@/components/profile/ProfileInsights";
 import { ProfileMap } from "@/components/profile/ProfileMap";
-import { ProfileStats } from "@/components/profile/ProfileStats";
 import {
   RecentSubmissions,
   type PaginatedSubmissions,
@@ -83,28 +83,46 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: who, then the work, then the account. The handle titles
-  // the page, the bio positions it, the linked accounts carry the rest of that
-  // identity (they are where the analyst already posts, so they belong beside
-  // the bio rather than at the far end of the page), and everything below is
-  // evidence, shape of work first (`ProfileInsights`), then where it happened
-  // (`ProfileMap`), then the events themselves. Sign out sinks under all of
-  // it, so a visitor lands on a portfolio and the owner still finds their
-  // controls in one place.
+  // Portfolio order: show the work, then explain the work, then say where to
+  // reach the person. Most probative first, most incidental last.
   //
-  // The detections entry is the exception: it is pending work, not an account
-  // control, so on the owner's own profile it opens the page, above the bio.
-  // A queue of hundreds read as buried at the bottom of the portfolio.
+  // The identity is one compact block and not a section: the handle titles the
+  // page, the avatar sits beside it, and the bio plus the followers /
+  // following / member-since line are what follow it (`ProfileIdentity`), so a
+  // visitor is one scroll-free glance from evidence. Then the coverage map,
+  // which shows the work at its widest, and Insights directly under it, since
+  // the summary that interprets that map belongs beside it: the map says where,
+  // and the card says what kind, how much and when. Recent submissions follow,
+  // because a list that grows reads better last of the work blocks. Linked
+  // accounts land last of the public blocks: they are where to find the
+  // analyst elsewhere, which is worth nothing until the work has earned the
+  // click. Sign out sinks under all of it.
+  //
+  // The detections entry is the exception to "work first": it is pending work
+  // rather than an account control, so on the owner's own profile it stays
+  // above the fold. A queue of hundreds read as buried at the bottom.
   //
   // Editing collapses that order to the form alone: every editable field sits
   // between the header and Save, with the read-only portfolio sections dropped
-  // for the duration. The bio and the linked-accounts inputs are contiguous in
-  // both modes, which is what keeps Save on screen by the time you reach them.
+  // for the duration. The bio and the linked-accounts inputs stay contiguous,
+  // which is what keeps Save on screen by the time you reach them, and they
+  // stay in the order the page reads them.
+  const bio = edit.editing ? null : profile.bio?.trim() || null;
+  const ownerEmail = isOwn ? currentUser?.email : undefined;
   return (
     <PageShell
       back
       title={<ProfileTitle profile={profile} edit={edit} />}
-      subtitle={isOwn ? currentUser?.email : undefined}
+      // The metadata line makes the slot unconditional in view mode. Editing
+      // drops it (the page collapses to the form), so the slot goes back to
+      // carrying only what the owner is given there: the account email.
+      subtitle={
+        <ProfileIdentity
+          bio={bio}
+          email={ownerEmail}
+          meta={edit.editing ? null : profile}
+        />
+      }
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
       <ProfileHeaderEditFields profile={profile} edit={edit} />
@@ -113,36 +131,34 @@ export default function ProfilePage() {
         <DetectionsEntry username={profile.username} count={detectionCount} />
       )}
 
-      <BioCard profile={profile} edit={edit} />
-
-      <LinkedAccountsCard profile={profile} edit={edit} />
+      <BioField edit={edit} />
 
       {!edit.editing && (
         <>
-          <ProfileStats profile={profile} />
+          <ProfileMap username={profile.username} />
 
           <ProfileInsights username={profile.username} />
-
-          <ProfileMap username={profile.username} />
 
           <RecentSubmissions
             profile={profile}
             submissions={submissions}
             isOwn={isOwn}
           />
-
-          {isOwn && (
-            <div className="pt-4 border-t border-neutral-800 flex justify-center">
-              <Button
-                variant={signOut.armed ? "danger" : "secondary"}
-                onClick={signOut.trigger}
-              >
-                <LogOut size={14} strokeWidth={1.8} />
-                {signOut.armed ? "Confirm sign out" : "Sign out"}
-              </Button>
-            </div>
-          )}
         </>
+      )}
+
+      <LinkedAccountsCard profile={profile} edit={edit} />
+
+      {!edit.editing && isOwn && (
+        <div className="pt-4 border-t border-neutral-800 flex justify-center">
+          <Button
+            variant={signOut.armed ? "danger" : "secondary"}
+            onClick={signOut.trigger}
+          >
+            <LogOut size={14} strokeWidth={1.8} />
+            {signOut.armed ? "Confirm sign out" : "Sign out"}
+          </Button>
+        </div>
       )}
     </PageShell>
   );
