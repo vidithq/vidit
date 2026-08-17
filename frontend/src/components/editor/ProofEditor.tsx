@@ -5,6 +5,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
+import { fileToDataUrl } from "@/lib/files";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
@@ -54,7 +55,7 @@ interface ProofEditorProps {
 }
 
 // `previewUrl` is a `blob:` URL for a manually picked "+ Image" file, or a
-// `data:` URL for an import-hydrated one (see `fileToDataUrl` below);
+// `data:` URL for an import-hydrated one (see `lib/files.fileToDataUrl`);
 // `emit`'s src rewrite just matches the string, so it doesn't care which.
 type ImageEntry = { previewUrl: string; placeholder: string; file: File };
 
@@ -97,20 +98,6 @@ export function matchInitialProofFiles(
     if (file) matched.push({ placeholder: src, file });
   });
   return matched;
-}
-
-/** Read `file` as a `data:` URL. Used (instead of `URL.createObjectURL`) for
- *  the import-hydration preview below, which needs no matching "revoke": a
- *  data URL is just a string, not an entry in the browser's Blob URL
- *  registry, so nothing about it can go stale or needs disposing. Exported
- *  for the collision regression test. */
-export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(file);
-  });
 }
 
 /**

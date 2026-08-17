@@ -26,8 +26,10 @@ describe("Avatar", () => {
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
   });
 
-  // An `avatar_url` is typed by its owner, so it can 404 or be blocked as
-  // mixed content. The circle falls back instead of showing a broken image.
+  // An `avatar_url` names a server-minted object, which a replace or a remove
+  // deletes, so it can still 404 (a stale payload, a CDN edge answering before
+  // a new object propagates). The circle falls back instead of showing a
+  // broken image.
   it("falls back to the initial when the picture fails to load", () => {
     const { container } = render(
       <Avatar src="https://cdn.example.com/gone.jpg" username="analyst" size="size-10" />,
