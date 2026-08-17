@@ -8,6 +8,7 @@ through the disposition matrix (skip / upsert / create).
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import uuid
 from datetime import UTC, date, datetime
@@ -26,7 +27,16 @@ from app.services.auth import hash_password
 from app.services.detection import Outcome, backfill_from_archive, persist_drafts
 from app.services.source_archive import stage_source_snapshot
 from app.services.storage import get_storage
-from app.services.tweet_ingest import Draft, ParsedCoord, ParsedMedia, Resolution
+from app.services.tweet_ingest import (
+    DUPLICATE_MEDIA,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FOOTAGE_MISSING,
+    SOURCE_MISSING,
+    Draft,
+    ParsedCoord,
+    ParsedMedia,
+    Resolution,
+)
 from tests._fixtures import TINY_JPEG
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
@@ -667,3 +677,65 @@ def test_validate_bytes_guards_type_and_size():
         validate_bytes(b"x", "application/pdf")  # disallowed type
     with pytest.raises(ValueError):
         validate_bytes(b"x" * (settings.max_image_size + 1), "image/jpeg")  # oversize
+
+
+# ── The warnings the write path raises ────────────────────────────────────
+
+
+async def test_a_sourced_draft_that_stored_no_footage_warns(db, owner):
+    """The three warnings only the write path can answer, on one created row:
+    the source was declared but no ``role=source`` media landed, and its post
+    date came back unknown. The engine's own warnings are unaffected."""
+    draft = _draft(
+        source_url="https://t.me/chan/42",
+        media=[_img()],
+        source_posted_at=None,
+    )
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_missing_fetcher)
+    assert len(outcome.created) == 1
+    assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1, SOURCE_DATE_UNKNOWN: 1}
+
+
+async def test_a_draft_with_footage_and_a_source_date_warns_about_neither(db, owner):
+    draft = _draft(
+        source_url="https://t.me/chan/42",
+        media=[_img()],
+        source_posted_at=datetime(2025, 11, 11, 8, 0, tzinfo=UTC),
+    )
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_image_fetcher)
+    assert len(outcome.created) == 1
+    assert outcome.warnings == {}
+
+
+async def test_an_empty_source_slot_suppresses_the_footage_and_date_warnings(db, owner):
+    """A draft the engine already flagged source-less carries no footage or date
+    warning: the empty slot says why there is neither, and repeating it would
+    cost the bot's reply two lines for one fact."""
+    draft = _draft(media=[_img()])
+    draft = dataclasses.replace(draft, warnings=[SOURCE_MISSING])
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_missing_fetcher)
+    assert len(outcome.created) == 1
+    assert outcome.warnings == {SOURCE_MISSING: 1}
+
+
+async def test_media_already_on_another_event_warns_once_per_row(db, owner):
+    """Exact sha256 equality against events outside the pass. The pass's own
+    rows are excluded, so the two coordinate drafts of one post, which share
+    the media, do not flag each other; a later import of the same bytes does."""
+    first = await _persist(
+        db, owner=owner, drafts=[_draft(proof_media=[_img()])], fetch_media=_image_fetcher
+    )
+    assert len(first.created) == 1
+    assert DUPLICATE_MEDIA not in first.warnings
+
+    second = await _persist(
+        db,
+        owner=owner,
+        drafts=[
+            _draft(url="https://x.com/own/status/2", lat=49.5, proof_media=[_img()]),
+            _draft(url="https://x.com/own/status/3", lat=50.5, proof_media=[_img()]),
+        ],
+        fetch_media=_image_fetcher,
+    )
+    assert len(second.created) == 2
+    assert second.warnings[DUPLICATE_MEDIA] == 2

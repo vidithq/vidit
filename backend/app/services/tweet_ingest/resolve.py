@@ -61,10 +61,16 @@ COORDS_INVALID = "coords_invalid"
 POST_UNREADABLE = "post_unreadable"
 
 # What a created draft still needs from its owner. Warnings, not refusals: the
-# draft lands either way and review is where they are answered.
+# draft lands either way and review is where they are answered. The first three
+# are what the engine could not settle from the post; the last three are what
+# the row ended up with, so ``detection.persist_drafts`` raises them once the
+# write is done. One home for the vocabulary, whichever half raises a code.
 SOURCE_AMBIGUOUS = "source_ambiguous"  # several candidate links, source left empty
 SOURCE_MISSING = "source_missing"  # no candidate link and no quote
 SEVERAL_COORDINATES = "several_coordinates"  # one thread, several drafts
+SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no footage stored
+SOURCE_DATE_UNKNOWN = "source_date_unknown"  # the source's post date came back unknown
+DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another event
 
 
 def _status_link_handle(url: str) -> str | None:

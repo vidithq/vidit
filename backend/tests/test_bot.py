@@ -32,6 +32,13 @@ from app.services.bot import (
     reply_weighted_len,
     run_bot_once,
 )
+from app.services.tweet_ingest import (
+    DUPLICATE_MEDIA,
+    SEVERAL_COORDINATES,
+    SOURCE_AMBIGUOUS,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FOOTAGE_MISSING,
+)
 from app.services.tweet_ingest.syndication import _cache_clear
 
 BOT_USER_ID = "999000"
@@ -805,10 +812,7 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     text = compose_reply(
         event_id,
         drafts=1,
-        warnings=[],
-        source_footage_missing=True,
-        source_date_missing=True,
-        duplicate_media=True,
+        warnings=[SOURCE_FOOTAGE_MISSING, SOURCE_DATE_UNKNOWN, DUPLICATE_MEDIA],
     )
     assert text.startswith("✅ 1 geolocation draft saved")
     assert event_id[:8] in text
@@ -822,49 +826,40 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     # paired with proof that nothing was clipped.
     assert text.endswith("Review from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    # No warning on a clean draft (source read, footage stored, date known).
-    clean = compose_reply(
-        event_id,
-        drafts=1,
-        warnings=[],
-        source_footage_missing=False,
-        source_date_missing=False,
-        duplicate_media=False,
-    )
+    # No warning raised, no ⚠ line: the composer decides nothing itself.
+    clean = compose_reply(event_id, drafts=1, warnings=[])
     assert "⚠" not in clean
 
 
-def test_compose_reply_carries_the_engine_warnings_and_stays_in_the_cap():
-    from app.services.tweet_ingest import SEVERAL_COORDINATES, SOURCE_AMBIGUOUS, SOURCE_MISSING
+def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
+    """One ⚠ line per raised code, in the table's order, and the heaviest reply
+    the pipeline can compose still fits X's cap.
+
+    Heaviest is the four below: ``persist_drafts`` drops the footage and date
+    warnings on a draft that already carries the empty-source pair, and the two
+    halves of that pair never co-occur, so no pass raises all six codes.
+    """
+    from app.services.bot import _WARNING_LINES
 
     event_id = str(uuid.uuid4())
-    text = compose_reply(
-        event_id,
-        drafts=3,
-        warnings=[SEVERAL_COORDINATES, SOURCE_AMBIGUOUS],
-        source_footage_missing=True,
-        source_date_missing=True,
-        duplicate_media=True,
-    )
+    heaviest = [
+        SEVERAL_COORDINATES,
+        SOURCE_FOOTAGE_MISSING,
+        SOURCE_DATE_UNKNOWN,
+        DUPLICATE_MEDIA,
+    ]
+    text = compose_reply(event_id, drafts=3, warnings=heaviest)
     assert text.startswith("✅ 3 geolocation drafts saved")
-    assert "Several coordinates, one draft each" in text
-    assert "Several possible sources" in text
-    # An empty source already says why there is no footage and no date, so
-    # those two lines are dropped rather than repeating it.
-    assert "No footage from the source" not in text and "post date" not in text
+    assert [line for line in text.splitlines() if line.startswith("⚠")] == [
+        _WARNING_LINES[code] for code in heaviest
+    ]
     assert text.endswith("Review from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
-    missing = compose_reply(
-        event_id,
-        drafts=1,
-        warnings=[SOURCE_MISSING],
-        source_footage_missing=True,
-        source_date_missing=True,
-        duplicate_media=False,
-    )
-    assert "No source found" in missing
-    assert reply_weighted_len(missing) <= REPLY_MAX_WEIGHTED_LEN
+    ambiguous = compose_reply(event_id, drafts=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
+    assert "Several possible sources" in ambiguous
+    assert "No footage from the source" not in ambiguous and "post date" not in ambiguous
+    assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
 
 
 def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():

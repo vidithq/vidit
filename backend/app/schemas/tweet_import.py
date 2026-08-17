@@ -26,9 +26,12 @@ class TweetImportRead(BaseModel):
     (published, closed, withheld) or found already up to date. The caller opens
     the first id it gets.
 
-    ``warnings`` carries the engine's warning codes for the drafts of this post
-    (``several_coordinates``, ``source_ambiguous``, ``source_missing``): what
-    review still has to answer, never a refusal. ``reason`` is the refusal code
+    ``warnings`` carries the warning codes for the drafts of this post: what
+    review still has to answer, never a refusal. Three say what the engine could
+    not settle from the post (``several_coordinates``, ``source_ambiguous``,
+    ``source_missing``) and three what the drafts ended up with
+    (``source_footage_missing``, ``source_date_unknown``, ``duplicate_media``).
+    ``reason`` is the refusal code
     when the post produced no draft at all (``coords_missing``,
     ``coords_invalid``), and null whenever drafts were produced. ``failed``
     counts the detections that raised mid-persist.

@@ -63,16 +63,17 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
 from app.models.bot_webhook_event import BotWebhookEvent
-from app.models.event import Event
-from app.models.media import Media
 from app.models.user import User
 from app.services.detection import Outcome, linked_owner, persist_drafts
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
+    DUPLICATE_MEDIA,
     POST_UNREADABLE,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
     AcquiredThread,
     TweetNotAccessible,
@@ -242,30 +243,6 @@ def acquire_tagged_thread(
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
 
-def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
-    """Whether any of the created events' media already exists elsewhere.
-
-    Exact ``Media.sha256`` equality against every other event's media — the
-    dedup warning the reply surfaces (perceptual near-duplicate matching is a
-    separate value-layer feature).
-    """
-    event_ids = [event.id for event in created]
-    hashes = [
-        sha
-        for (sha,) in db.query(Media.sha256).filter(
-            Media.event_id.in_(event_ids), Media.sha256.isnot(None)
-        )
-    ]
-    if not hashes:
-        return False
-    return (
-        db.query(Media.id)
-        .filter(Media.sha256.in_(hashes), Media.event_id.notin_(event_ids))
-        .first()
-        is not None
-    )
-
-
 # The ref shown in the success reply: the UUID's first block, enough to
 # eyeball the draft in the Detections queue; the full 36 chars would eat a
 # third of the reply for no extra identification value there.
@@ -273,25 +250,22 @@ _REPLY_REF_CHARS = 8
 
 
 # Per warning code: the ⚠ line the success reply carries. Terse noun phrases in
-# one uniform voice, each naming what review has to answer. Keyed by the
-# ``tweet_ingest`` warning constants; keep each short, since the composed reply
-# must stay under ``REPLY_MAX_WEIGHTED_LEN``, and linkless.
-_ENGINE_WARNINGS: dict[str, str] = {
+# one uniform voice, each naming what review has to answer, in the order they
+# read. Keyed by the ``tweet_ingest`` warning constants, which is the whole
+# vocabulary: what the engine could not settle from the post, then what the
+# write path found on the row it wrote. Keep each short, since the composed
+# reply must stay under ``REPLY_MAX_WEIGHTED_LEN``, and linkless.
+_WARNING_LINES: dict[str, str] = {
     SEVERAL_COORDINATES: "⚠ Several coordinates, one draft each",
     SOURCE_AMBIGUOUS: "⚠ Several possible sources. Pick one at review",
     SOURCE_MISSING: "⚠ No source found. Add one at review",
+    SOURCE_FOOTAGE_MISSING: "⚠ No footage from the source. Add it at review",
+    SOURCE_DATE_UNKNOWN: "⚠ Couldn't read the source's post date. Check it at review",
+    DUPLICATE_MEDIA: "⚠ Media already on Vidit. Possible duplicate",
 }
 
 
-def compose_reply(
-    created_id: str,
-    *,
-    drafts: int,
-    warnings: Iterable[str],
-    source_footage_missing: bool,
-    source_date_missing: bool,
-    duplicate_media: bool,
-) -> str:
+def compose_reply(created_id: str, *, drafts: int, warnings: Iterable[str]) -> str:
     """The in-thread reply for a mention that created its drafts.
 
     Opens with the at-a-glance ✅ (the ❌ twin lives in
@@ -301,27 +275,15 @@ def compose_reply(
     The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
     it.
 
-    Two families of ⚠ line. The engine's ``warnings`` say what it could not
-    settle from the post (several coordinates, an ambiguous or absent source).
-    Three more come from what landed: no footage stored from the source (a
-    link-only source, a media-less or restricted source post, or a failed fetch;
-    review is the only repair, re-tagging dedups), the source's post date came
-    back unknown (the provisional event date then anchors on nothing but the
-    analyst's own post), and the dedup question. The footage and date lines are
-    dropped when the source itself is missing or ambiguous, which already says
-    why neither is there.
+    One ⚠ line per warning the pass raised, in ``_WARNING_LINES`` order. The
+    reply composes what it is given and decides nothing: which warnings a draft
+    carries is the engine's and the write path's answer
+    (``detection.persist_drafts``), not the reply's.
     """
     plural = "s" if drafts > 1 else ""
     lines = [f"✅ {drafts} geolocation draft{plural} saved · ref {created_id[:_REPLY_REF_CHARS]}"]
     raised = set(warnings)
-    lines.extend(line for code, line in _ENGINE_WARNINGS.items() if code in raised)
-    sourceless = bool(raised & {SOURCE_MISSING, SOURCE_AMBIGUOUS})
-    if source_footage_missing and not sourceless:
-        lines.append("⚠ No footage from the source. Add it at review")
-    if source_date_missing and not sourceless:
-        lines.append("⚠ Couldn't read the source's post date. Check it at review")
-    if duplicate_media:
-        lines.append("⚠ Media already on Vidit. Possible duplicate")
+    lines.extend(line for code, line in _WARNING_LINES.items() if code in raised)
     lines.append("Review from your profile")
     return _within_reply_cap("\n".join(lines))
 
@@ -473,9 +435,7 @@ async def _process_mention(
         return ("failed" if assembled.failed else "skipped"), 0, None, None
     reply_id: str | None = None
     if reply_allowed:
-        reply_id = _post_reply_failsoft(
-            mention, _success_reply(db, assembled), client=x_write_client
-        )
+        reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
     else:
         logger.warning(
             "Reply budget reached; draft created without reply for mention %s",
@@ -484,25 +444,17 @@ async def _process_mention(
     return "created", len(assembled.created), reply_id, None
 
 
-def _success_reply(db: Session, assembled: Outcome) -> str:
+def _success_reply(assembled: Outcome) -> str:
     """The composed ✅ reply for one mention's outcome.
 
-    The ref and the media checks read the first created draft; a thread carrying
-    several coordinates lands several, and the ``several_coordinates`` warning is
-    what tells the analyst so.
+    The ref reads the first created draft; a thread carrying several coordinates
+    lands several, and the ``several_coordinates`` warning is what tells the
+    analyst so.
     """
-    created = assembled.created[0]
-    has_footage = (
-        db.query(Media.id).filter(Media.event_id == created.id, Media.role == "source").first()
-        is not None
-    )
     return compose_reply(
-        str(created.id),
+        str(assembled.created[0].id),
         drafts=len(assembled.created),
         warnings=assembled.warnings,
-        source_footage_missing=not has_footage,
-        source_date_missing=created.source_posted_at is None,
-        duplicate_media=_has_duplicate_media(db, assembled.created),
     )
 
 

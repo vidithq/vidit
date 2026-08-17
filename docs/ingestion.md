@@ -54,7 +54,7 @@ Two links count as one when they share an identity: an X status keys on its stat
 
 ### Warnings
 
-The engine returns the drafts it created plus what those drafts still need from their owner. Warnings are not refusals: the draft lands either way, and review is where they are answered.
+An import pass returns the drafts it wrote plus what those drafts still need from their owner. Warnings are not refusals: the draft lands either way, and review is where they are answered. Two halves raise them, and `Outcome.warnings` counts both together, one count per code over the drafts of the pass. The engine raises what it could not settle from the post:
 
 | Warning | Raised when |
 |---|---|
@@ -62,7 +62,17 @@ The engine returns the drafts it created plus what those drafts still need from 
 | `source_missing` | No candidate link and no quote. |
 | `several_coordinates` | One thread carried several coordinates, so it produced one draft each. |
 
-Each entry surfaces them its own way: the bot in its [reply](#the-bot), the archive backfill as counts in its [outcome email](#archive-import-worker).
+`persist_drafts` raises what the row it wrote ended up with, on every created or updated row:
+
+| Warning | Raised when |
+|---|---|
+| `source_footage_missing` | No `role=source` media landed: a link-only source, a media-less or restricted source post, or a fetch that came back short. |
+| `source_date_unknown` | The source's post date came back unknown, so the provisional event date anchors on the analyst's own post alone. |
+| `duplicate_media` | The row's media already exists on another event, by exact `Media.sha256` equality against every event outside the pass. |
+
+The first two are dropped on a draft that already carries `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date.
+
+Each entry surfaces the whole set its own way: the bot in its [reply](#the-bot), the paste in its response ([`api.md`](api.md#post-eventsimport-from-tweet)), the archive backfill as counts in its [outcome email](#archive-import-worker).
 
 Three refusals are all the engine can tell apart, and only the bot names them back: `post_unreadable` (X served no body), `coords_missing` (the analyst's own text carries no coordinate) and `coords_invalid` (a coordinate-shaped string sat outside the world).
 
@@ -136,13 +146,13 @@ The bot adds a delivery and a reply on top of the engine. It reads no grammar of
 
 | Moment | Gesture | Condition |
 |---|---|---|
-| Drafts created | In-thread reply, opening ✅: the draft count, a bare event ref, one ⚠ line per warning | Always (budget permitting) |
+| Drafts created | In-thread reply, opening ✅: the draft count, a bare event ref, one ⚠ line per [warning](#warnings) | Always (budget permitting) |
 | Nothing created | In-thread reply mirroring the success shape: the ❌ header, one ⚠ line naming the refusal, the footer; no recited lesson and no fix recipe (the guide lives behind the bio link) | Author linked AND the tagged tweet is not itself a reply to the bot (the loop guard: a courtesy answer to the bot's own reply auto-mentions it and must not earn another reply, forever) |
 | Anything else | Nothing | `no_account` and every unlinked author stay fully silent |
 
 Reply text is **linkless**: it never carries a URL or an auto-linkable domain. X bills a link-carrying post about 13 times a plain one, so the clickable link lives in the bot bio instead. Every reply is also **unique per mention**, using the success reference and a short mention tail on failures. X refuses a tweet identical to a recent one (403 duplicate content), which would otherwise block a repeated diagnosis; that specific 403 is logged without paging anyone.
 
-The success reply carries the engine's [warnings](#warnings) first, then three of its own: no footage was stored from the source (a link-only source, a media-less or restricted source post, or a failed fetch; review is the only repair, re-tagging lands on the existing idempotency key and deduplicates), the source's post date came back unknown, and the draft's media is already known on Vidit (exact `Media.sha256` equality; perceptual near-duplicate matching is a separate feature). The last two are dropped when the source itself is empty, which already says why neither is there. The failure reply names one of the three refusals the engine can tell apart.
+The success reply carries one line per [warning](#warnings) the pass raised, in one fixed order, and decides none of them itself: which warnings a draft carries is the engine's and the write path's answer. Re-tagging is the repair for none of them, since it lands on the existing idempotency key and deduplicates; review is. The failure reply names one of the three refusals the engine can tell apart.
 
 **CRC and the gap detector.** X re-runs the Challenge-Response Check (CRC) hourly. The endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently. Two nets catch that failure. `scripts/manage_x_webhook.py list` shows the webhook's `valid` flag. The poll's **gap detector** also catches it: while `X_WEBHOOK_ENABLED=true`, a mention the poll processes fresh, meaning the webhook should have delivered it, logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). This way a dead webhook pages an operator instead of silently degrading into hourly latency forever. For a known outage longer than the poll covers, X's replay API can re-deliver up to 24 hours of events on request, manually, from the developer console or API.
 

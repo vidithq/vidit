@@ -35,8 +35,11 @@ import httpx
 
 from app.config import settings
 from app.services.tweet_ingest import (
+    DUPLICATE_MEDIA,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
 )
 
@@ -188,13 +191,16 @@ def detections_link(username: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
 
 
-# What each engine warning reads as in the outcome email, keyed by the
-# ``tweet_ingest`` warning constants. The count is of detections, which is why
-# each line names drafts rather than posts.
+# What each warning reads as in the outcome email, keyed by the
+# ``tweet_ingest`` warning constants and read in this order. The count is of
+# detections, which is why each line names drafts rather than posts.
 _ARCHIVE_WARNING_LINES: dict[str, str] = {
     SEVERAL_COORDINATES: "{n} came from a post carrying several coordinates",
     SOURCE_AMBIGUOUS: "{n} left the source empty: the post linked several candidates",
     SOURCE_MISSING: "{n} left the source empty: the post linked none",
+    SOURCE_FOOTAGE_MISSING: "{n} stored no footage from the source",
+    SOURCE_DATE_UNKNOWN: "{n} could not read the source's post date",
+    DUPLICATE_MEDIA: "{n} carry media already on Vidit",
 }
 
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -48,6 +49,11 @@ from app.services.storage import (
     validate_bytes,
 )
 from app.services.tweet_ingest import (
+    DUPLICATE_MEDIA,
+    SOURCE_AMBIGUOUS,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FOOTAGE_MISSING,
+    SOURCE_MISSING,
     Draft,
     ParsedMedia,
     Resolution,
@@ -552,6 +558,81 @@ async def _upsert_one(
     return True
 
 
+def _rows_without_footage(db: Session, rows: list[Event]) -> set[uuid.UUID]:
+    """The rows carrying no ``role=source`` media, in one query.
+
+    Read off the durable rows rather than off what the fetch resolved, so the
+    warning says what the analyst will actually find on the draft.
+    """
+    ids = [row.id for row in rows]
+    stored = {
+        event_id
+        for (event_id,) in db.query(Media.event_id).filter(
+            Media.event_id.in_(ids), Media.role == "source"
+        )
+    }
+    return set(ids) - stored
+
+
+def _rows_with_duplicate_media(db: Session, rows: list[Event]) -> set[uuid.UUID]:
+    """The rows whose media already exists on an event outside this pass.
+
+    Exact ``Media.sha256`` equality; perceptual near-duplicate matching is a
+    separate feature. The pass's own rows are excluded from the comparison, so a
+    thread's several coordinate drafts, which share one media, never flag each
+    other.
+    """
+    ids = [row.id for row in rows]
+    mine = (
+        db.query(Media.event_id, Media.sha256)
+        .filter(Media.event_id.in_(ids), Media.sha256.isnot(None))
+        .all()
+    )
+    if not mine:
+        return set()
+    elsewhere = {
+        sha
+        for (sha,) in db.query(Media.sha256).filter(
+            Media.sha256.in_([sha for _event_id, sha in mine]), Media.event_id.notin_(ids)
+        )
+    }
+    return {event_id for event_id, sha in mine if sha in elsewhere}
+
+
+def _write_warnings(db: Session, persisted: list[tuple[Event, Draft]]) -> dict[str, int]:
+    """The warnings only the write path can raise, counted per row it wrote.
+
+    The engine says what it could not settle from the post; these three say what
+    the row ended up with: no footage was stored from the declared source (a
+    link-only source, a media-less or restricted source post, or a fetch that
+    came back short), the source's post date came back unknown, and the row's
+    media is already on Vidit. Review is the repair for all three, so they read
+    as warnings beside the engine's and are counted the same way.
+
+    The first two are dropped on a row whose draft already carries
+    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot already
+    says why there is neither footage nor date.
+    """
+    counts: dict[str, int] = {}
+    if not persisted:
+        return counts
+    rows = [row for row, _draft in persisted]
+    footage_less = _rows_without_footage(db, rows)
+    duplicated = _rows_with_duplicate_media(db, rows)
+    for row, draft in persisted:
+        raised: list[str] = []
+        if not set(draft.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
+            if row.id in footage_less:
+                raised.append(SOURCE_FOOTAGE_MISSING)
+            if draft.source_posted_at is None:
+                raised.append(SOURCE_DATE_UNKNOWN)
+        if row.id in duplicated:
+            raised.append(DUPLICATE_MEDIA)
+        for code in raised:
+            counts[code] = counts.get(code, 0) + 1
+    return counts
+
+
 async def persist_drafts(
     db: Session,
     *,
@@ -593,7 +674,10 @@ async def persist_drafts(
     same session never splits one.
     """
     drafts = resolution.drafts
-    outcome = Outcome(warnings=resolution.warnings, refusals=resolution.refusals)
+    outcome = Outcome(warnings=dict(resolution.warnings), refusals=resolution.refusals)
+    # Every row this pass wrote, with the draft it was written from, so the
+    # write path's own warnings can be read off both at the end.
+    persisted: list[tuple[Event, Draft]] = []
     # Media cache scoped to the current thread: the engine emits a thread's
     # coordinate drafts contiguously sharing one ``detected_from_url`` + media,
     # so resetting on a URL change bounds the cached bytes to one thread.
@@ -627,6 +711,7 @@ async def persist_drafts(
             else:
                 if changed:
                     outcome.updated.append(matched)
+                    persisted.append((matched, draft))
                 else:
                     outcome.skipped.append(matched)
         else:
@@ -644,8 +729,11 @@ async def persist_drafts(
                 outcome.failed += 1
             else:
                 outcome.created.append(geo)
+                persisted.append((geo, draft))
         if on_progress is not None:
             on_progress(index, total)
+    for code, count in _write_warnings(db, persisted).items():
+        outcome.warnings[code] = outcome.warnings.get(code, 0) + count
     return outcome
 
 

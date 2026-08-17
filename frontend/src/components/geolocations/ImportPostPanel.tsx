@@ -15,13 +15,17 @@ import { draftEditPath, importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
 
 /** What review still has to answer on the drafts this post produced, keyed by
- *  the engine's warning codes. A code with no line here renders nothing: the
- *  draft is already open in the queue, so an unmapped warning costs a sentence,
- *  never the import. */
+ *  the backend's warning codes: what the engine could not settle from the post,
+ *  then what the drafts ended up with. A code with no line here renders nothing:
+ *  the draft is already open in the queue, so an unmapped warning costs a
+ *  sentence, never the import. */
 const WARNING_LINES: Record<string, string> = {
   several_coordinates: "Several coordinates in that post, so one draft each.",
   source_ambiguous: "Several possible sources. Pick one at review.",
   source_missing: "No source found. Add one at review.",
+  source_footage_missing: "No footage stored from the source. Add it at review.",
+  source_date_unknown: "The source's post date came back unknown. Check it at review.",
+  duplicate_media: "That media is already on Vidit. Possible duplicate.",
 };
 
 /** Why a post produced no draft, keyed by the engine's refusal codes. The
