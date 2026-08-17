@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +8,7 @@ import {
   isSnapshotUrl,
   PRIMARY_SOURCE_DESCRIPTION,
   SNAPSHOT_HINT,
+  SNAPSHOT_HOSTS,
 } from "./ArchivedCopies";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 import { recordArchivedCopy } from "@/lib/events";
@@ -56,7 +58,7 @@ describe("ArchivedCopies", () => {
     // row and again on the provenance row must read one idea, not two. What
     // varies is state (colour, interactivity) and provider (the accessible
     // name), never the drawing.
-    const mark = (ui: React.ReactElement) => {
+    const mark = (ui: ReactElement) => {
       const { container, unmount } = render(ui);
       const svg = container.querySelector("svg")?.outerHTML ?? "";
       unmount();
@@ -76,7 +78,34 @@ describe("ArchivedCopies", () => {
     ]);
 
     expect(drawings.size).toBe(1);
-    expect([...drawings][0]).not.toBe("");
+    // Which drawing, not merely that they agree: swapping every state back to
+    // lucide's `History` would leave the set at one.
+    expect([...drawings][0]).toContain("lucide-archive");
+  });
+
+  it("tells two providers apart by name, drawing them alike", () => {
+    // The mark is one shape, so the service holding the copy has nowhere to live
+    // but the accessible name. Two copies must therefore not announce alike.
+    const { unmount } = render(
+      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />
+    );
+    expect(
+      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "archive.today copy of the source" })
+    ).toBeNull();
+    unmount();
+
+    render(
+      <ArchivedCopies {...props} copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }} />
+    );
+    expect(
+      screen.getByRole("link", { name: "archive.today copy of the source" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Wayback Machine copy of the source" })
+    ).toBeNull();
   });
 
   it("leaves a reader who cannot archive an inert grey glyph", () => {
@@ -102,9 +131,12 @@ describe("ArchivedCopies", () => {
     expect(open).toHaveAttribute("href", `https://web.archive.org/save/${SOURCE}`);
     // The provider page opens beside the catalog, never in place of it.
     expect(open).toHaveAttribute("target", "_blank");
-    // One door, not one accepted provider: the second link is gone and the
-    // sentence beside the first says where else a snapshot may come from.
-    expect(screen.queryByRole("link", { name: /archive\.today/ })).toBeNull();
+    // One door, not one accepted provider: the disclosure holds exactly one
+    // link, the second provider page is gone, and the sentence beside the first
+    // says where else a snapshot may come from.
+    const popover = screen.getByText("Archive it yourself").parentElement as HTMLElement;
+    expect(within(popover).getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Open archive.today" })).toBeNull();
     expect(
       screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
     ).toBeInTheDocument();
@@ -179,17 +211,29 @@ describe("ArchivedCopies", () => {
  */
 describe("the pasted snapshot, whichever service produced it", () => {
   const SOURCE = "https://t.me/channel/1";
+  // What a copy holds is the snapshot, never the link it is a snapshot of.
+  const RECORDED = "https://web.archive.org/web/20260601120000/https://t.me/channel/1";
+
+  // One case per accepted host, read off the list the component checks against
+  // and the backend mirrors, so a host added there cannot go untested. Only the
+  // shape differs: a Wayback URL replays the link it captured, while the other
+  // two are opaque codes.
+  const CASES = SNAPSHOT_HOSTS.map(
+    (host) =>
+      [
+        host,
+        host === "web.archive.org"
+          ? `https://${host}/web/20260601120000/${SOURCE}`
+          : `https://${host}/abcde`,
+      ] as const
+  );
 
   beforeEach(() => {
     vi.mocked(recordArchivedCopy).mockReset();
-    vi.mocked(recordArchivedCopy).mockResolvedValue({ url: SOURCE, provider: "wayback" });
+    vi.mocked(recordArchivedCopy).mockResolvedValue({ url: RECORDED, provider: "wayback" });
   });
 
-  it.each([
-    ["web.archive.org", "https://web.archive.org/web/20260601120000/https://t.me/channel/1"],
-    ["archive.ph", "https://archive.ph/abcde"],
-    ["archive.today", "https://archive.today/abcde"],
-  ])("is accepted from %s", (_host, snapshot) => {
+  it.each(CASES)("is accepted from %s", async (_host, snapshot) => {
     // The client-side gate the submit and edit forms refuse a publish on.
     expect(isSnapshotUrl(snapshot)).toBe(true);
 
@@ -215,7 +259,9 @@ describe("the pasted snapshot, whichever service produced it", () => {
       target: { value: snapshot },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(recordArchivedCopy).toHaveBeenCalledWith("e1", SOURCE, snapshot);
+    await waitFor(() =>
+      expect(recordArchivedCopy).toHaveBeenCalledWith("e1", SOURCE, snapshot)
+    );
   });
 
   it("is refused when its host archives nothing", () => {

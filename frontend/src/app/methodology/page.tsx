@@ -3,7 +3,6 @@ import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
-import { TEXT_LINK } from "@/components/ui/styles";
 
 // Public methodology guide, reachable without an account (see
 // `PUBLIC_PREFIXES` in `proxy.ts`). Linked from the proof section of the
@@ -42,21 +41,7 @@ export const metadata: Metadata = {
 const PROOF_STEPS: NumberedStep[] = [
   {
     title: "Verify and archive the source",
-    body: (
-      <>
-        Reverse-image-search the source to rule out recycled footage from
-        another conflict, and snapshot the link on{" "}
-        <a
-          href="https://archive.today"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={TEXT_LINK}
-        >
-          archive.today
-        </a>{" "}
-        so it survives if the original gets deleted.
-      </>
-    ),
+    body: "Reverse-image-search the source to rule out recycled footage from another conflict, then snapshot the link so it survives if the original gets deleted. The Archived copy field under Source URL opens a Wayback Machine page prefilled with the link you typed, and takes the snapshot back in the same field: a copy from web.archive.org, archive.ph or archive.today is stored under its own name.",
   },
   {
     title: "Pin the visual anchors",

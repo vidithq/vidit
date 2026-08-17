@@ -219,6 +219,12 @@ describe("DetailsFields", () => {
     expect(
       screen.getByText("Fill in the source URL above to archive it.")
     ).toBeInTheDocument();
+    // The three accepted hosts do not wait on a source URL: with no link to
+    // open, this sentence is the only thing saying an archive.today snapshot is
+    // welcome in the field below.
+    expect(
+      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
+    ).toBeInTheDocument();
   });
 
   it("prefills one provider page with the source URL as typed", () => {
@@ -233,12 +239,27 @@ describe("DetailsFields", () => {
       "href",
       "https://web.archive.org/save/https://t.me/c/1?x=2"
     );
-    // The second link is gone. The field still takes a snapshot from the other
-    // hosts, and says so beside the link rather than opening a page for each.
-    expect(screen.queryByRole("link", { name: /archive\.today/ })).toBeNull();
+    // The second link is gone: the field offers exactly one provider page. The
+    // other hosts are still accepted, and the sentence beside the link says so
+    // rather than opening a page for each.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Open archive.today" })).toBeNull();
     expect(
       screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
     ).toBeInTheDocument();
+  });
+
+  it("prefills a fragment-bearing source URL, fragment and all", () => {
+    render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1#note" />);
+    // `encodeURI` leaves `#` alone, so the fragment rides along and the browser
+    // reads it as the fragment of the web.archive.org URL: what Save Page Now
+    // captures is the link without it. That is by design. The server compares a
+    // snapshot against the link on host, path and query
+    // (`source_archive._normalised_target`) and ignores the fragment on both
+    // sides, so the copy still files against the source it was taken for.
+    expect(
+      screen.getByRole("link", { name: "Open Wayback Machine" })
+    ).toHaveAttribute("href", "https://web.archive.org/save/https://t.me/c/1#note");
   });
 
   it("flags a paste that cannot be a snapshot, and only once one is typed", () => {
